@@ -32,7 +32,7 @@ Lets take a look at the structure of this template:
 ├── Makefile                 # A collection of utilities to manage the project
 ├── MANIFEST.in              # A list of files to include in a package
 ├── mkdocs.yml               # Configuration for documentation site
-├── project_name             # The main python package for the project
+├── hercules             # The main python package for the project
 │   ├── base.py              # The base module for the project
 │   ├── __init__.py          # This tells Python that this is a package
 │   ├── __main__.py          # The entry point for the project
@@ -109,7 +109,7 @@ I had to do some tricks to read that version variable inside the setuptools
 I decided to keep the version in a static file because it is easier to read from
 wherever I want without the need to install the package.
 
-e.g: `cat project_name/VERSION` will get the project version without harming
+e.g: `cat hercules/VERSION` will get the project version without harming
 with module imports or anything else, it is useful for CI, logs and debugging.
 
 ### Why to include `tests`, `history` and `Containerfile` as part of the release?
