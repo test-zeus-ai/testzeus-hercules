@@ -1,0 +1,10 @@
+# These requirements are for development and testing only, not for production.
+pytest
+coverage
+flake8
+black
+isort
+pytest-cov
+mypy
+gitchangelog
+mkdocs
