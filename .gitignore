@@ -138,7 +138,7 @@ dmypy.json
 **/temp
 **/log_files
 **/screen_shots
-# **/opt
+**/opt
 **/output
 **/gherkin_files
 
@@ -147,7 +147,7 @@ hercules/**/*.feature
 
 **/test-results
 
-# **/input
+**/input
 **/proofs
 
 **/agents_llm_config.json
