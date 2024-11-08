@@ -9,11 +9,7 @@ from dotenv.main import dotenv_values
 # Function to retrieve all feature folders
 def get_feature_folders() -> list[str]:
     test_features_dir = os.path.join(os.path.dirname(__file__), "test_features")
-    return [
-        name
-        for name in os.listdir(test_features_dir)
-        if os.path.isdir(os.path.join(test_features_dir, name))
-    ]
+    return [name for name in os.listdir(test_features_dir) if os.path.isdir(os.path.join(test_features_dir, name))]
 
 
 # Parameterize the test function to run for each feature folder
@@ -27,12 +23,8 @@ def test_feature_execution(feature_folder: str) -> None:
     """
     # Setup paths and environment
 
-    current_test_data_path, input_path, test_data_path = setup_test_environment(
-        feature_folder
-    )
-    feature_path = os.path.join(
-        os.path.dirname(__file__), "test_features", feature_folder
-    )
+    current_test_data_path, input_path, test_data_path = setup_test_environment(feature_folder)
+    feature_path = os.path.join(os.path.dirname(__file__), "test_features", feature_folder)
     copy_feature_files(feature_path, input_path, test_data_path)
 
     env_file_path = os.path.join(os.path.dirname(__file__), "..", ".env")
@@ -42,6 +34,7 @@ def test_feature_execution(feature_folder: str) -> None:
     load_env_in_dict["PROJECT_SOURCE_ROOT"] = current_test_data_path
     load_env_in_dict["IS_TEST_ENV"] = "true"
     load_env_in_dict["MODE"] = "debug"
+    load_env_in_dict["ENABLE_TELEMETRY"] = "0"
 
     # Execute Hercules with the updated .env file
     try:

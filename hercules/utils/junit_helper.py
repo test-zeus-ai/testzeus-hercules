@@ -10,9 +10,7 @@ from junitparser.junitparser import SystemOut
 junit_xml_base_path = get_junit_xml_base_path()
 
 
-def flatten_dict(
-    d: Dict[str, Any], parent_key: str = "", sep: str = "."
-) -> Dict[str, Any]:
+def flatten_dict(d: Dict[str, Any], parent_key: str = "", sep: str = ".") -> Dict[str, Any]:
     """
     Flatten a nested dictionary.
 
@@ -126,9 +124,7 @@ class JUnitXMLGenerator:
             total_tokens = cost_metric.get(usage_type, {}).get("total_tokens", 0)
             self.total_token_used += int(total_tokens)
 
-        total_cost = cost_metric.get("usage_including_cached_inference", {}).get(
-            "total_cost", 0.0
-        )
+        total_cost = cost_metric.get("usage_including_cached_inference", {}).get("total_cost", 0.0)
         self.total_execution_cost += float(total_cost)
         gpt_data = cost_metric.get("usage_including_cached_inference", {})
         for key in gpt_data:
@@ -177,9 +173,7 @@ class JUnitXMLGenerator:
                     existing_suite = suite_dict[suite_name]
                     for testcase in suite:
                         existing_suite.add_testcase(testcase)
-                    existing_suite.time = float(existing_suite.time or 0.0) + float(
-                        suite.time or 0.0
-                    )
+                    existing_suite.time = float(existing_suite.time or 0.0) + float(suite.time or 0.0)
 
                     for prop in suite.properties():
                         is_existing_prop = False
@@ -196,9 +190,7 @@ class JUnitXMLGenerator:
                         existing_suite.update_statistics()
 
                         if not is_existing_prop:
-                            existing_suite.add_property(
-                                name=prop.name, value=prop.value
-                            )
+                            existing_suite.add_property(name=prop.name, value=prop.value)
                 else:
                     suite_dict[suite_name] = suite
 
@@ -286,13 +278,9 @@ def run_test() -> None:
         "is_passed": False,
     }
 
-    f2_path = build_junit_xml(
-        json_data_fail, execution_time, cost_metric, feature + "1", scenario + "1"
-    )
+    f2_path = build_junit_xml(json_data_fail, execution_time, cost_metric, feature + "1", scenario + "1")
 
-    JUnitXMLGenerator.merge_junit_xml(
-        [f1_path, f2_path], f"{junit_xml_base_path}/final_results.xml"
-    )
+    JUnitXMLGenerator.merge_junit_xml([f1_path, f2_path], f"{junit_xml_base_path}/final_results.xml")
 
 
 # # Example usage

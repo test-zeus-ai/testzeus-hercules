@@ -20,20 +20,12 @@ llm_model_api_key = os.environ.get("LLM_MODEL_API_KEY")
 agents_llm_config_file = os.environ.get("AGENTS_LLM_CONFIG_FILE")
 agents_llm_config_file_ref_key = os.environ.get("AGENTS_LLM_CONFIG_FILE_REF_KEY")
 
-if (llm_model_name and llm_model_api_key) and (
-    agents_llm_config_file or agents_llm_config_file_ref_key
-):
-    logger.error(
-        "Provide either LLM_MODEL_NAME and LLM_MODEL_API_KEY together, or AGENTS_LLM_CONFIG_FILE and AGENTS_LLM_CONFIG_FILE_REF_KEY together, not both."
-    )
+if (llm_model_name and llm_model_api_key) and (agents_llm_config_file or agents_llm_config_file_ref_key):
+    logger.error("Provide either LLM_MODEL_NAME and LLM_MODEL_API_KEY together, or AGENTS_LLM_CONFIG_FILE and AGENTS_LLM_CONFIG_FILE_REF_KEY together, not both.")
     exit(1)
 
-if (not llm_model_name or not llm_model_api_key) and (
-    not agents_llm_config_file or not agents_llm_config_file_ref_key
-):
-    logger.error(
-        "Either LLM_MODEL_NAME and LLM_MODEL_API_KEY must be set together, or AGENTS_LLM_CONFIG_FILE and AGENTS_LLM_CONFIG_FILE_REF_KEY must be set together."
-    )
+if (not llm_model_name or not llm_model_api_key) and (not agents_llm_config_file or not agents_llm_config_file_ref_key):
+    logger.error("Either LLM_MODEL_NAME and LLM_MODEL_API_KEY must be set together, or AGENTS_LLM_CONFIG_FILE and AGENTS_LLM_CONFIG_FILE_REF_KEY must be set together.")
     exit(1)
 
 MODE = os.environ.get("MODE", "prod")
@@ -142,9 +134,7 @@ def get_input_gherkin_file_path() -> str:
         base_path = os.path.dirname(INPUT_GHERKIN_FILE_PATH)
         if not os.path.exists(base_path):
             os.makedirs(base_path)
-        logger.info(
-            f"Created INPUT_GHERKIN_FILE_PATH folder at: {INPUT_GHERKIN_FILE_PATH}"
-        )
+        logger.info(f"Created INPUT_GHERKIN_FILE_PATH folder at: {INPUT_GHERKIN_FILE_PATH}")
     return INPUT_GHERKIN_FILE_PATH
 
 
@@ -188,9 +178,7 @@ def get_source_log_folder_path(test_id: Optional[str] = None) -> str:
     source_log_folder_path = os.path.join(SOURCE_LOG_FOLDER_PATH, test_id)
     if not os.path.exists(source_log_folder_path):
         os.makedirs(source_log_folder_path)
-        logger.info(
-            f"Created source_log_folder_path folder at: {source_log_folder_path}"
-        )
+        logger.info(f"Created source_log_folder_path folder at: {source_log_folder_path}")
     return source_log_folder_path
 
 
@@ -253,6 +241,4 @@ config_brief = {
     "BROWSER_TYPE": get_browser_type(),
     "CAPTURE_NETWORK": should_capture_network(),
 }
-add_event(
-    EventType.CONFIG, EventData(detail="General Config", additional_data=config_brief)
-)
+add_event(EventType.CONFIG, EventData(detail="General Config", additional_data=config_brief))

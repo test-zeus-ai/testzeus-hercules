@@ -149,7 +149,7 @@ hercules/**/*.feature
 
 **/input
 **/proofs
-
+**/tests/run_data
 **/agents_llm_config.json
 
 

@@ -3,7 +3,6 @@ import os
 
 from pythonjsonlogger import jsonlogger
 
-
 logger = logging.getLogger(__name__)
 
 
