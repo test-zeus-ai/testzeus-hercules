@@ -50,8 +50,8 @@ def test_feature_execution(feature_folder: str) -> None:
         print(f"Return Code: {result.returncode}")
     except subprocess.CalledProcessError as e:
         print(f"Subprocess failed with return code {e.returncode}")
-        print(f"Standard Output:\n{e.stdout.decode()}")
-        print(f"Standard Error:\n{e.stderr.decode()}")
+        print(f"Standard Output:\n{e.stdout}")
+        print(f"Standard Error:\n{e.stderr}")
         assert False, f"Hercules execution failed for {feature_folder}"
 
     # assert on result.returncode == 0, f"Hercules execution failed for {feature_folder}"

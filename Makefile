@@ -33,6 +33,7 @@ lint: fmt             ## Run pep8, black, mypy linters.
 
 .PHONY: test
 test: lint        ## Run tests and generate coverage report.
+	poetry run playwright install
 	poetry run pytest -v --junit-xml=test_output.xml --cov-config .coveragerc --cov=hercules -l --tb=short --maxfail=1 tests/
 	poetry run coverage xml
 	poetry run coverage html
