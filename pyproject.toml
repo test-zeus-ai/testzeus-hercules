@@ -106,6 +106,9 @@ pymupdf = "^1.24.13"
 junitparser = "^3.2.0"
 pytest-playwright = "^0.5.2"
 sentry-sdk = "^2.18.0"
+setuptools = "^75.3.0"
+wheel = "^0.44.0"
+twine = "^5.1.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.3"

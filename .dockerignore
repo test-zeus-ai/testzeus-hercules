@@ -30,3 +30,21 @@ dist
 **/agents_llm_config.json
 
 **/installation_id.txt
+
+
+
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+test_output.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/

@@ -14,30 +14,13 @@ on:
         description: "LLM Model API Key (required)"
         required: true
 
-jobs:
-  linter:
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: [3.11]
-        os: [ubuntu-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
-        with:
-          python-version: ${{ matrix.python-version }}
-      - name: Install dependencies
-        run: |
-            python -m pip install --upgrade pip
-            pip install poetry
-      - name: Install project
-        run: make install
-      - name: Run linter
-        run: make lint
+env:
+  POETRY_VERSION: "1.8.3"
+  POETRY_URL: https://install.python-poetry.org
 
-  tests:
-    needs: linter
+
+jobs:
+  linter_tester:
     strategy:
       fail-fast: false
       matrix:
@@ -52,11 +35,26 @@ jobs:
       - uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install dependencies
+        id: setup_python
+      # Poetry cache depends on OS, Python version and Poetry version.
+      - name: Cache Poetry cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pypoetry
+          key: poetry-cache-${{ runner.os }}-${{ steps.setup_python.outputs.python-version }}-${{ env.POETRY_VERSION }}
+      # virtualenv cache should depends on OS, Python version and `poetry.lock` (and optionally workflow files).
+      - name: Cache Packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.local
+          key: poetry-local-${{ runner.os }}-${{ steps.setup_python.outputs.python-version }}-${{ hashFiles('**/poetry.lock') }}-${{ hashFiles('.github/workflows/*.yml') }}
+      - name: Install Poetry ${{ env.POETRY_VERSION }}
         run: |
-          python -m pip install --upgrade pip
-          pip install poetry
+          curl -sSL ${{ env.POETRY_URL }} | python - --version ${{ env.POETRY_VERSION }}
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
       - name: Install project
         run: make install
+      - name: Run linter
+        run: make lint
       - name: Run tests
         run: make test
