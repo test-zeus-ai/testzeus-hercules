@@ -79,3 +79,8 @@ docs:             ## Build the documentation.
 	@echo "building documentation ..."
 	@poetry run mkdocs build
 	URL="site/index.html"; xdg-open $$URL || sensible-browser $$URL || x-www-browser $$URL || gnome-open $$URL || open $$URL
+
+
+.PHONY: build
+build:       ## build hercules.
+	poetry build
