@@ -17,7 +17,7 @@ show:             ## Show the current environment.
 
 .PHONY: install
 install:          ## Install the project in dev mode.
-	poetry install && exit
+	poetry install --all-extras && exit
 
 .PHONY: fmt
 fmt:              ## Format code using black & isort.
@@ -59,7 +59,7 @@ clean:            ## Clean unused files.
 
 .PHONY: virtualenv
 virtualenv:       ## Create a virtual environment.
-	poetry install && exit
+	poetry install --all-extras && exit
 
 .PHONY: release
 release:          ## Create a new tag for release.
