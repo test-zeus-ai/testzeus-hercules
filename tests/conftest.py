@@ -1,14 +1,15 @@
-import sys
 import pytest
+import os
+import shutil
+
+# Global constants
+RUN_DATA_PATH = os.path.join(os.getcwd(), "run_data")
+TEST_FEATURES_PATH = os.path.join(os.getcwd(), "test_features")
 
 
-# each test runs on cwd to its temp dir
-@pytest.fixture(autouse=True)
-def go_to_tmpdir(request):
-    # Get the fixture dynamically by its name.
-    tmpdir = request.getfixturevalue("tmpdir")
-    # ensure local test created packages can be imported
-    sys.path.insert(0, str(tmpdir))
-    # Chdir only for the duration of the test.
-    with tmpdir.as_cwd():
-        yield
+# Fixture to clean and prepare run_data directory
+@pytest.fixture(scope="session", autouse=True)
+def prepare_run_data() -> None:
+    if os.path.exists(RUN_DATA_PATH):
+        shutil.rmtree(RUN_DATA_PATH)
+    os.makedirs(RUN_DATA_PATH)

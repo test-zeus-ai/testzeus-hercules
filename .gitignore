@@ -130,3 +130,27 @@ dmypy.json
 
 # templates
 .github/templates/*
+
+**/cache
+**/.cache
+**/.DS_Store
+**/tmp
+**/temp
+**/log_files
+**/screen_shots
+# **/opt
+**/output
+**/gherkin_files
+
+hercules/**/*.feature
+**/*.xml
+
+**/test-results
+
+**/input
+**/proofs
+
+**/agents_llm_config.json
+
+
+**/installation_id.txt
