@@ -1,11 +1,18 @@
-name: CI
+name: CI Non-Main
 
 on:
   push:
-    branches: [ main ]
+    branches-ignore: [ main ]
   pull_request:
-    branches: [ main ]
+    branches-ignore: [ main ]
   workflow_dispatch:
+    inputs:
+      LLM_MODEL_NAME:
+        description: "LLM Model Name (required)"
+        required: true
+      LLM_MODEL_API_KEY:
+        description: "LLM Model API Key (required)"
+        required: true
 
 jobs:
   linter:
@@ -34,8 +41,8 @@ jobs:
         os: [ubuntu-latest]
     runs-on: ${{ matrix.os }}
     env:
-      LLM_MODEL_NAME: ${{ secrets.LLM_MODEL_NAME }}
-      LLM_MODEL_API_KEY: ${{ secrets.LLM_MODEL_API_KEY }}
+      LLM_MODEL_NAME: ${{ github.event.inputs.LLM_MODEL_NAME }}
+      LLM_MODEL_API_KEY: ${{ github.event.inputs.LLM_MODEL_API_KEY }}
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-python@v4
@@ -45,7 +52,3 @@ jobs:
         run: make install
       - name: Run tests
         run: make test
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
-        with:
-          fail_ci_if_error: true
