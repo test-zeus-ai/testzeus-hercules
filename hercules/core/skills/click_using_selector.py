@@ -351,7 +351,9 @@ async def perform_javascript_click(
     Returns:
     - A message indicating the result of the click action.
     """
-    js_code = """(selector, type_of_click) => {
+    js_code = """(params) => {
+                selector = params[0];
+                type_of_click = params[1];
                 // Helper function to search for an element in regular DOM, shadow DOMs, and iframes
                 const findElementInShadowDOMAndIframes = (parent, selector) => {
                     // First, try to find the element in the current DOM context (either document or shadowRoot)
@@ -423,19 +425,60 @@ async def perform_javascript_click(
                     // Determine the type of click
                     let event;
                     if (type_of_click === 'right_click') {
-                        event = new MouseEvent('contextmenu', {
+
+                        // Get the element's bounding rectangle
+                        const rect = element.getBoundingClientRect();
+                        // Calculate the center coordinates
+                        const centerX = rect.left + rect.width / 2;
+                        const centerY = rect.top + rect.height / 2;
+
+                        // Simulate moving the mouse to the center and right-clicking
+                        const mouseMove = new MouseEvent('mousemove', {
                             bubbles: true,
                             cancelable: true,
-                            view: window,
-                            button: 2 // 2 represents the right mouse button
+                            clientX: centerX,
+                            clientY: centerY,
+                            view: window
                         });
+                        
+                        const doubleClickEvent = new MouseEvent('contextmenu', {
+                            bubbles: true,
+                            cancelable: true,
+                            clientX: centerX,
+                            clientY: centerY,
+                            view: window
+                        });
+
+                        // Dispatch mousemove and then right-click at the calculated position
+                        element.dispatchEvent(mouseMove);
+                        element.dispatchEvent(doubleClickEvent);
                     } else if (type_of_click === 'double_click') {
-                        event = new MouseEvent('dblclick', {
+                        // Get the element's bounding rectangle
+                        const rect = element.getBoundingClientRect();
+                        // Calculate the center coordinates
+                        const centerX = rect.left + rect.width / 2;
+                        const centerY = rect.top + rect.height / 2;
+
+                        // Simulate moving the mouse to the center and double-clicking
+                        const mouseMove = new MouseEvent('mousemove', {
                             bubbles: true,
                             cancelable: true,
-                            view: window,
-                            detail: 2 // Number of clicks
+                            clientX: centerX,
+                            clientY: centerY,
+                            view: window
                         });
+                        
+                        const doubleClickEvent = new MouseEvent('dblclick', {
+                            bubbles: true,
+                            cancelable: true,
+                            clientX: centerX,
+                            clientY: centerY,
+                            view: window
+                        });
+
+                        // Dispatch mousemove and then double-click at the calculated position
+                        element.dispatchEvent(mouseMove);
+                        element.dispatchEvent(doubleClickEvent);
                     } else if (type_of_click === 'middle_click') {
                         event = new MouseEvent('click', {
                             bubbles: true,
@@ -443,6 +486,7 @@ async def perform_javascript_click(
                             view: window,
                             button: 1 // 1 represents the middle mouse button
                         });
+                        element.dispatchEvent(event);
                     } else {
                         // Default to left click
                         event = new MouseEvent('click', {
@@ -451,9 +495,10 @@ async def perform_javascript_click(
                             view: window,
                             button: 0 // 0 represents the left mouse button
                         });
+                        element.dispatchEvent(event);
                     }
 
-                    element.dispatchEvent(event);
+                    
 
                     let ariaExpandedAfterClick = element.getAttribute('aria-expanded');
                     if (ariaExpandedBeforeClick === 'false' && ariaExpandedAfterClick === 'true') {

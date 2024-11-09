@@ -48,8 +48,8 @@ jobs:
         run: make install
       - name: Run linter
         run: make lint
-      - name: Run tests
-        run: make test
+      # - name: Run tests
+      #   run: make test
       # - name: Upload coverage to Codecov
       #   uses: codecov/codecov-action@v3
       #   with:

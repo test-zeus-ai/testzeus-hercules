@@ -3021,6 +3021,23 @@ greenlet = "3.0.3"
 pyee = "11.1.0"
 
 [[package]]
+name = "playwright-recaptcha"
+version = "0.5.1"
+description = "A library for solving reCAPTCHA v2 and v3 with Playwright"
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "playwright_recaptcha-0.5.1-py3-none-any.whl", hash = "sha256:7f69574218b3ff88f5d643592bef1b4c34d8db939bfe2fc095bf02b12da62b30"},
+    {file = "playwright_recaptcha-0.5.1.tar.gz", hash = "sha256:73dfc0563eaa4b16e24bf26d700d766da43fd536555bcd121b782f97ac4daf22"},
+]
+
+[package.dependencies]
+playwright = ">=1.33.0"
+pydub = "0.25.1"
+SpeechRecognition = "3.10.4"
+tenacity = "8.3.0"
+
+[[package]]
 name = "pluggy"
 version = "1.5.0"
 description = "plugin and hook calling mechanisms for python"
@@ -3308,6 +3325,17 @@ files = [
 
 [package.dependencies]
 typing-extensions = ">=4.6.0,<4.7.0 || >4.7.0"
+
+[[package]]
+name = "pydub"
+version = "0.25.1"
+description = "Manipulate audio with an simple and easy high level interface"
+optional = false
+python-versions = "*"
+files = [
+    {file = "pydub-0.25.1-py2.py3-none-any.whl", hash = "sha256:65617e33033874b59d87db603aa1ed450633288aefead953b30bded59cb599a6"},
+    {file = "pydub-0.25.1.tar.gz", hash = "sha256:980a33ce9949cab2a569606b65674d748ecbca4f0796887fd6f46173a7b0d30f"},
+]
 
 [[package]]
 name = "pyee"
@@ -4133,6 +4161,26 @@ files = [
 ]
 
 [[package]]
+name = "speechrecognition"
+version = "3.10.4"
+description = "Library for performing speech recognition, with support for several engines and APIs, online and offline."
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "SpeechRecognition-3.10.4-py2.py3-none-any.whl", hash = "sha256:723b8155692a8ed11a30013f15f89a3e57c5dc8bc73c8cb024bf9bd14c21fba5"},
+    {file = "speechrecognition-3.10.4.tar.gz", hash = "sha256:986bafcf61f14625c2f3cea6a471838edd379ed68aeed7b8f3c0fb41e21f1125"},
+]
+
+[package.dependencies]
+requests = ">=2.26.0"
+typing-extensions = "*"
+
+[package.extras]
+dev = ["flake8", "rstcheck"]
+whisper-api = ["openai"]
+whisper-local = ["openai-whisper", "soundfile"]
+
+[[package]]
 name = "sqlalchemy"
 version = "2.0.36"
 description = "Database Abstraction Library"
@@ -4293,6 +4341,21 @@ files = [
 
 [package.extras]
 widechars = ["wcwidth"]
+
+[[package]]
+name = "tenacity"
+version = "8.3.0"
+description = "Retry code until it succeeds"
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "tenacity-8.3.0-py3-none-any.whl", hash = "sha256:3649f6443dbc0d9b01b9d8020a9c4ec7a1ff5f6f3c6c8a036ef371f573fe9185"},
+    {file = "tenacity-8.3.0.tar.gz", hash = "sha256:953d4e6ad24357bceffbc9707bc74349aca9d245f68eb65419cf0c249a1949a2"},
+]
+
+[package.extras]
+doc = ["reno", "sphinx"]
+test = ["pytest", "tornado (>=4.5)", "typeguard"]
 
 [[package]]
 name = "termcolor"
@@ -5109,4 +5172,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.0"
 python-versions = "<3.13,>=3.11"
-content-hash = "9395a60354b369e1ffd7731dd07d30c51851f4f7c3cb8510221c96dbc087c50f"
+content-hash = "589f3c0ac33985a7bb29180fb44284fe5e5534ccaacd608e4504d129f1d0edd2"
