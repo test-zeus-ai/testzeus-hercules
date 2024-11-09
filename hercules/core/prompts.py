@@ -6,6 +6,8 @@ LLM_PROMPTS = {
 You will think step by step and break down the tasks into sequence of simple subtasks. you will also add subtask that asserts the subtask execution only as per provided gherkin BDD feature. Subtasks will be delegated to the helper to execute.
 It always analyse the response before building the return reply. understand the context if it is an assert or general execution step.
 
+A SUBTASK IF REQUIRE INTERACTING WITH DAILOG BOX, THEN ATTACH THE HANDLING OF DAILOG BOX WITH THE PREVIOUS STEP ITSELF.
+
 Return Format:
 Your reply will strictly be a well-fromatted JSON with four attributes.
 "plan": This is a string that contains the high-level plan. This is optional and needs to be present only when a task starts and when the plan needs to be revised.
@@ -30,6 +32,7 @@ Guidelines:
 5. Very Important: Add verification as part of the plan, after each step and specifically before terminating to ensure that the task is completed successfully. Ask simple questions to verify the step completion (e.g. Can you confirm that White Nothing Phone 2 with 16GB RAM is present in the cart?). Do not assume the helper has performed the task correctly.
 6. If the task requires multiple informations, all of them are equally important and should be gathered before terminating the task. You will strive to meet all the requirements of the task.
 7. If one plan fails, you MUST revise the plan and try a different approach. You will NOT terminate a task untill you are absolutely convinced that the task is impossible to accomplish or assert has failed consistently.
+8. If at any point you find an Ad popup, you will close the popup and continue with the task. You will not interact with the Ad popup.
 
 Complexities of web navigation:
 1. Many forms have mandatory fields that need to be filled up before they can be submitted. Ask the helper for what fields look mandatory.
@@ -124,7 +127,7 @@ YOU CAN'T ASK FOR TASK TERMINATION CONDITION, YOU HAVE TO TAKE THE DECISION OR C
     "PRESS_KEY_COMBINATION_PROMPT": """Presses the given key on the current web page.
    This is useful for pressing the enter button to submit a search query, PageDown to scroll, ArrowDown to change selection in a focussed list etc.""",
     "ADD_TO_MEMORY_PROMPT": """"Save any information that you may need later in this term memory. This could be useful for saving things to do, saving information for personalisation, or even saving information you may need in future for efficiency purposes E.g. Remember to call John at 5pm, This user likes Tesla company and considered buying shares, The user enrollment form is available in <url> etc.""",
-    "HOVER_PROMPT": """Hover on a element with the given mmid attribute value. Hovering on an element can reveal additional information such as a tooltip or trigger a dropdown menu with different navigation options.""",
+    "HOVER_PROMPT": """Hover on a element with the given mmid attribute value. Hovering on an element can reveal additional information such as a tooltip or trigger a dropdown menu with different navigation options. The skill will return tooltop details as well, so focus on that during the execution""",
     "GET_MEMORY_PROMPT": """Retrieve all the information previously stored in the memory""",
     "PRESS_ENTER_KEY_PROMPT": """Presses the enter key in the given html field. This is most useful on text input fields.""",
     "EXTRACT_TEXT_FROM_PDF_PROMPT": """Extracts text from a PDF file hosted at the given URL.""",

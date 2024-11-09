@@ -26,7 +26,7 @@ def is_space_delimited_mmid(s: str) -> bool:
     return bool(space_delimited_mmid.fullmatch(s))
 
 
-async def __inject_attributes(page: Page):
+async def __inject_attributes(page: Page) -> None:
     """
     Injects 'mmid' and 'aria-keyshortcuts' into all DOM elements. If an element already has an 'aria-keyshortcuts',
     it renames it to 'orig-aria-keyshortcuts' before injecting the new 'aria-keyshortcuts'
@@ -93,7 +93,9 @@ async def __inject_attributes(page: Page):
     logger.debug(f"Added MMID into {last_mmid} elements")
 
 
-async def __fetch_dom_info(page: Page, accessibility_tree: dict[str, Any], only_input_fields: bool):
+async def __fetch_dom_info(
+    page: Page, accessibility_tree: dict[str, Any], only_input_fields: bool
+) -> dict[str, Any]:
     """
     Iterates over the accessibility tree, fetching additional information from the DOM based on 'mmid',
     and constructs a new JSON structure with detailed information.
@@ -119,8 +121,11 @@ async def __fetch_dom_info(page: Page, accessibility_tree: dict[str, Any], only_
         "data-testid",
         "title",
         "aria-controls",
+        "aria-describedby",
     ]
-    backup_attributes = []  # if the attributes are not found, then try to get these attributes
+    backup_attributes = (
+        []
+    )  # if the attributes are not found, then try to get these attributes
     tags_to_ignore = [
         "head",
         "style",
@@ -140,336 +145,376 @@ async def __fetch_dom_info(page: Page, accessibility_tree: dict[str, Any], only_
     ids_to_ignore = ["agentDriveAutoOverlay"]
 
     # Recursive function to process each node in the accessibility tree
-    async def process_node(node: dict[str, Any]):
-        if "children" in node:
-            for child in node["children"]:
-                await process_node(child)
+    async def process_node(node: dict[str, Any]) -> None:
+        if node:
+            if "children" in node:
+                for child in node["children"]:
+                    await process_node(child)
 
-        # Use 'name' attribute from the accessibility node as 'mmid'
-        mmid_temp: str = node.get("keyshortcuts")  # type: ignore
+            # Use 'name' attribute from the accessibility node as 'mmid'
+            mmid_temp: str = node.get("keyshortcuts")  # type: ignore
 
-        # If the name has multiple mmids, take the last one
-        if mmid_temp and is_space_delimited_mmid(mmid_temp):
-            # TODO: consider if we should grab each of the mmids and process them separately as seperate nodes copying this node's attributes
-            mmid_temp = mmid_temp.split(" ")[-1]
+            # If the name has multiple mmids, take the last one
+            if mmid_temp and is_space_delimited_mmid(mmid_temp):
+                # TODO: consider if we should grab each of the mmids and process them separately as seperate nodes copying this node's attributes
+                mmid_temp = mmid_temp.split(" ")[-1]
 
-        # focusing on nodes with mmid, which is the attribute we inject
-        try:
-            mmid = int(mmid_temp)
-        except (ValueError, TypeError):
-            # logger.error(f"'name attribute contains \"{node.get('name')}\", which is not a valid numeric mmid. Adding node as is: {node}")
-            return node.get("name")
+            # focusing on nodes with mmid, which is the attribute we inject
+            try:
+                mmid = int(mmid_temp)
+            except (ValueError, TypeError):
+                # logger.error(f"'name attribute contains \"{node.get('name')}\", which is not a valid numeric mmid. Adding node as is: {node}")
+                return node.get("name")
 
-        if node["role"] == "menuitem":
-            return node.get("name")
+            if node["role"] == "menuitem":
+                return node.get("name")
 
-        if node.get("role") == "dialog" and node.get("modal") == True:  # noqa: E712
-            node["important information"] = (
-                "This is a modal dialog. Please interact with this dialog and close it to be able to interact with the full page (e.g. by pressing the close button or selecting an option)."
-            )
+            if node.get("role") == "dialog" and node.get("modal") == True:  # noqa: E712
+                node["important information"] = (
+                    "This is a modal dialog. Please interact with this dialog and close it to be able to interact with the full page (e.g. by pressing the close button or selecting an option)."
+                )
 
-        if mmid:
-            # Determine if we need to fetch 'innerText' based on the absence of 'children' in the accessibility node
-            should_fetch_inner_text = "children" not in node
+            if mmid:
+                # Determine if we need to fetch 'innerText' based on the absence of 'children' in the accessibility node
+                should_fetch_inner_text = "children" not in node
 
-            js_code = """
-                (input_params) => {
-                    const should_fetch_inner_text = input_params.should_fetch_inner_text;
-                    const mmid = input_params.mmid;
-                    const attributes = input_params.attributes;
-                    const tags_to_ignore = input_params.tags_to_ignore;
-                    const ids_to_ignore = input_params.ids_to_ignore;
+                js_code = """
+                    (input_params) => {
+                        const should_fetch_inner_text = input_params.should_fetch_inner_text;
+                        const mmid = input_params.mmid;
+                        const attributes = input_params.attributes;
+                        const tags_to_ignore = input_params.tags_to_ignore;
+                        const ids_to_ignore = input_params.ids_to_ignore;
 
-                    // Helper function to search for an element by mmid across DOM, shadow DOMs, and iframes
-                    const findElementByMmid = (parent, mmid) => {
-                        // Look in the parent context (can be document or shadow root)
-                        const element = parent.querySelector(`[mmid="${mmid}"]`);
+                        // Helper function to search for an element by mmid across DOM, shadow DOMs, and iframes
+                        const findElementByMmid = (parent, mmid) => {
+                            // Look in the parent context (can be document or shadow root)
+                            const element = parent.querySelector(`[mmid="${mmid}"]`);
 
-                        if (element) {
-                            return element; // Found in parent context
-                        }
-
-                        // If the element is not found, try looking inside shadow DOMs and iframes
-                        const elements = parent.querySelectorAll('*');
-                        for (const el of elements) {
-                            // Check for shadow DOM
-                            if (el.shadowRoot) {
-                                const shadowElement = findElementByMmid(el.shadowRoot, mmid);
-                                if (shadowElement) {
-                                    return shadowElement; // Found in shadow DOM
-                                }
+                            if (element) {
+                                return element; // Found in parent context
                             }
-                            // Check for iframes
-                            if (el.tagName.toLowerCase() === 'iframe') {
-                                let iframeDocument;
-                                try {
-                                    iframeDocument = el.contentDocument || el.contentWindow.document;
-                                } catch (e) {
-                                    // Cannot access cross-origin iframe; skip to the next element
-                                    continue;
-                                }
-                                if (iframeDocument) {
-                                    const iframeElement = findElementByMmid(iframeDocument, mmid);
-                                    if (iframeElement) {
-                                        return iframeElement; // Found in iframe
+
+                            // If the element is not found, try looking inside shadow DOMs and iframes
+                            const elements = parent.querySelectorAll('*');
+                            for (const el of elements) {
+                                // Check for shadow DOM
+                                if (el.shadowRoot) {
+                                    const shadowElement = findElementByMmid(el.shadowRoot, mmid);
+                                    if (shadowElement) {
+                                        return shadowElement; // Found in shadow DOM
                                     }
                                 }
-                            }
-                        }
-
-                        return null; // Not found
-                    };
-
-                    // Start the search in the document (regular DOM)
-                    const element = findElementByMmid(document, mmid);
-
-                    if (!element) {
-                        console.log(`No element found with mmid: ${mmid}`);
-                        return null;
-                    }
-
-                    if (ids_to_ignore.includes(element.id)) {
-                        console.log(`Ignoring element with id: ${element.id}`, element);
-                        return null;
-                    }
-
-                    if (tags_to_ignore.includes(element.tagName.toLowerCase()) || element.tagName.toLowerCase() === "option") {
-                        return null;
-                    }
-
-                    let attributes_to_values = {
-                        'tag': element.tagName.toLowerCase() // Always include the tag name
-                    };
-
-                    if (element.tagName.toLowerCase() === 'input') {
-                        attributes_to_values['tag_type'] = element.type;
-                    } else if (element.tagName.toLowerCase() === 'select') {
-                        attributes_to_values["mmid"] = element.getAttribute('mmid');
-                        attributes_to_values["role"] = "combobox";
-                        attributes_to_values["options"] = [];
-
-                        for (const option of element.options) {
-                            let option_attributes_to_values = {
-                                "mmid": option.getAttribute('mmid'),
-                                "text": option.text,
-                                "value": option.value,
-                                "selected": option.selected
-                            };
-                            attributes_to_values["options"].push(option_attributes_to_values);
-                        }
-                        return attributes_to_values;
-                    }
-
-                    for (const attribute of attributes) {
-                        let value = element.getAttribute(attribute);
-
-                        if (value) {
-                            attributes_to_values[attribute] = value;
-                        }
-                    }
-
-                    if (should_fetch_inner_text && element.innerText) {
-                        attributes_to_values['description'] = element.innerText;
-                    }
-
-                    let role = element.getAttribute('role');
-                    if (role === 'listbox' || element.tagName.toLowerCase() === 'ul') {
-                        let children = element.children;
-                        let filtered_children = Array.from(children).filter(child => child.getAttribute('role') === 'option');
-                        console.log("Listbox or ul found: ", filtered_children);
-                        let attributes_to_include = ['mmid', 'role', 'aria-label', 'value'];
-                        attributes_to_values["additional_info"] = [];
-
-                        for (const child of children) {
-                            let children_attributes_to_values = {};
-
-                            for (let attr of child.attributes) {
-                                if (attributes_to_include.includes(attr.name)) {
-                                    children_attributes_to_values[attr.name] = attr.value;
-                                }
-                            }
-
-                            attributes_to_values["additional_info"].push(children_attributes_to_values);
-                        }
-                    }
-
-                    const minimalKeys = ['tag', 'mmid'];
-                    const hasMoreThanMinimalKeys = Object.keys(attributes_to_values).length > minimalKeys.length;
-
-                    if (!hasMoreThanMinimalKeys) {
-                        for (const backupAttribute of input_params.backup_attributes) {
-                            let value = element.getAttribute(backupAttribute);
-                            if (value) {
-                                attributes_to_values[backupAttribute] = value;
-                            }
-                        }
-
-                        if (Object.keys(attributes_to_values).length <= minimalKeys.length) {
-                            if (element.tagName.toLowerCase() === 'button') {
-                                attributes_to_values["mmid"] = element.getAttribute('mmid');
-                                attributes_to_values["role"] = "button";
-                                attributes_to_values["additional_info"] = [];
-                                let children = element.children;
-                                let attributes_to_exclude = ['width', 'height', 'path', 'class', 'viewBox', 'mmid'];
-
-                                if (element.innerText.trim() === '') {
-                                    for (const child of children) {
-                                        let children_attributes_to_values = {};
-
-                                        for (let attr of child.attributes) {
-                                            if (!attributes_to_exclude.includes(attr.name)) {
-                                                children_attributes_to_values[attr.name] = attr.value;
-                                            }
+                                // Check for iframes
+                                if (el.tagName.toLowerCase() === 'iframe') {
+                                    let iframeDocument;
+                                    try {
+                                        iframeDocument = el.contentDocument || el.contentWindow.document;
+                                    } catch (e) {
+                                        // Cannot access cross-origin iframe; skip to the next element
+                                        continue;
+                                    }
+                                    if (iframeDocument) {
+                                        const iframeElement = findElementByMmid(iframeDocument, mmid);
+                                        if (iframeElement) {
+                                            return iframeElement; // Found in iframe
                                         }
-
-                                        attributes_to_values["additional_info"].push(children_attributes_to_values);
                                     }
-                                    console.log("Button with no text and no attributes: ", attributes_to_values);
-                                    return attributes_to_values;
                                 }
                             }
 
+                            return null; // Not found
+                        };
+
+                        // Start the search in the document (regular DOM)
+                        const element = findElementByMmid(document, mmid);
+
+                        if (!element) {
+                            console.log(`No element found with mmid: ${mmid}`);
                             return null;
                         }
-                    }
 
-                    return attributes_to_values;
-                }
+                        if (ids_to_ignore.includes(element.id)) {
+                            console.log(`Ignoring element with id: ${element.id}`, element);
+                            return null;
+                        }
 
-            """
+                        if (tags_to_ignore.includes(element.tagName.toLowerCase()) || element.tagName.toLowerCase() === "option") {
+                            return null;
+                        }
 
-            # Fetch attributes and possibly 'innerText' from the DOM element by 'mmid'
-            element_attributes = await page.evaluate(
-                js_code,
-                {
-                    "mmid": mmid,
-                    "attributes": attributes,
-                    "backup_attributes": backup_attributes,
-                    "should_fetch_inner_text": should_fetch_inner_text,
-                    "tags_to_ignore": tags_to_ignore,
-                    "ids_to_ignore": ids_to_ignore,
-                },
-            )
+                        let attributes_to_values = {
+                            'tag': element.tagName.toLowerCase() // Always include the tag name
+                        };
 
-            if "keyshortcuts" in node:
-                del node["keyshortcuts"]  # remove keyshortcuts since it is not needed
+                        if (element.hasAttribute('aria-describedby')) {
+                            const describedbyId = element.getAttribute('aria-describedby');
+                            const describedElement = findElementById(document, describedbyId);
+                            if (describedElement) {
+                                attributes_to_values['tooltip'] = describedElement.innerText || describedElement.textContent;
+                            }
+                        }
+                        
+                        if (element.tagName.toLowerCase() === 'input') {
+                            attributes_to_values['tag_type'] = element.type;
+                        } else if (element.tagName.toLowerCase() === 'select') {
+                            attributes_to_values["mmid"] = element.getAttribute('mmid');
+                            attributes_to_values["role"] = "combobox";
+                            attributes_to_values["options"] = [];
 
-            node["mmid"] = mmid
+                            for (const option of element.options) {
+                                let option_attributes_to_values = {
+                                    "mmid": option.getAttribute('mmid'),
+                                    "text": option.text,
+                                    "value": option.value,
+                                    "selected": option.selected
+                                };
+                                attributes_to_values["options"].push(option_attributes_to_values);
+                            }
+                            return attributes_to_values;
+                        }
 
-            # Update the node with fetched information
-            if element_attributes:
-                node.update(element_attributes)
+                        for (const attribute of attributes) {
+                            let value = element.getAttribute(attribute);
 
-                # check if 'name' and 'mmid' are the same
-                if node.get("name") == node.get("mmid") and node.get("role") != "textbox":
-                    del node["name"]  # Remove 'name' from the node
+                            if (value) {
+                                attributes_to_values[attribute] = value;
+                            }
+                        }
 
-                if (
-                    "name" in node
-                    and "description" in node
-                    and (node["name"] == node["description"] or node["name"] == node["description"].replace("\n", " ") or node["description"].replace("\n", "") in node["name"])
-                ):
-                    del node["description"]  # if the name is same as description, then remove the description to avoid duplication
+                        if (should_fetch_inner_text && element.innerText) {
+                            attributes_to_values['description'] = element.innerText;
+                        }
 
-                if "name" in node and "aria-label" in node and node["aria-label"] in node["name"]:
-                    del node["aria-label"]  # if the name is same as the aria-label, then remove the aria-label to avoid duplication
+                        let role = element.getAttribute('role');
+                        if (role === 'listbox' || element.tagName.toLowerCase() === 'ul') {
+                            let children = element.children;
+                            let filtered_children = Array.from(children).filter(child => child.getAttribute('role') === 'option');
+                            console.log("Listbox or ul found: ", filtered_children);
+                            let attributes_to_include = ['mmid', 'role', 'aria-label', 'value'];
+                            attributes_to_values["additional_info"] = [];
 
-                if "name" in node and "text" in node and node["name"] == node["text"]:
-                    del node["text"]  # if the name is same as the text, then remove the text to avoid duplication
+                            for (const child of children) {
+                                let children_attributes_to_values = {};
 
-                if node.get("tag") == "select":  # children are not needed for select menus since "options" attriburte is already added
-                    node.pop("children", None)
-                    node.pop("role", None)
-                    node.pop("description", None)
-
-                # role and tag can have the same info. Get rid of role if it is the same as tag
-                if node.get("role") == node.get("tag"):
-                    del node["role"]
-
-                # avoid duplicate aria-label
-                if node.get("aria-label") and node.get("placeholder") and node.get("aria-label") == node.get("placeholder"):
-                    del node["aria-label"]
-
-                if node.get("role") == "link":
-                    del node["role"]
-                    if node.get("description"):
-                        node["text"] = node["description"]
-                        del node["description"]
-
-                # textbox just means a text input and that is expressed well enough with the rest of the attributes returned
-                # if node.get('role') == "textbox":
-                #    del node['role']
-
-                if node.get("role") == "textbox":
-                    # get the id attribute of this field from the DOM
-                    if "id" in element_attributes and element_attributes["id"]:
-                        # find if there is an element in the DOM that has this id in aria-labelledby.
-                        js_code = """
-                            (inputParams) => {
-                                const findElementByAriaLabelledBy = (parent, ariaLabelledByValue) => {
-                                    // Search in the current DOM context (can be document or shadow root)
-                                    let referencedElement = parent.querySelector(`[aria-labelledby="${ariaLabelledByValue}"]`);
-
-                                    if (referencedElement) {
-                                        return referencedElement; // Found in the current context
+                                for (let attr of child.attributes) {
+                                    if (attributes_to_include.includes(attr.name)) {
+                                        children_attributes_to_values[attr.name] = attr.value;
                                     }
+                                }
 
-                                    // Search inside shadow DOMs and iframes
-                                    const elements = parent.querySelectorAll('*');
-                                    for (const element of elements) {
-                                        // Search inside shadow DOM
-                                        if (element.shadowRoot) {
-                                            referencedElement = findElementByAriaLabelledBy(element.shadowRoot, ariaLabelledByValue);
-                                            if (referencedElement) {
-                                                return referencedElement; // Found inside shadow DOM
-                                            }
-                                        }
-                                        // Search inside iframes
-                                        if (element.tagName.toLowerCase() === 'iframe') {
-                                            let iframeDocument;
-                                            try {
-                                                // Access the iframe's document if it's same-origin
-                                                iframeDocument = element.contentDocument || element.contentWindow.document;
-                                            } catch (e) {
-                                                // Cannot access cross-origin iframe; skip to the next element
-                                                continue;
-                                            }
-                                            if (iframeDocument) {
-                                                referencedElement = findElementByAriaLabelledBy(iframeDocument, ariaLabelledByValue);
-                                                if (referencedElement) {
-                                                    return referencedElement; // Found inside iframe
+                                attributes_to_values["additional_info"].push(children_attributes_to_values);
+                            }
+                        }
+
+                        const minimalKeys = ['tag', 'mmid'];
+                        const hasMoreThanMinimalKeys = Object.keys(attributes_to_values).length > minimalKeys.length;
+
+                        if (!hasMoreThanMinimalKeys) {
+                            for (const backupAttribute of input_params.backup_attributes) {
+                                let value = element.getAttribute(backupAttribute);
+                                if (value) {
+                                    attributes_to_values[backupAttribute] = value;
+                                }
+                            }
+
+                            if (Object.keys(attributes_to_values).length <= minimalKeys.length) {
+                                if (element.tagName.toLowerCase() === 'button') {
+                                    attributes_to_values["mmid"] = element.getAttribute('mmid');
+                                    attributes_to_values["role"] = "button";
+                                    attributes_to_values["additional_info"] = [];
+                                    let children = element.children;
+                                    let attributes_to_exclude = ['width', 'height', 'path', 'class', 'viewBox', 'mmid'];
+
+                                    if (element.innerText.trim() === '') {
+                                        for (const child of children) {
+                                            let children_attributes_to_values = {};
+
+                                            for (let attr of child.attributes) {
+                                                if (!attributes_to_exclude.includes(attr.name)) {
+                                                    children_attributes_to_values[attr.name] = attr.value;
                                                 }
                                             }
+
+                                            attributes_to_values["additional_info"].push(children_attributes_to_values);
                                         }
-                                    }
-
-                                    return null; // Element not found in this context
-                                };
-
-                                // Start the search from the main document
-                                const referencedElement = findElementByAriaLabelledBy(document, inputParams.aria_labelled_by_query_value);
-
-                                if (referencedElement) {
-                                    const mmid = referencedElement.getAttribute('mmid');
-                                    if (mmid) {
-                                        return { "mmid": mmid, "tag": referencedElement.tagName.toLowerCase() };
+                                        console.log("Button with no text and no attributes: ", attributes_to_values);
+                                        return attributes_to_values;
                                     }
                                 }
 
                                 return null;
                             }
+                        }
 
-                        """
+                        return attributes_to_values;
+                    }
+
+                """
+
+                # Fetch attributes and possibly 'innerText' from the DOM element by 'mmid'
+                element_attributes = await page.evaluate(
+                    js_code,
+                    {
+                        "mmid": mmid,
+                        "attributes": attributes,
+                        "backup_attributes": backup_attributes,
+                        "should_fetch_inner_text": should_fetch_inner_text,
+                        "tags_to_ignore": tags_to_ignore,
+                        "ids_to_ignore": ids_to_ignore,
+                    },
+                )
+
+                if "keyshortcuts" in node:
+                    del node[
+                        "keyshortcuts"
+                    ]  # remove keyshortcuts since it is not needed
+
+                node["mmid"] = mmid
+
+                # Update the node with fetched information
+                if element_attributes:
+                    node.update(element_attributes)
+
+                    # check if 'name' and 'mmid' are the same
+                    if (
+                        node.get("name") == node.get("mmid")
+                        and node.get("role") != "textbox"
+                    ):
+                        del node["name"]  # Remove 'name' from the node
+
+                    if (
+                        "name" in node
+                        and "description" in node
+                        and (
+                            node["name"] == node["description"]
+                            or node["name"] == node["description"].replace("\n", " ")
+                            or node["description"].replace("\n", "") in node["name"]
+                        )
+                    ):
+                        del node[
+                            "description"
+                        ]  # if the name is same as description, then remove the description to avoid duplication
+
+                    if (
+                        "name" in node
+                        and "aria-label" in node
+                        and node["aria-label"] in node["name"]
+                    ):
+                        del node[
+                            "aria-label"
+                        ]  # if the name is same as the aria-label, then remove the aria-label to avoid duplication
+
+                    if (
+                        "name" in node
+                        and "text" in node
+                        and node["name"] == node["text"]
+                    ):
+                        del node[
+                            "text"
+                        ]  # if the name is same as the text, then remove the text to avoid duplication
+
+                    if (
+                        node.get("tag") == "select"
+                    ):  # children are not needed for select menus since "options" attriburte is already added
+                        node.pop("children", None)
+                        node.pop("role", None)
+                        node.pop("description", None)
+
+                    # role and tag can have the same info. Get rid of role if it is the same as tag
+                    if node.get("role") == node.get("tag"):
+                        del node["role"]
+
+                    # avoid duplicate aria-label
+                    if (
+                        node.get("aria-label")
+                        and node.get("placeholder")
+                        and node.get("aria-label") == node.get("placeholder")
+                    ):
+                        del node["aria-label"]
+
+                    if node.get("role") == "link":
+                        del node["role"]
+                        if node.get("description"):
+                            node["text"] = node["description"]
+                            del node["description"]
+
                     # textbox just means a text input and that is expressed well enough with the rest of the attributes returned
-                    # del node['role']
+                    # if node.get('role') == "textbox":
+                    #    del node['role']
 
-            # remove attributes that are not needed once processing of a node is complete
-            for attribute_to_delete in attributes_to_delete:
-                if attribute_to_delete in node:
-                    node.pop(attribute_to_delete, None)
-        else:
-            logger.debug(f"No element found with mmid: {mmid}, deleting node: {node}")
-            node["marked_for_deletion_by_mm"] = True
+                    if node.get("role") == "textbox":
+                        # get the id attribute of this field from the DOM
+                        if "id" in element_attributes and element_attributes["id"]:
+                            # find if there is an element in the DOM that has this id in aria-labelledby.
+                            js_code = """
+                                (inputParams) => {
+                                    const findElementByAriaLabelledBy = (parent, ariaLabelledByValue) => {
+                                        // Search in the current DOM context (can be document or shadow root)
+                                        let referencedElement = parent.querySelector(`[aria-labelledby="${ariaLabelledByValue}"]`);
+
+                                        if (referencedElement) {
+                                            return referencedElement; // Found in the current context
+                                        }
+
+                                        // Search inside shadow DOMs and iframes
+                                        const elements = parent.querySelectorAll('*');
+                                        for (const element of elements) {
+                                            // Search inside shadow DOM
+                                            if (element.shadowRoot) {
+                                                referencedElement = findElementByAriaLabelledBy(element.shadowRoot, ariaLabelledByValue);
+                                                if (referencedElement) {
+                                                    return referencedElement; // Found inside shadow DOM
+                                                }
+                                            }
+                                            // Search inside iframes
+                                            if (element.tagName.toLowerCase() === 'iframe') {
+                                                let iframeDocument;
+                                                try {
+                                                    // Access the iframe's document if it's same-origin
+                                                    iframeDocument = element.contentDocument || element.contentWindow.document;
+                                                } catch (e) {
+                                                    // Cannot access cross-origin iframe; skip to the next element
+                                                    continue;
+                                                }
+                                                if (iframeDocument) {
+                                                    referencedElement = findElementByAriaLabelledBy(iframeDocument, ariaLabelledByValue);
+                                                    if (referencedElement) {
+                                                        return referencedElement; // Found inside iframe
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        return null; // Element not found in this context
+                                    };
+
+                                    // Start the search from the main document
+                                    const referencedElement = findElementByAriaLabelledBy(document, inputParams.aria_labelled_by_query_value);
+
+                                    if (referencedElement) {
+                                        const mmid = referencedElement.getAttribute('mmid');
+                                        if (mmid) {
+                                            return { "mmid": mmid, "tag": referencedElement.tagName.toLowerCase() };
+                                        }
+                                    }
+
+                                    return null;
+                                }
+
+                            """
+                        # textbox just means a text input and that is expressed well enough with the rest of the attributes returned
+                        # del node['role']
+
+                # remove attributes that are not needed once processing of a node is complete
+                for attribute_to_delete in attributes_to_delete:
+                    if attribute_to_delete in node:
+                        node.pop(attribute_to_delete, None)
+            else:
+                logger.debug(
+                    f"No element found with mmid: {mmid}, deleting node: {node}"
+                )
+                node["marked_for_deletion_by_mm"] = True
 
     # Process each node in the tree starting from the root
     await process_node(accessibility_tree)
@@ -480,7 +525,7 @@ async def __fetch_dom_info(page: Page, accessibility_tree: dict[str, Any], only_
     return pruned_tree
 
 
-async def __cleanup_dom(page: Page):
+async def __cleanup_dom(page: Page) -> None:
     """
     Cleans up the DOM by removing injected 'aria-description' attributes and restoring any original 'aria-keyshortcuts'
     from 'orig-aria-keyshortcuts'.
@@ -533,7 +578,9 @@ async def __cleanup_dom(page: Page):
     logger.debug("DOM cleanup complete")
 
 
-def __prune_tree(node: dict[str, Any], only_input_fields: bool) -> dict[str, Any] | None:
+def __prune_tree(
+    node: dict[str, Any], only_input_fields: bool
+) -> dict[str, Any] | None:
     """
     Recursively prunes a tree starting from `node`, based on pruning conditions and handling of 'unraveling'.
 
@@ -572,8 +619,14 @@ def __prune_tree(node: dict[str, Any], only_input_fields: bool) -> dict[str, Any
             if "marked_for_unravel_children" in child:
                 # Replace the current child with its children
                 if "children" in child:
-                    node["children"] = node["children"][:i] + child["children"] + node["children"][i + 1 :]
-                    i += len(child["children"]) - 1  # Adjust the index for the new children
+                    node["children"] = (
+                        node["children"][:i]
+                        + child["children"]
+                        + node["children"][i + 1 :]
+                    )
+                    i += (
+                        len(child["children"]) - 1
+                    )  # Adjust the index for the new children
                 else:
                     # If the node marked for unraveling has no children, remove it
                     node["children"].pop(i)
@@ -598,7 +651,7 @@ def __prune_tree(node: dict[str, Any], only_input_fields: bool) -> dict[str, Any
     return None if __should_prune_node(node, only_input_fields) else node
 
 
-def __should_prune_node(node: dict[str, Any], only_input_fields: bool):
+def __should_prune_node(node: dict[str, Any], only_input_fields: bool) -> bool:
     """
     Determines if a node should be pruned based on its 'role' and 'element_attributes'.
 
@@ -610,10 +663,21 @@ def __should_prune_node(node: dict[str, Any], only_input_fields: bool):
         bool: True if the node should be pruned, False otherwise.
     """
     # If the request is for only input fields and this is not an input field, then mark the node for prunning
-    if node.get("role") != "WebArea" and only_input_fields and not (node.get("tag") in ("input", "button", "textarea") or node.get("role") == "button"):
+    if (
+        node.get("role") != "WebArea"
+        and only_input_fields
+        and not (
+            node.get("tag") in ("input", "button", "textarea")
+            or node.get("role") == "button"
+        )
+    ):
         return True
 
-    if node.get("role") == "generic" and "children" not in node and not ("name" in node and node.get("name")):  # The presence of 'children' is checked after potentially deleting it above
+    if (
+        node.get("role") == "generic"
+        and "children" not in node
+        and not ("name" in node and node.get("name"))
+    ):  # The presence of 'children' is checked after potentially deleting it above
         return True
 
     if node.get("role") in ["separator", "LineBreak"]:
@@ -629,12 +693,17 @@ def __should_prune_node(node: dict[str, Any], only_input_fields: bool):
             processed_name = ""
 
     # check if the node only have name and role, then delete that node
-    if len(node) == 2 and "name" in node and "role" in node and not (node.get("role") == "text" and processed_name != ""):
+    if (
+        len(node) == 2
+        and "name" in node
+        and "role" in node
+        and not (node.get("role") == "text" and processed_name != "")
+    ):
         return True
     return False
 
 
-async def get_node_dom_element(page: Page, mmid: str):
+async def get_node_dom_element(page: Page, mmid: str) -> Any:
     return await page.evaluate(
         """
         (mmid) => {
@@ -645,7 +714,9 @@ async def get_node_dom_element(page: Page, mmid: str):
     )
 
 
-async def get_element_attributes(page: Page, mmid: str, attributes: list[str]):
+async def get_element_attributes(
+    page: Page, mmid: str, attributes: list[str]
+) -> dict[str, Any]:
     return await page.evaluate(
         """
         (inputParams) => {
@@ -732,7 +803,9 @@ async def get_dom_with_accessibility_info() -> Annotated[
     return await do_get_accessibility_info(page)
 
 
-async def do_get_accessibility_info(page: Page, only_input_fields: bool = False):
+async def do_get_accessibility_info(
+    page: Page, only_input_fields: bool = False
+) -> dict[str, Any] | None:
     """
     Retrieves the accessibility information of a web page and saves it as JSON files.
 
@@ -961,12 +1034,16 @@ async def do_get_accessibility_info(page: Page, only_input_fields: bool = False)
 
     await __cleanup_dom(page)
     try:
-        enhanced_tree = await __fetch_dom_info(page, accessibility_tree, only_input_fields)
+        enhanced_tree = await __fetch_dom_info(
+            page, accessibility_tree, only_input_fields
+        )
 
         logger.debug("Enhanced Accessibility Tree ready")
 
         with open(
-            os.path.join(get_source_log_folder_path(), "json_accessibility_dom_enriched.json"),
+            os.path.join(
+                get_source_log_folder_path(), "json_accessibility_dom_enriched.json"
+            ),
             "w",
             encoding="utf-8",
         ) as f:

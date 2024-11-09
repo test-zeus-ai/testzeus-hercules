@@ -1,9 +1,12 @@
 from typing import Annotated
 
 from hercules.core.playwright_manager import PlaywrightManager
+from hercules.utils.js_helper import block_ads
 
 
-async def geturl() -> Annotated[str, "Returns the full URL of the current active web site/page."]:
+async def geturl() -> (
+    Annotated[str, "Returns the full URL of the current active web site/page."]
+):
     """
     Returns the full URL of the current page
 
@@ -17,6 +20,7 @@ async def geturl() -> Annotated[str, "Returns the full URL of the current active
         # Create and use the PlaywrightManager
         browser_manager = PlaywrightManager()
         page = await browser_manager.get_current_page()
+        # await page.route("**/*", block_ads)
 
         if not page:
             raise ValueError("No active page found. OpenURL command opens a new page.")
@@ -35,4 +39,6 @@ async def geturl() -> Annotated[str, "Returns the full URL of the current active
             return f"Current Page: {current_url}"
 
     except Exception as e:
-        raise ValueError("No active page found. OpenURL command opens a new page.") from e
+        raise ValueError(
+            "No active page found. OpenURL command opens a new page."
+        ) from e

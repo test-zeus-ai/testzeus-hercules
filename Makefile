@@ -85,3 +85,13 @@ docs:             ## Build the documentation.
 .PHONY: build
 build:       ## build hercules.
 	poetry build
+
+
+.PHONY: run
+run:       ## run hercules.
+	poetry run python hercules
+
+
+.PHONY: run-interactive
+run-interactive:       ## run-interactive hercules.
+	poetry run python -m hercules.interactive

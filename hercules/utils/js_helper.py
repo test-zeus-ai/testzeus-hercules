@@ -4,6 +4,18 @@ import re
 from hercules.utils.logger import logger
 
 
+from playwright.async_api import Route
+
+
+async def block_ads(route: Route) -> None:
+    # List of ad-related keywords or domains
+    ad_keywords = ["ads", "doubleclick.net", "googlesyndication", "adservice"]
+    if any(keyword in route.request.url for keyword in ad_keywords):
+        await route.abort()  # Block the ad request
+    else:
+        await route.continue_()  # Continue with other requests
+
+
 def escape_js_message(message: str) -> str:
     """
     Escape a message for use in JavaScript code.

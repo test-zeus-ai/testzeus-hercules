@@ -10,6 +10,7 @@ from hercules.core.skills.press_key_combination import press_key_combination
 from hercules.telemetry import EventData, EventType, add_event
 from hercules.utils.dom_helper import get_element_outer_html
 from hercules.utils.dom_mutation_observer import subscribe, unsubscribe
+from hercules.utils.js_helper import block_ads
 from hercules.utils.logger import logger
 from hercules.utils.ui_messagetype import MessageType
 from playwright.async_api import Page
@@ -124,7 +125,9 @@ async def custom_fill_element(page: Page, selector: str, text_to_enter: str):
         )
         logger.debug(f"custom_fill_element result: {result}")
     except Exception as e:
-        logger.error(f"Error in custom_fill_element, Selector: {selector}, Text: {text_to_enter}. Error: {str(e)}")
+        logger.error(
+            f"Error in custom_fill_element, Selector: {selector}, Text: {text_to_enter}. Error: {str(e)}"
+        )
         raise
 
 
@@ -171,6 +174,7 @@ async def entertext(
     # Create and use the PlaywrightManager
     browser_manager = PlaywrightManager()
     page = await browser_manager.get_current_page()
+    # await page.route("**/*", block_ads)
     if page is None:  # type: ignore
         return "Error: No active page found. OpenURL command opens a new page."
 
@@ -247,18 +251,24 @@ async def entertext(
     )
 
     result = await do_entertext(page, query_selector, text_to_enter)
-    await asyncio.sleep(0.1)  # sleep for 100ms to allow the mutation observer to detect changes
+    await asyncio.sleep(
+        0.1
+    )  # sleep for 100ms to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
 
     await browser_manager.take_screenshots(f"{function_name}_end", page)
 
-    await browser_manager.notify_user(result["summary_message"], message_type=MessageType.ACTION)
+    await browser_manager.notify_user(
+        result["summary_message"], message_type=MessageType.ACTION
+    )
     if dom_changes_detected:
         return f"{result['detailed_message']}.\n As a consequence of this action, new elements have appeared in view: {dom_changes_detected}. This means that the action of entering text {text_to_enter} is not yet executed and needs further interaction. Get all_fields DOM to complete the interaction."
     return result["detailed_message"]
 
 
-async def do_entertext(page: Page, selector: str, text_to_enter: str, use_keyboard_fill: bool = True):
+async def do_entertext(
+    page: Page, selector: str, text_to_enter: str, use_keyboard_fill: bool = True
+):
     """
     Performs the text entry operation on a DOM or Shadow DOM element.
 
@@ -368,7 +378,9 @@ async def do_entertext(page: Page, selector: str, text_to_enter: str, use_keyboa
             await custom_fill_element(page, selector, text_to_enter)
 
         await elem.focus()
-        logger.info(f'Success. Text "{text_to_enter}" set successfully in the element with selector {selector}')
+        logger.info(
+            f'Success. Text "{text_to_enter}" set successfully in the element with selector {selector}'
+        )
         success_msg = f'Success. Text "{text_to_enter}" set successfully in the element with selector {selector}'
         return {
             "summary_message": success_msg,
@@ -420,8 +432,12 @@ async def bulk_enter_text(
     for entry in entries:
         query_selector = entry["query_selector"]
         text_to_enter = entry["text"]
-        logger.info(f"Entering text: {text_to_enter} in element with selector: {query_selector}")
-        result = await entertext(EnterTextEntry(query_selector=query_selector, text=text_to_enter))
+        logger.info(
+            f"Entering text: {text_to_enter} in element with selector: {query_selector}"
+        )
+        result = await entertext(
+            EnterTextEntry(query_selector=query_selector, text=text_to_enter)
+        )
 
         results.append({"query_selector": query_selector, "result": result})
 

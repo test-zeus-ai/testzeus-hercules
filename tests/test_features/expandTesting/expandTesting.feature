@@ -4,13 +4,13 @@ Feature: Check complex HTML scenarios from ExpandTesting website
     Given a user is on the URL as https://practice.expandtesting.com/jqueryui/menu#
     When the user hovers on the "Enabled" menu
     And the user clicks on "Back to jQuery UI link"
-    Then the user should be navigated to "https://practice.expandtesting.com/jqueryui/menu#" page
+    Then the user should be navigated to "https://practice.expandtesting.com/jqueryui" page
       
     
   Scenario Outline: Tooltips check
     Given a user is on the URL as https://practice.expandtesting.com/tooltips
     When the user hovers on the "Tootlip on bottom" button
-    Then the user should be able to see "Tooltip on bottom" tooltip in orange box at the bottom of the button
+    Then the user should be able to see "Tooltip on bottom" tooltip in box at the bottom of the button
       
     
    Scenario Outline: Redirection testing
