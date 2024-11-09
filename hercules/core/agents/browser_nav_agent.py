@@ -23,6 +23,9 @@ from hercules.core.skills.set_slider_value import *
 from hercules.core.skills.skill_registry import skill_registry
 from hercules.core.skills.sql_calls import *
 from hercules.core.skills.dropdown_using_selector import *
+from hercules.core.skills.captcha_solver import *
+from hercules.core.skills.upload_file import *
+from hercules.core.skills.enter_date_time import *
 from hercules.telemetry import EventData, EventType, add_event
 from hercules.utils.logger import logger
 

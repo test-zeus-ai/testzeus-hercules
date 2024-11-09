@@ -34,14 +34,18 @@ async def click(
     ],
     user_input_dialog_response: Annotated[
         Optional[str], "The input response to a dialog box."
-    ],
+    ] = None,
     expected_message_of_dialog: Annotated[
         Optional[str], "The expected message of the dialog box when it opens."
-    ],
+    ] = None,
     action_on_dialog: Annotated[
         Optional[str],
         "The action to be performed on the dialog box. ONLY 'DISMISS' OR 'ACCEPT' AS A VALUE ALLOWED.",
-    ],
+    ] = None,
+    type_of_click: Annotated[
+        Optional[str],
+        "The type of click to perform. Possible values are 'click' (default), 'right_click', 'double_click', 'middle_click'.",
+    ] = "click",
     wait_before_execution: Annotated[
         float,
         "Optional wait time in seconds before executing the click event logic.",
@@ -54,10 +58,14 @@ async def click(
 
     Parameters:
     - selector: The query selector string to identify the element for the click action.
+    - user_input_dialog_response: The input response to a dialog box.
+    - expected_message_of_dialog: The expected message of the dialog box when it opens.
+    - action_on_dialog: The action to be performed on the dialog box. Only 'accept' or 'dismiss' are allowed.
+    - type_of_click: The type of click to perform. Possible values are 'click' (default), 'right_click', 'double_click', 'middle_click'.
     - wait_before_execution: Optional wait time in seconds before executing the click event logic. Defaults to 0.0 seconds.
 
     Returns:
-    - Success if the click was successful, Appropropriate error message otherwise.
+    - Success if the click was successful, appropriate error message otherwise.
     """
     logger.info(f'Executing ClickElement with "{selector}" as the selector')
     add_event(EventType.INTERACTION, EventData(detail="click"))
@@ -66,6 +74,7 @@ async def click(
     page = await browser_manager.get_current_page()
     # await page.route("**/*", block_ads)
     action_on_dialog = action_on_dialog.lower() if action_on_dialog else None
+    type_of_click = type_of_click.lower() if type_of_click else "click"
 
     async def handle_dialog(dialog: Any) -> None:
         data = get_page_data(page)
@@ -119,15 +128,16 @@ async def click(
             "user_input_dialog_response": user_input_dialog_response,
             "expected_message_of_dialog": expected_message_of_dialog,
             "action_on_dialog": action_on_dialog,
+            "type_of_click": type_of_click,
         },
     )
 
     page.on("dialog", handle_dialog)
-    result = await do_click(page, selector, wait_before_execution)
+    result = await do_click(page, selector, wait_before_execution, type_of_click)
 
     await asyncio.sleep(
         0.5
-    )  # sleep for 100ms to allow the mutation observer to detect changes
+    )  # sleep for 500ms to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
     await browser_manager.take_screenshots(f"{function_name}_end", page)
     await browser_manager.notify_user(
@@ -140,7 +150,7 @@ async def click(
 
 
 async def do_click(
-    page: Page, selector: str, wait_before_execution: float
+    page: Page, selector: str, wait_before_execution: float, type_of_click: str
 ) -> dict[str, str]:
     """
     Executes the click action on the element with the given selector within the provided page,
@@ -150,6 +160,7 @@ async def do_click(
     - page: The Playwright page instance.
     - selector: The query selector string to identify the element for the click action.
     - wait_before_execution: Optional wait time in seconds before executing the click event logic.
+    - type_of_click: The type of click to perform.
 
     Returns:
     dict[str,str] - Explanation of the outcome of this operation represented as a dictionary with 'summary_message' and 'detailed_message'.
@@ -229,8 +240,11 @@ async def do_click(
                 "detailed_message": f'Select menu option "{element_value}" selected. The select element\'s outer HTML is: {element_outer_html}.',
             }
 
-        msg = await perform_javascript_click(page, selector)
-        return {"summary_message": msg, "detailed_message": f"{msg} The clicked element's outer HTML is: {element_outer_html}."}  # type: ignore
+        msg = await perform_javascript_click(page, selector, type_of_click)
+        return {
+            "summary_message": msg,
+            "detailed_message": f"{msg} The clicked element's outer HTML is: {element_outer_html}.",
+        }  # type: ignore
     except Exception as e:
         logger.error(f'Unable to click element with selector: "{selector}". Error: {e}')
         traceback.print_exc()
@@ -323,18 +337,21 @@ async def perform_playwright_click(element: ElementHandle, selector: str) -> Non
     await element.click(force=True, timeout=200)
 
 
-async def perform_javascript_click(page: Page, selector: str) -> str:
+async def perform_javascript_click(
+    page: Page, selector: str, type_of_click: str
+) -> str:
     """
     Performs a click action on the element using JavaScript.
 
     Parameters:
     - page: The Playwright page instance.
     - selector: The query selector string of the element.
+    - type_of_click: The type of click to perform.
 
     Returns:
-    - None
+    - A message indicating the result of the click action.
     """
-    js_code = """(selector) => {
+    js_code = """(selector, type_of_click) => {
                 // Helper function to search for an element in regular DOM, shadow DOMs, and iframes
                 const findElementInShadowDOMAndIframes = (parent, selector) => {
                     // First, try to find the element in the current DOM context (either document or shadowRoot)
@@ -402,24 +419,63 @@ async def perform_javascript_click(page: Page, selector: str) -> str:
                         element.target = "_self";
                     }
                     let ariaExpandedBeforeClick = element.getAttribute('aria-expanded');
-                    element.click();
+
+                    // Determine the type of click
+                    let event;
+                    if (type_of_click === 'right_click') {
+                        event = new MouseEvent('contextmenu', {
+                            bubbles: true,
+                            cancelable: true,
+                            view: window,
+                            button: 2 // 2 represents the right mouse button
+                        });
+                    } else if (type_of_click === 'double_click') {
+                        event = new MouseEvent('dblclick', {
+                            bubbles: true,
+                            cancelable: true,
+                            view: window,
+                            detail: 2 // Number of clicks
+                        });
+                    } else if (type_of_click === 'middle_click') {
+                        event = new MouseEvent('click', {
+                            bubbles: true,
+                            cancelable: true,
+                            view: window,
+                            button: 1 // 1 represents the middle mouse button
+                        });
+                    } else {
+                        // Default to left click
+                        event = new MouseEvent('click', {
+                            bubbles: true,
+                            cancelable: true,
+                            view: window,
+                            button: 0 // 0 represents the left mouse button
+                        });
+                    }
+
+                    element.dispatchEvent(event);
+
                     let ariaExpandedAfterClick = element.getAttribute('aria-expanded');
                     if (ariaExpandedBeforeClick === 'false' && ariaExpandedAfterClick === 'true') {
-                        return "Executed JavaScript Click on element with selector: " + selector + ". Very important: As a consequence, a menu has appeared where you may need to make further selection. Very important: Get all_fields DOM to complete the action.";
+                        return "Executed " + type_of_click + " on element with selector: " + selector + ". Very important: As a consequence, a menu has appeared where you may need to make further selection. Very important: Get all_fields DOM to complete the action.";
                     }
-                    return "Executed JavaScript Click on element with selector: " + selector;
+                    return "Executed " + type_of_click + " on element with selector: " + selector;
                 }
             }
 
     """
     try:
-        logger.info(f"Executing JavaScript click on element with selector: {selector}")
-        result: str = await page.evaluate(js_code, selector)
-        logger.debug(f"Executed JavaScript Click on element with selector: {selector}")
+        logger.info(
+            f"Executing JavaScript '{type_of_click}' on element with selector: {selector}"
+        )
+        result: str = await page.evaluate(js_code, (selector, type_of_click))
+        logger.debug(
+            f"Executed JavaScript '{type_of_click}' on element with selector: {selector}"
+        )
         return result
     except Exception as e:
         logger.error(
-            f"Error executing JavaScript click on element with selector: {selector}. Error: {e}"
+            f"Error executing JavaScript '{type_of_click}' on element with selector: {selector}. Error: {e}"
         )
         traceback.print_exc()
-    return f"Error executing JavaScript click on element with selector: {selector}"
+    return f"Error executing JavaScript '{type_of_click}' on element with selector: {selector}"
