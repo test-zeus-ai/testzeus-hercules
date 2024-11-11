@@ -191,11 +191,6 @@ Feature: Account Creation in Salesforce
 
 
 
-## Salesforce grounding
-
-Hercules is "grounded" in Salesforce, meaning it is instruction-finetuned to understand and interact with Salesforce's specific features and terminologies, such as "App Launcher" and "picklists". This deep integration enables the agents to perform bespoke testing and automation, ensuring that Salesforce implementations are delivered flawlessly. 
-
-
 ## Difference from other “tools”
 
 Hercules isn't just another testing tool—it's an “agent” of change. Powered by synthetic intelligence that can **think, reason, and react** based on requirements, Hercules goes beyond simple automation scripts. We, bring an industry-first approach to open source agents. This means faster, smarter, and more resilient testing cycles, especially for complex platforms. With **industry-leading performance** and a fully open-source foundation, TestZeus combines powerful capabilities with community-driven flexibility, making top-tier testing accessible and transformative for everyone.
