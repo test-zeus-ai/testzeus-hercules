@@ -95,3 +95,7 @@ run:       ## run hercules.
 .PHONY: run-interactive
 run-interactive:       ## run-interactive hercules.
 	poetry run python -m hercules.interactive
+
+.PHONY: setup-poetry
+setup-poetry:       ## setup poetry.
+	curl -sSL https://install.python-poetry.org | python3.11 -
