@@ -9,14 +9,7 @@ Scenario: User checks the Dynamo bike
 Scenario: User checks the count of bike products
   Given the user is on ebikes home page
   When the user clicks on the Product Explorer button
-  Then the user should find 16 products listed on the website
-    #There are two pages of products here.
-    
-Scenario: User checks the count of bike products
-  Given the user is on ebikes home page
-  When the user clicks on the Product Explorer button
-  Then the user should find 16 products listed on the website
-    #There are two pages of products here.
+  Then the user should find 16 products listed on the website and There are two pages of products here.
     
 Scenario: User checks the count of bike products for 0 max price
   Given the user is on ebikes home page
