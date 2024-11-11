@@ -1,9 +1,5 @@
 Feature: ebikes product website validation
   #This feature tests the ebikes products on the Salesforce platform
-  #Home page URL is https://data-nosoftware-3504-dev-ed.scratch.my.site.com/ebikes/s/
-  Scenario: User checks the favicon
-    Given a user is on the ebikes home page
-    Then the user should be able to see the cloud icon as the favicon of the tab
       
 Scenario: User checks the Dynamo bike
   Given the user is on ebikes home page

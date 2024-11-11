@@ -1,0 +1,2 @@
+URL: https://opensource-demo.orangehrmlive.com/web/index.php/auth/login
+image: ./tests/run_data/imageUpload/test_data/image.jpg

@@ -2,8 +2,6 @@ import json
 import re
 
 from hercules.utils.logger import logger
-
-
 from playwright.async_api import Route
 
 

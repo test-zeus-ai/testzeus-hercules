@@ -47,11 +47,10 @@ def copy_feature_files(
     feature_file = os.path.join(feature_folder, feature_file_name)
     shutil.copy(feature_file, os.path.join(input_path, "test.feature"))
 
-    test_data_file = os.path.join(feature_folder, "test_data.txt")
-    if os.path.exists(test_data_file):
-        shutil.copy(test_data_file, os.path.join(test_data_path, "test_data.txt"))
-    else:
-        open(os.path.join(test_data_path, "test_data.txt"), "w").close()
+    for item in os.listdir(feature_folder):
+        item_path = os.path.join(feature_folder, item)
+        if os.path.isfile(item_path):
+            shutil.copy(item_path, os.path.join(test_data_path, item))
 
 
 def compare_results(expected_file: str, actual_folder: str) -> bool:
@@ -142,5 +141,4 @@ def compare_results(expected_file: str, actual_folder: str) -> bool:
     logging.error(f"Expected values: {expected_values}")
     logging.error(f"Actual values: {actual_values}")
 
-    # TODO: after stabalisation of testcases, make this false
-    return True
+    return False

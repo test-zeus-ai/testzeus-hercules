@@ -1,1 +1,0 @@
-tests="6" errors="0" failures="2" skipped="0"

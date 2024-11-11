@@ -609,6 +609,8 @@ def __prune_tree(
     - Unraveling is neat for flattening the tree when a node is just a wrapper without semantic meaning.
     - We use a while loop with manual index management to safely modify the list of children as we iterate over it.
     """
+    if not node:
+        return None
     if "marked_for_deletion_by_mm" in node:
         return None
 
@@ -881,6 +883,10 @@ async def do_get_accessibility_info(
                     }
 
                     function cleanName(name) {
+                        if (typeof name !== 'string') {
+                            console.warn('Expected a string, but received:', name);
+                            return '';
+                        }
                         const firstLine = name.split('\\n')[0];
                         return firstLine.trim();
                     }

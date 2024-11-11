@@ -9,23 +9,23 @@ from hercules.core.memory.prompt_compressor import add_text_compressor
 from hercules.core.memory.static_ltm import get_user_ltm
 from hercules.core.prompts import LLM_PROMPTS
 from hercules.core.skills.api_calls import *
+from hercules.core.skills.captcha_solver import *
 from hercules.core.skills.click_using_selector import click as click_element
+from hercules.core.skills.dropdown_using_selector import *
+from hercules.core.skills.enter_date_time import *
 
 # from hercules.core.skills.enter_text_and_click import enter_text_and_click
 from hercules.core.skills.enter_text_using_selector import bulk_enter_text, entertext
 from hercules.core.skills.get_dom_with_content_type import get_dom_with_content_type
 from hercules.core.skills.get_url import geturl
+from hercules.core.skills.hover import hover
 from hercules.core.skills.open_url import openurl
 from hercules.core.skills.pdf_text_extractor import extract_text_from_pdf
 from hercules.core.skills.press_key_combination import press_key_combination
-from hercules.core.skills.hover import hover
 from hercules.core.skills.set_slider_value import *
 from hercules.core.skills.skill_registry import skill_registry
 from hercules.core.skills.sql_calls import *
-from hercules.core.skills.dropdown_using_selector import *
-from hercules.core.skills.captcha_solver import *
 from hercules.core.skills.upload_file import *
-from hercules.core.skills.enter_date_time import *
 from hercules.telemetry import EventData, EventType, add_event
 from hercules.utils.logger import logger
 
@@ -51,20 +51,12 @@ class BrowserNavAgent:
                 system_message = "\n".join(system_prompt)
             else:
                 system_message = system_prompt
-            logger.info(
-                f"Using custom system prompt for BrowserNavAgent: {system_message}"
-            )
+            logger.info(f"Using custom system prompt for BrowserNavAgent: {system_message}")
 
-        system_message = (
-            system_message
-            + "\n"
-            + f"Today's date is {datetime.now().strftime('%d %B %Y')}"
-        )
+        system_message = system_message + "\n" + f"Today's date is {datetime.now().strftime('%d %B %Y')}"
         if user_ltm:  # add the user LTM to the system prompt if it exists
             user_ltm = "\n" + user_ltm
-            system_message = Template(system_message).substitute(
-                basic_user_information=user_ltm
-            )
+            system_message = Template(system_message).substitute(basic_user_information=user_ltm)
         logger.info(f"Browser nav agent using model: {model_config_list[0]['model']}")
         self.agent = autogen.ConversableAgent(
             name="browser_navigation_agent",
@@ -97,37 +89,25 @@ class BrowserNavAgent:
         # self.agent.register_for_llm(description=LLM_PROMPTS["ENTER_TEXT_AND_CLICK_PROMPT"])(enter_text_and_click)
         # self.browser_nav_executor.register_for_execution()(enter_text_and_click)
 
-        self.agent.register_for_llm(
-            description=LLM_PROMPTS["GET_DOM_WITH_CONTENT_TYPE_PROMPT"]
-        )(get_dom_with_content_type)
+        self.agent.register_for_llm(description=LLM_PROMPTS["GET_DOM_WITH_CONTENT_TYPE_PROMPT"])(get_dom_with_content_type)
         self.browser_nav_executor.register_for_execution()(get_dom_with_content_type)
 
-        self.agent.register_for_llm(description=LLM_PROMPTS["CLICK_PROMPT"])(
-            click_element
-        )
+        self.agent.register_for_llm(description=LLM_PROMPTS["CLICK_PROMPT"])(click_element)
         self.browser_nav_executor.register_for_execution()(click_element)
 
         self.agent.register_for_llm(description=LLM_PROMPTS["GET_URL_PROMPT"])(geturl)
         self.browser_nav_executor.register_for_execution()(geturl)
 
-        self.agent.register_for_llm(description=LLM_PROMPTS["BULK_ENTER_TEXT_PROMPT"])(
-            bulk_enter_text
-        )
+        self.agent.register_for_llm(description=LLM_PROMPTS["BULK_ENTER_TEXT_PROMPT"])(bulk_enter_text)
         self.browser_nav_executor.register_for_execution()(bulk_enter_text)
 
-        self.agent.register_for_llm(description=LLM_PROMPTS["ENTER_TEXT_PROMPT"])(
-            entertext
-        )
+        self.agent.register_for_llm(description=LLM_PROMPTS["ENTER_TEXT_PROMPT"])(entertext)
         self.browser_nav_executor.register_for_execution()(entertext)
 
-        self.agent.register_for_llm(
-            description=LLM_PROMPTS["PRESS_KEY_COMBINATION_PROMPT"]
-        )(press_key_combination)
+        self.agent.register_for_llm(description=LLM_PROMPTS["PRESS_KEY_COMBINATION_PROMPT"])(press_key_combination)
         self.browser_nav_executor.register_for_execution()(press_key_combination)
 
-        self.agent.register_for_llm(
-            description=LLM_PROMPTS["EXTRACT_TEXT_FROM_PDF_PROMPT"]
-        )(extract_text_from_pdf)
+        self.agent.register_for_llm(description=LLM_PROMPTS["EXTRACT_TEXT_FROM_PDF_PROMPT"])(extract_text_from_pdf)
         self.browser_nav_executor.register_for_execution()(extract_text_from_pdf)
 
         self.agent.register_for_llm(description=LLM_PROMPTS["HOVER_PROMPT"])(hover)
@@ -168,9 +148,7 @@ class BrowserNavAgent:
                     for filename in os.listdir(skill_path):
                         if filename.endswith(".py"):
                             module_name = filename[:-3]  # Remove .py extension
-                            module_path = (
-                                f"{skill_path.replace('/', '.')}.{module_name}"
-                            )
+                            module_path = f"{skill_path.replace('/', '.')}.{module_name}"
                             importlib.import_module(module_path)
                             add_event(
                                 EventType.TOOL,
@@ -179,9 +157,7 @@ class BrowserNavAgent:
 
                 elif skill_path.endswith(".py") and os.path.isfile(skill_path):
                     # If the path is a specific .py file, load it directly
-                    module_name = os.path.basename(skill_path)[
-                        :-3
-                    ]  # Strip .py extension
+                    module_name = os.path.basename(skill_path)[:-3]  # Strip .py extension
                     directory_path = os.path.dirname(skill_path).replace("/", ".")
                     module_path = f"{directory_path}.{module_name}"
                     importlib.import_module(module_path)

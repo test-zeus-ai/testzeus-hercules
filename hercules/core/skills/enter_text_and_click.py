@@ -1,6 +1,6 @@
 import asyncio
 import inspect
-from typing import Annotated, Optional, Any
+from typing import Annotated, Any, Optional
 
 from hercules.core.playwright_manager import PlaywrightManager
 from hercules.core.skills.click_using_selector import do_click
@@ -84,34 +84,40 @@ async def enter_text_and_click(
     action_on_dialog = action_on_dialog.lower() if action_on_dialog else None
 
     async def handle_dialog(dialog: Any) -> None:
-        data = get_page_data(page)
-        user_input_dialog_response = data.get("user_input_dialog_response")
-        expected_message_of_dialog = data.get("expected_message_of_dialog")
-        action_on_dialog = data.get("action_on_dialog")
-        print(f"Dialog message: {dialog.message}")
+        try:
+            data = get_page_data(page)
+            user_input_dialog_response = data.get("user_input_dialog_response")
+            expected_message_of_dialog = data.get("expected_message_of_dialog")
+            action_on_dialog = data.get("action_on_dialog")
+            print(f"Dialog message: {dialog.message}")
 
-        # Check if the dialog message matches the expected message (if provided)
-        if expected_message_of_dialog and dialog.message != expected_message_of_dialog:
-            print(
-                f"Dialog message does not match the expected message: {expected_message_of_dialog}"
-            )
-            await dialog.dismiss()  # Dismiss if the dialog message doesn't match
-            return
+            # Check if the dialog message matches the expected message (if provided)
+            if (
+                expected_message_of_dialog
+                and dialog.message != expected_message_of_dialog
+            ):
+                print(
+                    f"Dialog message does not match the expected message: {expected_message_of_dialog}"
+                )
+                await dialog.dismiss()  # Dismiss if the dialog message doesn't match
+                return
 
-        # Perform the specified action on the dialog
-        if action_on_dialog == "accept":
-            # Accept the dialog and provide input if it's a prompt and input is specified
-            if dialog.type == "prompt" and user_input_dialog_response:
-                await dialog.accept(user_input_dialog_response)
+            # Perform the specified action on the dialog
+            if action_on_dialog == "accept":
+                # Accept the dialog and provide input if it's a prompt and input is specified
+                if dialog.type == "prompt" and user_input_dialog_response:
+                    await dialog.accept(user_input_dialog_response)
+                else:
+                    await dialog.accept()
+            elif action_on_dialog == "dismiss":
+                await dialog.dismiss()
             else:
-                await dialog.accept()
-        elif action_on_dialog == "dismiss":
-            await dialog.dismiss()
-        else:
-            print(
-                "Invalid action specified for dialog. Only 'accept' or 'dismiss' are allowed."
-            )
-            await dialog.dismiss()  # Default to dismiss if action is invalid
+                print(
+                    "Invalid action specified for dialog. Only 'accept' or 'dismiss' are allowed."
+                )
+                await dialog.dismiss()  # Default to dismiss if action is invalid
+        except Exception as e:
+            logger.info(f"Error handling dialog: {e}")
 
     if page is None:  # type: ignore
         logger.error("No active page found")
