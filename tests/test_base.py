@@ -48,6 +48,8 @@ def copy_feature_files(
     shutil.copy(feature_file, os.path.join(input_path, "test.feature"))
 
     for item in os.listdir(feature_folder):
+        if item in [feature_file_name, "expected_results.txt"]:
+            continue
         item_path = os.path.join(feature_folder, item)
         if os.path.isfile(item_path):
             shutil.copy(item_path, os.path.join(test_data_path, item))
@@ -78,7 +80,7 @@ def compare_results(expected_file: str, actual_folder: str) -> bool:
                 skipped = suite.attrib.get("skipped")
 
                 # Write expected format to file
-                with open(expected_file, "w", encoding="utf-8") as ef:
+                with open(expected_file, "w", encoding="utf-16") as ef:
                     ef.write(
                         f'tests="{tests}" errors="{errors}" failures="{failures}" skipped="{skipped}"\n'
                     )
@@ -95,7 +97,7 @@ def compare_results(expected_file: str, actual_folder: str) -> bool:
 
     def parse_expected_file() -> dict[str, str] | None:
         """Parse the expected file to extract values."""
-        with open(expected_file, "r", encoding="utf-8") as file:
+        with open(expected_file, "r", encoding="utf-16") as file:
             content = file.read()
             try:
                 values = dict(item.split("=") for item in content.strip().split())

@@ -81,7 +81,7 @@ def test_generate_final_report() -> None:
     """
     After all tests, generate a final report.
     """
-    with open("run_data/results.xml", "w", encoding="utf-8") as final_report:
+    with open("run_data/results.xml", "w", encoding="utf-16") as final_report:
         final_report.write("<testResults>\n")
         # Summarize individual test logs here
         final_report.write("</testResults>\n")
