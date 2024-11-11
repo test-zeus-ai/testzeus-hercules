@@ -14,13 +14,13 @@ if { [ -z "$LLM_MODEL_NAME" ] || [ -z "$LLM_MODEL_API_KEY" ]; } && \
     exit 1
 fi
 
-# Check for the /hercules/opt directory and set up test case if it doesn't exist
-if [ ! -d "/hercules/opt" ]; then
-  echo "Warning: /hercules/opt directory is not found. This means the results will be displayed in logs, and a sample test case will be executed."
-  mkdir -p /hercules/opt/input /hercules/opt/test_data
-  echo "Feature: Open Google homepage\nScenario: User opens Google homepage\n  Given I have a web browser open\n  When I navigate to https://www.google.com\n  Then I should see the Google homepage" > /hercules/opt/input/test.feature
-  touch /hercules/opt/test_data/td.txt
+# Check for the /testzeus-hercules/opt directory and set up test case if it doesn't exist
+if [ ! -d "/testzeus-hercules/opt" ]; then
+  echo "Warning: /testzeus-hercules/opt directory is not found. This means the results will be displayed in logs, and a sample test case will be executed."
+  mkdir -p /testzeus-hercules/opt/input /testzeus-hercules/opt/test_data
+  echo "Feature: Open Google homepage\nScenario: User opens Google homepage\n  Given I have a web browser open\n  When I navigate to https://www.google.com\n  Then I should see the Google homepage" > /testzeus-hercules/opt/input/test.feature
+  touch /testzeus-hercules/opt/test_data/td.txt
 fi
 
 # Execute the main application
-exec poetry run python hercules/main.py
+exec poetry run python testzeus_hercules/main.py

@@ -1,7 +1,7 @@
 ## Introduction
 
-[![codecov](https://codecov.io/gh/test-zeus-ai/hercules/branch/main/graph/badge.svg?token=hercules_token_here)](https://codecov.io/gh/test-zeus-ai/hercules)
-[![CI](https://github.com/test-zeus-ai/hercules/actions/workflows/main.yml/badge.svg)](https://github.com/test-zeus-ai/hercules/actions/workflows/main.yml)
+[![codecov](https://codecov.io/gh/test-zeus-ai/testzeus-hercules/branch/main/graph/badge.svg?token=testzeus_hercules_token_here)](https://codecov.io/gh/test-zeus-ai/testzeus-hercules)
+[![CI](https://github.com/test-zeus-ai/testzeus-hercules/actions/workflows/main.yml/badge.svg)](https://github.com/test-zeus-ai/testzeus-hercules/actions/workflows/main.yml)
 
 Welcome to **Hercules**, the **world’s first open source testing agent** that’s here to lift your testing burdens with the strength of a mythological hero! Imagine a tool with “assert” capabilities so sharp, it can **navigate the web like a seasoned explorer**—that’s Hercules for you. Whether you’re a tester, SDET, QA maestro, or an automation engineer, we’re putting the **power directly into your hands**, empowering you to conquer even the most complex testing challenges.
 
@@ -21,7 +21,7 @@ poetry install
 ## Usage
 
 ```bash
-$ python -m hercules
+$ python -m testzeus_hercules
 #or
 $ hercules
 ```

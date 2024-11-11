@@ -6,10 +6,10 @@ RUN pip install -U playwright && \
     playwright install --with-deps
 
 # Set the working directory in the container
-WORKDIR /hercules
+WORKDIR /testzeus-hercules
 
 # Copy only the necessary files for installation
-COPY pyproject.toml poetry.lock /hercules/
+COPY pyproject.toml poetry.lock /testzeus-hercules/
 
 # Install Poetry
 RUN pip install poetry
@@ -19,7 +19,7 @@ RUN poetry install --no-dev
 RUN poetry run playwright install
 
 # Copy the rest of the project files
-COPY . /hercules
+COPY . /testzeus-hercules
 
 # Install Hercules
 RUN poetry install

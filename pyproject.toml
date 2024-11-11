@@ -1,9 +1,13 @@
 [tool.poetry]
-name = "hercules"
+name = "testzeus-hercules"
 version = "0.1.0-beta"
 description = "Hercules: The World's First Open-Source AI Agent for End-to-End Testing"
 authors = ["Shriyansh Agnihotri <shriyansh@testzeus.com>"]
 readme = "README.md"
+homepage = "https://testzeus.com/hercules"
+repository = "https://github.com/testzeus/testzeus-hercules"
+documentation = "https://testzeus.com/hercules/docs"
+keywords = ["AI", "end-to-end testing", "automation", "Hercules", "TestZeus"]
 exclude = [
     "scout/screen_shots/*",
     "scout/log_files/*",
@@ -127,7 +131,7 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
-hercules = 'hercules.__main__:main'
+hercules = 'testzeus_hercules.__main__:main'
 
 [tool.isort]
 profile = "black"

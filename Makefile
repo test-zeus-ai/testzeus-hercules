@@ -21,20 +21,20 @@ install:          ## Install the project in dev mode.
 
 .PHONY: fmt
 fmt:              ## Format code using black & isort.
-	poetry run isort hercules/
-	poetry run black -l 200 hercules/
+	poetry run isort testzeus_hercules/
+	poetry run black -l 200 testzeus_hercules/
 	poetry run black -l 200 tests/
 
 .PHONY: lint
 lint: fmt             ## Run pep8, black, mypy linters.
-	poetry run black -l 200 --check hercules/
+	poetry run black -l 200 --check testzeus_hercules/
 	poetry run black -l 200 --check tests/
-	# poetry run mypy --ignore-missing-imports hercules/
+	# poetry run mypy --ignore-missing-imports testzeus_hercules/
 
 .PHONY: test
 test: lint        ## Run tests and generate coverage report.
 	poetry run playwright install --with-deps
-	poetry run pytest -v --junit-xml=test_output.xml --cov-config .coveragerc --cov=hercules -l --tb=short --maxfail=1 tests/
+	poetry run pytest -v --junit-xml=test_output.xml --cov-config .coveragerc --cov=testzeus_hercules -l --tb=short --maxfail=1 tests/
 	poetry run coverage xml
 	poetry run coverage html
 
@@ -66,9 +66,9 @@ virtualenv:       ## Create a virtual environment.
 release:          ## Create a new tag for release.
 	@echo "WARNING: This operation will create s version tag and push to github"
 	@read -p "Version? (provide the next x.y.z semver) : " TAG
-	@echo "$${TAG}" > hercules/VERSION
+	@echo "$${TAG}" > testzeus_hercules/VERSION
 	@$(ENV_PREFIX)gitchangelog > HISTORY.md
-	@git add hercules/VERSION HISTORY.md
+	@git add testzeus_hercules/VERSION HISTORY.md
 	@git commit -m "release: version $${TAG} 🚀"
 	@echo "creating git tag : $${TAG}"
 	@git tag $${TAG}
@@ -83,18 +83,18 @@ docs:             ## Build the documentation.
 
 
 .PHONY: build
-build:       ## build hercules.
+build:       ## build testzeus_hercules.
 	poetry build
 
 
 .PHONY: run
-run:       ## run hercules.
-	poetry run python hercules
+run:       ## run testzeus_hercules.
+	poetry run python testzeus_hercules
 
 
 .PHONY: run-interactive
-run-interactive:       ## run-interactive hercules.
-	poetry run python -m hercules.interactive
+run-interactive:       ## run-interactive testzeus_hercules.
+	poetry run python -m testzeus_hercules.interactive
 
 .PHONY: setup-poetry
 setup-poetry:       ## setup poetry.
