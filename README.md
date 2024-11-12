@@ -198,6 +198,9 @@ Hercules isn't just another testing tool—it's an “agent” of change. Powere
 
 ## High level roadmap
 
+## Open Core and Open Source
+TestZeus operates as an open core company, blending open-source and proprietary components to deliver a robust software testing platform. At the heart of its open-source offering is Hercules, a powerful tool designed to autonomously execute tests using tools such as browsers or APIs, enabling faster and more reliable testing processes for developers and QA teams. By open-sourcing Hercules, TestZeus invites contributions from the community while offering the testing platform with other agents, as a commercial product. This open-core approach allows TestZeus to drive innovation and foster a collaborative ecosystem, empowering companies to build quality software with agility and transparency.
+
 ## Credits
 
 Hercules would have not been possible without the great work from below sources: 
