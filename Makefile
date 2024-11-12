@@ -108,7 +108,7 @@ docker-build:       ## build and tag docker image.
 
 .PHONY: publish
 publish:          ## Publish the package to PyPI and Docker registry.
-	poetry publish --build
+	# poetry publish
 	@VERSION=$(shell cat testzeus_hercules/VERSION) && \
 	docker push testzeus/hercules:$${VERSION}
 	docker push testzeus/hercules:latest
