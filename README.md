@@ -28,6 +28,9 @@ $ hercules
 
 ## Features
 
+![image](https://github.com/user-attachments/assets/af192e81-5b2e-4cb4-8a7c-0f336647e50b)
+
+
 
 ### Gherkin In. Results Out.
 
