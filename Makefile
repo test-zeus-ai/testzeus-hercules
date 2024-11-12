@@ -86,6 +86,9 @@ docs:             ## Build the documentation.
 build:       ## build testzeus_hercules.
 	poetry build
 
+.PHONY: publish
+publish:          ## Publish the package to PyPI.
+	poetry publish
 
 .PHONY: run
 run:       ## run testzeus_hercules.
@@ -103,12 +106,11 @@ setup-poetry:       ## setup poetry.
 .PHONY: docker-build
 docker-build:       ## build and tag docker image.
 	docker build -t testzeus/hercules .
-	@VERSION=$(shell cat testzeus_hercules/VERSION) && \
+	@VERSION$(shell poetry version -s) && \
 	docker tag testzeus/hercules testzeus/hercules:$${VERSION}
 
-.PHONY: publish
-publish:          ## Publish the package to PyPI and Docker registry.
-	# poetry publish
-	@VERSION=$(shell cat testzeus_hercules/VERSION) && \
+.PHONY: docker-publish
+docker-publish:          ## Publish the package to Docker registry.
+	@VERSION$(shell poetry version -s) && \
 	docker push testzeus/hercules:$${VERSION}
 	docker push testzeus/hercules:latest
