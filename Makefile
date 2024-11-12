@@ -65,13 +65,13 @@ virtualenv:       ## Create a virtual environment.
 .PHONY: release
 release:          ## Create a new tag for release.
 	@echo "WARNING: This operation will create a version tag and push to GitHub"
-	@read -p "Version bump (patch, minor, major)? : " BUMP
-	@poetry version $$BUMP
-	@VERSION=$(shell poetry version -s)
-	@git add pyproject.toml
-	@git commit -m "release: version $$VERSION 🚀"
-	@echo "creating git tag : $$VERSION"
-	@git tag $$VERSION
+	@read -p "Version bump (patch, minor, major)? : " BUMP  && \
+	poetry version $$BUMP
+	@VERSION=$(shell poetry version -s)  && \
+	git add pyproject.toml  && \
+	git commit -m "release: version $$VERSION 🚀"  && \
+	echo "creating git tag : $$VERSION"  && \
+	git tag $$VERSION
 	@git push -u origin HEAD --tags
 	@echo "Github Actions will detect the new tag and release the new version."
 
