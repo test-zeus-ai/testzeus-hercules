@@ -64,14 +64,14 @@ virtualenv:       ## Create a virtual environment.
 
 .PHONY: release
 release:          ## Create a new tag for release.
-	@echo "WARNING: This operation will create s version tag and push to github"
-	@read -p "Version? (provide the next x.y.z semver) : " TAG
-	@echo "$${TAG}" > testzeus_hercules/VERSION
-	@$(ENV_PREFIX)gitchangelog > HISTORY.md
-	@git add testzeus_hercules/VERSION HISTORY.md
-	@git commit -m "release: version $${TAG} 🚀"
-	@echo "creating git tag : $${TAG}"
-	@git tag $${TAG}
+	@echo "WARNING: This operation will create a version tag and push to GitHub"
+	@read -p "Version bump (patch, minor, major)? : " BUMP
+	@poetry version $$BUMP
+	@VERSION=$(shell poetry version -s)
+	@git add pyproject.toml
+	@git commit -m "release: version $$VERSION 🚀"
+	@echo "creating git tag : $$VERSION"
+	@git tag $$VERSION
 	@git push -u origin HEAD --tags
 	@echo "Github Actions will detect the new tag and release the new version."
 
@@ -108,7 +108,7 @@ docker-build:       ## build and tag docker image.
 
 .PHONY: publish
 publish:          ## Publish the package to PyPI and Docker registry.
-	# poetry publish --build
+	poetry publish --build
 	@VERSION=$(shell cat testzeus_hercules/VERSION) && \
 	docker push testzeus/hercules:$${VERSION}
 	docker push testzeus/hercules:latest
