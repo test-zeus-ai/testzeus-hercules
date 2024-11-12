@@ -29,8 +29,6 @@ distro = "^1.9.0"
 dnspython = "^2.6.1"
 docker = "^7.0.0"
 email-validator = "^2.2.0"
-fastapi = "^0.111.1"
-fastapi-cli = "^0.0.4"
 filelock = "^3.13.3"
 flaml = "^2.1.1"
 fsspec = "^2024.3.1"
@@ -125,13 +123,14 @@ gitchangelog = "^3.0.4"
 mkdocs = "^1.6.1"
 ipdb = "^0.13.13"
 twine = "^5.1.1"
+deptry = "^0.21.0"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
-hercules = 'testzeus_hercules.__main__:main'
+testzeus-hercules = 'testzeus_hercules.__main__:main'
 
 [tool.isort]
 profile = "black"

@@ -99,3 +99,16 @@ run-interactive:       ## run-interactive testzeus_hercules.
 .PHONY: setup-poetry
 setup-poetry:       ## setup poetry.
 	curl -sSL https://install.python-poetry.org | python3.11 -
+
+.PHONY: docker-build
+docker-build:       ## build and tag docker image.
+	docker build -t testzeus/hercules .
+	@VERSION=$(shell cat testzeus_hercules/VERSION) && \
+	docker tag testzeus/hercules testzeus/hercules:$${VERSION}
+
+.PHONY: publish
+publish:          ## Publish the package to PyPI and Docker registry.
+	# poetry publish --build
+	@VERSION=$(shell cat testzeus_hercules/VERSION) && \
+	docker push testzeus/hercules:$${VERSION}
+	docker push testzeus/hercules:latest

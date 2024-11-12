@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import argparse
 
 from testzeus_hercules.config import (
     get_input_gherkin_file_path,
@@ -90,10 +91,67 @@ def sequential_process() -> None:
     logger.info(f"Results published on file: {final_result_file_name}")
 
 
+def arguments() -> None:
+    parser = argparse.ArgumentParser(
+        description="Hercules: The World's First Open-Source AI Agent for End-to-End Testing"
+    )
+    parser.add_argument(
+        "--input-file", type=str, help="Path to the input file.", required=False
+    )
+    parser.add_argument(
+        "--output-path", type=str, help="Path to the output directory.", required=False
+    )
+    parser.add_argument(
+        "--test-data-path",
+        type=str,
+        help="Path to the test data directory.",
+        required=False,
+    )
+    parser.add_argument(
+        "--project-base",
+        type=str,
+        help="Path to the project base directory.",
+        required=False,
+    )
+    parser.add_argument(
+        "--llm-model",
+        type=str,
+        help="Name of the LLM model.",
+        required=False,
+    )
+    parser.add_argument(
+        "--llm-model-api-key",
+        type=str,
+        help="API key for the LLM model.",
+        required=False,
+    )
+
+    args = parser.parse_args()
+
+    if args.input_file:
+        os.environ["INPUT_GHERKIN_FILE_PATH"] = args.input_file
+
+    if args.output_path:
+        os.environ["JUNIT_XML_BASE_PATH"] = args.output_path
+
+    if args.test_data_path:
+        os.environ["TEST_DATA_PATH"] = args.test_data_path
+
+    if args.project_base:
+        os.environ["PROJECT_SOURCE_ROOT"] = args.project_base
+
+    if args.llm_model:
+        os.environ["LLM_MODEL_NAME"] = args.llm_model
+
+    if args.llm_model_api_key:
+        os.environ["LLM_MODEL_API_KEY"] = args.llm_model_api_key
+
+
 def main() -> None:
     """
     Main function to run the sequential_process function.
     """
+    arguments()
 
     def is_width_gt_120() -> bool:
         try:

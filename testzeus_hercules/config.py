@@ -32,7 +32,7 @@ if (not llm_model_name or not llm_model_api_key) and (
     not agents_llm_config_file or not agents_llm_config_file_ref_key
 ):
     logger.error(
-        "Either LLM_MODEL_NAME and LLM_MODEL_API_KEY must be set together, or AGENTS_LLM_CONFIG_FILE and AGENTS_LLM_CONFIG_FILE_REF_KEY must be set together."
+        "Either LLM_MODEL_NAME and LLM_MODEL_API_KEY must be set together, or AGENTS_LLM_CONFIG_FILE and AGENTS_LLM_CONFIG_FILE_REF_KEY must be set together. user --llm-model and --llm-model-api-key in hercules command"
     )
     exit(1)
 
@@ -47,12 +47,18 @@ PROJECT_ROOT = PROJECT_SOURCE_ROOT
 PROJECT_TEMP_PATH = os.path.join(PROJECT_ROOT, "temp")
 PROJECT_TEST_ROOT = os.path.join(PROJECT_ROOT, "test")
 
-INPUT_GHERKIN_FILE_PATH = os.path.join(PROJECT_ROOT, "input/test.feature")
+INPUT_GHERKIN_FILE_PATH = os.environ.get("INPUT_GHERKIN_FILE_PATH") or os.path.join(
+    PROJECT_ROOT, "input/test.feature"
+)
 TMP_GHERKIN_PATH = os.path.join(PROJECT_ROOT, "gherkin_files")
-JUNIT_XML_BASE_PATH = os.path.join(PROJECT_ROOT, "output")
+JUNIT_XML_BASE_PATH = os.environ.get("JUNIT_XML_BASE_PATH") or os.path.join(
+    PROJECT_ROOT, "output"
+)
 
 SOURCE_LOG_FOLDER_PATH = os.path.join(PROJECT_ROOT, "log_files")
-TEST_DATA_PATH = os.path.join(PROJECT_ROOT, "test_data")
+TEST_DATA_PATH = os.environ.get("TEST_DATA_PATH") or os.path.join(
+    PROJECT_ROOT, "test_data"
+)
 SCREEN_SHOT_PATH = os.path.join(PROJECT_ROOT, "proofs")
 
 if "HF_HOME" not in os.environ:
