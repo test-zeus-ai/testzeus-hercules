@@ -198,7 +198,7 @@ Hercules isn't just another testing tool—it's an “agent” of change. Powere
 
 ## High level roadmap
 
-Credits
+## Credits
 
 Hercules would have not been possible without the great work from below sources: 
 
@@ -208,4 +208,4 @@ Hercules would have not been possible without the great work from below sources:
 2. [Q Star](https://arxiv.org/abs/2312.10868)
 3. [Agent Q](https://arxiv.org/abs/2408.07199)
 
-
+*Note* - You can find the legacy TestZeus repo [here](https://www.testzeus.org)
