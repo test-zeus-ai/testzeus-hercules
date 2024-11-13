@@ -1927,6 +1927,19 @@ files = [
 ]
 
 [[package]]
+name = "junit2html"
+version = "31.0.2"
+description = "Generate HTML reports from Junit results"
+optional = false
+python-versions = "*"
+files = [
+    {file = "junit2html-31.0.2-py3-none-any.whl", hash = "sha256:c7fd1f253d423f0df031d0cee8ef7d4d98d9f8bf6383a2d40dca639686814866"},
+]
+
+[package.dependencies]
+jinja2 = ">=3.0"
+
+[[package]]
 name = "junitparser"
 version = "3.2.0"
 description = "Manipulates JUnit/xUnit Result XML files"
@@ -5165,4 +5178,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.0"
 python-versions = "<3.13,>=3.11"
-content-hash = "5240f3cc1ad8177822ad25cd91ac03f971307f1092c9a48cc75f7fc2eba106be"
+content-hash = "429057ae57ee22803bab9cbba4d016f75a7cc37c8b0a0c1a46b795f6c59b1941"

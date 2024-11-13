@@ -5,7 +5,7 @@ from typing import Any, Dict, List
 from testzeus_hercules.config import MODE, get_junit_xml_base_path
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from junitparser import Failure, JUnitXml, Property, TestCase, TestSuite
-from junitparser.junitparser import SystemOut
+from junitparser.junitparser import SystemOut, Properties
 
 junit_xml_base_path = get_junit_xml_base_path()
 
@@ -24,7 +24,7 @@ def flatten_dict(
     Returns:
         Dict[str, Any]: The flattened dictionary.
     """
-    items = []
+    items: List[tuple[str, Any]] = []
     for key, value in d.items():
         new_key = f"{parent_key}{sep}{key}" if parent_key else key
         if isinstance(value, dict):
@@ -35,7 +35,17 @@ def flatten_dict(
 
 
 class JUnitXMLGenerator:
-    def __init__(self, suite_name: str) -> None:
+    def __init__(
+        self,
+        suite_name: str,
+        feature_file_path: str,
+        output_file_path: str,
+        proofs_video_path: str,
+        proofs_screenshot_path: str,
+        network_logs_path: str,
+        logs_path: str,
+        planner_thoughts_path: str,
+    ) -> None:
         """
         Initialize the JUnitXMLGenerator.
 
@@ -47,6 +57,13 @@ class JUnitXMLGenerator:
         self.total_execution_cost = 0.0
         self.total_token_used = 0
         self.total_time = 0.0
+        self.feature_file_path = feature_file_path
+        self.output_file_path = output_file_path
+        self.proofs_video_path = proofs_video_path
+        self.proofs_screenshot_path = proofs_screenshot_path
+        self.logs_path = logs_path
+        self.planner_thoughts_path = planner_thoughts_path
+        self.network_logs_path = network_logs_path
 
     def add_test_case(
         self,
@@ -84,10 +101,35 @@ class JUnitXMLGenerator:
                 test_case.system_out = assert_summary
         else:
             if not is_passed:
-                test_case.result = Failure(message=assert_summary or final_response)
+                test_case.result = Failure(
+                    message=str(assert_summary or final_response)
+                )
 
         opt_list = []
-        opt_list.append(final_response)
+        test_props = Properties()
+        test_case.append(test_props)
+        test_props.add_property(
+            Property(name="Feature File", value=str(self.feature_file_path))
+        )
+        test_props.add_property(
+            Property(name="Output File", value=str(self.output_file_path))
+        )
+        test_props.add_property(
+            Property(name="Proofs Video", value=str(self.proofs_video_path))
+        )
+        test_props.add_property(
+            Property(name="Proofs Screenshot", value=str(self.proofs_screenshot_path))
+        )
+        test_props.add_property(
+            Property(name="Network Logs", value=str(self.network_logs_path))
+        )
+        test_props.add_property(
+            Property(name="Agents Internal Logs", value=str(self.logs_path))
+        )
+        test_props.add_property(
+            Property(name="Planner Thoughts", value=str(self.planner_thoughts_path))
+        )
+        opt_list.append(f"Final Response: {final_response}")
 
         for key, value in json_data.items():
             if key not in [
@@ -97,7 +139,7 @@ class JUnitXMLGenerator:
                 "assert_summary",
             ]:
                 prop = Property(name=key, value=str(value))
-                test_case.append(prop)
+                test_props.add_property(prop)
 
         res_d = flatten_dict(cost_metric)
         res = [f"{k}: {v}" for k, v in res_d.items()]
@@ -115,7 +157,7 @@ class JUnitXMLGenerator:
                 if isinstance(val, dict):
                     for k, v in val.items():
                         prop = Property(name=f"{parent_key}.{k}", value=str(v))
-                        test_case.append(prop)
+                        test_props.add_property(prop)
                         if k == "total_cost":
                             self.total_execution_cost += float(v)
                         elif k == "total_tokens":
@@ -167,7 +209,7 @@ class JUnitXMLGenerator:
             output_file (str): Path to the output merged JUnit XML file.
         """
         merged_xml = JUnitXml()
-        suite_dict = {}
+        suite_dict: Dict[str, TestSuite] = {}
 
         for file in files:
             xml = JUnitXml.fromfile(file)
@@ -218,6 +260,13 @@ def build_junit_xml(
     cost_metric: Dict[str, Any],
     feature: str,
     scenario: str,
+    feature_file_path: str = None,
+    output_file_path: str = None,
+    proofs_video_path: str = None,
+    proofs_screenshot_path: str = None,
+    logs_path: str = None,
+    network_logs_path: str = None,
+    planner_thoughts_path: str = None,
 ) -> str:
     """
     Build a JUnit XML file from test data.
@@ -232,11 +281,21 @@ def build_junit_xml(
     Returns:
         str: The path to the generated JUnit XML file.
     """
-    generator = JUnitXMLGenerator(feature)
+    feature_r = feature.replace(" ", "_").replace(":", "")
+    scenario_r = scenario.replace(" ", "_").replace(":", "")
+    file_path = f"{junit_xml_base_path}/{feature_r}_{scenario_r}_results.xml"
+
+    generator = JUnitXMLGenerator(
+        feature,
+        feature_file_path,
+        file_path or output_file_path,
+        proofs_video_path,
+        proofs_screenshot_path,
+        network_logs_path,
+        logs_path,
+        planner_thoughts_path,
+    )
     generator.add_test_case(scenario, feature, json_data, execution_time, cost_metric)
-    feature = feature.replace(" ", "_").replace(":", "")
-    scenario = scenario.replace(" ", "_").replace(":", "")
-    file_path = f"{junit_xml_base_path}/{feature}_{scenario}_results.xml"
     generator.write_xml(file_path)
     return file_path
 
@@ -276,15 +335,26 @@ def run_test() -> None:
     feature = "Feature: Filter Bikes by Max Price"
     scenario = "Scenario: User filters bikes with Max Price of 1600"
 
-    f1_path = build_junit_xml(json_data, execution_time, cost_metric, feature, scenario)
+    f1_path = build_junit_xml(
+        json_data,
+        execution_time,
+        cost_metric,
+        feature,
+        scenario,
+    )
 
     json_data_fail = {
         "terminate": "yes",
         "final_response": "No bikes are displayed when the Max price is set to 1600, which does not match the expected result.",
         "is_assert": True,
-        "assert_summary": "EXPECTED RESULT: The number of bikes displayed should be 2. ACTUAL RESULT: The number of bikes displayed is 0.",
-        "is_passed": False,
     }
+    f2_path = build_junit_xml(
+        json_data_fail,
+        execution_time,
+        cost_metric,
+        feature + "1",
+        scenario + "1",
+    )
 
     f2_path = build_junit_xml(
         json_data_fail, execution_time, cost_metric, feature + "1", scenario + "1"

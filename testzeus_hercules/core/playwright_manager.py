@@ -276,9 +276,14 @@ class PlaywrightManager:
                 )
 
     async def _launch_persistent_browser(
-        self, browser_type: BrowserType, user_dir: str, disable_args=[]
+        self,
+        browser_type: BrowserType,
+        user_dir: str,
+        disable_args: Optional[List[str]] = None,
     ) -> None:
-        logger.info(f"Launching {self.browser_type} with user dir: {user_dir}")
+        if disable_args is None:
+            disable_args = []
+        logger.info("Launching %s with user dir: %s", self.browser_type, user_dir)
         try:
             browser_context_kwargs = {
                 "headless": self.isheadless,
@@ -303,13 +308,16 @@ class PlaywrightManager:
             self._browser_context = await browser_type.launch_persistent_context(
                 user_dir, **browser_context_kwargs
             )
-        except Exception as e:
+        except (PlaywrightError, OSError) as e:
             await self._handle_launch_exception(e, user_dir, browser_type, disable_args)
 
     async def _launch_browser_with_video(
-        self, browser_type: BrowserType, user_dir: str, disable_args=[]
+        self,
+        browser_type: BrowserType,
+        user_dir: str,
+        disable_args: Optional[List[str]] = None,
     ) -> None:
-        logger.info(f"Launching {self.browser_type} with video recording enabled.")
+        logger.info("Launching %s with video recording enabled.", self.browser_type)
         # Copy user data to a temporary directory
         temp_user_dir = tempfile.mkdtemp(prefix="playwright-user-data-")
         if user_dir and os.path.exists(user_dir):
@@ -333,19 +341,25 @@ class PlaywrightManager:
             }
             if self.browser_type == "firefox" and self._extension_path is not None:
                 context_options["extensions"] = [self._extension_path]
-            self._browser_context = await browser.new_context(**context_options)
+            self._browser_context = await browser.new_context(**context_options)  # type: ignore
         except Exception as e:
-            logger.error(f"Failed to launch browser with video recording: {e}")
+            logger.error("Failed to launch browser with video recording: %s", e)
             raise e
 
     async def _handle_launch_exception(
-        self, e: Exception, user_dir: str, browser_type, args=None
+        self,
+        e: Exception,
+        user_dir: str,
+        browser_type: BrowserType,
+        args: Optional[List[str]] = None,
     ) -> None:
         if "Target page, context or browser has been closed" in str(e):
             new_user_dir = tempfile.mkdtemp()
             logger.error(
-                f"Failed to launch persistent context with user dir {user_dir}: {e}. "
-                f"Trying to launch with a new user dir {new_user_dir}"
+                "Failed to launch persistent context with user dir %s: %s. Trying to launch with a new user dir %s",
+                user_dir,
+                e,
+                new_user_dir,
             )
             self._browser_context = await browser_type.launch_persistent_context(
                 new_user_dir,
@@ -853,7 +867,7 @@ class PlaywrightManager:
             logger.warning("No screenshot available.")
             return None
 
-    async def get_latest_video_path(self) -> Optional[str]:
+    def get_latest_video_path(self) -> Optional[str]:
         """
         Retrieves the path to the latest video recording.
 

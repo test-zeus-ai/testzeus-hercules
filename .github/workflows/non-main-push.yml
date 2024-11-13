@@ -1,53 +1,48 @@
-name: Upload Python Package
-permissions:
-  contents: write
+name: CI Non-Main
 
 on:
   push:
-    tags:
-      - '*' # Push events to matching tags
+    branches-ignore: [ main ]
+  pull_request:
+    branches-ignore: [ main ]
   workflow_dispatch:
+    inputs:
+      LLM_MODEL_NAME:
+        description: "LLM Model Name (required)"
+        required: true
+      LLM_MODEL_API_KEY:
+        description: "LLM Model API Key (required)"
+        required: true
 
 env:
   POETRY_VERSION: "1.8.3"
   POETRY_URL: https://install.python-poetry.org
 
-jobs:
-  release:
-    name: Create Release
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-      - name: Generate Changelog
-        run: .github/release_message.sh > release_message.md
-      - name: Release
-        uses: softprops/action-gh-release@v1
-        with:
-          body_path: release_message.md
 
-  deploy:
-    needs: release
+jobs:
+  linter_tester:
     strategy:
       fail-fast: false
       matrix:
         python-version: [3.11]
         os: [ubuntu-latest]
     runs-on: ${{ matrix.os }}
+    env:
+      LLM_MODEL_NAME: ${{ github.event.inputs.LLM_MODEL_NAME }}
+      LLM_MODEL_API_KEY: ${{ github.event.inputs.LLM_MODEL_API_KEY }}
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
         id: setup_python
+      # Poetry cache depends on OS, Python version and Poetry version.
       - name: Cache Poetry cache
         uses: actions/cache@v4
         with:
           path: ~/.cache/pypoetry
           key: poetry-cache-${{ runner.os }}-${{ steps.setup_python.outputs.python-version }}-${{ env.POETRY_VERSION }}
+      # virtualenv cache should depends on OS, Python version and `poetry.lock` (and optionally workflow files).
       - name: Cache Packages
         uses: actions/cache@v4
         with:
@@ -59,21 +54,5 @@ jobs:
           echo "$HOME/.local/bin" >> $GITHUB_PATH
       - name: Install project
         run: make install
-      - name: Build and publish to PyPI
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-        run: |
-          make build
-          make publish
-      # - name: Log in to Docker Hub
-      #   uses: docker/login-action@v3
-      #   with:
-      #     username: ${{ vars.DOCKERHUB_USERNAME }}
-      #     password: ${{ secrets.DOCKERHUB_TOKEN }}
-      # - name: Build and push Docker image
-      #   uses: docker/build-push-action@v4
-      #   with:
-      #     context: .
-      #     push: true
-      #     tags: testzeus/hercules:${{ github.ref_name }}
+      - name: Run linter
+        run: make lint

@@ -111,6 +111,7 @@ setuptools = "^75.3.0"
 wheel = "^0.44.0"
 playwright-recaptcha = "^0.5.1"
 twine = "^5.1.1"
+junit2html = "^31.0.2"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.3"

@@ -81,7 +81,7 @@ class AutogenSimpleWrapper:
         save_chat_logs_to_files: bool = True,
         planner_max_chat_round: int = 50,
         browser_nav_max_chat_round: int = 10,
-    ):
+    ) -> "AutogenSimpleWrapper":
         """
         Create an instance of AutogenSimpleWrapper.
 
@@ -132,7 +132,7 @@ class AutogenSimpleWrapper:
         )
         self.agents_map = await self.__initialize_agents()
 
-        def trigger_nested_chat(manager: autogen.ConversableAgent):
+        def trigger_nested_chat(manager: autogen.ConversableAgent) -> bool:  # type: ignore
             content: str = manager.last_message()["content"]  # type: ignore
             content_json = parse_response(content)  # type: ignore
             next_step = content_json.get("next_step", None)
@@ -214,7 +214,7 @@ class AutogenSimpleWrapper:
         """
         return self.chat_logs_dir
 
-    def set_chat_logs_dir(self, chat_logs_dir: str):
+    def set_chat_logs_dir(self, chat_logs_dir: str) -> None:
         """
         Set the directory for saving chat logs.
 
@@ -224,7 +224,7 @@ class AutogenSimpleWrapper:
         """
         self.chat_logs_dir = chat_logs_dir
 
-    def __save_chat_log(self, chat_log: list[dict[str, Any]]):
+    def __save_chat_log(self, chat_log: list[dict[str, Any]]) -> None:
         if not self.save_chat_logs_to_files:
             logger.info("Nested chat logs", extra={"nested_chat_log": chat_log})
         else:
@@ -235,7 +235,7 @@ class AutogenSimpleWrapper:
             with open(chat_logs_file, "w") as file:
                 json.dump(chat_log, file, indent=4)
 
-    async def __initialize_agents(self):
+    async def __initialize_agents(self) -> dict[str, autogen.ConversableAgent]:
         """
         Instantiate all agents with their appropriate prompts/skills.
 
@@ -302,7 +302,7 @@ class AutogenSimpleWrapper:
         )
         return task_delegate_agent
 
-    def __create_browser_nav_executor_agent(self):
+    def __create_browser_nav_executor_agent(self) -> autogen.UserProxyAgent:
         """
         Create a UserProxyAgent instance for executing browser control.
 
@@ -362,7 +362,9 @@ class AutogenSimpleWrapper:
         # print(">>> browser agent tools:", json.dumps(browser_nav_agent.agent.llm_config.get("tools"), indent=2))
         return browser_nav_agent.agent
 
-    def __create_planner_agent(self, assistant_agent: autogen.ConversableAgent):
+    def __create_planner_agent(
+        self, assistant_agent: autogen.ConversableAgent
+    ) -> autogen.ConversableAgent:
         """
         Create a Planner Agent instance. This is mainly used for exploration at this point
 

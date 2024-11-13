@@ -6,6 +6,7 @@ import argparse
 from testzeus_hercules.config import (
     get_input_gherkin_file_path,
     get_junit_xml_base_path,
+    get_source_log_folder_path,
     set_default_test_id,
 )
 from testzeus_hercules.core.runner import SingleCommandInputRunner
@@ -16,6 +17,7 @@ from testzeus_hercules.utils.gherkin_helper import (
 )
 from testzeus_hercules.utils.junit_helper import JUnitXMLGenerator, build_junit_xml
 from testzeus_hercules.utils.logger import logger
+from junit2htmlreport.runner import run as prepare_html
 
 
 def sequential_process() -> None:
@@ -84,11 +86,30 @@ def sequential_process() -> None:
         logger.info(f"Run completed for testcase: {scenario}")
         result_of_tests.append(
             build_junit_xml(
-                runner_result, execution_time, cost_metrics, feature_name, scenario
+                runner_result,
+                execution_time,
+                cost_metrics,
+                feature_name,
+                scenario,
+                feature_file_path=file_path,
+                output_file_path="",
+                proofs_screenshot_path=runner.browser_manager._screenshots_dir,
+                proofs_video_path=runner.browser_manager.get_latest_video_path(),
+                network_logs_path=runner.browser_manager.request_response_log_file,
+                logs_path=get_source_log_folder_path(stake_id),
+                planner_thoughts_path=get_source_log_folder_path(stake_id)
+                + "/chat_messages.json",
             )
         )
     JUnitXMLGenerator.merge_junit_xml(result_of_tests, final_result_file_name)
-    logger.info(f"Results published on file: {final_result_file_name}")
+    logger.info(f"Results published in junitxml file: {final_result_file_name}")
+
+    # building html from junitxml
+    final_result_html_file_name = (
+        f"{get_junit_xml_base_path()}/{feature_file_name}_result.html"
+    )
+    prepare_html([final_result_file_name, final_result_html_file_name])
+    logger.info(f"Results published in html file: {final_result_html_file_name}")
 
 
 def arguments() -> None:
