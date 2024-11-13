@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "testzeus-hercules"
-version = "0.1.7"
+version = "0.1.8"
 description = "Hercules: The World's First Open-Source AI Agent for End-to-End Testing"
 authors = ["Shriyansh Agnihotri <shriyansh@testzeus.com>"]
 readme = "README.md"
@@ -110,6 +110,7 @@ sentry-sdk = "^2.18.0"
 setuptools = "^75.3.0"
 wheel = "^0.44.0"
 playwright-recaptcha = "^0.5.1"
+twine = "^5.1.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.3"

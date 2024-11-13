@@ -91,6 +91,7 @@ publish:          ## Publish the package to PyPI.
 	@echo "Publishing to PyPI ..."
 	# @poetry config pypi-token.pypi $${TWINE_PASSWORD}
 	# @poetry publish -n --verbose --build
+	@pip install twine
 	@twine upload dist/*
 
 .PHONY: run
