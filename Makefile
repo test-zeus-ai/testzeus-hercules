@@ -89,7 +89,9 @@ build:       ## build testzeus_hercules.
 .PHONY: publish
 publish:          ## Publish the package to PyPI.
 	@echo "Publishing to PyPI ..."
-	poetry publish -n --verbose
+	@echo $${TWINE_PASSWORD}
+	@poetry config pypi-token.pypi $${TWINE_PASSWORD}
+	@poetry publish -n --verbose --build
 
 .PHONY: run
 run:       ## run testzeus_hercules.
