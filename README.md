@@ -1,7 +1,8 @@
 # Hercules
 
 [![codecov](https://codecov.io/gh/test-zeus-ai/testzeus-hercules/branch/main/graph/badge.svg?token=testzeus_hercules_token_here)](https://codecov.io/gh/test-zeus-ai/testzeus-hercules)
-[![CI](https://github.com/test-zeus-ai/testzeus-hercules/actions/workflows/main.yml/badge.svg)](https://github.com/test-zeus-ai/testzeus-hercules/actions/workflows/main.yml)
+[![CI Lint](https://github.com/test-zeus-ai/testzeus-hercules/actions/workflows/main-push.yml/badge.svg)](https://github.com/test-zeus-ai/testzeus-hercules/actions/workflows/main-push.yml)
+[![CI Test](https://github.com/test-zeus-ai/testzeus-hercules/actions/workflows/main-test.yml/badge.svg)](https://github.com/test-zeus-ai/testzeus-hercules/actions/workflows/main-test.yml)
 
 Welcome to **Hercules**, the **world's first open-source testing agent** that's here to lift your testing burdens with the strength of a mythological hero! Imagine a tool with assert capabilities so sharp, it can **navigate the web like a seasoned explorer**—that's Hercules for you. Whether you're a tester, SDET, QA maestro, or an automation engineer, we're putting the **power directly into your hands**, empowering you to conquer even the most complex testing challenges.
 
@@ -158,7 +159,8 @@ Feature: Account Creation in Salesforce
 
 #### Sample Result Screenshot
 
-![Sample Result](<path_to_sample_result_screenshot>) <!-- Replace with actual image path -->
+![Sample HTML Result](statics/assets/testcase_html.png)
+![Sample XML Result](statics/assets/testcase_xml.png)
 
 ---
 
@@ -295,12 +297,12 @@ To configure Hercules in detail:
 
 - Hercules is capable of running in two configuration forms:
 
-  1. **Same LLM as Backbone**
+  1. **Using single LLM for all work**
 
      - For all the activities within the agent, initialize `LLM_MODEL_NAME` and `LLM_MODEL_API_KEY`.
      - If using a non-OpenAI hosted solution but still OpenAI LLMs (something like OpenAI via Groq), then pass the `LLM_MODEL_BASE_URL` URL as well.
 
-  2. **Custom LLMs**
+  2. **Custom LLMs for different work or using hosted LLMs**
 
      - If you plan to configure local LLMs or non-OpenAI LLMs, use the other parameters like `AGENTS_LLM_CONFIG_FILE` and `AGENTS_LLM_CONFIG_FILE_REF_KEY`.
      - These are powerful options and can affect the quality of Hercules outputs.
@@ -372,9 +374,10 @@ Hercules leverages a multi-agent architecture based on the AutoGen framework. Bu
 
 #### System View
 
-![Architecture Diagram](<path_to_architecture_diagram>) <!-- Replace with actual image path -->
+![Architecture Diagram](statics/assets/hercules-architecture.jpg)
 
 The diagram above shows the configuration chosen on top of AutoGen architecture. The tools can be partitioned differently, but this is the one that we chose for the time being. We chose to use tools that map to what humans learn about the web browser rather than allow the LLM to write code as it pleases. We see the use of configured tools to be safer and more predictable in its outcomes. Certainly, it can click on the wrong things, but at least it is not going to execute malicious unknown code.
+
 
 #### Agents
 
@@ -577,8 +580,8 @@ Join us at our [Discord server](https://discord.gg/4fyEMWVD) to connect with the
 
 ## Examples
 
-- **Salesforce Examples**: [Link](<Link to Salesforce examples>)
-- **Puma Example**: [Link](<Link to Puma example>)
+- **Salesforce Examples**: [Link](tests/test_features/ebikes/ebikes.feature)
+- **Wrangler Example**: [Link](tests/test_features/productSearch/productSearch.feature)
 
 ---
 
