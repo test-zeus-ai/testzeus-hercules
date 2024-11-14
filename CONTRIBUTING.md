@@ -1,10 +1,14 @@
-# How to develop on this project
+# How to contribute to this project
 
-hercules welcomes contributions from the community.
+Hercules is a project from the community and for the community. So we welcome all kinds of contributions:
+- Technical contributions: Review the instructions below and feel free to open a PR.
+- Want to start small? No problem. Contribute to documentation, build a tool, recreate a bug. We all started in one of these places.
+- Organize a local meetup, talk to people, or answer a question: The power lies in your hands. 💪
+  
 
 **You need PYTHON3!**
 
-This instructions are for linux base systems. (Linux, MacOS, BSD, etc.)
+These instructions are for linux base systems. (Linux, MacOS, BSD, etc.)
 ## Setting up your own fork of this repo.
 
 - On github interface click on `Fork` button.
