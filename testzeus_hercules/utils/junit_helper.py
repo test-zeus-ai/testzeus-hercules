@@ -2,17 +2,15 @@ import datetime
 import os
 from typing import Any, Dict, List
 
+from junitparser import Failure, JUnitXml, Property, TestCase, TestSuite
+from junitparser.junitparser import Properties, SystemOut
 from testzeus_hercules.config import MODE, get_junit_xml_base_path
 from testzeus_hercules.telemetry import EventData, EventType, add_event
-from junitparser import Failure, JUnitXml, Property, TestCase, TestSuite
-from junitparser.junitparser import SystemOut, Properties
 
 junit_xml_base_path = get_junit_xml_base_path()
 
 
-def flatten_dict(
-    d: Dict[str, Any], parent_key: str = "", sep: str = "."
-) -> Dict[str, Any]:
+def flatten_dict(d: Dict[str, Any], parent_key: str = "", sep: str = ".") -> Dict[str, Any]:
     """
     Flatten a nested dictionary.
 
@@ -101,34 +99,18 @@ class JUnitXMLGenerator:
                 test_case.system_out = assert_summary
         else:
             if not is_passed:
-                test_case.result = Failure(
-                    message=str(assert_summary or final_response)
-                )
+                test_case.result = Failure(message=str(assert_summary or final_response))
 
         opt_list = []
         test_props = Properties()
         test_case.append(test_props)
-        test_props.add_property(
-            Property(name="Feature File", value=str(self.feature_file_path))
-        )
-        test_props.add_property(
-            Property(name="Output File", value=str(self.output_file_path))
-        )
-        test_props.add_property(
-            Property(name="Proofs Video", value=str(self.proofs_video_path))
-        )
-        test_props.add_property(
-            Property(name="Proofs Screenshot", value=str(self.proofs_screenshot_path))
-        )
-        test_props.add_property(
-            Property(name="Network Logs", value=str(self.network_logs_path))
-        )
-        test_props.add_property(
-            Property(name="Agents Internal Logs", value=str(self.logs_path))
-        )
-        test_props.add_property(
-            Property(name="Planner Thoughts", value=str(self.planner_thoughts_path))
-        )
+        test_props.add_property(Property(name="Feature File", value=str(self.feature_file_path)))
+        test_props.add_property(Property(name="Output File", value=str(self.output_file_path)))
+        test_props.add_property(Property(name="Proofs Video", value=str(self.proofs_video_path)))
+        test_props.add_property(Property(name="Proofs Screenshot", value=str(self.proofs_screenshot_path)))
+        test_props.add_property(Property(name="Network Logs", value=str(self.network_logs_path)))
+        test_props.add_property(Property(name="Agents Internal Logs", value=str(self.logs_path)))
+        test_props.add_property(Property(name="Planner Thoughts", value=str(self.planner_thoughts_path)))
         opt_list.append(f"Final Response: {final_response}")
 
         for key, value in json_data.items():
@@ -168,9 +150,7 @@ class JUnitXMLGenerator:
             total_tokens = cost_metric.get(usage_type, {}).get("total_tokens", 0)
             self.total_token_used += int(total_tokens)
 
-        total_cost = cost_metric.get("usage_including_cached_inference", {}).get(
-            "total_cost", 0.0
-        )
+        total_cost = cost_metric.get("usage_including_cached_inference", {}).get("total_cost", 0.0)
         self.total_execution_cost += float(total_cost)
         gpt_data = cost_metric.get("usage_including_cached_inference", {})
         for key in gpt_data:
@@ -219,9 +199,7 @@ class JUnitXMLGenerator:
                     existing_suite = suite_dict[suite_name]
                     for testcase in suite:
                         existing_suite.add_testcase(testcase)
-                    existing_suite.time = float(existing_suite.time or 0.0) + float(
-                        suite.time or 0.0
-                    )
+                    existing_suite.time = float(existing_suite.time or 0.0) + float(suite.time or 0.0)
 
                     for prop in suite.properties():
                         is_existing_prop = False
@@ -238,9 +216,7 @@ class JUnitXMLGenerator:
                         existing_suite.update_statistics()
 
                         if not is_existing_prop:
-                            existing_suite.add_property(
-                                name=prop.name, value=prop.value
-                            )
+                            existing_suite.add_property(name=prop.name, value=prop.value)
                 else:
                     suite_dict[suite_name] = suite
 
@@ -356,13 +332,9 @@ def run_test() -> None:
         scenario + "1",
     )
 
-    f2_path = build_junit_xml(
-        json_data_fail, execution_time, cost_metric, feature + "1", scenario + "1"
-    )
+    f2_path = build_junit_xml(json_data_fail, execution_time, cost_metric, feature + "1", scenario + "1")
 
-    JUnitXMLGenerator.merge_junit_xml(
-        [f1_path, f2_path], f"{junit_xml_base_path}/final_results.xml"
-    )
+    JUnitXMLGenerator.merge_junit_xml([f1_path, f2_path], f"{junit_xml_base_path}/final_results.xml")
 
 
 # # Example usage

@@ -143,6 +143,9 @@ dmypy.json
 **/output
 **/gherkin_files
 
+**/opt/input/test.feature
+**/opt/test_data/test_data.txt
+
 hercules/**/*.feature
 testzeus-hercules/**/*.feature
 **/*.xml

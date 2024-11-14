@@ -14,8 +14,6 @@ def add_text_compressor(agent: ConversableAgent) -> None:
     Args:
         agent (ConversableAgent): The agent that needs text compression in prompts
     """
-    context_handling = transform_messages.TransformMessages(
-        transforms=[TEXT_COMPRESSOR]
-    )
+    context_handling = transform_messages.TransformMessages(transforms=[TEXT_COMPRESSOR])
     context_handling.add_to_agent(agent)
     logger.debug(f"Added text compressor to agent: {agent.name}")

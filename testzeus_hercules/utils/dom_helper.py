@@ -1,7 +1,7 @@
 import asyncio
 
-from testzeus_hercules.utils.logger import logger
 from playwright.async_api import ElementHandle, Page
+from testzeus_hercules.utils.logger import logger
 
 
 async def wait_for_non_loading_dom_state(page: Page, max_wait_millis: int):
@@ -20,9 +20,7 @@ async def wait_for_non_loading_dom_state(page: Page, max_wait_millis: int):
         await asyncio.sleep(0.5)
 
 
-async def get_element_outer_html(
-    element: ElementHandle, page: Page, element_tag_name: str | None = None
-) -> str:
+async def get_element_outer_html(element: ElementHandle, page: Page, element_tag_name: str | None = None) -> str:
     """
     Constructs the opening tag of an HTML element along with its attributes.
 
@@ -34,11 +32,7 @@ async def get_element_outer_html(
     Returns:
         str: The opening tag of the HTML element, including a select set of attributes.
     """
-    tag_name: str = (
-        element_tag_name
-        if element_tag_name
-        else await page.evaluate("element => element.tagName.toLowerCase()", element)
-    )
+    tag_name: str = element_tag_name if element_tag_name else await page.evaluate("element => element.tagName.toLowerCase()", element)
 
     attributes_of_interest: list[str] = [
         "id",

@@ -4,6 +4,7 @@ import json
 import traceback
 from typing import Annotated, Any, Optional
 
+from playwright.async_api import ElementHandle, Page
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.dom_helper import get_element_outer_html
@@ -12,7 +13,6 @@ from testzeus_hercules.utils.dom_mutation_observer import unsubscribe  # type: i
 from testzeus_hercules.utils.js_helper import block_ads
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
-from playwright.async_api import ElementHandle, Page
 
 page_data_store = {}
 
@@ -33,7 +33,8 @@ async def click(
         "The properly formed query selector string to identify the element for the click action (e.g. [mmid='114']). When \"mmid\" attribute is present, use it for the query selector.",
     ],
     user_input_dialog_response: Annotated[
-        Optional[str], "The input response to a dialog box."
+        Optional[str],
+        "The input response to a dialog box. THIS SHOULD NOT HAVE RANDOM VALUE BUT ONLY AS PER THE TEST INPUT",
     ] = None,
     expected_message_of_dialog: Annotated[
         Optional[str], "The expected message of the dialog box when it opens."
@@ -78,39 +79,40 @@ async def click(
 
     async def handle_dialog(dialog: Any) -> None:
         try:
+            await asyncio.sleep(0.5)
             data = get_page_data(page)
             user_input_dialog_response = data.get("user_input_dialog_response")
             expected_message_of_dialog = data.get("expected_message_of_dialog")
-            action_on_dialog = data.get("action_on_dialog")
-            print(f"Dialog message: {dialog.message}")
+            action_on_dialog = data.get("action_on_dialog", "")
+            if action_on_dialog:
+                action_on_dialog = action_on_dialog.lower().strip()
+            logger.info(f"Dialog message: {dialog.message}")
 
             # Check if the dialog message matches the expected message (if provided)
             if (
                 expected_message_of_dialog
                 and dialog.message != expected_message_of_dialog
             ):
-                print(
+                logger.error(
                     f"Dialog message does not match the expected message: {expected_message_of_dialog}"
                 )
-                await dialog.dismiss()  # Dismiss if the dialog message doesn't match
-                return
-
-            # Perform the specified action on the dialog
-            if action_on_dialog == "accept":
-                # Accept the dialog and provide input if it's a prompt and input is specified
-                if dialog.type == "prompt" and user_input_dialog_response:
-                    await dialog.accept(user_input_dialog_response)
+                if action_on_dialog == "accept":
+                    if dialog.type == "prompt":
+                        await dialog.accept(user_input_dialog_response)
+                    else:
+                        await dialog.accept()
+                elif action_on_dialog == "dismiss":
+                    await dialog.dismiss()
                 else:
-                    await dialog.accept()
-            elif action_on_dialog == "dismiss":
-                await dialog.dismiss()
+                    await dialog.dismiss()  # Dismiss if the dialog message doesn't match
+            elif user_input_dialog_response:
+                await dialog.accept(user_input_dialog_response)
             else:
-                print(
-                    "Invalid action specified for dialog. Only 'accept' or 'dismiss' are allowed."
-                )
-                await dialog.dismiss()  # Default to dismiss if action is invalid
+                await dialog.dismiss()
+
         except Exception as e:
             logger.info(f"Error handling dialog: {e}")
+            # await dialog.accept(user_input_dialog_response)
 
     if page is None:  # type: ignore
         raise ValueError("No active page found. OpenURL command opens a new page.")
@@ -138,6 +140,7 @@ async def click(
         },
     )
 
+    page = await browser_manager.get_current_page()
     page.on("dialog", handle_dialog)
     result = await do_click(page, selector, wait_before_execution, type_of_click)
 

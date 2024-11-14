@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import json
 import os
 import shutil
@@ -9,6 +10,8 @@ from io import BytesIO
 from typing import Dict, List, Optional, Union
 
 import httpx
+from playwright.async_api import BrowserContext, BrowserType, Page, Playwright
+from playwright.async_api import async_playwright as playwright
 from testzeus_hercules.config import (
     get_browser_type,
     get_cdp_config,
@@ -27,8 +30,6 @@ from testzeus_hercules.utils.dom_mutation_observer import (
 from testzeus_hercules.utils.js_helper import beautify_plan_message, escape_js_message
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
-from playwright.async_api import BrowserContext, BrowserType, Page, Playwright
-from playwright.async_api import async_playwright as playwright
 
 # Ensures that playwright does not wait for font loading when taking screenshots.
 # Reference: https://github.com/microsoft/playwright/issues/28995
@@ -98,22 +99,14 @@ class PlaywrightManager:
         self.ui_manager: Optional[UIManager] = UIManager() if gui_input_mode else None
         self._take_screenshots = should_take_screenshots() or take_screenshots
         self.stake_id = stake_id
-        self._screenshots_dir = os.path.join(
-            get_screen_shot_path(self.stake_id) or screenshots_dir, "screenshots"
-        )
+        self._screenshots_dir = os.path.join(get_screen_shot_path(self.stake_id) or screenshots_dir, "screenshots")
         self._record_video = should_record_video() or record_video
-        self._video_dir = os.path.join(
-            get_screen_shot_path(self.stake_id) or video_dir, "videos"
-        )
+        self._video_dir = os.path.join(get_screen_shot_path(self.stake_id) or video_dir, "videos")
         self._playwright: Optional[Playwright] = None
         self._browser_context: Optional[BrowserContext] = None
         self.__async_initialize_done = False
-        self._latest_screenshot_bytes: Optional[bytes] = (
-            None  # Stores the latest screenshot bytes
-        )
-        self._latest_video_path: Optional[str] = (
-            None  # Stores the latest video file path
-        )
+        self._latest_screenshot_bytes: Optional[bytes] = None  # Stores the latest screenshot bytes
+        self._latest_video_path: Optional[str] = None  # Stores the latest video file path
         self.log_requests_responses = should_capture_network() or log_requests_responses
         self.request_response_log_file = os.path.join(
             get_screen_shot_path(self.stake_id) or request_response_log_file,
@@ -122,9 +115,7 @@ class PlaywrightManager:
         self.request_response_logs: List[Dict] = []
 
         # Extension caching directory
-        self._extension_cache_dir = os.path.join(
-            ".", ".cache", "browser", self.browser_type, "extension"
-        )
+        self._extension_cache_dir = os.path.join(".", ".cache", "browser", self.browser_type, "extension")
         self._extension_path: Optional[str] = None
 
     async def async_initialize(self) -> None:
@@ -210,13 +201,9 @@ class PlaywrightManager:
                 if response.status_code == 200:
                     with open(extension_file_path, "wb") as f:
                         f.write(response.content)
-                    logger.info(
-                        f"Extension downloaded and saved to {extension_file_path}"
-                    )
+                    logger.info(f"Extension downloaded and saved to {extension_file_path}")
                 else:
-                    logger.error(
-                        f"Failed to download extension from {extension_url}, status {response.status_code}"
-                    )
+                    logger.error(f"Failed to download extension from {extension_url}, status {response.status_code}")
                     return
 
         if self.browser_type == "chromium":
@@ -252,7 +239,7 @@ class PlaywrightManager:
                 # Record video in CDP mode
                 context_options = {
                     "record_video_dir": self._video_dir,
-                    "record_video_size": {"width": 1280, "height": 720},
+                    "record_video_size": {"width": 1920, "height": 1080},
                 }
                 self._browser_context = await _browser.new_context(**context_options)
                 page = await self._browser_context.new_page()
@@ -267,13 +254,9 @@ class PlaywrightManager:
             # Prepare the extension
             await self.prepare_extension()
             if self._record_video:
-                await self._launch_browser_with_video(
-                    browser_type, user_dir, disable_args
-                )
+                await self._launch_browser_with_video(browser_type, user_dir, disable_args)
             else:
-                await self._launch_persistent_browser(
-                    browser_type, user_dir, disable_args
-                )
+                await self._launch_persistent_browser(browser_type, user_dir, disable_args)
 
     async def _launch_persistent_browser(
         self,
@@ -305,9 +288,7 @@ class PlaywrightManager:
                     "extensions.webextensions.userScripts.enabled": True,  # Allow web extensions without prompt
                 }
 
-            self._browser_context = await browser_type.launch_persistent_context(
-                user_dir, **browser_context_kwargs
-            )
+            self._browser_context = await browser_type.launch_persistent_context(user_dir, **browser_context_kwargs)
         except (PlaywrightError, OSError) as e:
             await self._handle_launch_exception(e, user_dir, browser_type, disable_args)
 
@@ -327,9 +308,7 @@ class PlaywrightManager:
 
         try:
             if self.browser_type == "chromium" and self._extension_path is not None:
-                disable_args.append(
-                    f"--disable-extensions-except={self._extension_path}"
-                )
+                disable_args.append(f"--disable-extensions-except={self._extension_path}")
                 disable_args.append(f"--load-extension={self._extension_path}")
             browser = await browser_type.launch(
                 headless=self.isheadless,
@@ -337,7 +316,7 @@ class PlaywrightManager:
             )
             context_options = {
                 "record_video_dir": self._video_dir,
-                "record_video_size": {"width": 1280, "height": 720},
+                "record_video_size": {"width": 1920, "height": 1080},
             }
             if self.browser_type == "firefox" and self._extension_path is not None:
                 context_options["extensions"] = [self._extension_path]
@@ -406,13 +385,25 @@ class PlaywrightManager:
         Args:
             request: The Playwright Request object.
         """
+        try:
+            # Attempt to decode post_data
+            post_data = request.post_data
+            try:
+                # Decode as UTF-8 if it's text data
+                decoded_post_data = post_data.decode("utf-8")
+            except (UnicodeDecodeError, AttributeError):
+                # Encode in Base64 if it's binary data
+                decoded_post_data = base64.b64encode(post_data).decode("utf-8")
+        except Exception:
+            decoded_post_data = None  # Handle cases where post_data is missing or inaccessible
+
         log_entry = {
             "type": "request",
             "timestamp": time.time(),
             "method": request.method,
             "url": request.url,
             "headers": request.headers,
-            "post_data": request.post_data or None,
+            "post_data": decoded_post_data,
         }
         self.write_log_entry_to_file(log_entry)
 
@@ -470,9 +461,7 @@ class PlaywrightManager:
         try:
             browser_context = await self.get_browser_context()
             # Filter out closed pages
-            pages: list[Page] = [
-                page for page in browser_context.pages if not page.is_closed()
-            ]
+            pages: list[Page] = [page for page in browser_context.pages if not page.is_closed()]
             page: Optional[Page] = pages[-1] if pages else None
             logger.debug(f"Current page: {page.url if page else None}")
             if page is not None:
@@ -482,9 +471,7 @@ class PlaywrightManager:
                 await self.setup_request_response_logging(page)
                 return page
         except Exception as e:
-            logger.warning(
-                f"Error getting current page: {e}. Creating a new browser context."
-            )
+            logger.warning(f"Error getting current page: {e}. Creating a new browser context.")
             self._browser_context = None
             await self.ensure_browser_context()
             browser_context = await self.get_browser_context()
@@ -539,35 +526,25 @@ class PlaywrightManager:
             for frame in page.frames:
                 # Check if the frame is not the main frame
                 if frame != page.main_frame:
-                    frame.on(
-                        "domcontentloaded", handle_navigation_for_mutation_observer
-                    )
+                    frame.on("domcontentloaded", handle_navigation_for_mutation_observer)
 
         # Set event listeners for current iframes
         await set_iframe_navigation_handlers()
 
         # Expose the function for DOM mutation change detection
-        await page.expose_function(
-            "dom_mutation_change_detected", dom_mutation_change_detected
-        )
+        await page.expose_function("dom_mutation_change_detected", dom_mutation_change_detected)
 
         # Optionally, you can add a listener to capture new iframes as they are added dynamically
         page.on(
             "frameattached",
-            lambda frame: frame.on(
-                "domcontentloaded", handle_navigation_for_mutation_observer
-            ),
+            lambda frame: frame.on("domcontentloaded", handle_navigation_for_mutation_observer),
         )
 
     async def set_overlay_state_handler(self) -> None:
         logger.debug("Setting overlay state handler")
         context = await self.get_browser_context()
-        await context.expose_function(
-            "overlay_state_changed", self.overlay_state_handler
-        )
-        await context.expose_function(
-            "show_steps_state_changed", self.show_steps_state_handler
-        )
+        await context.expose_function("overlay_state_changed", self.overlay_state_handler)
+        await context.expose_function("show_steps_state_changed", self.show_steps_state_handler)
 
     async def overlay_state_handler(self, is_collapsed: bool) -> None:
         page = await self.get_current_page()
@@ -585,9 +562,7 @@ class PlaywrightManager:
         context = await self.get_browser_context()
         await context.expose_function("user_response", self.receive_user_response)
 
-    async def notify_user(
-        self, message: str, message_type: MessageType = MessageType.STEP
-    ) -> None:
+    async def notify_user(self, message: str, message_type: MessageType = MessageType.STEP) -> None:
         """
         Notify the user with a message.
 
@@ -638,9 +613,7 @@ class PlaywrightManager:
                 page = await self.get_current_page()
                 await page.evaluate(js_code)
             except Exception as e:
-                logger.error(
-                    f'Failed to notify user with message "{message}". This may resolve after the page loads: {e}'
-                )
+                logger.error(f'Failed to notify user with message "{message}". This may resolve after the page loads: {e}')
         msg = message_type
         if not isinstance(msg, str):
             msg = message_type.value  # type: ignore
@@ -705,9 +678,7 @@ class PlaywrightManager:
                         """,
                         selector,
                     )
-                    logger.debug(
-                        f"Applied pulsating border to element with selector {selector} to indicate operation"
-                    )
+                    logger.debug(f"Applied pulsating border to element with selector {selector} to indicate operation")
                 else:
                     # Remove highlight from both regular and shadow DOM elements
                     await page.evaluate(
@@ -758,9 +729,7 @@ class PlaywrightManager:
                         """,
                         selector,
                     )
-                    logger.debug(
-                        f"Removed pulsating border from element with selector {selector} after operation"
-                    )
+                    logger.debug(f"Removed pulsating border from element with selector {selector} after operation")
 
             # Call the helper function to apply or remove highlight
             await highlight_in_shadow_dom(selector, add_highlight)
@@ -835,9 +804,7 @@ class PlaywrightManager:
         screenshot_name += ".png"
         screenshot_path = os.path.join(self.get_screenshots_dir(), screenshot_name)
         try:
-            await page.wait_for_load_state(
-                state=load_state, timeout=take_snapshot_timeout
-            )
+            await page.wait_for_load_state(state=load_state, timeout=take_snapshot_timeout)
             screenshot_bytes = await page.screenshot(
                 path=screenshot_path,
                 full_page=full_page,
@@ -845,14 +812,10 @@ class PlaywrightManager:
                 caret="initial",
                 scale="device",
             )
-            self._latest_screenshot_bytes = (
-                screenshot_bytes  # Store the latest screenshot bytes
-            )
+            self._latest_screenshot_bytes = screenshot_bytes  # Store the latest screenshot bytes
             logger.debug(f"Screenshot saved to: {screenshot_path}")
         except Exception as e:
-            logger.error(
-                f'Failed to take screenshot and save to "{screenshot_path}". Error: {e}'
-            )
+            logger.error(f'Failed to take screenshot and save to "{screenshot_path}". Error: {e}')
 
     async def get_latest_screenshot_stream(self) -> Optional[BytesIO]:
         """
@@ -891,16 +854,10 @@ class PlaywrightManager:
                     if page.video:
                         video_path = await page.video.path()
                         # rename the video file to include the page URL
-                        video_name = f"{self.stake_id}.webm" or os.path.basename(
-                            video_path
-                        )
+                        video_name = f"{self.stake_id}.webm" or os.path.basename(video_path)
                         video_dir = os.path.dirname(video_path)
-                        video_url = "video_of" or page.url.replace("://", "_").replace(
-                            "/", "_"
-                        )
-                        new_video_path = os.path.join(
-                            video_dir, f"{video_url}_{video_name}"
-                        )
+                        video_url = "video_of" or page.url.replace("://", "_").replace("/", "_")
+                        new_video_path = os.path.join(video_dir, f"{video_url}_{video_name}")
                         os.rename(video_path, new_video_path)
                         self._latest_video_path = new_video_path
                         logger.info(f"Video recorded at: {new_video_path}")
@@ -917,9 +874,7 @@ class PlaywrightManager:
         if self.ui_manager:
             self.ui_manager.new_user_message(message)
 
-    def log_system_message(
-        self, message: str, message_type: MessageType = MessageType.STEP
-    ) -> None:
+    def log_system_message(self, message: str, message_type: MessageType = MessageType.STEP) -> None:
         """
         Log a system message.
 
@@ -941,9 +896,7 @@ class PlaywrightManager:
         if self.ui_manager:
             await self.ui_manager.update_processing_state(processing_state, page)
 
-    async def command_completed(
-        self, command: str, elapsed_time: Optional[float] = None
-    ) -> None:
+    async def command_completed(self, command: str, elapsed_time: Optional[float] = None) -> None:
         """
         Notify the overlay that the command has been completed.
 
@@ -951,9 +904,7 @@ class PlaywrightManager:
             command (str): The command that has been completed.
             elapsed_time (Optional[float]): The time taken to execute the command.
         """
-        logger.debug(
-            f'Command "{command}" has been completed. Focusing on the overlay input if it is open.'
-        )
+        logger.debug(f'Command "{command}" has been completed. Focusing on the overlay input if it is open.')
         page = await self.get_current_page()
         if self.ui_manager:
             await self.ui_manager.command_completed(page, command, elapsed_time)

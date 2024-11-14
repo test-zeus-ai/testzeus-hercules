@@ -67,17 +67,13 @@ def split_feature_file(input_file: str, output_dir: str) -> List[Dict[str, str]]
             f_scenario = f_scenario.replace(comment_line, "")
 
         if already_visited_scenarios[scenario_title] > 0:
-            scenario_title = (
-                f"{scenario_title} - {already_visited_scenarios[scenario_title]}"
-            )
+            scenario_title = f"{scenario_title} - {already_visited_scenarios[scenario_title]}"
             scenario_filename = f"{scenario_title.replace(' ', '_')}_{already_visited_scenarios[scenario_title]}.feature"
             output_file = os.path.join(output_dir, scenario_filename)
         already_visited_scenarios[scenario_title] += 1
 
         with open(output_file, "w") as f:
-            f.write(
-                f"{feature_header}\n\n{prev_comment_lines}\n{all_scenarios[i]}{scenario_title}{f_scenario}"
-            )
+            f.write(f"{feature_header}\n\n{prev_comment_lines}\n{all_scenarios[i]}{scenario_title}{f_scenario}")
         prev_comment_lines = comment_lines
 
         scenario_di = {

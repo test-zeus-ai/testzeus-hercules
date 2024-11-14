@@ -2,17 +2,15 @@ import asyncio
 import inspect
 from typing import Annotated
 
+from playwright.async_api import Page  # type: ignore
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.utils.dom_mutation_observer import subscribe  # type: ignore
 from testzeus_hercules.utils.dom_mutation_observer import unsubscribe  # type: ignore
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
-from playwright.async_api import Page  # type: ignore
 
 
-async def press_key_combination(
-    key_combination: Annotated[str, "The key to press, e.g., Enter, PageDown etc"]
-) -> str:
+async def press_key_combination(key_combination: Annotated[str, "The key to press, e.g., Enter, PageDown etc"]) -> str:
     """
     Presses a key combination on the current active page managed by PlaywrightManager.
 
@@ -58,23 +56,17 @@ async def press_key_combination(
     # Release the modifier keys
     for key in keys[:-1]:
         await page.keyboard.up(key)
-    await asyncio.sleep(
-        0.1
-    )  # sleep for 100ms to allow the mutation observer to detect changes
+    await asyncio.sleep(0.1)  # sleep for 100ms to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
 
     if dom_changes_detected:
         return f"Key {key_combination} executed successfully.\n As a consequence of this action, new elements have appeared in view:{dom_changes_detected}. This means that the action is not yet executed and needs further interaction. Get all_fields DOM to complete the interaction."
 
-    await browser_manager.notify_user(
-        f"Key {key_combination} executed successfully", message_type=MessageType.ACTION
-    )
+    await browser_manager.notify_user(f"Key {key_combination} executed successfully", message_type=MessageType.ACTION)
     return f"Key {key_combination} executed successfully"
 
 
-async def do_press_key_combination(
-    browser_manager: PlaywrightManager, page: Page, key_combination: str
-) -> bool:
+async def do_press_key_combination(browser_manager: PlaywrightManager, page: Page, key_combination: str) -> bool:
     """
     Presses a key combination on the provided page.
 
@@ -99,9 +91,7 @@ async def do_press_key_combination(
         keys = key_combination.split("+")
 
         # If it's a combination, hold down the modifier keys
-        for key in keys[
-            :-1
-        ]:  # All keys except the last one are considered modifier keys
+        for key in keys[:-1]:  # All keys except the last one are considered modifier keys
             await page.keyboard.down(key)
 
         # Press the last key in the combination

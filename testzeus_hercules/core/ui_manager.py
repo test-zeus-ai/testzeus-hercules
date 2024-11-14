@@ -1,11 +1,11 @@
 import os
 import traceback
 
+from playwright.async_api import Frame, Page
 from testzeus_hercules.config import PROJECT_SOURCE_ROOT
 from testzeus_hercules.utils.js_helper import escape_js_message
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
-from playwright.async_api import Frame, Page
 
 
 class UIManager:
@@ -22,9 +22,7 @@ class UIManager:
 
     overlay_is_collapsed: bool = True
 
-    overlay_processing_state: str = (
-        "init"  # init: initialised, processing: processing is ongoing, done: processing is done
-    )
+    overlay_processing_state: str = "init"  # init: initialised, processing: processing is ongoing, done: processing is done
     overlay_show_details: bool = True
 
     conversation_history: list[dict[str, str]] = []
@@ -46,9 +44,7 @@ class UIManager:
         """
         try:
             await frame.wait_for_load_state("load")
-            overlay_injection_file = os.path.join(
-                PROJECT_SOURCE_ROOT, "js", "injectOverlay.js"
-            )
+            overlay_injection_file = os.path.join(PROJECT_SOURCE_ROOT, "js", "injectOverlay.js")
             with open(overlay_injection_file, "r") as file:  # noqa: UP015
                 js_code = file.read()
 
@@ -56,13 +52,9 @@ class UIManager:
             await frame.evaluate(js_code)
             js_bool = str(self.overlay_show_details).lower()
             if self.overlay_is_collapsed:
-                await frame.evaluate(
-                    f"showCollapsedOverlay('{self.overlay_processing_state}', {js_bool});"
-                )
+                await frame.evaluate(f"showCollapsedOverlay('{self.overlay_processing_state}', {js_bool});")
             else:
-                await frame.evaluate(
-                    f"showExpandedOverlay('{self.overlay_processing_state}', {js_bool});"
-                )
+                await frame.evaluate(f"showExpandedOverlay('{self.overlay_processing_state}', {js_bool});")
 
             # update chat history in the overlay
             await self.update_overlay_chat_history(frame)
@@ -113,9 +105,7 @@ class UIManager:
         self.overlay_processing_state = state
         try:
             js_bool = str(self.overlay_is_collapsed).lower()
-            await page.evaluate(
-                f"updateOverlayState('{self.overlay_processing_state}', {js_bool});"
-            )
+            await page.evaluate(f"updateOverlayState('{self.overlay_processing_state}', {js_bool});")
         except Exception as e:
             logger.debug(f"JavaScript error: {e}")
 
@@ -133,10 +123,7 @@ class UIManager:
             logger.debug("Overlay is collapsed, not updating chat history")
             return
         if self.__update_overlay_chat_history_running:
-            logger.debug(
-                "update_overlay_chat_history is already running, returning"
-                + frame_or_page.url
-            )
+            logger.debug("update_overlay_chat_history is already running, returning" + frame_or_page.url)
             return
 
         self.__update_overlay_chat_history_running = True
@@ -145,9 +132,7 @@ class UIManager:
             await frame_or_page.evaluate("clearOverlayMessages();")
             for message in self.conversation_history:
                 safe_message = escape_js_message(message["message"])
-                safe_message_type = escape_js_message(
-                    message.get("message_type", MessageType.STEP.value)
-                )
+                safe_message_type = escape_js_message(message.get("message_type", MessageType.STEP.value))
                 if message["from"] == "user":
                     await frame_or_page.evaluate(f"addUserMessage({safe_message});")
                 else:
@@ -212,9 +197,7 @@ class UIManager:
             message (str): The message text to add.
         """
 
-        self.conversation_history.append(
-            {"from": "system", "message": message, "message_type": type.value}
-        )
+        self.conversation_history.append({"from": "system", "message": message, "message_type": type.value})
         print(f"Adding system message: {message}")
 
     def add_default_system_messages(self):
@@ -223,9 +206,7 @@ class UIManager:
         """
         pass
 
-    async def command_completed(
-        self, page: Page, command: str, elapsed_time: float | None = None
-    ):
+    async def command_completed(self, page: Page, command: str, elapsed_time: float | None = None):
         """
         Handles the completion of a command, focusing on the overlay input and indicating that the command has finished.
 

@@ -4,10 +4,10 @@ import re
 import traceback
 from typing import Annotated, Any
 
+from playwright.async_api import Page
 from testzeus_hercules.config import get_source_log_folder_path
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.utils.logger import logger
-from playwright.async_api import Page
 
 space_delimited_mmid = re.compile(r"^[\d ]+$")
 
@@ -93,9 +93,7 @@ async def __inject_attributes(page: Page) -> None:
     logger.debug(f"Added MMID into {last_mmid} elements")
 
 
-async def __fetch_dom_info(
-    page: Page, accessibility_tree: dict[str, Any], only_input_fields: bool
-) -> dict[str, Any]:
+async def __fetch_dom_info(page: Page, accessibility_tree: dict[str, Any], only_input_fields: bool) -> dict[str, Any]:
     """
     Iterates over the accessibility tree, fetching additional information from the DOM based on 'mmid',
     and constructs a new JSON structure with detailed information.
@@ -123,9 +121,7 @@ async def __fetch_dom_info(
         "aria-controls",
         "aria-describedby",
     ]
-    backup_attributes = (
-        []
-    )  # if the attributes are not found, then try to get these attributes
+    backup_attributes = []  # if the attributes are not found, then try to get these attributes
     tags_to_ignore = [
         "head",
         "style",
@@ -366,9 +362,7 @@ async def __fetch_dom_info(
                 )
 
                 if "keyshortcuts" in node:
-                    del node[
-                        "keyshortcuts"
-                    ]  # remove keyshortcuts since it is not needed
+                    del node["keyshortcuts"]  # remove keyshortcuts since it is not needed
 
                 node["mmid"] = mmid
 
@@ -377,46 +371,23 @@ async def __fetch_dom_info(
                     node.update(element_attributes)
 
                     # check if 'name' and 'mmid' are the same
-                    if (
-                        node.get("name") == node.get("mmid")
-                        and node.get("role") != "textbox"
-                    ):
+                    if node.get("name") == node.get("mmid") and node.get("role") != "textbox":
                         del node["name"]  # Remove 'name' from the node
 
                     if (
                         "name" in node
                         and "description" in node
-                        and (
-                            node["name"] == node["description"]
-                            or node["name"] == node["description"].replace("\n", " ")
-                            or node["description"].replace("\n", "") in node["name"]
-                        )
+                        and (node["name"] == node["description"] or node["name"] == node["description"].replace("\n", " ") or node["description"].replace("\n", "") in node["name"])
                     ):
-                        del node[
-                            "description"
-                        ]  # if the name is same as description, then remove the description to avoid duplication
+                        del node["description"]  # if the name is same as description, then remove the description to avoid duplication
 
-                    if (
-                        "name" in node
-                        and "aria-label" in node
-                        and node["aria-label"] in node["name"]
-                    ):
-                        del node[
-                            "aria-label"
-                        ]  # if the name is same as the aria-label, then remove the aria-label to avoid duplication
+                    if "name" in node and "aria-label" in node and node["aria-label"] in node["name"]:
+                        del node["aria-label"]  # if the name is same as the aria-label, then remove the aria-label to avoid duplication
 
-                    if (
-                        "name" in node
-                        and "text" in node
-                        and node["name"] == node["text"]
-                    ):
-                        del node[
-                            "text"
-                        ]  # if the name is same as the text, then remove the text to avoid duplication
+                    if "name" in node and "text" in node and node["name"] == node["text"]:
+                        del node["text"]  # if the name is same as the text, then remove the text to avoid duplication
 
-                    if (
-                        node.get("tag") == "select"
-                    ):  # children are not needed for select menus since "options" attriburte is already added
+                    if node.get("tag") == "select":  # children are not needed for select menus since "options" attriburte is already added
                         node.pop("children", None)
                         node.pop("role", None)
                         node.pop("description", None)
@@ -426,11 +397,7 @@ async def __fetch_dom_info(
                         del node["role"]
 
                     # avoid duplicate aria-label
-                    if (
-                        node.get("aria-label")
-                        and node.get("placeholder")
-                        and node.get("aria-label") == node.get("placeholder")
-                    ):
+                    if node.get("aria-label") and node.get("placeholder") and node.get("aria-label") == node.get("placeholder"):
                         del node["aria-label"]
 
                     if node.get("role") == "link":
@@ -511,9 +478,7 @@ async def __fetch_dom_info(
                     if attribute_to_delete in node:
                         node.pop(attribute_to_delete, None)
             else:
-                logger.debug(
-                    f"No element found with mmid: {mmid}, deleting node: {node}"
-                )
+                logger.debug(f"No element found with mmid: {mmid}, deleting node: {node}")
                 node["marked_for_deletion_by_mm"] = True
 
     # Process each node in the tree starting from the root
@@ -578,9 +543,7 @@ async def __cleanup_dom(page: Page) -> None:
     logger.debug("DOM cleanup complete")
 
 
-def __prune_tree(
-    node: dict[str, Any], only_input_fields: bool
-) -> dict[str, Any] | None:
+def __prune_tree(node: dict[str, Any], only_input_fields: bool) -> dict[str, Any] | None:
     """
     Recursively prunes a tree starting from `node`, based on pruning conditions and handling of 'unraveling'.
 
@@ -621,14 +584,8 @@ def __prune_tree(
             if "marked_for_unravel_children" in child:
                 # Replace the current child with its children
                 if "children" in child:
-                    node["children"] = (
-                        node["children"][:i]
-                        + child["children"]
-                        + node["children"][i + 1 :]
-                    )
-                    i += (
-                        len(child["children"]) - 1
-                    )  # Adjust the index for the new children
+                    node["children"] = node["children"][:i] + child["children"] + node["children"][i + 1 :]
+                    i += len(child["children"]) - 1  # Adjust the index for the new children
                 else:
                     # If the node marked for unraveling has no children, remove it
                     node["children"].pop(i)
@@ -665,21 +622,10 @@ def __should_prune_node(node: dict[str, Any], only_input_fields: bool) -> bool:
         bool: True if the node should be pruned, False otherwise.
     """
     # If the request is for only input fields and this is not an input field, then mark the node for prunning
-    if (
-        node.get("role") != "WebArea"
-        and only_input_fields
-        and not (
-            node.get("tag") in ("input", "button", "textarea")
-            or node.get("role") == "button"
-        )
-    ):
+    if node.get("role") != "WebArea" and only_input_fields and not (node.get("tag") in ("input", "button", "textarea") or node.get("role") == "button"):
         return True
 
-    if (
-        node.get("role") == "generic"
-        and "children" not in node
-        and not ("name" in node and node.get("name"))
-    ):  # The presence of 'children' is checked after potentially deleting it above
+    if node.get("role") == "generic" and "children" not in node and not ("name" in node and node.get("name")):  # The presence of 'children' is checked after potentially deleting it above
         return True
 
     if node.get("role") in ["separator", "LineBreak"]:
@@ -695,12 +641,7 @@ def __should_prune_node(node: dict[str, Any], only_input_fields: bool) -> bool:
             processed_name = ""
 
     # check if the node only have name and role, then delete that node
-    if (
-        len(node) == 2
-        and "name" in node
-        and "role" in node
-        and not (node.get("role") == "text" and processed_name != "")
-    ):
+    if len(node) == 2 and "name" in node and "role" in node and not (node.get("role") == "text" and processed_name != ""):
         return True
     return False
 
@@ -716,9 +657,7 @@ async def get_node_dom_element(page: Page, mmid: str) -> Any:
     )
 
 
-async def get_element_attributes(
-    page: Page, mmid: str, attributes: list[str]
-) -> dict[str, Any]:
+async def get_element_attributes(page: Page, mmid: str, attributes: list[str]) -> dict[str, Any]:
     return await page.evaluate(
         """
         (inputParams) => {
@@ -805,9 +744,7 @@ async def get_dom_with_accessibility_info() -> Annotated[
     return await do_get_accessibility_info(page)
 
 
-async def do_get_accessibility_info(
-    page: Page, only_input_fields: bool = False
-) -> dict[str, Any] | None:
+async def do_get_accessibility_info(page: Page, only_input_fields: bool = False) -> dict[str, Any] | None:
     """
     Retrieves the accessibility information of a web page and saves it as JSON files.
 
@@ -1040,16 +977,12 @@ async def do_get_accessibility_info(
 
     await __cleanup_dom(page)
     try:
-        enhanced_tree = await __fetch_dom_info(
-            page, accessibility_tree, only_input_fields
-        )
+        enhanced_tree = await __fetch_dom_info(page, accessibility_tree, only_input_fields)
 
         logger.debug("Enhanced Accessibility Tree ready")
 
         with open(
-            os.path.join(
-                get_source_log_folder_path(), "json_accessibility_dom_enriched.json"
-            ),
+            os.path.join(get_source_log_folder_path(), "json_accessibility_dom_enriched.json"),
             "w",
             encoding="utf-8",
         ) as f:

@@ -5,11 +5,7 @@ from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.utils.cli_helper import answer_questions_over_cli
 
 
-async def get_user_input(
-    questions: Annotated[
-        List[str], "List of questions to ask the user each one represented as a string"
-    ]
-) -> dict[str, str]:  # noqa: UP006
+async def get_user_input(questions: Annotated[List[str], "List of questions to ask the user each one represented as a string"]) -> dict[str, str]:  # noqa: UP006
     """
     Asks the user a list of questions and returns the answers in a dictionary.
 
@@ -24,9 +20,7 @@ async def get_user_input(
     browser_manager = PlaywrightManager()
     if browser_manager.ui_manager:
         for question in questions:
-            answers[question] = await browser_manager.prompt_user(
-                f"Question: {question}"
-            )
+            answers[question] = await browser_manager.prompt_user(f"Question: {question}")
     else:
         answers: dict[str, str] = {}
         for question in questions:

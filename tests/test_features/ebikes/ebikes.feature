@@ -3,13 +3,13 @@ Feature: ebikes product website validation
       
 Scenario: User checks the Dynamo bike
   Given the user is on ebikes home page
-  When the user clicks on the Explore More button
-  Then the user should be navigated to the Dynamo X2 bike detail page
+  When the user clicks on the Explore More button, wait for the next screen to load
+  Then the user should be navigated to the Dynamo X2 bike detail page, with absolute match
     
 Scenario: User checks the count of bike products
   Given the user is on ebikes home page
   When the user clicks on the Product Explorer button
-  Then the user should find 16 products listed on the website and There are two pages of products here.
+  Then the user should find 16 products listed on the website by a paginator value and by counting there should be 9 on the 1st page and There are two pages of products here.
     
 Scenario: User checks the count of bike products for 0 max price
   Given the user is on ebikes home page
@@ -20,12 +20,9 @@ Scenario: User checks the count of bike products for 0 max price
 Scenario: User checks the popup details
   Given the user is on ebikes home page
   When the user clicks on the Product Families button
-  And the user clicks on <Product_family_name> product family name
-  And the user clicks on the expand button on the right hand of screen
-  And the user clicks on RELATED tab
-  And the user hovers mouse over <Bike>
-  Then the user should be able to see <Product_name> as the pop up message
-  |Product_family_name| Bike  |Product_name|
-  |     Volt          |VOLT X1|VOLT X1     |
-  |     Fuse          |FUSE X1|            |
+  And for each Product_family_name from the test data, click on the right Product_family_name
+    then user clicks on RELATED tab
+    then user hovers over the <Bike> name from the current row of test data
+    Then the user should be able to see a popup with message as <Product_name> the current row of test data, check this twice
+    Then clicks on the Product Families button and move to the next record in the test data
     

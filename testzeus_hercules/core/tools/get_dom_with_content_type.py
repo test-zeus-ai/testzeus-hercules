@@ -2,6 +2,7 @@ import os
 import time
 from typing import Annotated, Any
 
+from playwright.async_api import Page
 from testzeus_hercules.config import get_source_log_folder_path
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.telemetry import EventData, EventType, add_event
@@ -11,7 +12,6 @@ from testzeus_hercules.utils.get_detailed_accessibility_tree import (
 )
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
-from playwright.async_api import Page
 
 
 async def get_dom_with_content_type(
@@ -19,9 +19,7 @@ async def get_dom_with_content_type(
         str,
         "The type of content to extract: 'text_only': Extracts the innerText of the highest element in the document and responds with text, or 'input_fields': Extracts the text input and button elements in the dom.",
     ]
-) -> Annotated[
-    dict[str, Any] | str | None, "The output based on the specified content type."
-]:
+) -> Annotated[dict[str, Any] | str | None, "The output based on the specified content type."]:
     """
     Retrieves and processes the DOM of the active page in a browser instance based on the specified content type.
 
@@ -56,9 +54,7 @@ async def get_dom_with_content_type(
         raise ValueError("No active page found. OpenURL command opens a new page.")
 
     extracted_data = None
-    await wait_for_non_loading_dom_state(
-        page, 5000
-    )  # wait for the DOM to be ready, non loading means external resources do not need to be loaded
+    await wait_for_non_loading_dom_state(page, 5000)  # wait for the DOM to be ready, non loading means external resources do not need to be loaded
     user_success_message = ""
     if content_type == "all_fields":
         user_success_message = "Fetched all the fields in the DOM"
@@ -86,9 +82,7 @@ async def get_dom_with_content_type(
 
     elapsed_time = time.time() - start_time
     logger.info(f"Get DOM Command executed in {elapsed_time} seconds")
-    await browser_manager.notify_user(
-        user_success_message, message_type=MessageType.ACTION
-    )
+    await browser_manager.notify_user(user_success_message, message_type=MessageType.ACTION)
 
     # split extracted data into multiple lines and drop empty stripped lines and then get a count of lines.
     rr = 0

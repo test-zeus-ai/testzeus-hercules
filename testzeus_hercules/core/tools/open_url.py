@@ -1,10 +1,10 @@
 import inspect
 from typing import Annotated
 
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
-from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 
 async def openurl(
@@ -32,9 +32,7 @@ async def openurl(
     try:
         url = ensure_protocol(url)
         if page.url == url:
-            logger.info(
-                f"Current page URL is the same as the new URL: {url}. No need to refresh."
-            )
+            logger.info(f"Current page URL is the same as the new URL: {url}. No need to refresh.")
             title = await page.title()
             return f"Page already loaded: {url}, Title: {title}"  # type: ignore
 
@@ -45,17 +43,13 @@ async def openurl(
 
         await page.goto(url, timeout=timeout * 1000)  # type: ignore
         await browser_manager.take_screenshots(f"{function_name}_end", page)
-        await browser_manager.notify_user(
-            f"Opened URL: {url}", message_type=MessageType.ACTION
-        )
+        await browser_manager.notify_user(f"Opened URL: {url}", message_type=MessageType.ACTION)
         # Get the page title
         title = await page.title()
         url = page.url
         return f"Page loaded: {url}, Title: {title}"  # type: ignore
     except PlaywrightTimeoutError as pte:
-        logger.warning(
-            f"Initial navigation to {url} failed: {pte}. Will try to continue anyway."
-        )  # happens more often than not, but does not seem to be a problem
+        logger.warning(f"Initial navigation to {url} failed: {pte}. Will try to continue anyway.")  # happens more often than not, but does not seem to be a problem
     except Exception as e:
         logger.error(f"An error occurred while opening the URL: {url}. Error: {e}")
         import traceback
@@ -77,7 +71,5 @@ def ensure_protocol(url: str) -> str:
     """
     if not url.startswith(("http://", "https://")):
         url = "https://" + url  # Default to http if no protocol is specified
-        logger.info(
-            f"Added 'https://' protocol to URL because it was missing. New URL is: {url}"
-        )
+        logger.info(f"Added 'https://' protocol to URL because it was missing. New URL is: {url}")
     return url

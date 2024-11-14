@@ -17,8 +17,7 @@ show:             ## Show the current environment.
 
 .PHONY: install
 install:          ## Install the project in dev mode.
-	poetry install --all-extras && exit
-	poetry run playwright install --with-deps
+	poetry install --all-extras && exit && poetry run playwright install --with-deps
 
 .PHONY: fmt
 fmt:              ## Format code using black & isort.
@@ -34,9 +33,15 @@ lint: fmt             ## Run pep8, black, mypy linters.
 
 .PHONY: test
 test: lint        ## Run tests and generate coverage report.
-	poetry run pytest -v --junit-xml=test_output.xml --cov-config .coveragerc --cov=testzeus_hercules -l --tb=short --maxfail=1 tests/
+	poetry run playwright install --with-deps
+	poetry run pytest -v --junit-xml=tests/test_output.xml --cov-config .coveragerc --cov=testzeus_hercules -l --tb=short --maxfail=1 tests/
 	poetry run coverage xml
 	poetry run coverage html
+
+.PHONY: test-case  ## Run selective test case.
+test-case: lint     ## Run a specific test case.
+	@read -p "Enter the test case (e.g., multilingual): " TEST_CASE && \
+	poetry run pytest -v --pdb tests/test_feature_execution.py::test_feature_execution[$$TEST_CASE]
 
 .PHONY: watch
 watch:            ## Run tests on every change.
@@ -74,13 +79,6 @@ release:          ## Create a new tag for release.
 	git tag $$VERSION
 	@git push -u origin HEAD --tags
 	@echo "Github Actions will detect the new tag and release the new version."
-
-.PHONY: docs
-docs:             ## Build the documentation.
-	@echo "building documentation ..."
-	@poetry run mkdocs build
-	URL="site/index.html"; xdg-open $$URL || sensible-browser $$URL || x-www-browser $$URL || gnome-open $$URL || open $$URL
-
 
 .PHONY: build
 build:       ## build testzeus_hercules.

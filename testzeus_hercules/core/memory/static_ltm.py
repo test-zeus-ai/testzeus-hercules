@@ -31,9 +31,7 @@ class StaticLTM:
             file_path = os.path.join(test_data_path, filename)
             if os.path.isfile(file_path):
                 # Check if the file is a non-text file
-                if not filename.endswith(
-                    (".txt", ".json", ".csv", ".rft", ".yaml", ".yml")
-                ):
+                if not filename.endswith((".txt", ".json", ".csv", ".rft", ".yaml", ".yml")):
                     logger.info("Skipping non-text file: %s", file_path)
                     continue
                 with open(file_path, "r", encoding="utf-8") as file:

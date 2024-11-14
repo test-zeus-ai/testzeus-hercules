@@ -31,7 +31,7 @@ Feature: User Signup and Account Deletion
     Then the "ACCOUNT CREATED!" message should be visible
     Given the user has created an account
     When the user clicks the "Continue" button, the user is first record from test data.
-    Then the "Logged in as [username]" message should be visible
+    Then the "Logged in as [Email]" message should be visible
 
   Scenario: Delete the account
     Given the user is logged in as a new user, via record 1 from test data, use email instead of username

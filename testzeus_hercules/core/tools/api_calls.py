@@ -10,9 +10,7 @@ from testzeus_hercules.utils.logger import logger
 # @tool(name="create_resource_http_api", description="Only when instruction says call an API to create an entity in the remote system, then use this tool.")
 async def create_resource_http_api(
     url: Annotated[str, "The API endpoint URL for creating the resource."],
-    headers: Annotated[
-        Optional[Dict[str, str]], "Optional HTTP headers to include in the request."
-    ] = None,
+    headers: Annotated[Optional[Dict[str, str]], "Optional HTTP headers to include in the request."] = None,
     auth: Annotated[
         Optional[Dict[str, str]],
         "Optional basic authentication credentials (e.g., {'username': 'user', 'password': 'pass'}).",
@@ -21,12 +19,8 @@ async def create_resource_http_api(
         Optional[str],
         "Optional bearer or JWT token for authentication. Include the token string without the 'Bearer ' prefix.",
     ] = None,
-    data: Annotated[
-        Optional[Dict[str, Any]], "Form data to send in the request body."
-    ] = None,
-    json_data: Annotated[
-        Optional[Dict[str, Any]], "JSON data to send in the request body."
-    ] = None,
+    data: Annotated[Optional[Dict[str, Any]], "Form data to send in the request body."] = None,
+    json_data: Annotated[Optional[Dict[str, Any]], "JSON data to send in the request body."] = None,
 ) -> Annotated[Dict[str, Any], "The response data from the API call."]:
     """
     Create a new resource by sending a POST request to the specified URL.
@@ -52,11 +46,7 @@ async def create_resource_http_api(
             response = await client.post(
                 url,
                 headers=request_headers,
-                auth=(
-                    httpx.BasicAuth(auth["username"], auth["password"])
-                    if auth
-                    else None
-                ),
+                auth=(httpx.BasicAuth(auth["username"], auth["password"]) if auth else None),
                 data=data,
                 json=json_data,
             )
@@ -76,9 +66,7 @@ async def create_resource_http_api(
 )
 async def read_resource_http_api(
     url: Annotated[str, "The API endpoint URL for reading the resource."],
-    headers: Annotated[
-        Optional[Dict[str, str]], "Optional HTTP headers to include in the request."
-    ] = None,
+    headers: Annotated[Optional[Dict[str, str]], "Optional HTTP headers to include in the request."] = None,
     auth: Annotated[
         Optional[Dict[str, str]],
         "Optional basic authentication credentials (e.g., {'username': 'user', 'password': 'pass'}).",
@@ -87,9 +75,7 @@ async def read_resource_http_api(
         Optional[str],
         "Optional bearer or JWT token for authentication. Include the token string without the 'Bearer ' prefix.",
     ] = None,
-    params: Annotated[
-        Optional[Dict[str, Any]], "Query parameters to include in the GET request."
-    ] = None,
+    params: Annotated[Optional[Dict[str, Any]], "Query parameters to include in the GET request."] = None,
 ) -> Annotated[Dict[str, Any], "The response data from the API call."]:
     """
     Read a resource by sending a GET request to the specified URL.
@@ -114,11 +100,7 @@ async def read_resource_http_api(
             response = await client.get(
                 url,
                 headers=request_headers,
-                auth=(
-                    httpx.BasicAuth(auth["username"], auth["password"])
-                    if auth
-                    else None
-                ),
+                auth=(httpx.BasicAuth(auth["username"], auth["password"]) if auth else None),
                 params=params,
             )
             response.raise_for_status()
@@ -135,9 +117,7 @@ async def read_resource_http_api(
 # @tool(name="update_resource_http_api", description="Only when instruction says call an API to update an entity in the remote system, then use this tool.")
 async def update_resource_http_api(
     url: Annotated[str, "The API endpoint URL for updating the resource."],
-    headers: Annotated[
-        Optional[Dict[str, str]], "Optional HTTP headers to include in the request."
-    ] = None,
+    headers: Annotated[Optional[Dict[str, str]], "Optional HTTP headers to include in the request."] = None,
     auth: Annotated[
         Optional[Dict[str, str]],
         "Optional basic authentication credentials (e.g., {'username': 'user', 'password': 'pass'}).",
@@ -146,12 +126,8 @@ async def update_resource_http_api(
         Optional[str],
         "Optional bearer or JWT token for authentication. Include the token string without the 'Bearer ' prefix.",
     ] = None,
-    data: Annotated[
-        Optional[Dict[str, Any]], "Form data to send in the request body."
-    ] = None,
-    json_data: Annotated[
-        Optional[Dict[str, Any]], "JSON data to send in the request body."
-    ] = None,
+    data: Annotated[Optional[Dict[str, Any]], "Form data to send in the request body."] = None,
+    json_data: Annotated[Optional[Dict[str, Any]], "JSON data to send in the request body."] = None,
 ) -> Annotated[Dict[str, Any], "The response data from the API call."]:
     """
     Update an existing resource by sending a PUT request to the specified URL.
@@ -177,11 +153,7 @@ async def update_resource_http_api(
             response = await client.put(
                 url,
                 headers=request_headers,
-                auth=(
-                    httpx.BasicAuth(auth["username"], auth["password"])
-                    if auth
-                    else None
-                ),
+                auth=(httpx.BasicAuth(auth["username"], auth["password"]) if auth else None),
                 data=data,
                 json=json_data,
             )
@@ -199,9 +171,7 @@ async def update_resource_http_api(
 # @tool(name="delete_resource_http_api", description="Only when instruction says call an API to delete an entity in the remote system, then use this tool.")
 async def delete_resource_http_api(
     url: Annotated[str, "The API endpoint URL for deleting the resource."],
-    headers: Annotated[
-        Optional[Dict[str, str]], "Optional HTTP headers to include in the request."
-    ] = None,
+    headers: Annotated[Optional[Dict[str, str]], "Optional HTTP headers to include in the request."] = None,
     auth: Annotated[
         Optional[Dict[str, str]],
         "Optional basic authentication credentials (e.g., {'username': 'user', 'password': 'pass'}).",
@@ -233,11 +203,7 @@ async def delete_resource_http_api(
             response = await client.delete(
                 url,
                 headers=request_headers,
-                auth=(
-                    httpx.BasicAuth(auth["username"], auth["password"])
-                    if auth
-                    else None
-                ),
+                auth=(httpx.BasicAuth(auth["username"], auth["password"]) if auth else None),
             )
             response.raise_for_status()
             return response.json()
