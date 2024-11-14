@@ -9,7 +9,7 @@ At Hercules, we believe that **trustworthy and open-source code** is the backbon
 
 Our mission? To **democratize and disrupt test automation**, making top-tier testing accessible to everyone, not just the elite few. No more gatekeeping—everyone deserves a hero on their testing team!
 
-But what truly sets Hercules apart is our **community**, which is woven into our very DNA. Born from the original **TestZeus project**, we've inherited a legacy of collaboration and excellence. Together, we're forging a path where every contributor, every user, and every enthusiast plays a pivotal role in shaping the future of test automation.
+
 
 ## Features
 
@@ -37,7 +37,8 @@ With multilingual support right out of the box, Hercules is ready to work with t
 
 ### Precisely Accurate
 
-Unlike other tools, Hercules is designed to handle complex, multi-layered testing scenarios with precision. Thanks to its intelligent, multi-agentic design, it consistently delivers accurate, reliable results, ensuring no corner is left untested.
+Hercules records video of the execution, and captures network logs as well, so that you dont have to deal with "It works on my computer".
+
 
 ### No Maintenance
 
@@ -202,7 +203,7 @@ After the command completion:
 
 ---
 
-### Approach 3: Running from Source Code
+### Approach 3: Building and running from Source Code
 
 For the hardcore enthusiasts, you can use Hercules via the source code to get a complete experience of customization and extending Hercules with more tools.
 
@@ -373,7 +374,7 @@ Hercules leverages a multi-agent architecture based on the AutoGen framework. Bu
 
 ![Architecture Diagram](<path_to_architecture_diagram>) <!-- Replace with actual image path -->
 
-The diagram above shows the configuration chosen on top of AutoGen. The tools can be partitioned differently, but this is the one that we chose for the time being. We chose to use tools that map to what humans learn about the web browser rather than allow the LLM to write code as it pleases. We see the use of configured tools to be safer and more predictable in its outcomes. Certainly, it can click on the wrong things, but at least it is not going to execute malicious unknown code.
+The diagram above shows the configuration chosen on top of AutoGen architecture. The tools can be partitioned differently, but this is the one that we chose for the time being. We chose to use tools that map to what humans learn about the web browser rather than allow the LLM to write code as it pleases. We see the use of configured tools to be safer and more predictable in its outcomes. Certainly, it can click on the wrong things, but at least it is not going to execute malicious unknown code.
 
 #### Agents
 
@@ -430,7 +431,7 @@ The distillation process is a work in progress. We look to refine this process a
 
 ---
 
-## Testing and Evaluation
+## Testing and Evaluation: QEvals
 
 We wanted to ensure that Hercules stands up to the task of end-to-end testing with immense precision. So, we have run Hercules through a wide range of tests such as running APIs, interacting with complex UI scenarios, clicking through calendars, or iframes. A full list of evaluations can be found in the [tests folder](<Link to tests folder>).
 
@@ -588,10 +589,11 @@ Hercules would not have been possible without the great work from the following 
 1. [Agent-E](https://arxiv.org/abs/2407.13032)
 2. [Q*](https://arxiv.org/abs/2312.10868)
 3. [Agent Q](https://arxiv.org/abs/2408.07199)
+4. [Autogen](https://arxiv.org/pdf/2308.08155)
 
-The Hercules project is inferred and enhanced over the existing project of [Agent-E](https://github.com/EmergenceAI/Agent-E). We have improved lots of cases to make it capable of doing testing, especially in the area of complex DOM navigation and iframes. We have also added new tools to Hercules so that it can perform better work over the initial material we started with.
+The Hercules project is inferred and enhanced over the existing project of [Agent-E](https://github.com/EmergenceAI/Agent-E). We have improved lots of cases to make it capable of doing testing, especially in the area of complex DOM navigation and iframes. We have also added new tools and abilities (like Salesforce navigation) to Hercules so that it can perform better work over the base framework we had picked.
 
-**Note**: You can find the legacy TestZeus repo [here](https://www.testzeus.org).
+Hercules also picks some inspiration from the legacy TestZeus repo [here](https://www.testzeus.org).
 
 ---
 
