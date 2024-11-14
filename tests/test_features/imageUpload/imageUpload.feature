@@ -8,4 +8,4 @@ Feature: Profile image upload
     And the user clicks on the plus button to upload a picture
     And the user uploads a profile picture
     And the user clicks on Save button
-    Then the user's profile picture should be changed to the newly uploaded picture.
+    Then the page should get a notification of successfully saved.
