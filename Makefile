@@ -17,8 +17,7 @@ show:             ## Show the current environment.
 
 .PHONY: install
 install:          ## Install the project in dev mode.
-	poetry install --all-extras && exit
-	poetry run playwright install --with-deps
+	poetry install --all-extras && exit && poetry run playwright install --with-deps
 
 .PHONY: fmt
 fmt:              ## Format code using black & isort.
@@ -34,6 +33,7 @@ lint: fmt             ## Run pep8, black, mypy linters.
 
 .PHONY: test
 test: lint        ## Run tests and generate coverage report.
+	poetry run playwright install --with-deps
 	poetry run pytest -v --junit-xml=tests/test_output.xml --cov-config .coveragerc --cov=testzeus_hercules -l --tb=short --maxfail=1 tests/
 	poetry run coverage xml
 	poetry run coverage html
