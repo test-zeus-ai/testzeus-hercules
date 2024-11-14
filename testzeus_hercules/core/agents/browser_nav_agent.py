@@ -8,29 +8,29 @@ import autogen  # type: ignore
 from testzeus_hercules.core.memory.prompt_compressor import add_text_compressor
 from testzeus_hercules.core.memory.static_ltm import get_user_ltm
 from testzeus_hercules.core.prompts import LLM_PROMPTS
-from testzeus_hercules.core.skills.api_calls import *
-from testzeus_hercules.core.skills.captcha_solver import *
-from testzeus_hercules.core.skills.click_using_selector import click as click_element
-from testzeus_hercules.core.skills.dropdown_using_selector import *
-from testzeus_hercules.core.skills.enter_date_time import *
+from testzeus_hercules.core.tools.api_calls import *
+from testzeus_hercules.core.tools.captcha_solver import *
+from testzeus_hercules.core.tools.click_using_selector import click as click_element
+from testzeus_hercules.core.tools.dropdown_using_selector import *
+from testzeus_hercules.core.tools.enter_date_time import *
 
-# from hercules.core.skills.enter_text_and_click import enter_text_and_click
-from testzeus_hercules.core.skills.enter_text_using_selector import (
+# from hercules.core.tools.enter_text_and_click import enter_text_and_click
+from testzeus_hercules.core.tools.enter_text_using_selector import (
     bulk_enter_text,
     entertext,
 )
-from testzeus_hercules.core.skills.get_dom_with_content_type import (
+from testzeus_hercules.core.tools.get_dom_with_content_type import (
     get_dom_with_content_type,
 )
-from testzeus_hercules.core.skills.get_url import geturl
-from testzeus_hercules.core.skills.hover import hover
-from testzeus_hercules.core.skills.open_url import openurl
-from testzeus_hercules.core.skills.pdf_text_extractor import extract_text_from_pdf
-from testzeus_hercules.core.skills.press_key_combination import press_key_combination
-from testzeus_hercules.core.skills.set_slider_value import *
-from testzeus_hercules.core.skills.skill_registry import skill_registry
-from testzeus_hercules.core.skills.sql_calls import *
-from testzeus_hercules.core.skills.upload_file import *
+from testzeus_hercules.core.tools.get_url import geturl
+from testzeus_hercules.core.tools.hover import hover
+from testzeus_hercules.core.tools.open_url import openurl
+from testzeus_hercules.core.tools.pdf_text_extractor import extract_text_from_pdf
+from testzeus_hercules.core.tools.press_key_combination import press_key_combination
+from testzeus_hercules.core.tools.set_slider_value import *
+from testzeus_hercules.core.tools.tool_registry import tool_registry
+from testzeus_hercules.core.tools.sql_calls import *
+from testzeus_hercules.core.tools.upload_file import *
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.logger import logger
 
@@ -80,7 +80,7 @@ class BrowserNavAgent:
             },
         )
         # add_text_compressor(self.agent)
-        self.__register_skills()
+        self.__register_tools()
 
     def __get_ltm(self) -> str | None:
         """
@@ -89,12 +89,12 @@ class BrowserNavAgent:
         """
         return get_user_ltm()
 
-    def __register_skills(self) -> None:
+    def __register_tools(self) -> None:
         """
-        Register all the skills that the agent can perform.
+        Register all the tools that the agent can perform.
         """
 
-        # Register each skill for LLM by assistant agent and for execution by user_proxy_agen
+        # Register each tool for LLM by assistant agent and for execution by user_proxy_agen
 
         self.agent.register_for_llm(description=LLM_PROMPTS["OPEN_URL_PROMPT"])(openurl)
         self.browser_nav_executor.register_for_execution()(openurl)
@@ -151,54 +151,52 @@ class BrowserNavAgent:
             config={"callback": None},
         )
         """
-        self.__load_additional_skills()
+        self.__load_additional_tools()
 
         # print(f">>> Function map: {self.browser_nav_executor.function_map}") # type: ignore
 
-    def __load_additional_skills(self) -> None:
+    def __load_additional_tools(self) -> None:
         """
-        Dynamically load additional skills from directories or specific Python files
+        Dynamically load additional tools from directories or specific Python files
         specified by an environment variable.
         """
-        # Get additional skill directories or files from environment variable
-        additional_skill_dirs: str = os.getenv("ADDITIONAL_SKILL_DIRS", "")
-        if len(additional_skill_dirs) != 0:
-            additional_skill_paths: list[str] = additional_skill_dirs.split(",")
+        # Get additional tool directories or files from environment variable
+        additional_tool_dirs: str = os.getenv("ADDITIONAL_TOOL_DIRS", "")
+        if len(additional_tool_dirs) != 0:
+            additional_tool_paths: list[str] = additional_tool_dirs.split(",")
 
-            for skill_path in additional_skill_paths:
-                skill_path = skill_path.strip()  # Strip whitespace
+            for tool_path in additional_tool_paths:
+                tool_path = tool_path.strip()  # Strip whitespace
 
-                if os.path.isdir(skill_path):
+                if os.path.isdir(tool_path):
                     # If the path is a directory, process all .py files in it
-                    for filename in os.listdir(skill_path):
+                    for filename in os.listdir(tool_path):
                         if filename.endswith(".py"):
                             module_name = filename[:-3]  # Remove .py extension
-                            module_path = (
-                                f"{skill_path.replace('/', '.')}.{module_name}"
-                            )
+                            module_path = f"{tool_path.replace('/', '.')}.{module_name}"
                             importlib.import_module(module_path)
                             add_event(
                                 EventType.TOOL,
-                                EventData(detail=f"Registering skill: {filename}"),
+                                EventData(detail=f"Registering tool: {filename}"),
                             )
 
-                elif skill_path.endswith(".py") and os.path.isfile(skill_path):
+                elif tool_path.endswith(".py") and os.path.isfile(tool_path):
                     # If the path is a specific .py file, load it directly
-                    module_name = os.path.basename(skill_path)[
+                    module_name = os.path.basename(tool_path)[
                         :-3
                     ]  # Strip .py extension
-                    directory_path = os.path.dirname(skill_path).replace("/", ".")
+                    directory_path = os.path.dirname(tool_path).replace("/", ".")
                     module_path = f"{directory_path}.{module_name}"
                     importlib.import_module(module_path)
                     add_event(
                         EventType.TOOL,
-                        EventData(detail=f"Registering skill: {module_name}"),
+                        EventData(detail=f"Registering tool: {module_name}"),
                     )
                 else:
-                    logger.warning("Invalid skill path specified: %s", skill_path)
+                    logger.warning("Invalid tool path specified: %s", tool_path)
 
-        # Register the skills that were dynamically discovered
-        for skill in skill_registry:
-            self.agent.register_for_llm(description=skill["description"])(skill["func"])
-            self.browser_nav_executor.register_for_execution()(skill["func"])
-            logger.info("Registered additional skill: %s", skill["name"])
+        # Register the tools that were dynamically discovered
+        for tool in tool_registry:
+            self.agent.register_for_llm(description=tool["description"])(tool["func"])
+            self.browser_nav_executor.register_for_execution()(tool["func"])
+            logger.info("Registered additional tool: %s", tool["name"])

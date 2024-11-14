@@ -18,7 +18,7 @@ from testzeus_hercules.core.post_process_responses import (
     final_reply_callback_planner_agent as notify_planner_messages,  # type: ignore
 )
 from testzeus_hercules.core.prompts import LLM_PROMPTS
-from testzeus_hercules.core.skills.get_url import geturl
+from testzeus_hercules.core.tools.get_url import geturl
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.autogen_sequential_function_call import (
     UserProxyAgent_SequentialFunctionExecution,
@@ -237,7 +237,7 @@ class AutogenSimpleWrapper:
 
     async def __initialize_agents(self) -> dict[str, autogen.ConversableAgent]:
         """
-        Instantiate all agents with their appropriate prompts/skills.
+        Instantiate all agents with their appropriate prompts/tools.
 
         Returns:
             dict: A dictionary of agent instances.

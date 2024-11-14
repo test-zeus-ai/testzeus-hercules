@@ -1,4 +1,4 @@
-from testzeus_hercules.core import agents, memory, skills
+from testzeus_hercules.core import agents, memory, tools
 from testzeus_hercules.core.autogen_simple_wrapper import AutogenSimpleWrapper
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.post_process_responses import (

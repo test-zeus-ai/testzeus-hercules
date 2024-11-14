@@ -6,7 +6,7 @@ from typing import List  # noqa: UP035
 from typing import Annotated
 
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
-from testzeus_hercules.core.skills.press_key_combination import press_key_combination
+from testzeus_hercules.core.tools.press_key_combination import press_key_combination
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.dom_helper import get_element_outer_html
 from testzeus_hercules.utils.dom_mutation_observer import subscribe, unsubscribe

@@ -1,13 +1,13 @@
 from typing import Annotated, Any, Dict, List, Optional, Union
 
-from testzeus_hercules.core.skills.skill_registry import skill, skill_registry
+from testzeus_hercules.core.tools.tool_registry import tool, tool_registry
 from testzeus_hercules.utils.logger import logger
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 from sqlalchemy.sql import text
 
 
-@skill(
+@tool(
     description="Execute a SELECT SQL query on remote db, it should be only used when the instruction request to fetch data from database.",
     name="execute_select_query_sql_async",
 )

@@ -28,8 +28,8 @@ Changelog
 - Adding double, right click with bounding box and removing test from
   github action. [Shriyansh Agnihotri]
 - Adding right, double and middle click support also adding captcha
-  solver. enter_date_time and file upload skill. [Shriyansh Agnihotri]
-- Adding 2 new skills and solving dialog boxes execution. [Shriyansh
+  solver. enter_date_time and file upload tool. [Shriyansh Agnihotri]
+- Adding 2 new tools and solving dialog boxes execution. [Shriyansh
   Agnihotri]
 - Skipping test assert to complete the github actions. [Shriyansh
   Agnihotri]

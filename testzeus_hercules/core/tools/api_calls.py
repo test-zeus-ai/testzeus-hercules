@@ -2,12 +2,12 @@ import os
 from typing import Annotated, Any, Dict, Optional
 
 import httpx
-from testzeus_hercules.core.skills.skill_registry import skill
+from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
 
 
-## Uncomment this skill if you need to create a resource using an HTTP API
-# @skill(name="create_resource_http_api", description="Only when instruction says call an API to create an entity in the remote system, then use this skill.")
+## Uncomment this tool if you need to create a resource using an HTTP API
+# @tool(name="create_resource_http_api", description="Only when instruction says call an API to create an entity in the remote system, then use this tool.")
 async def create_resource_http_api(
     url: Annotated[str, "The API endpoint URL for creating the resource."],
     headers: Annotated[
@@ -70,9 +70,9 @@ async def create_resource_http_api(
         return {"error": str(e)}
 
 
-@skill(
+@tool(
     name="read_resource_http_api",
-    description="Only when instruction says call an API to read entities from the remote system, then use this skill.",
+    description="Only when instruction says call an API to read entities from the remote system, then use this tool.",
 )
 async def read_resource_http_api(
     url: Annotated[str, "The API endpoint URL for reading the resource."],
@@ -131,8 +131,8 @@ async def read_resource_http_api(
         return {"error": str(e)}
 
 
-## Uncomment this skill if you need to update a resource using an HTTP API
-# @skill(name="update_resource_http_api", description="Only when instruction says call an API to update an entity in the remote system, then use this skill.")
+## Uncomment this tool if you need to update a resource using an HTTP API
+# @tool(name="update_resource_http_api", description="Only when instruction says call an API to update an entity in the remote system, then use this tool.")
 async def update_resource_http_api(
     url: Annotated[str, "The API endpoint URL for updating the resource."],
     headers: Annotated[
@@ -195,8 +195,8 @@ async def update_resource_http_api(
         return {"error": str(e)}
 
 
-## Uncomment this skill if you need to delete a resource using an HTTP API
-# @skill(name="delete_resource_http_api", description="Only when instruction says call an API to delete an entity in the remote system, then use this skill.")
+## Uncomment this tool if you need to delete a resource using an HTTP API
+# @tool(name="delete_resource_http_api", description="Only when instruction says call an API to delete an entity in the remote system, then use this tool.")
 async def delete_resource_http_api(
     url: Annotated[str, "The API endpoint URL for deleting the resource."],
     headers: Annotated[

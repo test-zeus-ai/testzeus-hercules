@@ -22,7 +22,7 @@ async def add_mutation_observer(page: Page):
     """
     Adds a mutation observer to the page to detect changes in the DOM.
     When changes are detected, the observer calls the dom_mutation_change_detected function in the browser context.
-    This changes can be detected by subscribing to the dom_mutation_change_detected function by individual skills.
+    This changes can be detected by subscribing to the dom_mutation_change_detected function by individual tools.
 
     Current implementation only detects when a new node is added to the DOM.
     However, in many cases, the change could be a change in the style or class of an existing node (e.g. toggle visibility of a hidden node).

@@ -6,7 +6,7 @@ from typing import List  # noqa: UP035
 from typing import Annotated
 
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
-from testzeus_hercules.core.skills.skill_registry import skill, skill_registry
+from testzeus_hercules.core.tools.tool_registry import tool, tool_registry
 from testzeus_hercules.utils.dom_helper import get_element_outer_html
 from testzeus_hercules.utils.dom_mutation_observer import subscribe, unsubscribe
 from testzeus_hercules.utils.logger import logger
@@ -142,7 +142,7 @@ async def custom_set_slider_value(page: Page, selector: str, value_to_set: float
         raise
 
 
-@skill(
+@tool(
     description="Sets the specified value in the range slider DOM element matching the given mmid attribute value. This will only set the slider's value and not perform any additional actions.Returns Success if the slider value was set successfully or an appropriate error message if the value could not be set.",
     name="setslider",
 )
@@ -318,7 +318,7 @@ async def do_setslider(page: Page, selector: str, value_to_set: float):
         return {"summary_message": error, "detailed_message": f"{error} Error: {e}"}
 
 
-@skill(
+@tool(
     description="Bulk set values in multiple range slider DOM fields. To be used when there are multiple sliders to be set on the same page. Sets values in the DOM elements matching the given mmid attribute value. The input will receive a list of objects containing the DOM query selector and the value to set. This will only set the values and not perform any additional actions. Returns each selector and the result for attempting to set the slider values.",
     name="bulk_set_slider",
 )

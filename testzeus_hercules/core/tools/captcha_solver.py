@@ -3,11 +3,11 @@ from typing import Annotated
 
 import playwright_recaptcha
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
-from testzeus_hercules.core.skills.skill_registry import skill
+from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
 
 
-@skill(
+@tool(
     name="captcha_solver",
     description="solves captcha on the page, should be only used when you are sure that there is a captcha on the page and has to be solved.",
 )

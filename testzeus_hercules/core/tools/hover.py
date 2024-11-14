@@ -27,7 +27,7 @@ async def hover(
     ] = 0.0,
 ) -> Annotated[
     str,
-    "A message indicating success or failure of the hover action. Also written the tooltip text if available. Any extraction from Tooltip data should use this skill.",
+    "A message indicating success or failure of the hover action. Also written the tooltip text if available. Any extraction from Tooltip data should use this tool.",
 ]:
     """
     Executes a hover action on the element matching the given query selector string within the currently open web page.

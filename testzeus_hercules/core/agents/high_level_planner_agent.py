@@ -11,7 +11,7 @@ from testzeus_hercules.core.post_process_responses import (
     final_reply_callback_planner_agent as print_message_as_planner,  # type: ignore
 )
 from testzeus_hercules.core.prompts import LLM_PROMPTS
-from testzeus_hercules.core.skills.get_user_input import get_user_input
+from testzeus_hercules.core.tools.get_user_input import get_user_input
 from testzeus_hercules.utils.logger import logger
 
 
@@ -28,7 +28,7 @@ class PlannerAgent:
         - user_proxy_agent: An instance of the UserProxyAgent class.
         """
         enable_user_input = (
-            os.getenv("PLANNER_USER_INPUT_SKILL_ENABLED", "false").lower() == "true"
+            os.getenv("PLANNER_USER_INPUT_TOOL_ENABLED", "false").lower() == "true"
         )
 
         user_ltm = self.__get_ltm()
@@ -66,14 +66,14 @@ class PlannerAgent:
         add_text_compressor(self.agent)
 
         if enable_user_input:
-            # Register get_user_input skill for LLM by assistant agent
+            # Register get_user_input tool for LLM by assistant agent
             self.agent.register_for_llm(
                 description=LLM_PROMPTS["GET_USER_INPUT_PROMPT"]
             )(get_user_input)
-            # Register get_user_input skill for execution by user_proxy_agent
+            # Register get_user_input tool for execution by user_proxy_agent
             user_proxy_agent.register_for_execution()(get_user_input)
         else:
-            logger.debug("User input skill is disabled for PlannerAgent")
+            logger.debug("User input tool is disabled for PlannerAgent")
 
         self.agent.register_reply(  # type: ignore
             [autogen.AssistantAgent, None],

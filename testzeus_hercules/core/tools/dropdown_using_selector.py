@@ -6,7 +6,7 @@ from typing import List  # noqa: UP035
 from typing import Annotated
 
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
-from testzeus_hercules.core.skills.skill_registry import skill
+from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.dom_helper import get_element_outer_html
 from testzeus_hercules.utils.dom_mutation_observer import subscribe, unsubscribe
@@ -37,7 +37,7 @@ class SelectOptionEntry:
             raise KeyError(f"{key} is not a valid key")
 
 
-@skill(
+@tool(
     name="select_option",
     description="used to Selects an option from a dropdown or spinner.",
 )
@@ -253,7 +253,7 @@ async def do_select_option(
         return {"summary_message": error, "detailed_message": f"{error} Error: {e}"}
 
 
-@skill(
+@tool(
     name="bulk_select_option",
     description="used to Select an option of multiple dropdowns or spinners in one shot",
 )

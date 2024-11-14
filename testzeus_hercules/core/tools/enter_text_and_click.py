@@ -3,9 +3,9 @@ import inspect
 from typing import Annotated, Any, Optional
 
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
-from testzeus_hercules.core.skills.click_using_selector import do_click
-from testzeus_hercules.core.skills.enter_text_using_selector import do_entertext
-from testzeus_hercules.core.skills.press_key_combination import do_press_key_combination
+from testzeus_hercules.core.tools.click_using_selector import do_click
+from testzeus_hercules.core.tools.enter_text_using_selector import do_entertext
+from testzeus_hercules.core.tools.press_key_combination import do_press_key_combination
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.js_helper import block_ads
 from testzeus_hercules.utils.logger import logger

@@ -91,14 +91,14 @@ YOU CAN'T ASK FOR TASK TERMINATION CONDITION, YOU HAVE TO TAKE THE DECISION OR C
    Important: If you encounter an issues or is unsure how to proceed, simply ##TERMINATE TASK## and provide a detailed summary of the exact issue encountered.
    Do not repeat the same action multiple times if it fails. Instead, if something did not work after a few attempts, terminate the task.""",
     "VERFICATION_AGENT": """Given a conversation and a task, your task is to analyse the conversation and tell if the task is completed. If not, you need to tell what is not completed and suggest next steps to complete the task.""",
-    "ENTER_TEXT_AND_CLICK_PROMPT": """This skill enters text into a specified element and clicks another element, both identified by their DOM selector queries.
+    "ENTER_TEXT_AND_CLICK_PROMPT": """This tool enters text into a specified element and clicks another element, both identified by their DOM selector queries.
    Ideal for seamless actions like submitting search queries, this integrated approach ensures superior performance over separate text entry and click commands.
    Successfully completes when both actions are executed without errors, returning True; otherwise, it provides False or an explanatory message of any failure encountered.
-   Always prefer this dual-action skill for tasks that combine text input and element clicking to leverage its streamlined operation.""",
+   Always prefer this dual-action tool for tasks that combine text input and element clicking to leverage its streamlined operation.""",
     "OPEN_URL_PROMPT": """Opens a specified URL in the web browser instance. Returns url of the new page if successful or appropriate error message if the page could not be opened.""",
     "GO_BACK_PROMPT": """Goes back to previous page in the browser history. Useful when correcting an incorrect action that led to a new page or when needing to revisit a previous page for information. Returns the full URL of the page after the back action is performed.""",
     "COMMAND_EXECUTION_PROMPT": """Execute the user task "$command" $current_url_prompt_segment""",
-    "GET_USER_INPUT_PROMPT": """Get clarification by asking the user or wait for user to perform an action on webpage. This is useful e.g. when you encounter a login or captcha and requires the user to intervene. This skill will also be useful when task is ambigious and you need more clarification from the user (e.g. ["which source website to use to accomplish a task"], ["Enter your credentials on your webpage and type done to continue"]). Use this skill very sparingly and only when absolutely needed.""",
+    "GET_USER_INPUT_PROMPT": """Get clarification by asking the user or wait for user to perform an action on webpage. This is useful e.g. when you encounter a login or captcha and requires the user to intervene. This tool will also be useful when task is ambigious and you need more clarification from the user (e.g. ["which source website to use to accomplish a task"], ["Enter your credentials on your webpage and type done to continue"]). Use this tool very sparingly and only when absolutely needed.""",
     "GET_DOM_WITHOUT_CONTENT_TYPE_PROMPT": """Retrieves the DOM of the current web browser page.
    Each DOM element will have an \"mmid\" attribute injected for ease of DOM interaction.
    Returns a minified representation of the HTML DOM where each HTML DOM Element has an attribute called \"mmid\" for ease of DOM query selection. When \"mmid\" attribute is available, use it for DOM query selectors.""",
@@ -127,11 +127,11 @@ YOU CAN'T ASK FOR TASK TERMINATION CONDITION, YOU HAVE TO TAKE THE DECISION OR C
     "PRESS_KEY_COMBINATION_PROMPT": """Presses the given key on the current web page.
    This is useful for pressing the enter button to submit a search query, PageDown to scroll, ArrowDown to change selection in a focussed list etc.""",
     "ADD_TO_MEMORY_PROMPT": """"Save any information that you may need later in this term memory. This could be useful for saving things to do, saving information for personalisation, or even saving information you may need in future for efficiency purposes E.g. Remember to call John at 5pm, This user likes Tesla company and considered buying shares, The user enrollment form is available in <url> etc.""",
-    "HOVER_PROMPT": """Hover on a element with the given mmid attribute value. Hovering on an element can reveal additional information such as a tooltip or trigger a dropdown menu with different navigation options. The skill will return tooltop details as well, so focus on that during the execution""",
+    "HOVER_PROMPT": """Hover on a element with the given mmid attribute value. Hovering on an element can reveal additional information such as a tooltip or trigger a dropdown menu with different navigation options. The tool will return tooltop details as well, so focus on that during the execution""",
     "GET_MEMORY_PROMPT": """Retrieve all the information previously stored in the memory""",
     "PRESS_ENTER_KEY_PROMPT": """Presses the enter key in the given html field. This is most useful on text input fields.""",
     "EXTRACT_TEXT_FROM_PDF_PROMPT": """Extracts text from a PDF file hosted at the given URL.""",
-    "BROWSER_AGENT_NO_SKILLS_PROMPT": """You are an autonomous agent tasked with performing web navigation on a Playwright instance, including logging into websites and executing other web-based actions.
+    "BROWSER_AGENT_NO_TOOLS_PROMPT": """You are an autonomous agent tasked with performing web navigation on a Playwright instance, including logging into websites and executing other web-based actions.
    You will receive user commands, formulate a plan and then write the PYTHON code that is needed for the task to be completed.
    It is possible that the code you are writing is for one step at a time in the plan. This will ensure proper execution of the task.
    Your operations must be precise and efficient, adhering to the guidelines provided below:
