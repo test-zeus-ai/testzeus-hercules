@@ -1,13 +1,9 @@
 Feature: Check multilingual test execution
-  #Home page URL is https://www.unishanoi.org/about
-  Scenario: User checks the language change to vietnamese
-    Given a user is on the Unishanoi home page
-    When the user clicks on the British flag icon with "English" button
-    And the user selects "Tiếng Việt" as the locale option
-    Then the user should be able to find the header text as "Giới thiệu về UNIS Hà nội" on the page
-      
-    Kịch bản: Người dùng kiểm tra thay đổi ngôn ngữ sang tiếng Việt
-    Giả sử người dùng đang ở trên trang chủ Unishanoi
-    Khi người dùng nhấp vào biểu tượng lá cờ Anh với nút "English"
-    Và người dùng chọn "Tiếng Việt" làm tùy chọn ngôn ngữ
-    Thì người dùng sẽ thấy tiêu đề là "Giới thiệu về UNIS Hà nội" trên trang
+ Scenario: Verify if the "ホンダ・インテグラ" was sold in 2009
+    Given I am on the https://ja.wikipedia.org/
+    When I search for "ホンダ・インテグラ"
+    Then I should see the search results for "ホンダ・インテグラ"
+    And I select the page for "ホンダ・インテグラ" from the search results
+    Then I should see information about the "ホンダ・インテグラ" on the page
+    And I should find the active sales period of "ホンダ・インテグラ" 
+    And then check is should not be sold in 2009

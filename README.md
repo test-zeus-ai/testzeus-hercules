@@ -451,7 +451,7 @@ make test
 To run a specific test:
 
 ```bash
-make test TEST=<test_name>
+make test-case
 ```
 
 Hercules builds on the work done by WebArena and Agent-E, and beyond that, to iron out the issues in the previous, we have written our own test cases catering to complex QA scenarios and have created tests in the `./tests` folder.

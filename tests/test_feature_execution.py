@@ -43,7 +43,9 @@ def test_feature_execution(feature_folder: str) -> None:
             check=True,
             capture_output=True,
             env=load_env_in_dict | dict(os.environ),
+            encoding="utf-8",
             text=True,
+            errors="replace",
         )
         print(f"Standard Output:\n{result.stdout}")
         print(f"Standard Error:\n{result.stderr}")
@@ -73,7 +75,7 @@ def test_generate_final_report() -> None:
     """
     After all tests, generate a final report.
     """
-    with open("run_data/results.xml", "w", encoding="utf-16") as final_report:
+    with open("run_data/results.xml", "w", encoding="utf-8") as final_report:
         final_report.write("<testResults>\n")
         # Summarize individual test logs here
         final_report.write("</testResults>\n")

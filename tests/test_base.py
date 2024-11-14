@@ -76,7 +76,7 @@ def compare_results(expected_file: str, actual_folder: str) -> bool:
                 skipped = suite.attrib.get("skipped")
 
                 # Write expected format to file
-                with open(expected_file, "w", encoding="utf-16") as ef:
+                with open(expected_file, "w", encoding="utf-8") as ef:
                     ef.write(f'tests="{tests}" errors="{errors}" failures="{failures}" skipped="{skipped}"\n')
                 logging.warning(
                     "%s was missing. Created a new expected file with values from %s.",
@@ -91,16 +91,21 @@ def compare_results(expected_file: str, actual_folder: str) -> bool:
 
     def parse_expected_file() -> dict[str, str] | None:
         """Parse the expected file to extract values."""
-        with open(expected_file, "r", encoding="utf-16") as file:
-            content = file.read()
-            try:
-                values = dict(item.split("=") for item in content.strip().split())
-                # Strip quotes around values
-                values = {k: v.strip('"') for k, v in values.items()}
-                return values
-            except ValueError as e:
-                logging.error("Error parsing expected file %s: %s", expected_file, e)
-                return None
+
+        try:
+            with open(expected_file, "r", encoding="utf-8") as file:
+                content = file.read()
+        except UnicodeDecodeError:
+            with open(expected_file, "r", encoding="utf-16") as file:
+                content = file.read()
+        try:
+            values = dict(item.split("=") for item in content.strip().split())
+            # Strip quotes around values
+            values = {k: v.strip('"') for k, v in values.items()}
+            return values
+        except ValueError as e:
+            logging.error("Error parsing expected file %s: %s", expected_file, e)
+            return None
 
     actual_file = os.path.join(actual_folder, "test.feature_result.xml")
     if not os.path.exists(expected_file):

@@ -34,9 +34,14 @@ lint: fmt             ## Run pep8, black, mypy linters.
 
 .PHONY: test
 test: lint        ## Run tests and generate coverage report.
-	poetry run pytest -v --junit-xml=test_output.xml --cov-config .coveragerc --cov=testzeus_hercules -l --tb=short --maxfail=1 tests/
+	poetry run pytest -v --junit-xml=tests/test_output.xml --cov-config .coveragerc --cov=testzeus_hercules -l --tb=short --maxfail=1 tests/
 	poetry run coverage xml
 	poetry run coverage html
+
+.PHONY: test-case  ## Run selective test case.
+test-case: lint     ## Run a specific test case.
+	@read -p "Enter the test case (e.g., multilingual): " TEST_CASE && \
+	poetry run pytest -v --pdb tests/test_feature_execution.py::test_feature_execution[$$TEST_CASE]
 
 .PHONY: watch
 watch:            ## Run tests on every change.

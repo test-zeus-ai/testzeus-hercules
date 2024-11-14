@@ -37,7 +37,10 @@ async def enter_text_and_click(
         str,
         "The properly formatted DOM selector query, for example [mmid='1234'], for the element that will be clicked after text entry.",
     ],
-    user_input_dialog_response: Annotated[Optional[str], "The input response to a dialog box."],
+    user_input_dialog_response: Annotated[
+        Optional[str],
+        "The input response to a dialog box. THIS SHOULD NOT HAVE RANDOM VALUE BUT ONLY AS PER THE TEST INPUT",
+    ],
     expected_message_of_dialog: Annotated[Optional[str], "The expected message of the dialog box when it opens."],
     action_on_dialog: Annotated[
         Optional[str],
@@ -75,32 +78,30 @@ async def enter_text_and_click(
 
     async def handle_dialog(dialog: Any) -> None:
         try:
+            await asyncio.sleep(0.5)
             data = get_page_data(page)
             user_input_dialog_response = data.get("user_input_dialog_response")
             expected_message_of_dialog = data.get("expected_message_of_dialog")
-            action_on_dialog = data.get("action_on_dialog")
-            print(f"Dialog message: {dialog.message}")
+            action_on_dialog = data.get("action_on_dialog").strip().lower()
+            logger.info(f"Dialog message: {dialog.message}")
 
             # Check if the dialog message matches the expected message (if provided)
             if expected_message_of_dialog and dialog.message != expected_message_of_dialog:
-                print(f"Dialog message does not match the expected message: {expected_message_of_dialog}")
-                await dialog.dismiss()  # Dismiss if the dialog message doesn't match
-                return
-
-            # Perform the specified action on the dialog
-            if action_on_dialog == "accept":
-                # Accept the dialog and provide input if it's a prompt and input is specified
-                if dialog.type == "prompt" and user_input_dialog_response:
+                logger.error(f"Dialog message does not match the expected message: {expected_message_of_dialog}")
+                if action_on_dialog == "accept":
                     await dialog.accept(user_input_dialog_response)
                 else:
-                    await dialog.accept()
-            elif action_on_dialog == "dismiss":
-                await dialog.dismiss()
+                    await dialog.dismiss()  # Dismiss if the dialog message doesn't match
+                return
+
+            if action_on_dialog == "accept":
+                await dialog.accept(user_input_dialog_response)
             else:
-                print("Invalid action specified for dialog. Only 'accept' or 'dismiss' are allowed.")
-                await dialog.dismiss()  # Default to dismiss if action is invalid
+                await dialog.dismiss()
+
         except Exception as e:
             logger.info(f"Error handling dialog: {e}")
+            await dialog.accept(user_input_dialog_response)
 
     if page is None:  # type: ignore
         logger.error("No active page found")
