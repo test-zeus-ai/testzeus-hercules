@@ -14,7 +14,7 @@ Our mission? To **democratize and disrupt test automation**, making top-tier tes
 
 ## Features
 
-![Hercules Features](https://github.com/user-attachments/assets/af192e81-5b2e-4cb4-8a7c-0f336647e50b)
+![Hercules Features](statics/assets/hercules.svg)
 
 ### Gherkin In, Results Out
 
