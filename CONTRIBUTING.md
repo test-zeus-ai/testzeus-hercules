@@ -51,12 +51,6 @@ Run `make test` to run the tests.
 
 Ensure code coverage report shows `100%` coverage, add tests to your PR.
 
-## Build the docs locally
-
-Run `make docs` to build the docs.
-
-Ensure your new changes are documented.
-
 ## Commit your changes
 
 This project uses [conventional git commit messages](https://www.conventionalcommits.org/en/v1.0.0/).
@@ -91,7 +85,6 @@ watch:            ## Run tests on every change.
 clean:            ## Clean unused files.
 virtualenv:       ## Create a virtual environment.
 release:          ## Create a new tag for release.
-docs:             ## Build the documentation.
 build:       ## build testzeus_hercules.
 publish:          ## Publish the package to PyPI.
 run:       ## run testzeus_hercules.

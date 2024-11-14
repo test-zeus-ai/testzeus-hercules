@@ -159,7 +159,9 @@ Feature: Account Creation in Salesforce
 
 #### Sample Result Screenshot
 
+##### Sample HTML Result Screenshot
 ![Sample HTML Result](statics/assets/testcase_html.png)
+##### Sample XML Result Screenshot
 ![Sample XML Result](statics/assets/testcase_xml.png)
 
 ---

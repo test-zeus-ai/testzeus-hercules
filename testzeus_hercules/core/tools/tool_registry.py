@@ -24,9 +24,7 @@ def tool(description: str, name: str | None = None) -> Callable[[toolType], tool
     def decorator(func: toolType) -> toolType:
         tool_registry.append(
             {
-                "name": (
-                    name if name else func.__name__
-                ),  # Use provided name or fallback to function name
+                "name": (name if name else func.__name__),  # Use provided name or fallback to function name
                 "func": func,
                 "description": description,
             }

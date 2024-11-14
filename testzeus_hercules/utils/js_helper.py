@@ -1,8 +1,8 @@
 import json
 import re
 
-from testzeus_hercules.utils.logger import logger
 from playwright.async_api import Route
+from testzeus_hercules.utils.logger import logger
 
 
 async def block_ads(route: Route) -> None:

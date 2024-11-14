@@ -1,5 +1,6 @@
 include LICENSE
 include HISTORY.md
+include README.md
 include Containerfile
 graft tests
 graft testzeus_hercules

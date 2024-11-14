@@ -35,9 +35,7 @@ class BaseRunner:
         self.is_running = False
         self.stake_id = stake_id
 
-        self.save_chat_logs_to_files = os.getenv(
-            "SAVE_CHAT_LOGS_TO_FILE", "True"
-        ).lower() in ["true", "1"]
+        self.save_chat_logs_to_files = os.getenv("SAVE_CHAT_LOGS_TO_FILE", "True").lower() in ["true", "1"]
 
         self.planner_agent_name = "planner_agent"
         self.shutdown_event = asyncio.Event()
@@ -58,9 +56,7 @@ class BaseRunner:
             browser_nav_max_chat_round=self.browser_number_of_rounds,
         )
 
-        self.browser_manager = PlaywrightManager(
-            gui_input_mode=False, stake_id=self.stake_id
-        )
+        self.browser_manager = PlaywrightManager(gui_input_mode=False, stake_id=self.stake_id)
         await self.browser_manager.async_initialize()
 
     async def process_command(self, command: str) -> tuple[Any, float]:
@@ -84,19 +80,13 @@ class BaseRunner:
         if command:
             self.is_running = True
             start_time = time.time()
-            current_url = (
-                await self.browser_manager.get_current_url()
-                if self.browser_manager
-                else None
-            )
+            current_url = await self.browser_manager.get_current_url() if self.browser_manager else None
             self.browser_manager.log_user_message(command)  # type: ignore
             result = None
             logger.info(f"Processing command: {command}")
             if self.autogen_wrapper:
                 await self.browser_manager.update_processing_state("processing")  # type: ignore
-                result = await self.autogen_wrapper.process_command(
-                    command, current_url
-                )
+                result = await self.autogen_wrapper.process_command(command, current_url)
                 await self.browser_manager.update_processing_state("done")  # type: ignore
             end_time = time.time()
             elapsed_time = round(end_time - start_time, 2)
@@ -105,11 +95,7 @@ class BaseRunner:
             if result is not None:
                 chat_history = result.chat_history  # type: ignore
                 last_message = chat_history[-1] if chat_history else None  # type: ignore
-                if (
-                    last_message
-                    and "terminate" in last_message
-                    and last_message["terminate"] == "yes"
-                ):
+                if last_message and "terminate" in last_message and last_message["terminate"] == "yes":
                     await self.browser_manager.notify_user(last_message, "answer")  # type: ignore
 
             await self.browser_manager.notify_user(f"Task Completed ({elapsed_time}s).", "info")  # type: ignore
@@ -121,25 +107,19 @@ class BaseRunner:
         """
         Saves chat messages to a file or logs them based on configuration.
         """
-        messages = self.autogen_wrapper.agents_map[
-            self.planner_agent_name
-        ].chat_messages
+        messages = self.autogen_wrapper.agents_map[self.planner_agent_name].chat_messages
         messages_str_keys = {str(key): value for key, value in messages.items()}
 
         if self.save_chat_logs_to_files:
             with open(
-                os.path.join(
-                    get_source_log_folder_path(self.stake_id), "chat_messages.json"
-                ),
+                os.path.join(get_source_log_folder_path(self.stake_id), "chat_messages.json"),
                 "w",
                 encoding="utf-8",
             ) as f:
                 json.dump(messages_str_keys, f, ensure_ascii=False, indent=4)
             logger.debug("Chat messages saved")
         else:
-            logger.info(
-                "Planner chat log: ", extra={"planner_chat_log": messages_str_keys}
-            )
+            logger.info("Planner chat log: ", extra={"planner_chat_log": messages_str_keys})
 
     async def shutdown(self) -> None:
         """
@@ -174,9 +154,7 @@ class CommandPromptRunner(BaseRunner):
         """
         await self.initialize()
         while not self.is_running:
-            command: str = await async_input(
-                "Enter your command (or type 'exit' to quit): "
-            )
+            command: str = await async_input("Enter your command (or type 'exit' to quit): ")
             await self.process_command(command)
             if self.shutdown_event.is_set():
                 break

@@ -1,10 +1,10 @@
 from typing import Annotated, Any, Dict, List, Optional, Union
 
-from testzeus_hercules.core.tools.tool_registry import tool, tool_registry
-from testzeus_hercules.utils.logger import logger
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 from sqlalchemy.sql import text
+from testzeus_hercules.core.tools.tool_registry import tool, tool_registry
+from testzeus_hercules.utils.logger import logger
 
 
 @tool(
@@ -14,12 +14,9 @@ from sqlalchemy.sql import text
 async def execute_select_cte_query_sql(
     connection_string: Annotated[
         str,
-        "The async database connection string in SQLAlchemy format. "
-        "E.g., 'postgresql+asyncpg://user:password@host:port/database'.",
+        "The async database connection string in SQLAlchemy format. " "E.g., 'postgresql+asyncpg://user:password@host:port/database'.",
     ],
-    query: Annotated[
-        str, "The SELECT SQL query to execute. Must start with 'SELECT' or 'WITH'."
-    ],
+    query: Annotated[str, "The SELECT SQL query to execute. Must start with 'SELECT' or 'WITH'."],
     schema: Annotated[
         Optional[str],
         "Optional database schema to use. If not provided, assumes schema is specified in the query.",
