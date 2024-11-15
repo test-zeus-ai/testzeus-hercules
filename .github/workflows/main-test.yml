@@ -10,7 +10,7 @@ env:
 jobs:
   linter_tester:
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         python-version: [3.11]
         os: [ubuntu-latest]
