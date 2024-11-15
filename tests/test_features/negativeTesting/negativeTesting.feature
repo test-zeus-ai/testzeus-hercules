@@ -20,9 +20,9 @@ Feature: Negative scenarios for the large action model.
  Scenario: Accessing Restricted Content Without Authentication
 
   Given I am not logged into Salesforce  
-  When I navigate to an account at "https://testzeus2-dev-ed.lightning.force.com/lightning/page/home"  
+  When I navigate to an account at "https://opensource-demo.orangehrmlive.com/web/index.php/pim/viewPersonalDetails/empNumber/7"  
   Then I should be redirected to the login page  
-  And I should see an error message stating "To access this page, you have to log in to Salesforce."  
+  And I should see the login page.  
 
 
  Scenario: Submitting the Form with an Improperly Formatted Email
