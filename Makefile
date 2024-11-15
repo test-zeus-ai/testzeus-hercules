@@ -108,11 +108,11 @@ setup-poetry:       ## setup poetry.
 .PHONY: docker-build
 docker-build:       ## build and tag docker image.
 	docker build -t testzeus/hercules .
-	@VERSION$(shell poetry version -s) && \
+	@VERSION=$(shell poetry version -s) && \
 	docker tag testzeus/hercules testzeus/hercules:$${VERSION}
 
 .PHONY: docker-publish
 docker-publish:          ## Publish the package to Docker registry.
-	@VERSION$(shell poetry version -s) && \
+	@VERSION=$(shell poetry version -s) && \
 	docker push testzeus/hercules:$${VERSION}
 	docker push testzeus/hercules:latest
