@@ -19,14 +19,19 @@ def parse_response(message: str) -> dict[str, Any]:
         message = message[4:]
 
     message = message.strip()
+    message = message.replace("\\n", "\n")
+    message = message.replace("\n", " ")  # type: ignore
+    # message = message.replace("<tool_call>", "")
+    # message = message.replace("</tool_call>", "")  # type: ignore
     try:
         json_response: dict[str, Any] = json.loads(message)
     except Exception as e:
         # If the response is not a valid JSON, try pass it using string matching.
         # This should seldom be triggered
-        logger.warn(f'LLM response was not properly formed JSON. Will try to use it as is. LLM response: "{message}". Error: {e}')
-        message = message.replace("\\n", "\n")
-        message = message.replace("\n", " ")  # type: ignore
+        logger.warn(
+            f'LLM response was not properly formed JSON. Will try to use it as is. LLM response: "{message}". Error: {e}'
+        )
+
         if "plan" in message and "next_step" in message:
             start = message.index("plan") + len("plan")
             end = message.index("next_step")
@@ -46,7 +51,9 @@ def parse_response(message: str) -> dict[str, Any]:
 
             start = message.index("final_response") + len("final_response")
             end = len(message) - 1
-            json_response["final_response"] = message[start:end].replace('"', "").strip()
+            json_response["final_response"] = (
+                message[start:end].replace('"', "").strip()
+            )
             # json_response["final_response"] += ", You can TERMINATE the execution"
 
         elif "terminate" in message:
