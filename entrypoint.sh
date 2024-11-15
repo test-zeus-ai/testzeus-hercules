@@ -23,4 +23,4 @@ if [ ! -d "/testzeus-hercules/opt" ]; then
 fi
 
 # Execute the main application
-exec poetry run python testzeus_hercules/main.py
+exec poetry run python testzeus_hercules

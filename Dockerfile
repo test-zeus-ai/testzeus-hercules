@@ -10,6 +10,7 @@ WORKDIR /testzeus-hercules
 
 # Copy only the necessary files for installation
 COPY pyproject.toml poetry.lock /testzeus-hercules/
+COPY .cache /testzeus-hercules/
 
 # Install Poetry
 RUN pip install poetry
