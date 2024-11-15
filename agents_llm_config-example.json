@@ -4,22 +4,22 @@
 			"model_name": "mistral",
 			"model_api_key": "",
 			"model_base_url": "https://...",
-            "system_prompt": "You are a web automation task planner....",
             "llm_config_params": {
                 "cache_seed": null,
-                "temperature": 0.1,
-                "top_p": 0.1
+                "temperature": 0.0,
+                "top_p": 0.001,
+                "seed":12345
             }
 		},
 		"browser_nav_agent": {
 			"model_name": "mistral",
 			"model_api_key": "",
 			"model_base_url": "https://...",
-			"system_prompt": "You will perform web navigation tasks with the functions that you have...\nOnce a task is completed, confirm completion with ##TERMINATE TASK##.",
             "llm_config_params": {
                 "cache_seed": null,
-                "temperature": 0.1,
-                "top_p": 0.1
+                "temperature": 0.0,
+                "top_p": 0.001,
+                "seed":12345
             }
 		}
 	},
@@ -47,51 +47,81 @@
             }
 		}
 	},
-    "llama": {
+    "ollama": {
 		"planner_agent": {
-			"model_name": "llama-3.1-70b-versatile",
+			"model_name": "llama3-groq-tool-use",
 			"model_api_key": "",
-			"model_api_type": "groq",
-            "system_prompt": "You are a web automation task planner....",
+			"model_api_type": "ollama",
+            "model_client_host": "http://localhost:11434",
+            "model_native_tool_calls": true,
+            "model_hide_tools": "if_any_run",
             "llm_config_params": {
                 "cache_seed": null,
-                "temperature": 0.1,
-                "top_p": 0.1
+                "temperature": 0.0,
+                "top_p": 0.001,
+                "seed":12345
             }
 		},
 		"browser_nav_agent": {
-			"model_name": "llama-3.1-70b-versatile",
+			"model_name": "llama3-groq-tool-use",
 			"model_api_key": "",
-			"model_api_type": "groq",
-			"system_prompt": "You will perform web navigation tasks with the functions that you have...\nOnce a task is completed, confirm completion with ##TERMINATE TASK##.",
+			"model_api_type": "ollama",
+            "model_client_host": "http://localhost:11434",
+            "model_native_tool_calls": true,
+            "model_hide_tools": "if_any_run",
             "llm_config_params": {
                 "cache_seed": null,
-                "temperature": 0.1,
-                "top_p": 0.1
+                "temperature": 0.0,
+                "top_p": 0.001,
+                "seed":12345
+            }
+		}
+    },
+    "groq": {
+		"planner_agent": {
+			"model_name": "llama3-groq-8b-8192-tool-use-preview",
+			"model_api_key": "",
+			"model_api_type": "groq",
+            "llm_config_params": {
+                "cache_seed": null,
+                "temperature": 0.0,
+                "top_p": 0.001,
+                "seed":12345
+            }
+		},
+		"browser_nav_agent": {
+			"model_name": "llama3-groq-8b-8192-tool-use-preview",
+			"model_api_key": "",
+			"model_api_type": "groq",
+            "llm_config_params": {
+                "cache_seed": null,
+                "temperature": 0.0,
+                "top_p": 0.001,
+                "seed":12345
             }
 		}
     },
     "anthropic": {
 		"planner_agent": {
-			"model_name": "claude-3-opus-20240229",
+			"model_name": "claude-3-5-haiku-latest",
 			"model_api_key": "",
 			"model_api_type": "anthropic",
-            "system_prompt": "You are a web automation task planner....",
             "llm_config_params": {
                 "cache_seed": null,
-                "temperature": 0.1,
-                "top_p": 0.1
+                "temperature": 0.0,
+                "top_p": 0.001,
+                "seed":12345
             }
 		},
 		"browser_nav_agent": {
-			"model_name": "claude-3-opus-20240229",
+			"model_name": "claude-3-5-haiku-latest",
 			"model_api_key": "",
 			"model_api_type": "anthropic",
-			"system_prompt": "You will perform web navigation tasks with the functions that you have...\nOnce a task is completed, confirm completion with ##TERMINATE TASK##.",
             "llm_config_params": {
                 "cache_seed": null,
-                "temperature": 0.1,
-                "top_p": 0.1
+                "temperature": 0.0,
+                "top_p": 0.001,
+                "seed":12345
             }
 		}
     }

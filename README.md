@@ -107,6 +107,7 @@ PROJECT_BASE/
 - `--llm-model LLM_MODEL`: Name of the LLM model to be used by the agent (recommended is `gpt-4o`, but it can take others).
 - `--llm-model-api-key LLM_MODEL_API_KEY`: API key for the LLM model, something like `sk-proj-k.......`.
 
+
 #### Running Hercules
 
 After passing all the required parameters, the command to run Hercules should look like this:
@@ -114,6 +115,13 @@ After passing all the required parameters, the command to run Hercules should lo
 ```bash
 testzeus-hercules --input-file opt/input/test.feature --output-path opt/output --test-data-path opt/test_data --llm-model gpt-4o --llm-model-api-key sk-proj-k.......
 ```
+
+#### Supported AI Models for TestZeus-Hercules
+- Anthropic Haiku: Compatible with Haiku 3.5 and above.
+- Groq: Supports any version with function calling and coding capabilities.
+- Mistral: Supports any version with function calling and coding capabilities.
+- OpenAI: Fully compatible with GPT-4o and above. Note: OpenAI GPT-4o-mini is not supported.
+- Ollama: Not supported based on current testing.
 
 #### Execution Flow
 
