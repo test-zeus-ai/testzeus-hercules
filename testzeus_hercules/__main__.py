@@ -1,4 +1,3 @@
-import argparse
 import asyncio
 import json
 import os
@@ -47,7 +46,9 @@ def sequential_process() -> None:
     feature_file_name = os.path.basename(input_gherkin_file_path)
 
     result_of_tests = []
-    final_result_file_name = f"{get_junit_xml_base_path()}/{feature_file_name}_result.xml"
+    final_result_file_name = (
+        f"{get_junit_xml_base_path()}/{feature_file_name}_result.xml"
+    )
     add_event(EventType.RUN, EventData(detail="Total Runs: " + str(len(list_of_feats))))
     for feat in list_of_feats:
         file_path = feat["output_file"]
@@ -95,73 +96,25 @@ def sequential_process() -> None:
                 proofs_video_path=runner.browser_manager.get_latest_video_path(),
                 network_logs_path=runner.browser_manager.request_response_log_file,
                 logs_path=get_source_log_folder_path(stake_id),
-                planner_thoughts_path=get_source_log_folder_path(stake_id) + "/chat_messages.json",
+                planner_thoughts_path=get_source_log_folder_path(stake_id)
+                + "/chat_messages.json",
             )
         )
     JUnitXMLGenerator.merge_junit_xml(result_of_tests, final_result_file_name)
     logger.info(f"Results published in junitxml file: {final_result_file_name}")
 
     # building html from junitxml
-    final_result_html_file_name = f"{get_junit_xml_base_path()}/{feature_file_name}_result.html"
+    final_result_html_file_name = (
+        f"{get_junit_xml_base_path()}/{feature_file_name}_result.html"
+    )
     prepare_html([final_result_file_name, final_result_html_file_name])
     logger.info(f"Results published in html file: {final_result_html_file_name}")
-
-
-def arguments() -> None:
-    parser = argparse.ArgumentParser(description="Hercules: The World's First Open-Source AI Agent for End-to-End Testing")
-    parser.add_argument("--input-file", type=str, help="Path to the input file.", required=False)
-    parser.add_argument("--output-path", type=str, help="Path to the output directory.", required=False)
-    parser.add_argument(
-        "--test-data-path",
-        type=str,
-        help="Path to the test data directory.",
-        required=False,
-    )
-    parser.add_argument(
-        "--project-base",
-        type=str,
-        help="Path to the project base directory.",
-        required=False,
-    )
-    parser.add_argument(
-        "--llm-model",
-        type=str,
-        help="Name of the LLM model.",
-        required=False,
-    )
-    parser.add_argument(
-        "--llm-model-api-key",
-        type=str,
-        help="API key for the LLM model.",
-        required=False,
-    )
-
-    args = parser.parse_args()
-
-    if args.input_file:
-        os.environ["INPUT_GHERKIN_FILE_PATH"] = args.input_file
-
-    if args.output_path:
-        os.environ["JUNIT_XML_BASE_PATH"] = args.output_path
-
-    if args.test_data_path:
-        os.environ["TEST_DATA_PATH"] = args.test_data_path
-
-    if args.project_base:
-        os.environ["PROJECT_SOURCE_ROOT"] = args.project_base
-
-    if args.llm_model:
-        os.environ["LLM_MODEL_NAME"] = args.llm_model
-
-    if args.llm_model_api_key:
-        os.environ["LLM_MODEL_API_KEY"] = args.llm_model_api_key
 
 
 def main() -> None:
     """
     Main function to run the sequential_process function.
     """
-    arguments()
 
     def is_width_gt_120() -> bool:
         try:
