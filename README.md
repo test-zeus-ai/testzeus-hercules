@@ -1,4 +1,4 @@
-# Hercules
+# 💪 Hercules
 
 [![codecov](https://codecov.io/gh/test-zeus-ai/testzeus-hercules/branch/main/graph/badge.svg?token=testzeus_hercules_token_here)](https://codecov.io/gh/test-zeus-ai/testzeus-hercules)
 [![CI Lint](https://github.com/test-zeus-ai/testzeus-hercules/actions/workflows/main-push.yml/badge.svg)](https://github.com/test-zeus-ai/testzeus-hercules/actions/workflows/main-push.yml)
@@ -12,7 +12,7 @@ Our mission? To **democratize and disrupt test automation**, making top-tier tes
 
 
 
-## Features
+## ⚡️ Features
 
 ![Hercules Features](statics/assets/hercules.svg)
 
@@ -57,7 +57,7 @@ With Hercules, testing is no longer just a step in the process—it's a powerful
 
 ---
 
-## Installation and Usage
+## ⚙️ Installation and Usage
 
 Hercules offers multiple ways to get started, catering to different user preferences and requirements.
 
@@ -368,7 +368,7 @@ To configure Hercules in detail:
 
 ---
 
-## Architecture
+##🦾 Architecture
 
 ### Multi-Agentic Solution
 
@@ -436,7 +436,7 @@ The distillation process is a work in progress. We look to refine this process a
 
 ---
 
-## Testing and Evaluation: QEvals
+##🔬 Testing and Evaluation: QEvals
 
 We wanted to ensure that Hercules stands up to the task of end-to-end testing with immense precision. So, we have run Hercules through a wide range of tests such as running APIs, interacting with complex UI scenarios, clicking through calendars, or iframes. A full list of evaluations can be found in the [tests folder](<Link to tests folder>).
 
@@ -458,7 +458,7 @@ Hercules builds on the work done by WebArena and Agent-E, and beyond that, to ir
 
 ---
 
-## Opinions
+##💡 Opinions
 
 We believe that great quality comes from opinions about a product. So we have incorporated a few of our opinions into the product design. We welcome the community to question them, use them, or build on top of them. Here are some examples:
 
@@ -485,7 +485,7 @@ We believe that great quality comes from opinions about a product. So we have in
 
 ---
 
-## Token Usage
+##🪙 Token Usage
 
 Hercules is an AI-native solution and relies on LLMs to perform reasoning and actions. Based on our experiments, we have found that a complex use case as below could cost up to **$0.20** using OpenAI's APIs gpt-4o, check the properties printed in testcase output to calculate for your testcase:
 
@@ -510,7 +510,7 @@ Feature: Account Creation in Salesforce
 
 ---
 
-## Difference from Other Tools
+##⭐️ Difference from Other Tools
 
 Hercules isn't just another testing tool—it's an **agent of change**. Powered by synthetic intelligence that can **think, reason, and react** based on requirements, Hercules goes beyond simple automation scripts. We bring an industry-first approach to open-source agents. This means faster, smarter, and more resilient testing cycles, especially for complex platforms.
 
@@ -518,7 +518,7 @@ With **industry-leading performance** and a fully open-source foundation, Hercul
 
 ---
 
-## High-Level Roadmap
+##🚀 High-Level Roadmap
 
 - **Enhanced LLM Support**: Integration with more LLMs and support for local LLM deployments.
 - **Advanced Tooling**: Addition of more tools to handle complex testing scenarios and environments.
@@ -529,7 +529,7 @@ With **industry-leading performance** and a fully open-source foundation, Hercul
 
 ---
 
-## Contribution
+##🤗 Contribution
 
 We welcome contributions from the community!
 
@@ -574,20 +574,20 @@ We welcome contributions from the community!
 
 ---
 
-## Contact Us
+##🤙 Contact Us
 
 Join us at our [Discord server](https://discord.gg/4fyEMWVD) to connect with the community, ask questions, and contribute.
 
 ---
 
-## Examples
+##✍️ Examples
 
 - **Salesforce Examples**: [Link](tests/test_features/ebikes/ebikes.feature)
 - **Wrangler Example**: [Link](tests/test_features/productSearch/productSearch.feature)
 
 ---
 
-## Credits
+##🙇 Credits
 
 Hercules would not have been possible without the great work from the following sources:
 
@@ -600,13 +600,6 @@ The Hercules project is inferred and enhanced over the existing project of [Agen
 
 Hercules also picks some inspiration from the legacy TestZeus repo [here](https://www.testzeus.org).
 
----
-
-## Open Core and Open Source
-
-TestZeus operates as an open-core company, blending open-source and proprietary components to deliver a robust software testing platform. At the heart of its open-source offering is Hercules, a powerful tool designed to autonomously execute tests using tools such as browsers or APIs, enabling faster and more reliable testing processes for developers and QA teams.
-
-By open-sourcing Hercules (licensed under AGPL v3), TestZeus invites contributions from the community while offering the testing platform with other agents as a commercial product. This open-core approach allows TestZeus to drive innovation and foster a collaborative ecosystem, empowering companies to build quality software with agility and transparency.
 
 ---
 
