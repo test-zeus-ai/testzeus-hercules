@@ -487,7 +487,7 @@ We believe that great quality comes from opinions about a product. So we have in
 
 ## Token Usage
 
-Hercules is an AI-native solution and relies on LLMs to perform reasoning and actions. Based on our experiments, we have found that a complex use case as below could cost up to **$3** using OpenAI's APIs:
+Hercules is an AI-native solution and relies on LLMs to perform reasoning and actions. Based on our experiments, we have found that a complex use case as below could cost up to **$0.20** using OpenAI's APIs gpt-4o, check the properties printed in testcase output to calculate for your testcase:
 
 ```gherkin
 Feature: Account Creation in Salesforce
