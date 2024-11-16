@@ -4,9 +4,13 @@
 [![CI Lint](https://github.com/test-zeus-ai/testzeus-hercules/actions/workflows/main-push.yml/badge.svg)](https://github.com/test-zeus-ai/testzeus-hercules/actions/workflows/main-push.yml)
 [![CI Test](https://github.com/test-zeus-ai/testzeus-hercules/actions/workflows/main-test.yml/badge.svg)](https://github.com/test-zeus-ai/testzeus-hercules/actions/workflows/main-test.yml)
 
-Welcome to **Hercules**, the **world's first open-source testing agent** that's here to lift your testing burdens with the strength of a mythological hero! Imagine a tool with assert capabilities so sharp, it can **navigate the web like a seasoned explorer**—that's Hercules for you. Whether you're a tester, SDET, QA maestro, or an automation engineer, we're putting the **power directly into your hands**, empowering you to conquer even the most complex testing challenges.
+Testing modern web applications can be difficult, with frequent changes and complex features making it hard to keep up. That’s where **Hercules** comes in. Hercules is the world’s first open-source testing agent, built to handle the toughest testing tasks so you don’t have to. It turns simple, easy-to-write Gherkin steps into fully automated tests—no coding skills needed. Whether you’re working with tricky platforms like Salesforce or running tests in your CI/CD pipeline, Hercules adapts to your needs and takes care of the details. With Hercules, testing becomes simple, reliable, and efficient, helping teams everywhere deliver better software.
 
-At Hercules, we believe that **trustworthy and open-source code** is the backbone of innovation. That's why we've built Hercules to be transparent, reliable, and community-driven.
+Using Hercules is as simple as feeding in your Gherkin features, and getting the results:
+
+![Hercules usage](statics/assets/hercules.svg)
+
+At [TestZeus](www.testzeus.com), we believe that **trustworthy and open-source code** is the backbone of innovation. That's why we've built Hercules to be transparent, reliable, and community-driven.
 
 Our mission? To **democratize and disrupt test automation**, making top-tier testing accessible to everyone, not just the elite few. No more gatekeeping—everyone deserves a hero on their testing team!
 
@@ -14,7 +18,7 @@ Our mission? To **democratize and disrupt test automation**, making top-tier tes
 
 ## ⚡️ Features
 
-![Hercules Features](statics/assets/hercules.svg)
+Hercules is production ready, and packs a punch with features:
 
 ### Gherkin In, Results Out
 
