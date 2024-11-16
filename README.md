@@ -4,7 +4,7 @@
 [![CI Lint](https://github.com/test-zeus-ai/testzeus-hercules/actions/workflows/main-push.yml/badge.svg)](https://github.com/test-zeus-ai/testzeus-hercules/actions/workflows/main-push.yml)
 [![CI Test](https://github.com/test-zeus-ai/testzeus-hercules/actions/workflows/main-test.yml/badge.svg)](https://github.com/test-zeus-ai/testzeus-hercules/actions/workflows/main-test.yml)
 
-Testing modern web applications can be difficult, with frequent changes and complex features making it hard to keep up. That’s where **Hercules** comes in. Hercules is the world’s first open-source testing agent, built to handle the toughest testing tasks so you don’t have to. It turns simple, easy-to-write Gherkin steps into fully automated tests—no coding skills needed. Whether you’re working with tricky platforms like Salesforce or running tests in your CI/CD pipeline, Hercules adapts to your needs and takes care of the details. With Hercules, testing becomes simple, reliable, and efficient, helping teams everywhere deliver better software.
+Testing modern web applications can be difficult, with frequent changes and complex features making it hard to keep up. That’s where **Hercules** comes in. Hercules is the world’s first open-source testing agent, built to handle the toughest testing tasks so you don’t have to. It turns simple, easy-to-write Gherkin steps into fully automated **end to end** tests—no coding skills needed. Whether you’re working with tricky platforms like Salesforce or running tests in your CI/CD pipeline, Hercules adapts to your needs and takes care of the details. With Hercules, testing becomes simple, reliable, and efficient, helping teams everywhere deliver better software.
 
 Using Hercules is as simple as feeding in your Gherkin features, and getting the results:
 
@@ -524,7 +524,7 @@ Feature: Account Creation in Salesforce
 
 ## ⭐️ Difference from Other Tools
 
-Hercules isn't just another testing tool—it's an **agent of change**. Powered by synthetic intelligence that can **think, reason, and react** based on requirements, Hercules goes beyond simple automation scripts. We bring an industry-first approach to open-source agents. This means faster, smarter, and more resilient testing cycles, especially for complex platforms.
+Hercules isn't just another testing tool—it's an **agent**. Powered by synthetic intelligence that can **think, reason, and react** based on requirements, Hercules goes beyond simple automation scripts. We bring an industry-first approach to open-source agents for **software testing**. This means faster, smarter, and more resilient testing cycles, especially for complex platforms.
 
 With **industry-leading performance** and a fully open-source foundation, Hercules combines powerful capabilities with community-driven flexibility, making top-tier testing accessible and transformative for everyone.
 
