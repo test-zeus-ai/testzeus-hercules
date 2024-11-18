@@ -493,6 +493,8 @@ We believe that great quality comes from opinions about a product. So we have in
 
 3. **Open Core and Open Source**: Hercules is built on an **open-core model**, combining the spirit of open source with the support and expertise of a commercial company, **TestZeus**. By providing Hercules as open source (licensed under AGPL v3), TestZeus is committed to empowering the testing community with a robust, adaptable tool that's freely accessible and modifiable. Open source offers transparency, trust, and collaborative potential, allowing anyone to dive into the code, contribute, and shape the project's direction.
 
+4. **Telemetry** : All great products are built on good feedback. We have setup telemetry so that we can take feedback, without disturbing the user. Telemetry is enabled by default, but we also believe strongly in the values of "Trust" and "Transparency" so it can be turned off by the users.
+
 ---
 
 ## 🪙 Token Usage
