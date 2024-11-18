@@ -1,6 +1,5 @@
 # 💪 Hercules
 
-[![codecov](https://codecov.io/gh/test-zeus-ai/testzeus-hercules/branch/main/graph/badge.svg?token=testzeus_hercules_token_here)](https://codecov.io/gh/test-zeus-ai/testzeus-hercules)
 [![CI Lint](https://github.com/test-zeus-ai/testzeus-hercules/actions/workflows/main-push.yml/badge.svg)](https://github.com/test-zeus-ai/testzeus-hercules/actions/workflows/main-push.yml)
 [![CI Test](https://github.com/test-zeus-ai/testzeus-hercules/actions/workflows/main-test.yml/badge.svg)](https://github.com/test-zeus-ai/testzeus-hercules/actions/workflows/main-test.yml)
 
