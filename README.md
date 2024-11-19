@@ -14,54 +14,13 @@ Our mission? To **democratize and disrupt test automation**, making top-tier tes
 
 
 
-## ⚡️ Features
-
-Hercules is production ready, and packs a punch with features:
-
-### Gherkin In, Results Out
-
-Hercules makes testing as simple as Gherkin in, results out. Just feed your end-to-end tests in Gherkin format, and watch Hercules spring into action. It takes care of the heavy lifting by running your tests automatically and presenting results in a neat JUnit format. No manual steps, no fuss—just efficient, seamless testing.
-
-### Free and Open Source
-
-With Hercules, you're harnessing the power of open source with zero licensing fees. Feel free to dive into the code, contribute, or customize it to your heart's content. Hercules is as free as it is mighty, giving you the flexibility and control you need.
-
-### Salesforce Ready
-
-Built to handle the most intricate UIs, Hercules conquers Salesforce and other complex platforms with ease. Whether it's complicated DOM or running your SOQL or Apex, Hercules is ready and configurable.
-
-### No Code Required
-
-Say goodbye to complex scripts and elusive locators. Hercules is here to make your life easier with its no-code approach, taking care of the automation of Gherkin features so you can focus on what matters most—building quality software.
-
-### Multilingual
-
-With multilingual support right out of the box, Hercules is ready to work with teams across the globe. Built to bridge language gaps, it empowers diverse teams to collaborate effortlessly on a unified testing platform.
-
-### Precisely Accurate
-
-Hercules records video of the execution, and captures network logs as well, so that you dont have to deal with "It works on my computer".
-
-
-### No Maintenance
-
-Autonomous and adaptive, Hercules takes care of itself with auto-healing capabilities. Forget about tedious maintenance—Hercules adjusts to changes and stays focused on achieving your testing goals.
-
-### UI Assertions
-
-Grounded in the powerful foundations of TestZeus, Hercules tackles UI assertions with unwavering focus, ensuring that no assertion goes unchecked and no bug goes unnoticed. It's thorough, it's sharp, and it's ready for action.
-
-### CI/CD Ready
-
-Run Hercules locally or integrate it seamlessly into your CI/CD pipeline. Docker-native and one-command ready, Hercules fits smoothly into your deployment workflows, keeping testing quick, consistent, and hassle-free.
-
-With Hercules, testing is no longer just a step in the process—it's a powerful, streamlined experience that brings quality to the forefront.
-
----
 
 ## ⚙️ Installation and Usage
 
 Hercules offers multiple ways to get started, catering to different user preferences and requirements.
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1YiZsXem1POTwkcr17QqflXnihhuSqwM2?usp=sharing)
+- **Note**: Colab might ask you to restart the session as python3.11 and some libs are installed during the installation of testzeus-hercules. Please restart the session if required and continue the execution.
 
 ### Approach 1: Using PyPI Package
 
@@ -377,6 +336,53 @@ To configure Hercules in detail:
 - **Note**: This option should be ignored until you are sure what you are doing. Discuss with us while playing around with these options in our Discord communication.
 
 ---
+
+
+## ⚡️ Features
+
+Hercules is production ready, and packs a punch with features:
+
+### Gherkin In, Results Out
+
+Hercules makes testing as simple as Gherkin in, results out. Just feed your end-to-end tests in Gherkin format, and watch Hercules spring into action. It takes care of the heavy lifting by running your tests automatically and presenting results in a neat JUnit format. No manual steps, no fuss—just efficient, seamless testing.
+
+### Free and Open Source
+
+With Hercules, you're harnessing the power of open source with zero licensing fees. Feel free to dive into the code, contribute, or customize it to your heart's content. Hercules is as free as it is mighty, giving you the flexibility and control you need.
+
+### Salesforce Ready
+
+Built to handle the most intricate UIs, Hercules conquers Salesforce and other complex platforms with ease. Whether it's complicated DOM or running your SOQL or Apex, Hercules is ready and configurable.
+
+### No Code Required
+
+Say goodbye to complex scripts and elusive locators. Hercules is here to make your life easier with its no-code approach, taking care of the automation of Gherkin features so you can focus on what matters most—building quality software.
+
+### Multilingual
+
+With multilingual support right out of the box, Hercules is ready to work with teams across the globe. Built to bridge language gaps, it empowers diverse teams to collaborate effortlessly on a unified testing platform.
+
+### Precisely Accurate
+
+Hercules records video of the execution, and captures network logs as well, so that you dont have to deal with "It works on my computer".
+
+
+### No Maintenance
+
+Autonomous and adaptive, Hercules takes care of itself with auto-healing capabilities. Forget about tedious maintenance—Hercules adjusts to changes and stays focused on achieving your testing goals.
+
+### UI Assertions
+
+Grounded in the powerful foundations of TestZeus, Hercules tackles UI assertions with unwavering focus, ensuring that no assertion goes unchecked and no bug goes unnoticed. It's thorough, it's sharp, and it's ready for action.
+
+### CI/CD Ready
+
+Run Hercules locally or integrate it seamlessly into your CI/CD pipeline. Docker-native and one-command ready, Hercules fits smoothly into your deployment workflows, keeping testing quick, consistent, and hassle-free.
+
+With Hercules, testing is no longer just a step in the process—it's a powerful, streamlined experience that brings quality to the forefront.
+
+---
+
 
 ## 🦾 Architecture
 
