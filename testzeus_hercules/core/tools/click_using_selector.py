@@ -498,19 +498,19 @@ async def perform_javascript_click(
                         element.dispatchEvent(event);
                     } else {
                         // Default to left click
-                        event = new MouseEvent('click', {
-                            bubbles: true,
-                            cancelable: true,
-                            view: window,
-                            button: 0 // 0 represents the left mouse button
-                        });
-                        element.dispatchEvent(event);
+                        // event = new MouseEvent('click', {
+                        //     bubbles: true,
+                        //     cancelable: true,
+                        //     view: window,
+                        //     button: 0 // 0 represents the left mouse button
+                        // });
+                        // element.dispatchEvent(event);
                         element.click();
                     }
 
                     
 
-                    let ariaExpandedAfterClick = element.getAttribute('aria-expanded');
+                    ariaExpandedAfterClick = element.getAttribute('aria-expanded');
                     if (ariaExpandedBeforeClick === 'false' && ariaExpandedAfterClick === 'true') {
                         return "Executed " + type_of_click + " on element with selector: " + selector + ". Very important: As a consequence, a menu has appeared where you may need to make further selection. Very important: Get all_fields DOM to complete the action.";
                     }
