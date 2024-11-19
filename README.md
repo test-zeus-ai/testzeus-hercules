@@ -588,7 +588,7 @@ We welcome contributions from the community!
 
 ## 🤙 Contact Us
 
-Join us at our [Discord server](https://discord.gg/4fyEMWVD) to connect with the community, ask questions, and contribute.
+Join us at our [Discord server](https://discord.gg/JhSAGhfR55) to connect with the community, ask questions, and contribute.
 
 ---
 
