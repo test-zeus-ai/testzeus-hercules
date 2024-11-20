@@ -333,7 +333,7 @@ To configure Hercules in detail:
 
 - The key is the name of the spec that is passed in `AGENTS_LLM_CONFIG_FILE_REF_KEY`, whereas the Hercules information is passed in sub-dicts `planner_agent` and `browser_nav_agent`.
 
-- **Note**: This option should be ignored until you are sure what you are doing. Discuss with us while playing around with these options in our Discord communication.
+- **Note**: This option should be ignored until you are sure what you are doing. Discuss with us while playing around with these options in our Slack communication. Join us at our [Slack](https://join.slack.com/t/testzeuscommunityhq/shared_invite/zt-2v2br8wog-FAmo_76xRHx~k~1oNaGQ0Q)
 
 ---
 
@@ -594,7 +594,7 @@ We welcome contributions from the community!
 
 ## 🤙 Contact Us
 
-Join us at our [Discord server](https://discord.gg/JhSAGhfR55) to connect with the community, ask questions, and contribute.
+Join us at our [Slack](https://join.slack.com/t/testzeuscommunityhq/shared_invite/zt-2v2br8wog-FAmo_76xRHx~k~1oNaGQ0Q) to connect with the community, ask questions, and contribute.
 
 ---
 
