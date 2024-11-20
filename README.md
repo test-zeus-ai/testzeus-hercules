@@ -19,8 +19,10 @@ Our mission? To **democratize and disrupt test automation**, making top-tier tes
 
 Hercules offers multiple ways to get started, catering to different user preferences and requirements.
 
+
+For a quick taste of the solution, you can try the notebook here: 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1YiZsXem1POTwkcr17QqflXnihhuSqwM2?usp=sharing)
-- **Note**: Colab might ask you to restart the session as python3.11 and some libs are installed during the installation of testzeus-hercules. Please restart the session if required and continue the execution.
+- **Note**: Colab might ask you to restart the session as python3.11 and some libs are installed during the installation of testzeus-hercules. Please restart the session if required and continue the execution. Also , we recommend one of the approaches below for getting the full flavor of the solution. 
 
 ### Approach 1: Using PyPI Package
 
