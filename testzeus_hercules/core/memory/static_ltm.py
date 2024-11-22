@@ -3,6 +3,7 @@ from typing import Optional
 
 from testzeus_hercules.config import get_test_data_path
 from testzeus_hercules.utils.logger import logger
+from testzeus_hercules.core.memory.state_handler import get_stored_data
 
 
 class StaticLTM:
@@ -31,13 +32,22 @@ class StaticLTM:
             file_path = os.path.join(test_data_path, filename)
             if os.path.isfile(file_path):
                 # Check if the file is a non-text file
-                if not filename.endswith((".txt", ".json", ".csv", ".rft", ".yaml", ".yml")):
+                if not filename.endswith(
+                    (".txt", ".json", ".csv", ".rft", ".yaml", ".yml")
+                ):
                     logger.info("Skipping non-text file: %s", file_path)
                     continue
+                new_read = ""
                 with open(file_path, "r", encoding="utf-8") as file:
-                    consolidated_data += file.read() + "\n"
+                    data = file.read()
+                    data = data.replace("  ", " ").replace("    ", " ").strip()
+                    if data:
+                        new_read += (
+                            f"following is test_data from {filename}\n" + data + "\n"
+                        )
                     logger.info("Test data loaded from: %s", file_path)
-        return consolidated_data
+                consolidated_data += new_read
+        return consolidated_data + "\nStored Data:" + get_stored_data()
 
     def get_user_ltm(self) -> Optional[str]:
         """
