@@ -38,6 +38,7 @@ class SelectOptionEntry:
 
 
 @tool(
+    agent_names=["browser_nav_agent"],
     name="select_option",
     description="used to Selects an option from a dropdown or spinner.",
 )
@@ -254,6 +255,7 @@ async def do_select_option(
 
 
 @tool(
+    agent_names=["browser_nav_agent"],
     name="bulk_select_option",
     description="used to Select an option of multiple dropdowns or spinners in one shot",
 )

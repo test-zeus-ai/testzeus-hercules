@@ -8,6 +8,7 @@ from testzeus_hercules.utils.logger import logger
 
 ## Uncomment this tool if you need to create a resource using an HTTP API
 @tool(
+    agent_names=["api_nav_agent"],
     name="create_resource_http_api",
     description="Only when instruction says call an API to create an entity in the remote system, then use this tool. Should be used for POST requests.",
 )
@@ -77,6 +78,7 @@ async def create_resource_http_api(
 
 
 @tool(
+    agent_names=["api_nav_agent"],
     name="read_resource_http_api",
     description="Only when instruction says call an API to read entities from the remote system, then use this tool, Should be used for GET requests.",
 )
@@ -142,6 +144,7 @@ async def read_resource_http_api(
 
 ## Uncomment this tool if you need to update a resource using an HTTP API
 @tool(
+    agent_names=["api_nav_agent"],
     name="update_resource_http_api",
     description="Only when instruction says call an API to update an entity in the remote system, then use this tool. Should be used for PUT requests.",
 )
@@ -212,6 +215,7 @@ async def update_resource_http_api(
 
 ## Uncomment this tool if you need to patch a resource using an HTTP API
 @tool(
+    agent_names=["api_nav_agent"],
     name="patch_resource_http_api",
     description="Only when instruction says call an API to patch an entity in the remote system, then use this tool. Should be used for PUT requests.",
 )
@@ -282,6 +286,7 @@ async def patch_resource_http_api(
 
 ## Uncomment this tool if you need to delete a resource using an HTTP API
 @tool(
+    agent_names=["api_nav_agent"],
     name="delete_resource_http_api",
     description="Only when instruction says call an API to delete an entity in the remote system, then use this tool. Should be used for DELETE requests.",
 )

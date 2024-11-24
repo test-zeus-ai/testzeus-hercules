@@ -8,6 +8,7 @@ _state_string: str = ""
 
 
 @tool(
+    agent_names=["browser_nav_agent", "api_nav_agent", "sql_nav_agent"],
     description="Tool to store information.",
     name="store_data",
 )
@@ -30,10 +31,11 @@ def store_data(
         return {"error": str(e)}
 
 
-@tool(
-    description="Tool to retrieve the stored information.",
-    name="get_stored_data",
-)
+# @tool(
+#     agent_names=["browser_nav_agent", "api_nav_agent", "sql_nav_agent"],
+#     description="Tool to retrieve the stored information.",
+#     name="get_stored_data",
+# )
 def get_stored_data() -> Annotated[
     Union[str, Dict[str, str]],
     "The stored value.",

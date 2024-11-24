@@ -1,0 +1,6 @@
+Salesforce login details:
+url: login.salesforce.com
+username: test10zeus@gmail.com
+password: Salesforce@124
+
+USERS_API: https://fakestoreapi.com/users
