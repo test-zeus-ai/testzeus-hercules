@@ -13,12 +13,8 @@ from testzeus_hercules.utils.logger import logger
     description="solves captcha on the page, should be only used when you are sure that there is a captcha on the page and has to be solved.",
 )
 async def captcha_solver(
-    captcha_type: Annotated[
-        str, "type of captcha to solve, ALLOWED VALUES: 'recaptchav2', 'recaptchav3'."
-    ],
-) -> Annotated[
-    bool, "Response if captcha is solved or not. True = solved, False = not solved."
-]:
+    captcha_type: Annotated[str, "type of captcha to solve, ALLOWED VALUES: 'recaptchav2', 'recaptchav3'."],
+) -> Annotated[bool, "Response if captcha is solved or not. True = solved, False = not solved."]:
     try:
         browser_manager = PlaywrightManager()
         page = await browser_manager.get_current_page()

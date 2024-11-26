@@ -36,23 +36,13 @@ class BaseNavAgent:
                 system_message = "\n".join(system_prompt)
             else:
                 system_message = system_prompt
-            logger.info(
-                f"Using custom system prompt for BaseNavAgent: {system_message}"
-            )
+            logger.info(f"Using custom system prompt for BaseNavAgent: {system_message}")
 
-        system_message = (
-            system_message
-            + "\n"
-            + f"Today's date is {datetime.now().strftime('%d %B %Y')}"
-        )
+        system_message = system_message + "\n" + f"Today's date is {datetime.now().strftime('%d %B %Y')}"
         if user_ltm:  # add the user LTM to the system prompt if it exists
             user_ltm = "\n" + user_ltm
-            system_message = Template(system_message).substitute(
-                basic_test_information=user_ltm
-            )
-        logger.info(
-            f"Nav agent {agent_name} using model: {model_config_list[0]['model']}"
-        )
+            system_message = Template(system_message).substitute(basic_test_information=user_ltm)
+        logger.info(f"Nav agent {agent_name} using model: {model_config_list[0]['model']}")
         self.agent = autogen.ConversableAgent(
             name=agent_name,
             system_message=system_message,
@@ -79,9 +69,7 @@ class BaseNavAgent:
         # Register each tool for LLM by assistant agent and for execution by user_proxy_agen
         return None
 
-    def load_additional_tools(
-        self, additional_tool_dirs: str = os.getenv("ADDITIONAL_TOOL_DIRS", "")
-    ) -> None:
+    def load_additional_tools(self, additional_tool_dirs: str = os.getenv("ADDITIONAL_TOOL_DIRS", "")) -> None:
         """
         Dynamically load additional tools from directories or specific Python files
         specified by an environment variable.
@@ -107,9 +95,7 @@ class BaseNavAgent:
 
                 elif tool_path.endswith(".py") and os.path.isfile(tool_path):
                     # If the path is a specific .py file, load it directly
-                    module_name = os.path.basename(tool_path)[
-                        :-3
-                    ]  # Strip .py extension
+                    module_name = os.path.basename(tool_path)[:-3]  # Strip .py extension
                     directory_path = os.path.dirname(tool_path).replace("/", ".")
                     module_path = f"{directory_path}.{module_name}"
                     importlib.import_module(module_path)
@@ -125,8 +111,6 @@ class BaseNavAgent:
             if tool_registry_for_agent != self.agent_name:
                 continue
             for tool in tool_registry[tool_registry_for_agent]:
-                self.agent.register_for_llm(description=tool["description"])(
-                    tool["func"]
-                )
+                self.agent.register_for_llm(description=tool["description"])(tool["func"])
                 self.nav_executor.register_for_execution()(tool["func"])
                 logger.info("Registered additional tool: %s", tool["name"])

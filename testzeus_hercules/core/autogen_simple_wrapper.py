@@ -13,9 +13,9 @@ import openai
 from autogen import Cache
 from testzeus_hercules.config import get_source_log_folder_path
 from testzeus_hercules.core.agents.api_nav_agent import ApiNavAgent
-from testzeus_hercules.core.agents.sql_nav_agent import SqlNavAgent
 from testzeus_hercules.core.agents.browser_nav_agent import BrowserNavAgent
 from testzeus_hercules.core.agents.high_level_planner_agent import PlannerAgent
+from testzeus_hercules.core.agents.sql_nav_agent import SqlNavAgent
 from testzeus_hercules.core.post_process_responses import (
     final_reply_callback_planner_agent as notify_planner_messages,  # type: ignore
 )
@@ -59,9 +59,7 @@ class AutogenSimpleWrapper:
         self.agents_map: (
             dict[
                 str,
-                UserProxyAgent_SequentialFunctionExecution
-                | autogen.AssistantAgent
-                | autogen.ConversableAgent,
+                UserProxyAgent_SequentialFunctionExecution | autogen.AssistantAgent | autogen.ConversableAgent,
             ]
             | None
         ) = None
@@ -126,20 +124,10 @@ class AutogenSimpleWrapper:
         self.planner_agent_config = planner_agent_config
         self.browser_nav_agent_config = browser_nav_agent_config
 
-        self.planner_agent_model_config = self.convert_model_config_to_autogen_format(
-            self.planner_agent_config["model_config_params"]
-        )
-        self.browser_nav_agent_model_config = (
-            self.convert_model_config_to_autogen_format(
-                self.browser_nav_agent_config["model_config_params"]
-            )
-        )
-        self.api_nav_agent_model_config = self.convert_model_config_to_autogen_format(
-            self.browser_nav_agent_config["model_config_params"]
-        )
-        self.sql_nav_agent_model_config = self.convert_model_config_to_autogen_format(
-            self.browser_nav_agent_config["model_config_params"]
-        )
+        self.planner_agent_model_config = self.convert_model_config_to_autogen_format(self.planner_agent_config["model_config_params"])
+        self.browser_nav_agent_model_config = self.convert_model_config_to_autogen_format(self.browser_nav_agent_config["model_config_params"])
+        self.api_nav_agent_model_config = self.convert_model_config_to_autogen_format(self.browser_nav_agent_config["model_config_params"])
+        self.sql_nav_agent_model_config = self.convert_model_config_to_autogen_format(self.browser_nav_agent_config["model_config_params"])
         self.agents_map = await self.__initialize_agents()
 
         def trigger_nested_chat(manager: autogen.ConversableAgent) -> bool:  # type: ignore
@@ -210,9 +198,7 @@ class AutogenSimpleWrapper:
 
             last_message = messages[-1]["content"]
             # extract "##target_helper: {target_helper}##" from last_message
-            target_helper = (
-                last_message.split("##target_helper: ")[-1].split("##")[0].strip()
-            )
+            target_helper = last_message.split("##target_helper: ")[-1].split("##")[0].strip()
 
             if "##TERMINATE TASK##" in last_message.strip():
                 return None
@@ -220,17 +206,9 @@ class AutogenSimpleWrapper:
             if last_speaker is self.agents_map["user"]:
                 if target_helper in nav_agents_names:
                     return self.agents_map[f"{target_helper}_nav_agent"]
-                import ipdb
-
-                ipdb.set_trace()
                 return None
-            elif last_speaker in [
-                self.agents_map[f"{agent_name}_nav_agent"]
-                for agent_name in nav_agents_names
-            ]:
-                return self.agents_map[
-                    f"{last_speaker.name.split('_')[0]}_nav_executor"
-                ]
+            elif last_speaker in [self.agents_map[f"{agent_name}_nav_agent"] for agent_name in nav_agents_names]:
+                return self.agents_map[f"{last_speaker.name.split('_')[0]}_nav_executor"]
             # elif last_speaker in [
             #     self.agents_map[f"{agent_name}_nav_executor"]
             #     for agent_name in nav_agents_names
@@ -246,9 +224,7 @@ class AutogenSimpleWrapper:
             **self.planner_agent_config["llm_config_params"],
         }
         groupchat = autogen.GroupChat(
-            agents=[
-                self.agents_map[agent_name] for agent_name in group_participants_names
-            ],
+            agents=[self.agents_map[agent_name] for agent_name in group_participants_names],
             messages=[],
             max_round=self.planner_number_of_rounds,
             select_speaker_auto_verbose=True,
@@ -274,9 +250,7 @@ class AutogenSimpleWrapper:
         )
         return self
 
-    def convert_model_config_to_autogen_format(
-        self, model_config: dict[str, str]
-    ) -> list[dict[str, Any]]:
+    def convert_model_config_to_autogen_format(self, model_config: dict[str, str]) -> list[dict[str, Any]]:
         env_var: list[dict[str, str]] = [model_config]
         with tempfile.NamedTemporaryFile(delete=False, mode="w") as temp:
             json.dump(env_var, temp)
@@ -308,9 +282,7 @@ class AutogenSimpleWrapper:
         if not self.save_chat_logs_to_files:
             logger.info("Nested chat logs", extra={"nested_chat_log": chat_log})
         else:
-            chat_logs_file = os.path.join(
-                self.get_chat_logs_dir() or "", f"nested_chat_log_{str(time_ns())}.json"
-            )
+            chat_logs_file = os.path.join(self.get_chat_logs_dir() or "", f"nested_chat_log_{str(time_ns())}.json")
             # Save the chat log to a file
             with open(chat_logs_file, "w") as file:
                 json.dump(chat_log, file, indent=4)
@@ -323,22 +295,14 @@ class AutogenSimpleWrapper:
             dict: A dictionary of agent instances.
 
         """
-        agents_map: dict[
-            str, UserProxyAgent_SequentialFunctionExecution | autogen.ConversableAgent
-        ] = {}
+        agents_map: dict[str, UserProxyAgent_SequentialFunctionExecution | autogen.ConversableAgent] = {}
         agents_map["user"] = await self.__create_user_delegate_agent()
         agents_map["browser_nav_executor"] = self.__create_browser_nav_executor_agent()
-        agents_map["browser_nav_agent"] = self.__create_browser_nav_agent(
-            agents_map["browser_nav_executor"]
-        )
+        agents_map["browser_nav_agent"] = self.__create_browser_nav_agent(agents_map["browser_nav_executor"])
         agents_map["api_nav_executor"] = self.__create_api_nav_executor_agent()
-        agents_map["api_nav_agent"] = self.__create_api_nav_agent(
-            agents_map["api_nav_executor"]
-        )
+        agents_map["api_nav_agent"] = self.__create_api_nav_agent(agents_map["api_nav_executor"])
         agents_map["sql_nav_executor"] = self.__create_sql_nav_executor_agent()
-        agents_map["sql_nav_agent"] = self.__create_sql_nav_agent(
-            agents_map["sql_nav_executor"]
-        )
+        agents_map["sql_nav_agent"] = self.__create_sql_nav_agent(agents_map["sql_nav_executor"])
         agents_map["planner_agent"] = self.__create_planner_agent(agents_map["user"])
         return agents_map
 
@@ -369,13 +333,9 @@ class AutogenSimpleWrapper:
                     if _terminate == "yes":
                         should_terminate = True
                         if final_response:
-                            notify_planner_messages(
-                                final_response, message_type=MessageType.ANSWER
-                            )
+                            notify_planner_messages(final_response, message_type=MessageType.ANSWER)
                 except json.JSONDecodeError:
-                    logger.error(
-                        "Error decoding JSON response:\n{content}.\nTerminating.."
-                    )
+                    logger.error("Error decoding JSON response:\n{content}.\nTerminating..")
                     should_terminate = True
 
             return should_terminate  # type: ignore
@@ -428,9 +388,7 @@ class AutogenSimpleWrapper:
         print(">>> Created browser_nav_executor_agent:", browser_nav_executor_agent)
         return browser_nav_executor_agent
 
-    def __create_browser_nav_agent(
-        self, user_proxy_agent: UserProxyAgent_SequentialFunctionExecution
-    ) -> autogen.ConversableAgent:
+    def __create_browser_nav_agent(self, user_proxy_agent: UserProxyAgent_SequentialFunctionExecution) -> autogen.ConversableAgent:
         """
         Create a BrowserNavAgent instance.
 
@@ -490,9 +448,7 @@ class AutogenSimpleWrapper:
         print(">>> Created api_nav_executor_agent:", api_nav_executor_agent)
         return api_nav_executor_agent
 
-    def __create_api_nav_agent(
-        self, user_proxy_agent: UserProxyAgent_SequentialFunctionExecution
-    ) -> autogen.ConversableAgent:
+    def __create_api_nav_agent(self, user_proxy_agent: UserProxyAgent_SequentialFunctionExecution) -> autogen.ConversableAgent:
         """
         Create a ApiNavAgent instance.
 
@@ -514,9 +470,7 @@ class AutogenSimpleWrapper:
         # print(">>> api agent tools:", json.dumps(api_nav_agent.agent.llm_config.get("tools"), indent=2))
         return api_nav_agent.agent
 
-    def __create_sql_nav_agent(
-        self, user_proxy_agent: UserProxyAgent_SequentialFunctionExecution
-    ) -> autogen.ConversableAgent:
+    def __create_sql_nav_agent(self, user_proxy_agent: UserProxyAgent_SequentialFunctionExecution) -> autogen.ConversableAgent:
         """
         Create a SqlNavAgent instance.
 
@@ -576,9 +530,7 @@ class AutogenSimpleWrapper:
         print(">>> Created sql_nav_executor_agent:", sql_nav_executor_agent)
         return sql_nav_executor_agent
 
-    def __create_planner_agent(
-        self, assistant_agent: autogen.ConversableAgent
-    ) -> autogen.ConversableAgent:
+    def __create_planner_agent(self, assistant_agent: autogen.ConversableAgent) -> autogen.ConversableAgent:
         """
         Create a Planner Agent instance. This is mainly used for exploration at this point
 
@@ -594,9 +546,7 @@ class AutogenSimpleWrapper:
         )  # type: ignore
         return planner_agent.agent
 
-    async def process_command(
-        self, command: str, *args: Any, current_url: str | None = None, **kwargs: Any
-    ) -> autogen.ChatResult | None:
+    async def process_command(self, command: str, *args: Any, current_url: str | None = None, **kwargs: Any) -> autogen.ChatResult | None:
         """
         Process a command by sending it to one or more agents.
 
@@ -612,9 +562,7 @@ class AutogenSimpleWrapper:
         if current_url:
             current_url_prompt_segment = f"Current Page: {current_url}"
 
-        prompt = Template(LLM_PROMPTS["COMMAND_EXECUTION_PROMPT"]).substitute(
-            command=command, current_url_prompt_segment=current_url_prompt_segment
-        )
+        prompt = Template(LLM_PROMPTS["COMMAND_EXECUTION_PROMPT"]).substitute(command=command, current_url_prompt_segment=current_url_prompt_segment)
         logger.info("Prompt for command: %s", prompt)
         with Cache.disk(cache_seed=5) as cache:
             try:

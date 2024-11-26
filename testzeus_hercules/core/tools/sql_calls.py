@@ -15,20 +15,17 @@ from testzeus_hercules.utils.logger import logger
 async def execute_select_cte_query_sql(
     connection_string: Annotated[
         str,
-        "The async database connection string in SQLAlchemy format. "
-        "E.g., 'postgresql+asyncpg://user:password@host:port/database'.",
+        "The async database connection string in SQLAlchemy format. " "E.g., 'postgresql+asyncpg://user:password@host:port/database'.",
     ],
-    query: Annotated[
-        str, "The SELECT SQL query to execute. Must start with 'SELECT' or 'WITH'."
-    ],
+    query: Annotated[str, "The SELECT SQL query to execute. Must start with 'SELECT' or 'WITH'."],
     schema: Annotated[
-        Optional[str],
+        Optional[str | None],
         "Optional database schema to use. If not provided, assumes schema is specified in the query.",
-    ] = None,
+    ],
     params: Annotated[
         Optional[Dict[str, Any]],
         "Optional parameters to pass to the query for parameterized queries.",
-    ] = None,
+    ],
 ) -> Annotated[
     Union[List[Dict[str, Any]], Dict[str, str]],
     "The query results or an error message.",
@@ -43,7 +40,7 @@ async def execute_select_cte_query_sql(
         - MySQL: "mysql+aiomysql://user:password@host:port/database"
         - SQLite: "sqlite+aiosqlite:///path/to/database.db"
     - query (str): The SELECT SQL query to execute. Must start with 'SELECT' or 'WITH'.
-    - schema (Optional[str]): Optional database schema to use.
+    - schema (Optional[str|None]): Optional database schema to use.
       If not provided, assumes schema is specified in the query using dot notation.
     - params (Optional[Dict[str, Any]]): Optional parameters to pass to the query.
       Use this for parameterized queries to prevent SQL injection.

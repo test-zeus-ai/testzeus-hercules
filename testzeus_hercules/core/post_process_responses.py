@@ -32,9 +32,7 @@ def final_reply_callback_user_proxy(
     last_message = messages[-1]
     logger.debug(f"Post Process Message (User Proxy):{last_message}")
     if last_message.get("content") and "##TERMINATE##" in last_message["content"]:
-        last_agent_response = (
-            last_message["content"].replace("##TERMINATE##", "").strip()
-        )
+        last_agent_response = last_message["content"].replace("##TERMINATE##", "").strip()
         if last_agent_response:
             logger.debug("*****Final Reply*****")
             logger.debug(f"Final Response: {last_agent_response}")
@@ -48,7 +46,5 @@ def final_reply_callback_planner_agent(message: str, message_type: MessageType =
     add_event(EventType.STEP, EventData(detail=message_type.value))
     browser_manager = PlaywrightManager()
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(
-        browser_manager.notify_user(message, message_type=message_type)
-    )
+    loop.run_until_complete(browser_manager.notify_user(message, message_type=message_type))
     return False, None  # required to ensure the agent communication flow continues

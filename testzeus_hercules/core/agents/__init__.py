@@ -1,3 +1,3 @@
-from testzeus_hercules.core.agents.browser_nav_agent import BrowserNavAgent
 from testzeus_hercules.core.agents.api_nav_agent import ApiNavAgent
+from testzeus_hercules.core.agents.browser_nav_agent import BrowserNavAgent
 from testzeus_hercules.core.agents.sql_nav_agent import SqlNavAgent
