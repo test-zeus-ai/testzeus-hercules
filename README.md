@@ -12,8 +12,39 @@ At [TestZeus](www.testzeus.com), we believe that **trustworthy and open-source c
 
 Our mission? To **democratize and disrupt test automation**, making top-tier testing accessible to everyone, not just the elite few. No more gatekeeping—everyone deserves a hero on their testing team!
 
+### Video Tutorials: [@TestZeus](https://www.youtube.com/@TestZeus)
+---
 
+#### 🚀 **Getting Started with TestZeus Hercules**
+- **Introduction to TestZeus Hercules**  
+  Learn about the core features of TestZeus Hercules and how it can streamline end-to-end testing for your projects.  
+  _[Watch now](https://youtu.be/_m_NDjM6aZ0?si=ArtVKz8uSgGWTcAK)_
 
+- **Installation and Setup Guide**  
+  Step-by-step instructions for installing and configuring TestZeus Hercules in your environment.  
+  _[Watch now](https://youtu.be/9D-SZGoDrfc?si=GL0IArWkB1ZgBdx5)_
+
+---
+
+#### 🧪 **Writing and Executing Test Cases**
+- **Creating BDD Test Cases**  
+  Learn how to write Behavior-Driven Development (BDD) test cases for Hercules and use dynamic testdata.  
+  _[Watch now](https://www.youtube.com/watch?v=yJD0cZ7Bx6Q&t)_
+
+---
+
+#### 🌐 **Integrations and Advanced Features**
+- **Testing Multilingual content**  
+  Learn how Hercules interacts with web browsers to perform Testing on Multilingual content via Multilingual testcase.  
+  _[Watch now](https://youtu.be/vI9iGSqKpGA?si=6NGAvKnwFboSyHT2)_
+---
+
+#### 🛠️ **Customization and Community Tools**
+- **Enhancing Hercules with Community-Driven Tools**  
+  Discover how to customize Hercules and incorporate additional tools provided by the community.  
+  _[Watch now](https://youtu.be/C8hUy5leRF0?si=yVMpZ7WFcI01BoI3)_
+
+---
 
 ## ⚙️ Installation and Usage
 
