@@ -1,10 +1,10 @@
 import asyncio
+import datetime
 import json
 import os
 import tempfile
 import traceback
 from string import Template
-from time import time_ns
 from typing import Any
 
 import autogen  # type: ignore
@@ -153,8 +153,9 @@ class AutogenSimpleWrapper:
             return asyncio.run(geturl())
 
         def my_custom_summary_method(sender: autogen.ConversableAgent, recipient: autogen.ConversableAgent, summary_args: dict):  # type: ignore
-            messages_str_keys = {str(key): value for key, value in sender.chat_messages.items()}  # type: ignore
-            self.__save_chat_log(list(messages_str_keys.values())[0])  # type: ignore
+            # messages_str_keys = {str(key): value for key, value in sender.chat_messages.items()}  # type: ignore
+            # self.__save_chat_log(list(messages_str_keys.values())[0])  # type: ignore
+            self.__save_chat_log(sender, recipient)  # type: ignore
             if isinstance(recipient, autogen.GroupChatManager):
                 last_message = recipient.last_message(recipient.last_speaker)["content"]
             else:
@@ -278,14 +279,53 @@ class AutogenSimpleWrapper:
         """
         self.chat_logs_dir = chat_logs_dir
 
-    def __save_chat_log(self, chat_log: list[dict[str, Any]]) -> None:
+    def __save_chat_log(self, sender: autogen.ConversableAgent, receiver: autogen.ConversableAgent) -> None:
+        messages_str_keys = {str(key): value for key, value in sender.chat_messages.items()}  # type: ignore
+        res_output_thoughts_logs_di = {}
+        for key, value in messages_str_keys.items():
+            if res_output_thoughts_logs_di.get(sender.agent_name):
+                res_output_thoughts_logs_di[sender.agent_name] += value
+            else:
+                res_output_thoughts_logs_di[sender.agent_name] = value
+
+        for key, vals in res_output_thoughts_logs_di.items():
+            for idx, val in enumerate(vals):
+
+                logger.debug(f"{sender.name} chat log: {val}")
+                content = val["content"]
+                if not isinstance(content, dict):
+                    content = content.replace("```json", "").replace("```", "").strip()
+                    res_content = None
+                    try:
+                        res_content = json.loads(content)
+                    except json.JSONDecodeError:
+                        logger.debug(f"Failed to decode JSON: {content}, keeping as multiline string")
+                        res_content = content
+                else:
+                    res_content = content
+                res_output_thoughts_logs_di[key][idx]["content"] = res_content
         if not self.save_chat_logs_to_files:
-            logger.info("Nested chat logs", extra={"nested_chat_log": chat_log})
+            logger.info(
+                "Nested chat logs",
+                extra={f"log_between_sender_{sender.name}_rec_{receiver.name}": res_output_thoughts_logs_di},
+            )
         else:
-            chat_logs_file = os.path.join(self.get_chat_logs_dir() or "", f"nested_chat_log_{str(time_ns())}.json")
+            chat_logs_file = os.path.join(
+                self.get_chat_logs_dir() or "",
+                f"log_between_sender-{sender.name}->rec-{receiver.name}_{str(datetime.datetime.now().isoformat())}.json",
+            )
             # Save the chat log to a file
             with open(chat_logs_file, "w") as file:
-                json.dump(chat_log, file, indent=4)
+                json.dump(res_output_thoughts_logs_di, file, indent=4)
+
+    # def __save_chat_log(self, chat_log: list[dict[str, Any]]) -> None:
+    #     if not self.save_chat_logs_to_files:
+    #         logger.info("Nested chat logs", extra={"nested_chat_log": chat_log})
+    #     else:
+    #         chat_logs_file = os.path.join(self.get_chat_logs_dir() or "", f"nested_chat_log_{str(time_ns())}.json")
+    #         # Save the chat log to a file
+    #         with open(chat_logs_file, "w") as file:
+    #             json.dump(chat_log, file, indent=4)
 
     async def __initialize_agents(self) -> dict[str, autogen.ConversableAgent]:
         """

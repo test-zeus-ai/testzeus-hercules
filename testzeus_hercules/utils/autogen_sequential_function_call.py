@@ -8,6 +8,7 @@ from autogen import UserProxyAgent  # type: ignore
 
 class UserProxyAgent_SequentialFunctionExecution(UserProxyAgent):
     def __init__(self, *args, **kwargs):  # type: ignore
+        self.agent_name = "user_proxy_agent"
         super().__init__(*args, **kwargs)  # type: ignore
         # position = 2 allows termination check to be called earlier, this helps detect loops.
         self.register_reply(Agent, UserProxyAgent_SequentialFunctionExecution.sequential_generate_tool_calls_reply, position=2)  # type: ignore

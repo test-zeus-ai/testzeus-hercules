@@ -37,7 +37,7 @@ def configure_logger(level: str = "INFO") -> None:
     http_loggers = ["openai", "autogen"]
     for http_logger in http_loggers:
         lib_logger = logging.getLogger(http_logger)
-        lib_logger.setLevel(logging.DEBUG)
+        lib_logger.setLevel(logging.INFO)
         lib_logger.handlers = []  # Clear any existing handlers
         lib_logger.addHandler(handler)  # Add the same handler
 

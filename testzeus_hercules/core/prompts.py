@@ -12,6 +12,8 @@ LLM_PROMPTS = {
     - Delegation: Delegate subtasks to the helper for execution.
     - Response Analysis: Always analyze the helper's response before building your return reply.
     - Context Understanding: Determine if the context is an assertion step or a general execution step.
+    - Task Completion: Ensure that each task is completed successfully or terminated with a detailed summary. The summary should include what worked and what didn't. If an assertion fails, provide a detailed summary of the failure.
+    - Assert Re-verification: Re-verify assertions before terminating a task to ensure correctness.
 
     Important Notes:
 

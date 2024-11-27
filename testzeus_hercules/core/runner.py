@@ -109,17 +109,43 @@ class BaseRunner:
         """
         messages = self.autogen_wrapper.agents_map[self.planner_agent_name].chat_messages
         messages_str_keys = {str(key): value for key, value in messages.items()}
+        res_output_thoughts_logs_di = {}
+        for key, value in messages_str_keys.items():
+            if res_output_thoughts_logs_di.get(self.planner_agent_name):
+                res_output_thoughts_logs_di[self.planner_agent_name] += value
+            else:
+                res_output_thoughts_logs_di[self.planner_agent_name] = value
+
+        for key, vals in res_output_thoughts_logs_di.items():
+            # logger.debug(f"Planner chat log: {key} : {vals}")
+            for idx, val in enumerate(vals):
+                logger.debug(f"Planner chat log: {val}")
+                content = val["content"]
+                content = content.replace("```json", "").replace("```", "").strip()
+                res_content = None
+                try:
+                    res_content = json.loads(content)
+                except json.JSONDecodeError:
+                    logger.debug(f"Failed to decode JSON: {content}, keeping as multiline string")
+                    res_content = content
+                res_output_thoughts_logs_di[key][idx]["content"] = res_content
 
         if self.save_chat_logs_to_files:
             with open(
-                os.path.join(get_source_log_folder_path(self.stake_id), "chat_messages.json"),
+                os.path.join(
+                    get_source_log_folder_path(self.stake_id),
+                    "agent_inner_thoughts.json",
+                ),
                 "w",
                 encoding="utf-8",
             ) as f:
-                json.dump(messages_str_keys, f, ensure_ascii=False, indent=4)
+                json.dump(res_output_thoughts_logs_di, f, ensure_ascii=False, indent=4)
             logger.debug("Chat messages saved")
         else:
-            logger.info("Planner chat log: ", extra={"planner_chat_log": messages_str_keys})
+            logger.info(
+                "Planner chat log: ",
+                extra={"planner_chat_log": res_output_thoughts_logs_di},
+            )
 
     async def shutdown(self) -> None:
         """

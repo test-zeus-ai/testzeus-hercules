@@ -15,7 +15,7 @@ from playwright.async_api import async_playwright as playwright
 from testzeus_hercules.config import (
     get_browser_type,
     get_cdp_config,
-    get_screen_shot_path,
+    get_proof_path,
     should_capture_network,
     should_record_video,
     should_run_headless,
@@ -99,9 +99,9 @@ class PlaywrightManager:
         self.ui_manager: Optional[UIManager] = UIManager() if gui_input_mode else None
         self._take_screenshots = should_take_screenshots() or take_screenshots
         self.stake_id = stake_id
-        self._screenshots_dir = os.path.join(get_screen_shot_path(self.stake_id) or screenshots_dir, "screenshots")
+        self._screenshots_dir = os.path.join(get_proof_path(self.stake_id) or screenshots_dir, "screenshots")
         self._record_video = should_record_video() or record_video
-        self._video_dir = os.path.join(get_screen_shot_path(self.stake_id) or video_dir, "videos")
+        self._video_dir = os.path.join(get_proof_path(self.stake_id) or video_dir, "videos")
         self._playwright: Optional[Playwright] = None
         self._browser_context: Optional[BrowserContext] = None
         self.__async_initialize_done = False
@@ -109,7 +109,7 @@ class PlaywrightManager:
         self._latest_video_path: Optional[str] = None  # Stores the latest video file path
         self.log_requests_responses = should_capture_network() or log_requests_responses
         self.request_response_log_file = os.path.join(
-            get_screen_shot_path(self.stake_id) or request_response_log_file,
+            get_proof_path(self.stake_id) or request_response_log_file,
             "network_logs.json",
         )
         self.request_response_logs: List[Dict] = []

@@ -253,7 +253,7 @@ def get_test_data_path() -> str:
     return test_data_path
 
 
-def get_screen_shot_path(test_id: Optional[str] = None) -> str:
+def get_proof_path(test_id: Optional[str] = None) -> str:
     """
     Check if the screenshot folder exists for the given test_id, and if not, create it.
 
