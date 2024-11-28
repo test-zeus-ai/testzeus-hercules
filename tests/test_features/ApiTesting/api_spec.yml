@@ -7,13 +7,6 @@ info:
 servers:
   - url: https://fakestoreapi.com
 
-components:
-  securitySchemes:
-    BearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
-
 security:
   - BearerAuth: []
 
@@ -486,6 +479,11 @@ paths:
       security: []
 
 components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
   schemas:
     Product:
       type: object

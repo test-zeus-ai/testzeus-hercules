@@ -39,9 +39,7 @@ def sec_logger(logging_string: str) -> None:
         file.write(logging_string + "\n")
 
 
-def tool(
-    agent_names: list[str], description: str, name: str | None = None
-) -> Callable[[toolType], toolType]:
+def tool(agent_names: list[str], description: str, name: str | None = None) -> Callable[[toolType], toolType]:
     """
     Decorator for registering private tools.
 
@@ -57,9 +55,7 @@ def tool(
         for agent_name in agent_names:
             tool_registry[agent_name].append(
                 {
-                    "name": (
-                        name if name else func.__name__
-                    ),  # Use provided name or fallback to function name
+                    "name": (name if name else func.__name__),  # Use provided name or fallback to function name
                     "func": func,
                     "description": description,
                 }

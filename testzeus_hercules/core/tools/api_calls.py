@@ -1,8 +1,9 @@
-from typing import Annotated, Any, Dict, Optional, Tuple
 import time
+from typing import Annotated, Any, Dict, Optional, Tuple
 
 import httpx
-from testzeus_hercules.core.tools.tool_registry import tool, api_logger as file_logger
+from testzeus_hercules.core.tools.tool_registry import api_logger as file_logger
+from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
 
 
@@ -13,11 +14,7 @@ async def log_request(request: httpx.Request) -> None:
         "method": request.method,
         "url": str(request.url),
         "headers": dict(request.headers),
-        "body": (
-            request.content.decode("utf-8", errors="ignore")
-            if request.content
-            else None
-        ),
+        "body": (request.content.decode("utf-8", errors="ignore") if request.content else None),
     }
     file_logger(f"Request Data: {log_data}")
 
@@ -49,9 +46,7 @@ async def log_response(response: httpx.Response) -> None:
 )
 async def create_resource_http_api(
     url: Annotated[str, "The API endpoint URL for creating the resource."],
-    headers: Annotated[
-        Optional[Dict[str, str]], "Optional HTTP headers to include in the request."
-    ] = None,
+    headers: Annotated[Optional[Dict[str, str]], "Optional HTTP headers to include in the request."] = None,
     auth: Annotated[
         Optional[Dict[str, str]],
         "Optional basic authentication credentials (e.g., {'username': 'user', 'password': 'pass'}).",
@@ -60,12 +55,8 @@ async def create_resource_http_api(
         Optional[str],
         "Optional bearer or JWT token for authentication. Include the token string without the 'Bearer ' prefix.",
     ] = None,
-    data: Annotated[
-        Optional[Dict[str, Any]], "Form data to send in the request body."
-    ] = None,
-    json_data: Annotated[
-        Optional[Dict[str, Any]], "JSON data to send in the request body."
-    ] = None,
+    data: Annotated[Optional[Dict[str, Any]], "Form data to send in the request body."] = None,
+    json_data: Annotated[Optional[Dict[str, Any]], "JSON data to send in the request body."] = None,
 ) -> Annotated[
     Tuple[Any, float],
     "A tuple containing the response data or error message, and the time taken for the API call in seconds.",
@@ -91,17 +82,11 @@ async def create_resource_http_api(
         if token:
             request_headers["Authorization"] = f"Bearer {token}"
 
-        async with httpx.AsyncClient(
-            event_hooks={"request": [log_request], "response": [log_response]}
-        ) as client:
+        async with httpx.AsyncClient(event_hooks={"request": [log_request], "response": [log_response]}) as client:
             response = await client.post(
                 url,
                 headers=request_headers,
-                auth=(
-                    httpx.BasicAuth(auth["username"], auth["password"])
-                    if auth
-                    else None
-                ),
+                auth=(httpx.BasicAuth(auth["username"], auth["password"]) if auth else None),
                 data=data,
                 json=json_data,
             )
@@ -135,9 +120,7 @@ async def create_resource_http_api(
 )
 async def read_resource_http_api(
     url: Annotated[str, "The API endpoint URL for reading the resource."],
-    headers: Annotated[
-        Optional[Dict[str, str]], "Optional HTTP headers to include in the request."
-    ] = None,
+    headers: Annotated[Optional[Dict[str, str]], "Optional HTTP headers to include in the request."] = None,
     auth: Annotated[
         Optional[Dict[str, str]],
         "Optional basic authentication credentials.",
@@ -146,9 +129,7 @@ async def read_resource_http_api(
         Optional[str],
         "Optional bearer or JWT token for authentication. Include the token string without the 'Bearer ' prefix.",
     ] = None,
-    params: Annotated[
-        Optional[Dict[str, Any]], "Query parameters to include in the GET request."
-    ] = None,
+    params: Annotated[Optional[Dict[str, Any]], "Query parameters to include in the GET request."] = None,
 ) -> Annotated[
     Tuple[Any, float],
     "A tuple containing the response data or error message, and the time taken for the API call in seconds.",
@@ -173,17 +154,11 @@ async def read_resource_http_api(
         if token:
             request_headers["Authorization"] = f"Bearer {token}"
 
-        async with httpx.AsyncClient(
-            event_hooks={"request": [log_request], "response": [log_response]}
-        ) as client:
+        async with httpx.AsyncClient(event_hooks={"request": [log_request], "response": [log_response]}) as client:
             response = await client.get(
                 url,
                 headers=request_headers,
-                auth=(
-                    httpx.BasicAuth(auth["username"], auth["password"])
-                    if auth
-                    else None
-                ),
+                auth=(httpx.BasicAuth(auth["username"], auth["password"]) if auth else None),
                 params=params,
             )
             response.raise_for_status()
@@ -216,9 +191,7 @@ async def read_resource_http_api(
 )
 async def update_resource_http_api(
     url: Annotated[str, "The API endpoint URL for updating the resource."],
-    headers: Annotated[
-        Optional[Dict[str, str]], "Optional HTTP headers to include in the request."
-    ] = None,
+    headers: Annotated[Optional[Dict[str, str]], "Optional HTTP headers to include in the request."] = None,
     auth: Annotated[
         Optional[Dict[str, str]],
         "Optional basic authentication credentials.",
@@ -227,12 +200,8 @@ async def update_resource_http_api(
         Optional[str],
         "Optional bearer or JWT token for authentication. Include the token string without the 'Bearer ' prefix.",
     ] = None,
-    data: Annotated[
-        Optional[Dict[str, Any]], "Form data to send in the request body."
-    ] = None,
-    json_data: Annotated[
-        Optional[Dict[str, Any]], "JSON data to send in the request body."
-    ] = None,
+    data: Annotated[Optional[Dict[str, Any]], "Form data to send in the request body."] = None,
+    json_data: Annotated[Optional[Dict[str, Any]], "JSON data to send in the request body."] = None,
 ) -> Annotated[
     Tuple[Any, float],
     "A tuple containing the response data or error message, and the time taken for the API call in seconds.",
@@ -258,17 +227,11 @@ async def update_resource_http_api(
         if token:
             request_headers["Authorization"] = f"Bearer {token}"
 
-        async with httpx.AsyncClient(
-            event_hooks={"request": [log_request], "response": [log_response]}
-        ) as client:
+        async with httpx.AsyncClient(event_hooks={"request": [log_request], "response": [log_response]}) as client:
             response = await client.put(
                 url,
                 headers=request_headers,
-                auth=(
-                    httpx.BasicAuth(auth["username"], auth["password"])
-                    if auth
-                    else None
-                ),
+                auth=(httpx.BasicAuth(auth["username"], auth["password"]) if auth else None),
                 data=data,
                 json=json_data,
             )
@@ -302,9 +265,7 @@ async def update_resource_http_api(
 )
 async def patch_resource_http_api(
     url: Annotated[str, "The API endpoint URL for patching the resource."],
-    headers: Annotated[
-        Optional[Dict[str, str]], "Optional HTTP headers to include in the request."
-    ] = None,
+    headers: Annotated[Optional[Dict[str, str]], "Optional HTTP headers to include in the request."] = None,
     auth: Annotated[
         Optional[Dict[str, str]],
         "Optional basic authentication credentials.",
@@ -313,12 +274,8 @@ async def patch_resource_http_api(
         Optional[str],
         "Optional bearer or JWT token for authentication. Include the token string without the 'Bearer ' prefix.",
     ] = None,
-    data: Annotated[
-        Optional[Dict[str, Any]], "Form data to send in the request body."
-    ] = None,
-    json_data: Annotated[
-        Optional[Dict[str, Any]], "JSON data to send in the request body."
-    ] = None,
+    data: Annotated[Optional[Dict[str, Any]], "Form data to send in the request body."] = None,
+    json_data: Annotated[Optional[Dict[str, Any]], "JSON data to send in the request body."] = None,
 ) -> Annotated[
     Tuple[Any, float],
     "A tuple containing the response data or error message, and the time taken for the API call in seconds.",
@@ -344,17 +301,11 @@ async def patch_resource_http_api(
         if token:
             request_headers["Authorization"] = f"Bearer {token}"
 
-        async with httpx.AsyncClient(
-            event_hooks={"request": [log_request], "response": [log_response]}
-        ) as client:
+        async with httpx.AsyncClient(event_hooks={"request": [log_request], "response": [log_response]}) as client:
             response = await client.patch(
                 url,
                 headers=request_headers,
-                auth=(
-                    httpx.BasicAuth(auth["username"], auth["password"])
-                    if auth
-                    else None
-                ),
+                auth=(httpx.BasicAuth(auth["username"], auth["password"]) if auth else None),
                 data=data,
                 json=json_data,
             )
@@ -388,9 +339,7 @@ async def patch_resource_http_api(
 )
 async def delete_resource_http_api(
     url: Annotated[str, "The API endpoint URL for deleting the resource."],
-    headers: Annotated[
-        Optional[Dict[str, str]], "Optional HTTP headers to include in the request."
-    ] = None,
+    headers: Annotated[Optional[Dict[str, str]], "Optional HTTP headers to include in the request."] = None,
     auth: Annotated[
         Optional[Dict[str, str]],
         "Optional basic authentication credentials.",
@@ -422,17 +371,11 @@ async def delete_resource_http_api(
         if token:
             request_headers["Authorization"] = f"Bearer {token}"
 
-        async with httpx.AsyncClient(
-            event_hooks={"request": [log_request], "response": [log_response]}
-        ) as client:
+        async with httpx.AsyncClient(event_hooks={"request": [log_request], "response": [log_response]}) as client:
             response = await client.delete(
                 url,
                 headers=request_headers,
-                auth=(
-                    httpx.BasicAuth(auth["username"], auth["password"])
-                    if auth
-                    else None
-                ),
+                auth=(httpx.BasicAuth(auth["username"], auth["password"]) if auth else None),
             )
             response.raise_for_status()
 
