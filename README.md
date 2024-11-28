@@ -110,6 +110,7 @@ After passing all the required parameters, the command to run Hercules should lo
 testzeus-hercules --input-file opt/input/test.feature --output-path opt/output --test-data-path opt/test_data --llm-model gpt-4o --llm-model-api-key sk-proj-k.......
 ```
 
+
 #### Supported AI Models for TestZeus-Hercules
 - Anthropic Haiku: Compatible with Haiku 3.5 and above.
 - Groq: Supports any version with function calling and coding capabilities.
@@ -328,6 +329,9 @@ To configure Hercules in detail:
   - `TAKE_SCREENSHOTS=false`
   - `BROWSER_TYPE=chromium` (options: `firefox`, `chromium`)
   - `CAPTURE_NETWORK=false`
+ 
+For example: If you would like to run with a "Headful" browser, you can set the environment variable with ```export HEADLESS=false``` before triggering Hercules.
+
 
 ### Understanding `agents_llm_config-example.json`
 
