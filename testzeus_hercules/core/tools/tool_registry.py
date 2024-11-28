@@ -15,7 +15,7 @@ toolType = Callable[..., Any]
 tool_registry: dict[list[dict[str, Any]]] = defaultdict(list)
 
 
-def file_logger(logging_string: str) -> None:
+def api_logger(logging_string: str) -> None:
     """
     Function to log to a file.
 
@@ -23,6 +23,18 @@ def file_logger(logging_string: str) -> None:
     - logging_string (str): The string to log.
     """
     proof_path = os.path.join(get_proof_path(), "api_logs.log")
+    with open(proof_path, "a", encoding="utf-8") as file:
+        file.write(logging_string + "\n")
+
+
+def sec_logger(logging_string: str) -> None:
+    """
+    Function to log to a file.
+
+    Parameters:
+    - logging_string (str): The string to log.
+    """
+    proof_path = os.path.join(get_proof_path(), "sec_logs.log")
     with open(proof_path, "a", encoding="utf-8") as file:
         file.write(logging_string + "\n")
 

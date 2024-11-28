@@ -114,6 +114,7 @@ junit2html = "^31.0.2"
 anthropic = "^0.39.0"
 pandas = "^2.2.3"
 openpyxl = "^3.1.5"
+aiohttp = "^3.11.7"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.3"

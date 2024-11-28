@@ -27,7 +27,9 @@ class PlannerAgent:
         - system_prompt: The system prompt to be used for this agent or the default will be used if not provided.
         - user_proxy_agent: An instance of the UserProxyAgent class.
         """
-        enable_user_input = os.getenv("PLANNER_USER_INPUT_TOOL_ENABLED", "false").lower() == "true"
+        enable_user_input = (
+            os.getenv("PLANNER_USER_INPUT_TOOL_ENABLED", "false").lower() == "true"
+        )
 
         user_ltm = self.__get_ltm()
         system_message = LLM_PROMPTS["PLANNER_AGENT_PROMPT"]
@@ -37,12 +39,20 @@ class PlannerAgent:
                 system_message = "\n".join(system_prompt)
             else:
                 system_message = system_prompt
-            logger.info(f"Using custom system prompt for PlannerAgent: {system_message}")
+            logger.info(
+                f"Using custom system prompt for PlannerAgent: {system_message}"
+            )
 
         if user_ltm:  # add the user LTM to the system prompt if it exists
             user_ltm = "\n" + user_ltm
-            system_message = Template(system_message).substitute(basic_test_information=user_ltm)
-        system_message = system_message + "\n" + f"Today's date is {datetime.now().strftime('%d %B %Y')}"
+            system_message = Template(system_message).substitute(
+                basic_test_information=user_ltm
+            )
+        system_message = (
+            system_message
+            + "\n"
+            + f"Today's date is {datetime.now().strftime('%d %B %Y')}"
+        )
         logger.info(f"Planner agent using model: {model_config_list[0]['model']}")
 
         self.agent = autogen.AssistantAgent(
@@ -53,11 +63,13 @@ class PlannerAgent:
                 **llm_config_params,  # unpack all the name value pairs in llm_config_params as is
             },
         )
-        add_text_compressor(self.agent)
+        # add_text_compressor(self.agent)
 
         if enable_user_input:
             # Register get_user_input tool for LLM by assistant agent
-            self.agent.register_for_llm(description=LLM_PROMPTS["GET_USER_INPUT_PROMPT"])(get_user_input)
+            self.agent.register_for_llm(
+                description=LLM_PROMPTS["GET_USER_INPUT_PROMPT"]
+            )(get_user_input)
             # Register get_user_input tool for execution by user_proxy_agent
             user_proxy_agent.register_for_execution()(get_user_input)
         else:
@@ -70,7 +82,7 @@ class PlannerAgent:
             ignore_async_in_sync_chat=True,
         )
 
-    def __get_ltm(self):
+    def __get_ltm(self) -> str:
         """
         Get the the long term memory of the user.
         returns: str | None - The user LTM or None if not found.

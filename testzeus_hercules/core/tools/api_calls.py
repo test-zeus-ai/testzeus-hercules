@@ -2,7 +2,7 @@ from typing import Annotated, Any, Dict, Optional, Tuple
 import time
 
 import httpx
-from testzeus_hercules.core.tools.tool_registry import file_logger, tool
+from testzeus_hercules.core.tools.tool_registry import tool, api_logger as file_logger
 from testzeus_hercules.utils.logger import logger
 
 
