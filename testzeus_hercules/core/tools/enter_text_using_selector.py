@@ -125,7 +125,9 @@ async def custom_fill_element(page: Page, selector: str, text_to_enter: str):
         )
         logger.debug(f"custom_fill_element result: {result}")
     except Exception as e:
-        logger.error(f"Error in custom_fill_element, Selector: {selector}, Text: {text_to_enter}. Error: {str(e)}")
+        logger.error(
+            f"Error in custom_fill_element, Selector: {selector}, Text: {text_to_enter}. Error: {str(e)}"
+        )
         raise
 
 
@@ -249,18 +251,24 @@ async def entertext(
     )
 
     result = await do_entertext(page, query_selector, text_to_enter)
-    await asyncio.sleep(0.1)  # sleep for 100ms to allow the mutation observer to detect changes
+    await asyncio.sleep(
+        0.1
+    )  # sleep for 100ms to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
 
     await browser_manager.take_screenshots(f"{function_name}_end", page)
 
-    await browser_manager.notify_user(result["summary_message"], message_type=MessageType.ACTION)
+    await browser_manager.notify_user(
+        result["summary_message"], message_type=MessageType.ACTION
+    )
     if dom_changes_detected:
         return f"{result['detailed_message']}.\n As a consequence of this action, new elements have appeared in view: {dom_changes_detected}. This means that the action of entering text {text_to_enter} is not yet executed and needs further interaction. Get all_fields DOM to complete the interaction."
     return result["detailed_message"]
 
 
-async def do_entertext(page: Page, selector: str, text_to_enter: str, use_keyboard_fill: bool = True):
+async def do_entertext(
+    page: Page, selector: str, text_to_enter: str, use_keyboard_fill: bool = True
+):
     """
     Performs the text entry operation on a DOM or Shadow DOM element.
 
@@ -359,18 +367,20 @@ async def do_entertext(page: Page, selector: str, text_to_enter: str, use_keyboa
 
         if use_keyboard_fill:
             await elem.focus()
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0.05)
             await press_key_combination("Control+A")
-            await asyncio.sleep(0.1)
-            await press_key_combination("Backspace")
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0.05)
+            await press_key_combination("Delete")
+            await asyncio.sleep(0.05)
             logger.debug(f"Focused element with selector {selector} to enter text")
             await page.keyboard.type(text_to_enter, delay=1)
         else:
             await custom_fill_element(page, selector, text_to_enter)
 
         await elem.focus()
-        logger.info(f'Success. Text "{text_to_enter}" set successfully in the element with selector {selector}')
+        logger.info(
+            f'Success. Text "{text_to_enter}" set successfully in the element with selector {selector}'
+        )
         success_msg = f'Success. Text "{text_to_enter}" set successfully in the element with selector {selector}'
         return {
             "summary_message": success_msg,
@@ -385,46 +395,44 @@ async def do_entertext(page: Page, selector: str, text_to_enter: str, use_keyboa
 
 async def bulk_enter_text(
     entries: Annotated[
-        List[dict[str, str]],
-        "List of objects, each containing 'query_selector' and 'text'.",
+        List[EnterTextEntry],
+        "List of EnterTextEntry objects. An object containing 'query_selector' (DOM selector query using mmid attribute e.g. [mmid='114']) and 'text' (text to enter on the element).",
     ]  # noqa: UP006
 ) -> Annotated[
-    List[dict[str, str]],
-    "List of dictionaries, each containing 'query_selector' and the result of the operation.",
+    List[str],
+    "List of results from the entertext operation for each entry.",
 ]:  # noqa: UP006
     """
     Enters text into multiple DOM elements using a bulk operation.
 
     This function enters text into multiple DOM elements using a bulk operation.
-    It takes a list of dictionaries, where each dictionary contains a 'query_selector' and 'text' pair.
+    It takes a list of EnterTextEntry objects, where each contains 'query_selector' and 'text' attributes.
     The function internally calls the 'entertext' function to perform the text entry operation for each entry.
 
     Args:
-        entries: List of objects, each containing 'query_selector' and 'text'.
+        entries: List of EnterTextEntry objects.
 
     Returns:
-        List of dictionaries, each containing 'query_selector' and the result of the operation.
+        List of results from the entertext operation for each entry.
 
     Example:
         entries = [
-            {"query_selector": "#username", "text": "test_user"},
-            {"query_selector": "#password", "text": "test_password"}
+            EnterTextEntry(query_selector="#username", text="test_user"),
+            EnterTextEntry(query_selector="#password", text="test_password")
         ]
         results = await bulk_enter_text(entries)
 
     Note:
-        - Each entry in the 'entries' list should be a dictionary with 'query_selector' and 'text' keys.
-        - The result is a list of dictionaries, where each dictionary contains the 'query_selector' and the result of the operation.
+        - Each entry in the 'entries' list should be an instance of EnterTextEntry.
+        - The result is a list of strings returned by the 'entertext' function for each entry.
     """
     add_event(EventType.INTERACTION, EventData(detail="bulk_enter_text"))
-    results: List[dict[str, str]] = []  # noqa: UP006
+    results: List[str] = []  # noqa: UP006
     logger.info("Executing bulk Enter Text Command")
     for entry in entries:
-        query_selector = entry["query_selector"]
-        text_to_enter = entry["text"]
-        logger.info(f"Entering text: {text_to_enter} in element with selector: {query_selector}")
-        result = await entertext(EnterTextEntry(query_selector=query_selector, text=text_to_enter))
-
-        results.append({"query_selector": query_selector, "result": result})
-
+        logger.info(
+            f"Entering text: {entry['text']} in element with selector: {entry['query_selector']}"
+        )
+        result = await entertext(entry)
+        results.append(result)
     return results
