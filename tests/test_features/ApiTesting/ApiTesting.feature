@@ -61,6 +61,7 @@ Feature: End-to-End Shopping Flow Validation
 
   Scenario Outline: Add a Product to Cart
     Given I am authenticated with a valid token
+    Then I get the products from products endpoint
     And a product exists with "id" "<productId>"
     When I send a POST request to "/carts" with the following payload:
       """
@@ -78,10 +79,6 @@ Feature: End-to-End Shopping Flow Validation
     Then I should receive a "200 OK" response
     And the response should contain the created cart with the correct details
     And I store the cart ID as "<cartId>"
-
-    Examples:
-      | userId   | date        | productId | quantity | cartId      |
-      | 1        | 2023-11-21  | 1         | 2        | <generated> |
 
   Scenario Outline: Update Cart with Additional Products
     Given a cart exists with "id" "<cartId>" for user "id" "<userId>"

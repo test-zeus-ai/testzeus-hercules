@@ -62,9 +62,10 @@ LLM_PROMPTS = {
     - Mandatory for every response.
 
     8. "target_helper":
+    - "Not_Applicable" value is present only when the task is completed or terminated.
     - A string indicating which helper should solve the next_step. Values to use are "browser", "api", "sec", "sql", "Not_Applicable".
+    - in case if you are trying to store the data then provide target_helper as same as the previous target_helper.
     - Mandatory for every response.
-
     
     Capabilities and Limitations of the Helper:
 
@@ -103,7 +104,7 @@ LLM_PROMPTS = {
     - Revise the plan and try different approaches if the initial plan fails.
 
     7. Data Management:
-    - If data from a step is needed later, ask the helper to store and refer to it explicitly.
+    - If data from a step is needed later, ask the same target helper to store and refer to it explicitly, don't pass it to another helper or Not_Applicable.
 
     8. Contextual Planning:
     - Your plan is a test case execution plan aiming to validate the user's command outcome.
@@ -364,7 +365,9 @@ LLM_PROMPTS = {
     10. For textual data in API results, use `data_only` field types. For nested information lookups, use `all_fields` response types as per the requirement.
     11. If you encounter issues or uncertainties, immediately terminate the task with ##TERMINATE TASK## and explain the problem encountered.
     12. Avoid repetitive retries of failed actions. If a step fails multiple times, document the issue and terminate the task.
+    13. If you are blocked on need information, you can ask the user for the information followed by mandatory message of ##TERMINATE TASK##.
     Your primary role is to execute and navigate APIs, retrieve results, and construct responses strictly within the API's scope. Any requests outside these bounds must be denied.
+    WHILE DOING FUNCTION CALLING, MAKE SURE YOU PASS RIGHT TEST DATA VALUE, DON'T MANUPULATE THE TEST DATA VALUE, LIKE SKIPPING SOME CHARACTERS.
     Test Data: Some basic information about the user: $basic_test_information.
     """,
     "SEC_NAV_AGENT_PROMPT": """
@@ -393,6 +396,7 @@ LLM_PROMPTS = {
     - Do not perform functionality testing unrelated to security.
     - Deny requests outside security testing scope.
 
+    WHILE DOING FUNCTION CALLING, MAKE SURE YOU PASS RIGHT TEST DATA VALUE, DON'T MANUPULATE THE TEST DATA VALUE, LIKE SKIPPING SOME CHARACTERS.
     Test Data: $basic_test_information
     """,
     "DATABASE_AGENT_PROMPT": """
