@@ -38,12 +38,12 @@ async def enter_text_and_click(
         "The properly formatted DOM selector query, for example [mmid='1234'], for the element that will be clicked after text entry.",
     ],
     user_input_dialog_response: Annotated[
-        Optional[str],
+        Optional[str | None],
         "The input response to a dialog box. THIS SHOULD NOT HAVE RANDOM VALUE BUT ONLY AS PER THE TEST INPUT",
     ],
-    expected_message_of_dialog: Annotated[Optional[str], "The expected message of the dialog box when it opens."],
+    expected_message_of_dialog: Annotated[Optional[str | None], "The expected message of the dialog box when it opens."],
     action_on_dialog: Annotated[
-        Optional[str],
+        Optional[str | None],
         "The action to be performed on the dialog box. ONLY 'DISMISS' OR 'ACCEPT' AS A VALUE ALLOWED.",
     ],
     wait_before_click_execution: Annotated[float, "Optional wait time in seconds before executing the click.", float] = 0.0,

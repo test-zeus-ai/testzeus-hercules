@@ -15,7 +15,7 @@ from playwright.async_api import async_playwright as playwright
 from testzeus_hercules.config import (
     get_browser_type,
     get_cdp_config,
-    get_screen_shot_path,
+    get_proof_path,
     should_capture_network,
     should_record_video,
     should_run_headless,
@@ -50,7 +50,7 @@ class PlaywrightManager:
     The class ensures only one instance of itself, Playwright, and the browser is created during the application lifecycle.
     """
 
-    _homepage = "https://www.google.com"
+    _homepage = "about:blank"
     _instance = None
 
     def __new__(cls, *args, **kwargs) -> "PlaywrightManager":
@@ -99,9 +99,9 @@ class PlaywrightManager:
         self.ui_manager: Optional[UIManager] = UIManager() if gui_input_mode else None
         self._take_screenshots = should_take_screenshots() or take_screenshots
         self.stake_id = stake_id
-        self._screenshots_dir = os.path.join(get_screen_shot_path(self.stake_id) or screenshots_dir, "screenshots")
+        self._screenshots_dir = os.path.join(get_proof_path(self.stake_id) or screenshots_dir, "screenshots")
         self._record_video = should_record_video() or record_video
-        self._video_dir = os.path.join(get_screen_shot_path(self.stake_id) or video_dir, "videos")
+        self._video_dir = os.path.join(get_proof_path(self.stake_id) or video_dir, "videos")
         self._playwright: Optional[Playwright] = None
         self._browser_context: Optional[BrowserContext] = None
         self.__async_initialize_done = False
@@ -109,7 +109,7 @@ class PlaywrightManager:
         self._latest_video_path: Optional[str] = None  # Stores the latest video file path
         self.log_requests_responses = should_capture_network() or log_requests_responses
         self.request_response_log_file = os.path.join(
-            get_screen_shot_path(self.stake_id) or request_response_log_file,
+            get_proof_path(self.stake_id) or request_response_log_file,
             "network_logs.json",
         )
         self.request_response_logs: List[Dict] = []
@@ -239,7 +239,7 @@ class PlaywrightManager:
                 # Record video in CDP mode
                 context_options = {
                     "record_video_dir": self._video_dir,
-                    "record_video_size": {"width": 1920, "height": 1080},
+                    # "record_video_size": {"width": 1920, "height": 1080},
                 }
                 self._browser_context = await _browser.new_context(**context_options)
                 page = await self._browser_context.new_page()
@@ -316,7 +316,7 @@ class PlaywrightManager:
             )
             context_options = {
                 "record_video_dir": self._video_dir,
-                "record_video_size": {"width": 1920, "height": 1080},
+                # "record_video_size": {"width": 1920, "height": 1080},
             }
             if self.browser_type == "firefox" and self._extension_path is not None:
                 context_options["extensions"] = [self._extension_path]
@@ -851,16 +851,19 @@ class PlaywrightManager:
             if self._record_video:
                 pages = self._browser_context.pages
                 for page in pages:
-                    if page.video:
-                        video_path = await page.video.path()
-                        # rename the video file to include the page URL
-                        video_name = f"{self.stake_id}.webm" or os.path.basename(video_path)
-                        video_dir = os.path.dirname(video_path)
-                        video_url = "video_of" or page.url.replace("://", "_").replace("/", "_")
-                        new_video_path = os.path.join(video_dir, f"{video_url}_{video_name}")
-                        os.rename(video_path, new_video_path)
-                        self._latest_video_path = new_video_path
-                        logger.info(f"Video recorded at: {new_video_path}")
+                    try:
+                        if page.video:
+                            video_path = await page.video.path()
+                            # rename the video file to include the page URL
+                            video_name = f"{self.stake_id}.webm" or os.path.basename(video_path)
+                            video_dir = os.path.dirname(video_path)
+                            video_url = "video_of" or page.url.replace("://", "_").replace("/", "_")
+                            new_video_path = os.path.join(video_dir, f"{video_url}_{video_name}")
+                            os.rename(video_path, new_video_path)
+                            self._latest_video_path = new_video_path
+                            logger.info(f"Video recorded at: {new_video_path}")
+                    except Exception as e:
+                        logger.error(f"Failed to finalize video recording: {e}")
             await self._browser_context.close()
             self._browser_context = None
 

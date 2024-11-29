@@ -41,7 +41,7 @@ class PlannerAgent:
 
         if user_ltm:  # add the user LTM to the system prompt if it exists
             user_ltm = "\n" + user_ltm
-            system_message = Template(system_message).substitute(basic_user_information=user_ltm)
+            system_message = Template(system_message).substitute(basic_test_information=user_ltm)
         system_message = system_message + "\n" + f"Today's date is {datetime.now().strftime('%d %B %Y')}"
         logger.info(f"Planner agent using model: {model_config_list[0]['model']}")
 
@@ -53,7 +53,7 @@ class PlannerAgent:
                 **llm_config_params,  # unpack all the name value pairs in llm_config_params as is
             },
         )
-        add_text_compressor(self.agent)
+        # add_text_compressor(self.agent)
 
         if enable_user_input:
             # Register get_user_input tool for LLM by assistant agent
@@ -70,7 +70,7 @@ class PlannerAgent:
             ignore_async_in_sync_chat=True,
         )
 
-    def __get_ltm(self):
+    def __get_ltm(self) -> str:
         """
         Get the the long term memory of the user.
         returns: str | None - The user LTM or None if not found.

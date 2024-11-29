@@ -41,7 +41,7 @@ test: lint        ## Run tests and generate coverage report.
 .PHONY: test-case  ## Run selective test case.
 test-case: lint     ## Run a specific test case.
 	@read -p "Enter the test case (e.g., multilingual): " TEST_CASE && \
-	poetry run pytest -v --pdb tests/test_feature_execution.py::test_feature_execution[$$TEST_CASE]
+	poetry run pytest -v tests/test_feature_execution.py::test_feature_execution[$$TEST_CASE]
 
 .PHONY: watch
 watch:            ## Run tests on every change.

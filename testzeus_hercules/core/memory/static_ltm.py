@@ -2,6 +2,7 @@ import os
 from typing import Optional
 
 from testzeus_hercules.config import get_test_data_path
+from testzeus_hercules.core.memory.state_handler import get_stored_data
 from testzeus_hercules.utils.logger import logger
 
 
@@ -26,6 +27,7 @@ class StaticLTM:
             str: Consolidated data from all test data files.
         """
         test_data_path = get_test_data_path()
+        selected_files = []
         consolidated_data = ""
         for filename in os.listdir(test_data_path):
             file_path = os.path.join(test_data_path, filename)
@@ -34,10 +36,18 @@ class StaticLTM:
                 if not filename.endswith((".txt", ".json", ".csv", ".rft", ".yaml", ".yml")):
                     logger.info("Skipping non-text file: %s", file_path)
                     continue
+                if filename.endswith((".json", ".yaml", ".yml")):
+                    selected_files.append(file_path)
+                new_read = ""
                 with open(file_path, "r", encoding="utf-8") as file:
-                    consolidated_data += file.read() + "\n"
+                    data = file.read()
+                    data = data.replace("  ", " ").replace("    ", " ").strip()
+                    if data:
+                        new_read += f"following is test_data from {filename}\n" + data + "\n"
                     logger.info("Test data loaded from: %s", file_path)
-        return consolidated_data
+                consolidated_data += new_read
+        li_selected_files = ", ".join(selected_files)
+        return consolidated_data + "\nStored Data:" + get_stored_data() + f"\nhelper_spec_file_paths: {li_selected_files}"
 
     def get_user_ltm(self) -> Optional[str]:
         """

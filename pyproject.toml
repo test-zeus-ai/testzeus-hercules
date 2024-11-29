@@ -112,6 +112,10 @@ playwright-recaptcha = "^0.5.1"
 twine = "^5.1.1"
 junit2html = "^31.0.2"
 anthropic = "^0.39.0"
+pandas = "^2.2.3"
+openpyxl = "^3.1.5"
+aiohttp = "^3.11.7"
+inflection = "^0.5.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.3"
@@ -125,6 +129,7 @@ mkdocs = "^1.6.1"
 ipdb = "^0.13.13"
 twine = "^5.1.1"
 deptry = "^0.21.0"
+pytest-rerunfailures = "^15.0"
 
 [build-system]
 requires = ["poetry-core"]

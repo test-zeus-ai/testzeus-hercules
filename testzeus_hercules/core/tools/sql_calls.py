@@ -8,6 +8,7 @@ from testzeus_hercules.utils.logger import logger
 
 
 @tool(
+    agent_names=["sql_nav_agent"],
     description="Execute a SELECT SQL query on remote db, it should be only used when the instruction request to fetch data from database.",
     name="execute_select_query_sql_async",
 )
@@ -18,13 +19,13 @@ async def execute_select_cte_query_sql(
     ],
     query: Annotated[str, "The SELECT SQL query to execute. Must start with 'SELECT' or 'WITH'."],
     schema: Annotated[
-        Optional[str],
+        Optional[str | None],
         "Optional database schema to use. If not provided, assumes schema is specified in the query.",
-    ] = None,
+    ],
     params: Annotated[
         Optional[Dict[str, Any]],
         "Optional parameters to pass to the query for parameterized queries.",
-    ] = None,
+    ],
 ) -> Annotated[
     Union[List[Dict[str, Any]], Dict[str, str]],
     "The query results or an error message.",
@@ -39,7 +40,7 @@ async def execute_select_cte_query_sql(
         - MySQL: "mysql+aiomysql://user:password@host:port/database"
         - SQLite: "sqlite+aiosqlite:///path/to/database.db"
     - query (str): The SELECT SQL query to execute. Must start with 'SELECT' or 'WITH'.
-    - schema (Optional[str]): Optional database schema to use.
+    - schema (Optional[str|None]): Optional database schema to use.
       If not provided, assumes schema is specified in the query using dot notation.
     - params (Optional[Dict[str, Any]]): Optional parameters to pass to the query.
       Use this for parameterized queries to prevent SQL injection.

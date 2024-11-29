@@ -38,6 +38,7 @@ class SelectOptionEntry:
 
 
 @tool(
+    agent_names=["browser_nav_agent"],
     name="select_option",
     description="used to Selects an option from a dropdown or spinner.",
 )
@@ -90,24 +91,18 @@ async def select_option(
     subscribe(detect_dom_changes)
 
     result = await do_select_option(page, query_selector, option_value)
-    await asyncio.sleep(
-        0.1
-    )  # sleep for 100ms to allow the mutation observer to detect changes
+    await asyncio.sleep(0.1)  # sleep for 100ms to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
 
     await browser_manager.take_screenshots(f"{function_name}_end", page)
 
-    await browser_manager.notify_user(
-        result["summary_message"], message_type=MessageType.ACTION
-    )
+    await browser_manager.notify_user(result["summary_message"], message_type=MessageType.ACTION)
     if dom_changes_detected:
         return f"{result['detailed_message']}.\nAs a consequence of this action, new elements have appeared in view: {dom_changes_detected}. This means that the action of selecting option '{option_value}' is not yet executed and needs further interaction. Get all_fields DOM to complete the interaction."
     return result["detailed_message"]
 
 
-async def do_select_option(
-    page: Page, selector: str, option_value: str
-) -> dict[str, str]:
+async def do_select_option(page: Page, selector: str, option_value: str) -> dict[str, str]:
     """
     Performs the option selection operation on a dropdown or spinner element.
 
@@ -126,9 +121,7 @@ async def do_select_option(
         result = await do_select_option(page, '#country', 'United States')
     """
     try:
-        logger.debug(
-            f"Looking for selector {selector} to select option: {option_value}"
-        )
+        logger.debug(f"Looking for selector {selector} to select option: {option_value}")
 
         # Helper function to find element in DOM, Shadow DOM, or iframes
         async def find_element(page: Page, selector: str) -> ElementHandle:
@@ -229,10 +222,7 @@ async def do_select_option(
             for option in options:
                 option_text = await option.inner_text()
                 option_value_attr = await option.get_attribute("value")
-                if (
-                    option_text.strip() == option_value
-                    or option_value_attr == option_value
-                ):
+                if option_text.strip() == option_value or option_value_attr == option_value:
                     await option.click()
                     option_found = True
                     break
@@ -254,6 +244,7 @@ async def do_select_option(
 
 
 @tool(
+    agent_names=["browser_nav_agent"],
     name="bulk_select_option",
     description="used to Select an option of multiple dropdowns or spinners in one shot",
 )
@@ -292,12 +283,8 @@ async def bulk_select_option(
     for entry in entries:
         query_selector = entry["query_selector"]
         option_value = entry["value"]
-        logger.info(
-            f"Selecting option: '{option_value}' in element with selector: '{query_selector}'"
-        )
-        result = await select_option(
-            SelectOptionEntry(query_selector=query_selector, value=option_value)
-        )
+        logger.info(f"Selecting option: '{option_value}' in element with selector: '{query_selector}'")
+        result = await select_option(SelectOptionEntry(query_selector=query_selector, value=option_value))
 
         results.append({"query_selector": query_selector, "result": result})
 

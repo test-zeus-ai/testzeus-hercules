@@ -38,6 +38,7 @@ class UploadFileEntry:
 
 
 @tool(
+    agent_names=["browser_nav_agent"],
     name="upload_file",
     description="Uploads a file to a file input element identified by a selector, ",
 )
@@ -204,6 +205,7 @@ async def do_upload_file(page: Page, selector: str, file_path: str) -> dict[str,
 
 
 @tool(
+    agent_names=["browser_nav_agent"],
     name="bulk_upload_file",
     description="Uploads files to multiple file input elements using a bulk operation.",
 )

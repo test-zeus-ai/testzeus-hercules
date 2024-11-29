@@ -141,6 +141,7 @@ async def custom_set_slider_value(page: Page, selector: str, value_to_set: float
 
 
 @tool(
+    agent_names=["browser_nav_agent"],
     description="Sets the specified value in the range slider DOM element matching the given mmid attribute value. This will only set the slider's value and not perform any additional actions.Returns Success if the slider value was set successfully or an appropriate error message if the value could not be set.",
     name="setslider",
 )
@@ -309,6 +310,7 @@ async def do_setslider(page: Page, selector: str, value_to_set: float):
 
 
 @tool(
+    agent_names=["browser_nav_agent"],
     description="Bulk set values in multiple range slider DOM fields. To be used when there are multiple sliders to be set on the same page. Sets values in the DOM elements matching the given mmid attribute value. The input will receive a list of objects containing the DOM query selector and the value to set. This will only set the values and not perform any additional actions. Returns each selector and the result for attempting to set the slider values.",
     name="bulk_set_slider",
 )

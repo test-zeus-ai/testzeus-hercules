@@ -13,7 +13,7 @@ def final_reply_callback_user_proxy(
     messages: list[dict[str, Any]],
     sender: autogen.Agent,
     config: dict[str, Any],
-):
+) -> tuple[bool, Any]:
     """
     Callback function that is called each time the user proxy agent receives a message.
     It picks the last message from the list of messages and checks if it contains the termination signal.

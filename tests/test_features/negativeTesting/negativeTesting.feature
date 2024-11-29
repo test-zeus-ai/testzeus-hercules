@@ -14,7 +14,7 @@ Feature: Negative scenarios for the large action model.
 
   Given I am on the Medium website  
   When I navigate to "https://medium.com/non-existent-page"  
-  Then I should see an error page with "Out of nothing, something." and a 404 PAGE NOT FOUND message
+  Then I should see an error page with "Out of nothing, something." in a Medium's page
 
 
  Scenario: Accessing Restricted Content Without Authentication

@@ -1,4 +1,4 @@
-URL is https://app-force-7567-dev-ed.scratch.my.site.com/ebikes/s/
+URL is https://business-java-5461-dev-ed.scratch.my.site.com/ebikes/s/
 
 Product_family_name data for each product
 |Product_family_name| Bike  |Product_name|

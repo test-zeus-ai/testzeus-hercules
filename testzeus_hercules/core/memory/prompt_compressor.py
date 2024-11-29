@@ -16,8 +16,6 @@ def add_text_compressor(agent: ConversableAgent) -> None:
     """
     return
     # removed the text compressor as its making the prompt lossy and causing lots of halucination.
-    context_handling = transform_messages.TransformMessages(
-        transforms=[TEXT_COMPRESSOR]
-    )
+    context_handling = transform_messages.TransformMessages(transforms=[TEXT_COMPRESSOR])
     context_handling.add_to_agent(agent)
     logger.debug(f"Added text compressor to agent: {agent.name}")

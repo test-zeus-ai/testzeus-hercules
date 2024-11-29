@@ -38,6 +38,7 @@ class SetInputValueEntry:
 
 
 @tool(
+    agent_names=["browser_nav_agent"],
     name="set_date_time_value",
     description="Used to set date, time values in an input element identified by a selector, its strictly for time or date fields and should not be used for other input fields.",
 )
@@ -204,6 +205,7 @@ async def do_set_date_time_value(page: Page, selector: str, input_value: str) ->
 
 
 @tool(
+    agent_names=["browser_nav_agent"],
     name="bulk_set_date_time_value",
     description="Sets values in multiple date, time elements using a bulk operation. only used for date or time fields.",
 )

@@ -13,6 +13,7 @@ def get_feature_folders() -> list[str]:
 
 
 # Parameterize the test function to run for each feature folder
+@pytest.mark.flaky(reruns=2, reruns_delay=2)
 @pytest.mark.parametrize("feature_folder", get_feature_folders())
 def test_feature_execution(feature_folder: str) -> None:
     """

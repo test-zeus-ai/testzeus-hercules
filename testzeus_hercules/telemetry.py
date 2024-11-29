@@ -8,9 +8,9 @@ from enum import Enum
 from typing import Any, Dict, Optional
 
 import sentry_sdk
-from sentry_sdk.types import Event, Hint
-from sentry_sdk.scrubber import EventScrubber, DEFAULT_DENYLIST, DEFAULT_PII_DENYLIST
 from pydantic import BaseModel
+from sentry_sdk.scrubber import DEFAULT_DENYLIST, DEFAULT_PII_DENYLIST, EventScrubber
+from sentry_sdk.types import Event, Hint
 
 DSN = "https://d14d2ee82f26a3585b2a892fab7fffaa@o4508256143540224.ingest.us.sentry.io/4508256153042944"
 
@@ -35,9 +35,7 @@ class EventType(Enum):
 
 class EventData(BaseModel):
     detail: Optional[str] = None
-    additional_data: Optional[Dict[str, Any]] = (
-        None  # For any extra details specific to certain events
-    )
+    additional_data: Optional[Dict[str, Any]] = None  # For any extra details specific to certain events
 
 
 def my_before_send(event: Event, hint: Hint) -> Event | None:
@@ -71,9 +69,7 @@ if ENABLE_TELEMETRY:
         send_default_pii=False,
         send_client_reports=False,
         server_name=None,
-        event_scrubber=EventScrubber(
-            denylist=denylist, pii_denylist=pii_denylist, recursive=True
-        ),
+        event_scrubber=EventScrubber(denylist=denylist, pii_denylist=pii_denylist, recursive=True),
     )
     sentry_sdk.set_extra("sys.argv", None)
     sentry_sdk.set_user(None)
@@ -145,10 +141,7 @@ def build_final_message() -> Dict[str, Any]:
     message = {
         "installation_id": event_collector["installation_id"],
         "session_start": event_collector["start_time"],
-        "buckets": {
-            event_type_s: events
-            for event_type_s, events in event_collector["buckets"].items()
-        },
+        "buckets": {event_type_s: events for event_type_s, events in event_collector["buckets"].items()},
     }
     return message
 
