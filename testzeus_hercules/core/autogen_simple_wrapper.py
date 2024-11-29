@@ -17,7 +17,7 @@ from testzeus_hercules.core.agents.browser_nav_agent import BrowserNavAgent
 from testzeus_hercules.core.agents.high_level_planner_agent import PlannerAgent
 from testzeus_hercules.core.agents.sec_nav_agent import SecNavAgent
 from testzeus_hercules.core.agents.sql_nav_agent import SqlNavAgent
-from testzeus_hercules.core.memory.state_handler import store_data
+from testzeus_hercules.core.memory.state_handler import store_run_data
 from testzeus_hercules.core.post_process_responses import (
     final_reply_callback_planner_agent as notify_planner_messages,  # type: ignore
 )
@@ -192,13 +192,14 @@ class AutogenSimpleWrapper:
                     last_message += " " + get_url()
                 else:
                     mem = "Context from previous steps: " + last_message + "\n"
-                    store_data(mem)
+                    store_run_data(mem)
                 # t_l = last_message.strip()
                 # if not t_l:
                 #     logger.info("Last message from browser nav was empty. Max turns: {self.browser_number_of_rounds*2}, number of messages: {len(list(sender.chat_messages.items())[0][1])}")
                 notify_planner_messages(last_message, message_type=MessageType.ACTION)  # type: ignore
                 return last_message  #  type: ignore
-            return recipient.last_message(sender)["content"]  # type: ignore
+            notify_planner_messages(last_message, message_type=MessageType.ACTION)  # type: ignore
+            return last_message  # type: ignore
 
         def reflection_message(recipient, messages, sender, config):  # type: ignore
             last_message = messages[-1]["content"]  # type: ignore
@@ -209,14 +210,19 @@ class AutogenSimpleWrapper:
                 target_helper = ""
 
             if next_step is None:
-                print("Message to nested chat returned None")
+                logger.error("Message to nested chat returned None")
                 return None
             else:
                 url = ""
                 if "browser" in target_helper:
                     url = get_url()
-                next_step = next_step.strip() + " " + url + f" ##target_helper: {target_helper}##"  # type: ignore
-                return next_step  # type: ignore
+                if target_helper.strip():
+                    next_step = next_step.strip() + " " + url + f" ##target_helper: {target_helper}##"  # type: ignore
+                    return next_step  # type: ignore
+                else:
+                    logger.error("Target helper not found in the response")
+                    # this is some crazy trick, might backfire in long run, only time will tell.
+                    return "skip this step"  # type: ignore
 
         nav_agents_names = ["browser", "api", "sql", "sec"]
         group_participants_names = (
