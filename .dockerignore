@@ -47,3 +47,9 @@ test_output.xml
 *.py,cover
 .hypothesis/
 .pytest_cache/
+.github/
+opt
+**/run_data
+**/statics
+.mypy_cache
+.git

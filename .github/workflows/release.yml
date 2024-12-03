@@ -58,7 +58,7 @@ jobs:
           curl -sSL ${{ env.POETRY_URL }} | python - --version ${{ env.POETRY_VERSION }}
           echo "$HOME/.local/bin" >> $GITHUB_PATH
       - name: Install project
-        run: make install
+        run: make install-extra
       - name: Build and publish to PyPI
         env:
           TWINE_USERNAME: __token__

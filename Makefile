@@ -15,9 +15,13 @@ show:             ## Show the current environment.
 	@echo "Current environment:"
 	poetry env info && exit
 
+.PHONY: install-extra
+install-extra:          ## Install the project in dev mode.
+	poetry install --all-extras && exit && poetry run playwright install --with-deps
+
 .PHONY: install
 install:          ## Install the project in dev mode.
-	poetry install --all-extras && exit && poetry run playwright install --with-deps
+	poetry install && exit && poetry run playwright install --with-deps
 
 .PHONY: fmt
 fmt:              ## Format code using black & isort.
