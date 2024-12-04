@@ -43,6 +43,16 @@ Our mission? To **democratize and disrupt test automation**, making top-tier tes
 - **Enhancing Hercules with Community-Driven Tools**  
   Discover how to customize Hercules and incorporate additional tools provided by the community.  
   _[Watch now](https://youtu.be/C8hUy5leRF0?si=yVMpZ7WFcI01BoI3)_
+---
+
+#### 🛠️ **API Testing**
+- **API testing all the way, new ways to do end to end**  
+  _[Watch now](https://youtu.be/qMt89DQH6LQ?si=lcSJbKOCaqqUGeQ8)_
+---
+
+#### 🛠️ **Security Testing**
+- **Security Testing done end to end**  
+  _[Watch now](https://youtu.be/o6MmfTakIh4?si=JL8iu4e3i85SWrxU)_
 
 ---
 
