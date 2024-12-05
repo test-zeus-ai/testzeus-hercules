@@ -300,6 +300,22 @@ For the hardcore enthusiasts, you can use Hercules via the source code to get a 
 
 ## 📝 Configuration Details
 
+### Disabling Telemetry
+
+To disable telemetry, set the `TELEMETRY_ENABLED` environment variable to `0`:
+
+```bash
+export TELEMETRY_ENABLED=0
+```
+
+### Auto Mode
+
+If `AUTO_MODE` is set to `1`, Hercules will not request an email during the run:
+
+```bash
+export AUTO_MODE=1
+```
+
 ### Understanding the Environment File (`.env`)
 
 To configure Hercules in detail:
