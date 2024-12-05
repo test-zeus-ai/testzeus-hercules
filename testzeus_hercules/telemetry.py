@@ -11,6 +11,7 @@ import sentry_sdk
 from pydantic import BaseModel
 from sentry_sdk.scrubber import DEFAULT_DENYLIST, DEFAULT_PII_DENYLIST, EventScrubber
 from sentry_sdk.types import Event, Hint
+import json
 
 DSN = "https://d14d2ee82f26a3585b2a892fab7fffaa@o4508256143540224.ingest.us.sentry.io/4508256153042944"
 
@@ -79,24 +80,66 @@ if ENABLE_TELEMETRY:
     sentry_sdk.set_user(None)
 
 
-def get_installation_id(file_path="installation_id.txt") -> str:
-    """Generate or load a unique installation ID."""
+def get_installation_id(
+    file_path: str = "installation_id.txt", is_manual_run: bool = True
+) -> Dict[str, Any]:
+    """Generate or load installation data.
+
+    If the file exists and contains a dict, return it.
+    If the file exists and contains only the installation ID, return a dict with default values.
+    If the file does not exist:
+        - If triggered manually by the user (is_manual_run is True), prompt for user_email.
+        - Generate a new installation ID and save all data as a dict.
+        - If not triggered manually, use default values for user_email.
+    """
     if os.path.exists(file_path):
+        data = {
+            "user_email": "old_email@example.com",
+        }
+        rewrite_data = False
         with open(file_path, "r") as file:
-            return file.read().strip()
+            content = file.read().strip()
+            installation_id = content
+            data["installation_id"] = installation_id
+            try:
+                data = json.loads(content)
+                if isinstance(data, dict) and "installation_id" in data:
+                    return data
+            except json.JSONDecodeError:
+                rewrite_data = True
+        if rewrite_data:
+            with open(file_path, "w") as file:
+                json.dump(data, file)
     else:
         installation_id = str(uuid.uuid4())
+        user_email = "new_email@example.com"
+        if is_manual_run:
+            print(
+                "We need your email to inform you about any urgent security patches or issues detected in testzeus-hercules."
+            )
+            n_user_email = input(
+                "Please provide your email (or press Enter to skip with empty email): "
+            )
+            user_email = n_user_email if n_user_email else user_email
+
+        data = {
+            "user_email": user_email,
+            "installation_id": installation_id,
+        }
         with open(file_path, "w") as file:
-            file.write(installation_id)
-        return installation_id
+            json.dump(data, file)
+    return data
 
 
 # Initialize the installation_id
-installation_id = get_installation_id()
+installation_data = get_installation_id(
+    is_manual_run=os.environ.get("AUTO_MODE", "0") == "0"
+)
 
 # Global event collector with event_type buckets
 event_collector = {
-    "installation_id": installation_id,
+    "installation_id": installation_data["installation_id"],
+    "user_email": installation_data["user_email"],
     "buckets": {},
     "start_time": datetime.now().isoformat(),
 }
@@ -144,6 +187,7 @@ def build_final_message() -> Dict[str, Any]:
     """
     message = {
         "installation_id": event_collector["installation_id"],
+        "user_email": event_collector["user_email"],
         "session_start": event_collector["start_time"],
         "buckets": {
             event_type_s: events

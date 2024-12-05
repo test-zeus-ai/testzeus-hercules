@@ -22,5 +22,7 @@ if [ ! -d "/testzeus-hercules/opt" ]; then
   touch /testzeus-hercules/opt/test_data/td.txt
 fi
 
+export AUTO_MODE=1
+
 # Execute the main application
 exec poetry run python testzeus_hercules
