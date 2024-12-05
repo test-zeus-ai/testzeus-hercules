@@ -35,7 +35,9 @@ class EventType(Enum):
 
 class EventData(BaseModel):
     detail: Optional[str] = None
-    additional_data: Optional[Dict[str, Any]] = None  # For any extra details specific to certain events
+    additional_data: Optional[Dict[str, Any]] = (
+        None  # For any extra details specific to certain events
+    )
 
 
 def my_before_send(event: Event, hint: Hint) -> Event | None:
@@ -69,7 +71,9 @@ if ENABLE_TELEMETRY:
         send_default_pii=False,
         send_client_reports=False,
         server_name=None,
-        event_scrubber=EventScrubber(denylist=denylist, pii_denylist=pii_denylist, recursive=True),
+        event_scrubber=EventScrubber(
+            denylist=denylist, pii_denylist=pii_denylist, recursive=True
+        ),
     )
     sentry_sdk.set_extra("sys.argv", None)
     sentry_sdk.set_user(None)
@@ -141,7 +145,10 @@ def build_final_message() -> Dict[str, Any]:
     message = {
         "installation_id": event_collector["installation_id"],
         "session_start": event_collector["start_time"],
-        "buckets": {event_type_s: events for event_type_s, events in event_collector["buckets"].items()},
+        "buckets": {
+            event_type_s: events
+            for event_type_s, events in event_collector["buckets"].items()
+        },
     }
     return message
 
@@ -161,9 +168,11 @@ def register_shutdown() -> None:
         # Schedule shutdown_wrapper to be run asynchronously
         asyncio.create_task(shutdown_wrapper())
 
-    loop = asyncio.get_event_loop()
-    loop.add_signal_handler(signal.SIGTERM, on_shutdown)
-    loop.add_signal_handler(signal.SIGINT, on_shutdown)
+    # loop = asyncio.get_event_loop()
+    signal.signal(signal.SIGTERM, on_shutdown)
+    signal.signal(signal.SIGINT, on_shutdown)
+    # loop.add_signal_handler(signal.SIGTERM, on_shutdown)
+    # loop.add_signal_handler(signal.SIGINT, on_shutdown)
 
     # Register with atexit to ensure it runs when the program exits
     atexit.register(lambda: asyncio.run(shutdown_wrapper()))
