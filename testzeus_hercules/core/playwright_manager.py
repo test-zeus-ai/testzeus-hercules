@@ -185,6 +185,10 @@ class PlaywrightManager:
         """
         Prepares the browser extension by downloading and caching it if necessary.
         """
+        if os.name == "nt":  # Skip extension preparation on Windows
+            logger.info("Skipping extension preparation on Windows.")
+            return
+
         if self.browser_type == "chromium":
             extension_url = "https://github.com/gorhill/uBlock/releases/download/1.61.0/uBlock0_1.61.0.chromium.zip"
             extension_file_name = "uBlock0_1.61.0.chromium.zip"
