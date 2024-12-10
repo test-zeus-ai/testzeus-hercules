@@ -1,5 +1,5 @@
 {
-	"mistral-large-agente": {
+	"mistral-large": {
 		"planner_agent": {
 			"model_name": "mistral",
 			"model_api_key": "",

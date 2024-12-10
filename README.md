@@ -399,7 +399,7 @@ For example: If you would like to run with a "Headful" browser, you can set the 
 
   ```json
   {
-    "mistral-large-agente": {
+    "mistral-large": {
       "planner_agent": {
         "model_name": "mistral",
         "model_api_key": "",

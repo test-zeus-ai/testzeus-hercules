@@ -74,7 +74,9 @@ def sequential_process() -> None:
         asyncio.run(runner.start())
 
         runner_result = {}
-        cost_metrics = runner.result.cost or {}
+        cost_metrics = {}
+        if runner.result and runner.result.cost:
+            cost_metrics = runner.result.cost
         execution_time = runner.execution_time
         if runner.result and runner.result.chat_history:
             s_rr = runner.result.chat_history[-1]["content"]

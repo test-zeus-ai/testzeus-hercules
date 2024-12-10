@@ -102,9 +102,10 @@ class BaseRunner:
                 await self.browser_manager.update_processing_state("done")  # type: ignore
             end_time = time.time()
             elapsed_time = round(end_time - start_time, 2)
-            logger.info(f'Command "{command}" took: {elapsed_time} seconds. and total cost metric is {result.cost}')  # type: ignore
+
             await self.save_planner_chat_messages()
             if result is not None:
+                logger.info(f'Command "{command}" took: {elapsed_time} seconds. and total cost metric is {result.cost}')  # type: ignore
                 chat_history = result.chat_history  # type: ignore
                 last_message = chat_history[-1] if chat_history else None  # type: ignore
                 if (
