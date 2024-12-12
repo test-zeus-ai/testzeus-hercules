@@ -446,11 +446,8 @@ LLM_PROMPTS = {
     "ENTER_TEXT_PROMPT": """Single enter given text in the DOM element matching the given mmid attribute value. This will only enter the text and not press enter or anything else.
    Returns Success if text entry was successful or appropriate error message if text could not be entered.""",
     "CLICK_BY_TEXT_PROMPT": """Executes a click action on the element matching the text. If multiple text matches are found, it will click on all of them. Use this as last resort when all else fails.""",
-    "BULK_ENTER_TEXT_PROMPT": """Bulk enter text in multiple DOM fields. To be used when there are multiple fields to be filled on the same page.
-   Enters text in the DOM elements matching the given mmid attribute value.
-   The input will receive a list of objects containing the DOM query selector and the text to enter.
-   This will only enter the text and not press enter or anything else.
-   Returns each selector and the result for attempting to enter text.""",
+    "BULK_ENTER_TEXT_PROMPT": """Multiple enter given texts in the DOM element matching the given mmid attribute value. This will only enter the text and not press enter or anything else.
+   Returns Success if text entry was successful or appropriate error message if text could not be entered.""",
     "PRESS_KEY_COMBINATION_PROMPT": """Presses the given key on the current web page.
    This is useful for pressing the enter button to submit a search query, PageDown to scroll, ArrowDown to change selection in a focussed list etc.""",
     "ADD_TO_MEMORY_PROMPT": """"Save any information that you may need later in this term memory. This could be useful for saving things to do, saving information for personalisation, or even saving information you may need in future for efficiency purposes E.g. Remember to call John at 5pm, This user likes Tesla company and considered buying shares, The user enrollment form is available in <url> etc.""",
