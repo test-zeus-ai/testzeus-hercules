@@ -717,3 +717,8 @@ Hercules also picks some inspiration from the legacy TestZeus repo [here](https:
 ---
 
 With Hercules, testing is no longer just a step in the process—it's a powerful, streamlined experience that brings quality to the forefront.
+
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=test-zeus-ai/testzeus-hercules&type=Date)](https://star-history.com/#test-zeus-ai/testzeus-hercules&Date)
