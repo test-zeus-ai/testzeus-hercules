@@ -121,6 +121,38 @@ testzeus-hercules --input-file opt/input/test.feature --output-path opt/output -
 ```
 
 
+## ⚙️ Running Hercules on a Windows Machine
+
+To set up and run Hercules on a Windows machine:
+
+1. **Open PowerShell in Administrator Mode:**
+   - Click on the **Start Menu**, search for **PowerShell**, and right-click on **Windows PowerShell**.
+   - Select **Run as Administrator** to open PowerShell in administrator mode.
+
+2. **Navigate to the Helper Scripts Folder:**
+   - Use the `cd` command to navigate to the folder containing the `hercules_windows_setup.ps1` script. For example:
+     ```powershell
+     cd path\to\helper_scripts
+     ```
+
+3. **Run the Setup Script:**
+   - Execute the script to install and configure Hercules:
+     ```powershell
+     .\hercules_windows_setup.ps1
+     ```
+
+4. **Follow On-Screen Instructions:**
+   - The script will guide you through installing Python, Playwright, FFmpeg, and other required dependencies.
+
+5. **Run Hercules:**
+   - Once the setup is complete, you can run Hercules from PowerShell or Command Prompt using the following command:
+     ```bash
+     testzeus-hercules --input-file opt/input/test.feature --output-path opt/output --test-data-path opt/test_data --llm-model gpt-4o --llm-model-api-key sk-proj-k.......
+     ```
+
+---
+
+
 #### Supported AI Models for TestZeus-Hercules
 - Anthropic Haiku: Compatible with Haiku 3.5 and above.
 - Groq: Supports any version with function calling and coding capabilities.
@@ -367,7 +399,7 @@ For example: If you would like to run with a "Headful" browser, you can set the 
 
   ```json
   {
-    "mistral-large-agente": {
+    "mistral-large": {
       "planner_agent": {
         "model_name": "mistral",
         "model_api_key": "",

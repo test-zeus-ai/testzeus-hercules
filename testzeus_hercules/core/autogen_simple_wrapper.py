@@ -367,7 +367,7 @@ class AutogenSimpleWrapper:
         else:
             chat_logs_file = os.path.join(
                 self.get_chat_logs_dir() or "",
-                f"log_between_sender-{sender.name}->rec-{receiver.name}_{str(datetime.datetime.now().isoformat())}.json",
+                f"log_between_sender-{sender.name}-rec-{receiver.name}_{str(datetime.datetime.now().strftime('%Y-%m-%dT%H-%M-%S-%f'))}.json",
             )
             # Save the chat log to a file
             with open(chat_logs_file, "w") as file:

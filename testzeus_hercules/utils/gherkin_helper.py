@@ -9,7 +9,9 @@ tmp_gherkin_path = get_tmp_gherkin_path()
 input_gherkin_file_path = get_input_gherkin_file_path()
 
 
-def split_feature_file(input_file: str, output_dir: str) -> List[Dict[str, str]]:
+def split_feature_file(
+    input_file: str, output_dir: str, dont_append_header: bool = False
+) -> List[Dict[str, str]]:
     """
     Splits a single BDD feature file into multiple feature files, with each file containing a single scenario.
     The script preserves the feature-level content that should be shared across all scenario files.
@@ -17,6 +19,7 @@ def split_feature_file(input_file: str, output_dir: str) -> List[Dict[str, str]]
     Parameters:
     input_file (str): Path to the input BDD feature file.
     output_dir (str): Path to the directory where the split feature files will be saved.
+    dont_append_header (bool): If True, the Feature header is only added to the first extracted scenario file.
 
     Returns:
     list: A list of dictionaries containing feature, scenario, and output file path.
@@ -67,13 +70,22 @@ def split_feature_file(input_file: str, output_dir: str) -> List[Dict[str, str]]
             f_scenario = f_scenario.replace(comment_line, "")
 
         if already_visited_scenarios[scenario_title] > 0:
-            scenario_title = f"{scenario_title} - {already_visited_scenarios[scenario_title]}"
+            scenario_title = (
+                f"{scenario_title} - {already_visited_scenarios[scenario_title]}"
+            )
             scenario_filename = f"{scenario_title.replace(' ', '_')}_{already_visited_scenarios[scenario_title]}.feature"
             output_file = os.path.join(output_dir, scenario_filename)
         already_visited_scenarios[scenario_title] += 1
 
+        if dont_append_header and i > 0:
+            file_content = (
+                f"{prev_comment_lines}\n{all_scenarios[i]}{scenario_title}{f_scenario}"
+            )
+        else:
+            file_content = f"{feature_header}\n\n{prev_comment_lines}\n{all_scenarios[i]}{scenario_title}{f_scenario}"
+
         with open(output_file, "w") as f:
-            f.write(f"{feature_header}\n\n{prev_comment_lines}\n{all_scenarios[i]}{scenario_title}{f_scenario}")
+            f.write(file_content)
         prev_comment_lines = comment_lines
 
         scenario_di = {
@@ -105,17 +117,21 @@ def serialize_feature_file(file_path: str) -> str:
     return feature_content
 
 
-def process_feature_file() -> List[Dict[str, str]]:
+def process_feature_file(pass_background_to_all: bool = True) -> List[Dict[str, str]]:
     """
     Processes a Gherkin feature file by splitting it into smaller parts.
 
     Returns:
         List[Dict[str, str]]: A list of dictionaries containing the split parts of the feature file.
     """
-    return split_feature_file(input_gherkin_file_path, tmp_gherkin_path)
+    return split_feature_file(
+        input_gherkin_file_path,
+        tmp_gherkin_path,
+        dont_append_header=not pass_background_to_all,
+    )
 
 
-def split_test() -> None:
+def split_test(pass_background_to_all: bool = True) -> None:
     """
     Parses command line arguments and splits the feature file into individual scenario files.
     """
@@ -135,7 +151,7 @@ def split_test() -> None:
     # feature_file_path = args.feature_file_path
     # output_dir = args.output_dir
     # list_of_feats = split_feature_file(feature_file_path, output_dir)
-    list_of_feats = process_feature_file()
+    list_of_feats = process_feature_file(pass_background_to_all=pass_background_to_all)
     for feat in list_of_feats:
         file_path = feat["output_file"]
         print(serialize_feature_file(file_path))

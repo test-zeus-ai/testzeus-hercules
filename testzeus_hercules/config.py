@@ -16,9 +16,15 @@ from testzeus_hercules.utils.logger import logger
 
 
 def arguments() -> None:
-    parser = argparse.ArgumentParser(description="Hercules: The World's First Open-Source AI Agent for End-to-End Testing")
-    parser.add_argument("--input-file", type=str, help="Path to the input file.", required=False)
-    parser.add_argument("--output-path", type=str, help="Path to the output directory.", required=False)
+    parser = argparse.ArgumentParser(
+        description="Hercules: The World's First Open-Source AI Agent for End-to-End Testing"
+    )
+    parser.add_argument(
+        "--input-file", type=str, help="Path to the input file.", required=False
+    )
+    parser.add_argument(
+        "--output-path", type=str, help="Path to the output directory.", required=False
+    )
     parser.add_argument(
         "--test-data-path",
         type=str,
@@ -76,11 +82,17 @@ agents_llm_config_file = os.environ.get("AGENTS_LLM_CONFIG_FILE")
 agents_llm_config_file_ref_key = os.environ.get("AGENTS_LLM_CONFIG_FILE_REF_KEY")
 
 
-if (llm_model_name and llm_model_api_key) and (agents_llm_config_file or agents_llm_config_file_ref_key):
-    logger.error("Provide either LLM_MODEL_NAME and LLM_MODEL_API_KEY together, or AGENTS_LLM_CONFIG_FILE and AGENTS_LLM_CONFIG_FILE_REF_KEY together, not both.")
+if (llm_model_name and llm_model_api_key) and (
+    agents_llm_config_file or agents_llm_config_file_ref_key
+):
+    logger.error(
+        "Provide either LLM_MODEL_NAME and LLM_MODEL_API_KEY together, or AGENTS_LLM_CONFIG_FILE and AGENTS_LLM_CONFIG_FILE_REF_KEY together, not both."
+    )
     exit(1)
 
-if (not llm_model_name or not llm_model_api_key) and (not agents_llm_config_file or not agents_llm_config_file_ref_key):
+if (not llm_model_name or not llm_model_api_key) and (
+    not agents_llm_config_file or not agents_llm_config_file_ref_key
+):
     logger.error(
         "Either LLM_MODEL_NAME and LLM_MODEL_API_KEY must be set together, or AGENTS_LLM_CONFIG_FILE and AGENTS_LLM_CONFIG_FILE_REF_KEY must be set together. user --llm-model and --llm-model-api-key in hercules command"
     )
@@ -97,12 +109,18 @@ PROJECT_ROOT = PROJECT_SOURCE_ROOT
 PROJECT_TEMP_PATH = os.path.join(PROJECT_ROOT, "temp")
 PROJECT_TEST_ROOT = os.path.join(PROJECT_ROOT, "test")
 
-INPUT_GHERKIN_FILE_PATH = os.environ.get("INPUT_GHERKIN_FILE_PATH") or os.path.join(PROJECT_ROOT, "input/test.feature")
+INPUT_GHERKIN_FILE_PATH = os.environ.get("INPUT_GHERKIN_FILE_PATH") or os.path.join(
+    PROJECT_ROOT, "input/test.feature"
+)
 TMP_GHERKIN_PATH = os.path.join(PROJECT_ROOT, "gherkin_files")
-JUNIT_XML_BASE_PATH = os.environ.get("JUNIT_XML_BASE_PATH") or os.path.join(PROJECT_ROOT, "output")
+JUNIT_XML_BASE_PATH = os.environ.get("JUNIT_XML_BASE_PATH") or os.path.join(
+    PROJECT_ROOT, "output"
+)
 
 SOURCE_LOG_FOLDER_PATH = os.path.join(PROJECT_ROOT, "log_files")
-TEST_DATA_PATH = os.environ.get("TEST_DATA_PATH") or os.path.join(PROJECT_ROOT, "test_data")
+TEST_DATA_PATH = os.environ.get("TEST_DATA_PATH") or os.path.join(
+    PROJECT_ROOT, "test_data"
+)
 SCREEN_SHOT_PATH = os.path.join(PROJECT_ROOT, "proofs")
 
 if "HF_HOME" not in os.environ:
@@ -110,6 +128,13 @@ if "HF_HOME" not in os.environ:
 
 if "TOKENIZERS_PARALLELISM" not in os.environ:
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+
+def get_dont_close_browser() -> bool:
+    """
+    Check if the system should close the browser after running the test.
+    """
+    return os.environ.get("DONT_CLOSE_BROWSER", "false").lower().strip() == "true"
 
 
 def get_cdp_config() -> dict | None:
@@ -192,7 +217,9 @@ def get_input_gherkin_file_path() -> str:
         base_path = os.path.dirname(INPUT_GHERKIN_FILE_PATH)
         if not os.path.exists(base_path):
             os.makedirs(base_path)
-        logger.info(f"Created INPUT_GHERKIN_FILE_PATH folder at: {INPUT_GHERKIN_FILE_PATH}")
+        logger.info(
+            f"Created INPUT_GHERKIN_FILE_PATH folder at: {INPUT_GHERKIN_FILE_PATH}"
+        )
     return INPUT_GHERKIN_FILE_PATH
 
 
@@ -236,7 +263,9 @@ def get_source_log_folder_path(test_id: Optional[str] = None) -> str:
     source_log_folder_path = os.path.join(SOURCE_LOG_FOLDER_PATH, test_id)
     if not os.path.exists(source_log_folder_path):
         os.makedirs(source_log_folder_path)
-        logger.info(f"Created source_log_folder_path folder at: {source_log_folder_path}")
+        logger.info(
+            f"Created source_log_folder_path folder at: {source_log_folder_path}"
+        )
     return source_log_folder_path
 
 
@@ -299,4 +328,6 @@ config_brief = {
     "BROWSER_TYPE": get_browser_type(),
     "CAPTURE_NETWORK": should_capture_network(),
 }
-add_event(EventType.CONFIG, EventData(detail="General Config", additional_data=config_brief))
+add_event(
+    EventType.CONFIG, EventData(detail="General Config", additional_data=config_brief)
+)

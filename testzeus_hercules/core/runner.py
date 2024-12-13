@@ -27,6 +27,7 @@ class BaseRunner:
         planner_max_chat_round: int = 50,
         browser_nav_max_chat_round: int = 10,
         stake_id: str | None = None,
+        dont_terminate_browser_after_run: bool = False,
     ):
         self.planner_number_of_rounds = planner_max_chat_round
         self.browser_number_of_rounds = browser_nav_max_chat_round
@@ -34,8 +35,11 @@ class BaseRunner:
         self.autogen_wrapper = None
         self.is_running = False
         self.stake_id = stake_id
+        self.dont_terminate_browser_after_run = dont_terminate_browser_after_run
 
-        self.save_chat_logs_to_files = os.getenv("SAVE_CHAT_LOGS_TO_FILE", "True").lower() in ["true", "1"]
+        self.save_chat_logs_to_files = os.getenv(
+            "SAVE_CHAT_LOGS_TO_FILE", "True"
+        ).lower() in ["true", "1"]
 
         self.planner_agent_name = "planner_agent"
         self.shutdown_event = asyncio.Event()
@@ -56,7 +60,9 @@ class BaseRunner:
             browser_nav_max_chat_round=self.browser_number_of_rounds,
         )
 
-        self.browser_manager = PlaywrightManager(gui_input_mode=False, stake_id=self.stake_id)
+        self.browser_manager = PlaywrightManager(
+            gui_input_mode=False, stake_id=self.stake_id
+        )
         await self.browser_manager.async_initialize()
 
     async def process_command(self, command: str) -> tuple[Any, float]:
@@ -80,22 +86,33 @@ class BaseRunner:
         if command:
             self.is_running = True
             start_time = time.time()
-            current_url = await self.browser_manager.get_current_url() if self.browser_manager else None
+            current_url = (
+                await self.browser_manager.get_current_url()
+                if self.browser_manager
+                else None
+            )
             self.browser_manager.log_user_message(command)  # type: ignore
             result = None
             logger.info(f"Processing command: {command}")
             if self.autogen_wrapper:
                 await self.browser_manager.update_processing_state("processing")  # type: ignore
-                result = await self.autogen_wrapper.process_command(command, current_url)
+                result = await self.autogen_wrapper.process_command(
+                    command, current_url
+                )
                 await self.browser_manager.update_processing_state("done")  # type: ignore
             end_time = time.time()
             elapsed_time = round(end_time - start_time, 2)
-            logger.info(f'Command "{command}" took: {elapsed_time} seconds. and total cost metric is {result.cost}')  # type: ignore
+
             await self.save_planner_chat_messages()
             if result is not None:
+                logger.info(f'Command "{command}" took: {elapsed_time} seconds. and total cost metric is {result.cost}')  # type: ignore
                 chat_history = result.chat_history  # type: ignore
                 last_message = chat_history[-1] if chat_history else None  # type: ignore
-                if last_message and "terminate" in last_message and last_message["terminate"] == "yes":
+                if (
+                    last_message
+                    and "terminate" in last_message
+                    and last_message["terminate"] == "yes"
+                ):
                     await self.browser_manager.notify_user(last_message, "answer")  # type: ignore
 
             await self.browser_manager.notify_user(f"Task Completed ({elapsed_time}s).", "info")  # type: ignore
@@ -107,7 +124,9 @@ class BaseRunner:
         """
         Saves chat messages to a file or logs them based on configuration.
         """
-        messages = self.autogen_wrapper.agents_map[self.planner_agent_name].chat_messages
+        messages = self.autogen_wrapper.agents_map[
+            self.planner_agent_name
+        ].chat_messages
         messages_str_keys = {str(key): value for key, value in messages.items()}
         res_output_thoughts_logs_di = {}
         for key, value in messages_str_keys.items():
@@ -126,7 +145,9 @@ class BaseRunner:
                 try:
                     res_content = json.loads(content)
                 except json.JSONDecodeError:
-                    logger.debug(f"Failed to decode JSON: {content}, keeping as multiline string")
+                    logger.debug(
+                        f"Failed to decode JSON: {content}, keeping as multiline string"
+                    )
                     res_content = content
                 res_output_thoughts_logs_di[key][idx]["content"] = res_content
 
@@ -180,7 +201,9 @@ class CommandPromptRunner(BaseRunner):
         """
         await self.initialize()
         while not self.is_running:
-            command: str = await async_input("Enter your command (or type 'exit' to quit): ")
+            command: str = await async_input(
+                "Enter your command (or type 'exit' to quit): "
+            )
             await self.process_command(command)
             if self.shutdown_event.is_set():
                 break
@@ -192,7 +215,12 @@ class SingleCommandInputRunner(BaseRunner):
     A runner that handles input command and return the result.
     """
 
-    def __init__(self, command: str, *args: Any, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        command: str,
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
         super().__init__(*args, **kwargs)
         self.command = command
         self.result = None
@@ -204,5 +232,6 @@ class SingleCommandInputRunner(BaseRunner):
         """
         await self.initialize()
         self.result, self.execution_time = await self.process_command(self.command)
-        _ = await self.process_command("exit")
-        await self.wait_for_exit()
+        if not self.dont_terminate_browser_after_run:
+            _ = await self.process_command("exit")
+            await self.wait_for_exit()

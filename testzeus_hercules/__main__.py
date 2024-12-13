@@ -8,6 +8,7 @@ from testzeus_hercules.config import (
     get_junit_xml_base_path,
     get_source_log_folder_path,
     set_default_test_id,
+    get_dont_close_browser,
 )
 from testzeus_hercules.core.runner import SingleCommandInputRunner
 from testzeus_hercules.telemetry import EventData, EventType, add_event
@@ -40,13 +41,16 @@ def sequential_process() -> None:
     6. Merges all JUnit XML results into a single file.
     7. Logs the location of the final result file.
     """
-    list_of_feats = process_feature_file()
+    dont_close_browser = get_dont_close_browser()
+    list_of_feats = process_feature_file(pass_background_to_all=dont_close_browser)
     input_gherkin_file_path = get_input_gherkin_file_path()
     # get name of the feature file using os package
     feature_file_name = os.path.basename(input_gherkin_file_path)
 
     result_of_tests = []
-    final_result_file_name = f"{get_junit_xml_base_path()}/{feature_file_name}_result.xml"
+    final_result_file_name = (
+        f"{get_junit_xml_base_path()}/{feature_file_name}_result.xml"
+    )
     add_event(EventType.RUN, EventData(detail="Total Runs: " + str(len(list_of_feats))))
     for feat in list_of_feats:
         file_path = feat["output_file"]
@@ -65,11 +69,14 @@ def sequential_process() -> None:
         runner = SingleCommandInputRunner(
             stake_id=stake_id,
             command=cmd,
+            dont_terminate_browser_after_run=dont_close_browser,
         )
         asyncio.run(runner.start())
 
         runner_result = {}
-        cost_metrics = runner.result.cost or {}
+        cost_metrics = {}
+        if runner.result and runner.result.cost:
+            cost_metrics = runner.result.cost
         execution_time = runner.execution_time
         if runner.result and runner.result.chat_history:
             s_rr = runner.result.chat_history[-1]["content"]
@@ -94,14 +101,17 @@ def sequential_process() -> None:
                 proofs_video_path=runner.browser_manager.get_latest_video_path(),
                 network_logs_path=runner.browser_manager.request_response_log_file,
                 logs_path=get_source_log_folder_path(stake_id),
-                planner_thoughts_path=get_source_log_folder_path(stake_id) + "/chat_messages.json",
+                planner_thoughts_path=get_source_log_folder_path(stake_id)
+                + "/chat_messages.json",
             )
         )
     JUnitXMLGenerator.merge_junit_xml(result_of_tests, final_result_file_name)
     logger.info(f"Results published in junitxml file: {final_result_file_name}")
 
     # building html from junitxml
-    final_result_html_file_name = f"{get_junit_xml_base_path()}/{feature_file_name}_result.html"
+    final_result_html_file_name = (
+        f"{get_junit_xml_base_path()}/{feature_file_name}_result.html"
+    )
     prepare_html([final_result_file_name, final_result_html_file_name])
     logger.info(f"Results published in html file: {final_result_html_file_name}")
 
