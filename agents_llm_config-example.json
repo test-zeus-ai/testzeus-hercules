@@ -1,9 +1,10 @@
 {
 	"mistral-large": {
 		"planner_agent": {
-			"model_name": "mistral",
+			"model_name": "mistral-large-latest",
 			"model_api_key": "",
-			"model_base_url": "https://...",
+			"model_base_url": "https://api.mistral.ai/v1",
+            "model_api_type": "mistral",
             "llm_config_params": {
                 "cache_seed": null,
                 "temperature": 0.0,
@@ -12,9 +13,10 @@
             }
 		},
 		"browser_nav_agent": {
-			"model_name": "mistral",
+			"model_name": "mistral-large-latest",
 			"model_api_key": "",
-			"model_base_url": "https://...",
+			"model_base_url": "https://api.mistral.ai/v1",
+            "model_api_type": "mistral",
             "llm_config_params": {
                 "cache_seed": null,
                 "temperature": 0.0,
