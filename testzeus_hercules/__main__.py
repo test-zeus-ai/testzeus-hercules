@@ -4,11 +4,12 @@ import os
 
 from junit2htmlreport.runner import run as prepare_html
 from testzeus_hercules.config import (
+    get_dont_close_browser,
     get_input_gherkin_file_path,
     get_junit_xml_base_path,
+    get_proof_path,
     get_source_log_folder_path,
     set_default_test_id,
-    get_dont_close_browser,
 )
 from testzeus_hercules.core.runner import SingleCommandInputRunner
 from testzeus_hercules.telemetry import EventData, EventType, add_event
@@ -48,9 +49,7 @@ def sequential_process() -> None:
     feature_file_name = os.path.basename(input_gherkin_file_path)
 
     result_of_tests = []
-    final_result_file_name = (
-        f"{get_junit_xml_base_path()}/{feature_file_name}_result.xml"
-    )
+    final_result_file_name = f"{get_junit_xml_base_path()}/{feature_file_name}_result.xml"
     add_event(EventType.RUN, EventData(detail="Total Runs: " + str(len(list_of_feats))))
     for feat in list_of_feats:
         file_path = feat["output_file"]
@@ -97,21 +96,19 @@ def sequential_process() -> None:
                 scenario,
                 feature_file_path=file_path,
                 output_file_path="",
+                proofs_path=get_proof_path(runner.browser_manager.stake_id),
                 proofs_screenshot_path=runner.browser_manager._screenshots_dir,
                 proofs_video_path=runner.browser_manager.get_latest_video_path(),
                 network_logs_path=runner.browser_manager.request_response_log_file,
                 logs_path=get_source_log_folder_path(stake_id),
-                planner_thoughts_path=get_source_log_folder_path(stake_id)
-                + "/chat_messages.json",
+                planner_thoughts_path=get_source_log_folder_path(stake_id) + "/chat_messages.json",
             )
         )
     JUnitXMLGenerator.merge_junit_xml(result_of_tests, final_result_file_name)
     logger.info(f"Results published in junitxml file: {final_result_file_name}")
 
     # building html from junitxml
-    final_result_html_file_name = (
-        f"{get_junit_xml_base_path()}/{feature_file_name}_result.html"
-    )
+    final_result_html_file_name = f"{get_junit_xml_base_path()}/{feature_file_name}_result.html"
     prepare_html([final_result_file_name, final_result_html_file_name])
     logger.info(f"Results published in html file: {final_result_html_file_name}")
 

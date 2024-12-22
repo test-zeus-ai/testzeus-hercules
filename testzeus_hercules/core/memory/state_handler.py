@@ -1,9 +1,9 @@
 from collections import defaultdict, deque
 from typing import Annotated, Dict, Union
 
+from testzeus_hercules.config import DEFAULT_TEST_ID
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
-from testzeus_hercules.config import DEFAULT_TEST_ID
 
 # Module-level state string
 _state_string: Dict[str, str] = defaultdict(str)
@@ -28,9 +28,7 @@ def store_data(
     global _state_string
     try:
         _state_string[DEFAULT_TEST_ID] += text
-        logger.info(
-            f"Appended text to state. New state length: {len(_state_string[DEFAULT_TEST_ID])}"
-        )
+        logger.info(f"Appended text to state. New state length: {len(_state_string[DEFAULT_TEST_ID])}")
         return {"message": "Text appended successfully."}
     except Exception as e:
         logger.error(f"An error occurred while appending to state: {e}")
@@ -69,9 +67,7 @@ def get_stored_data() -> Annotated[
     "The stored value.",
 ]:
     try:
-        logger.info(
-            f"Retrieving current state. State length: {len(_state_string[DEFAULT_TEST_ID])}"
-        )
+        logger.info(f"Retrieving current state. State length: {len(_state_string[DEFAULT_TEST_ID])}")
         return _state_string[DEFAULT_TEST_ID]
     except Exception as e:
         logger.error(f"An error occurred while retrieving state: {e}")

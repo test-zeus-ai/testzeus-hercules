@@ -64,6 +64,7 @@ LLM_PROMPTS = {
     8. "target_helper":
     - "Not_Applicable" value is present only when the task is completed or terminated.
     - A string indicating which helper should solve the next_step. Values to use are "browser", "api", "sec", "sql", "Not_Applicable".
+    - for accessbility testing task, use "browser" as target_helper.
     - in case if you are trying to store the data then provide target_helper as same as the previous target_helper.
     - Mandatory for every response.
     

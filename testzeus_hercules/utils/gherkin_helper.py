@@ -9,9 +9,7 @@ tmp_gherkin_path = get_tmp_gherkin_path()
 input_gherkin_file_path = get_input_gherkin_file_path()
 
 
-def split_feature_file(
-    input_file: str, output_dir: str, dont_append_header: bool = False
-) -> List[Dict[str, str]]:
+def split_feature_file(input_file: str, output_dir: str, dont_append_header: bool = False) -> List[Dict[str, str]]:
     """
     Splits a single BDD feature file into multiple feature files, with each file containing a single scenario.
     The script preserves the feature-level content that should be shared across all scenario files.
@@ -70,17 +68,13 @@ def split_feature_file(
             f_scenario = f_scenario.replace(comment_line, "")
 
         if already_visited_scenarios[scenario_title] > 0:
-            scenario_title = (
-                f"{scenario_title} - {already_visited_scenarios[scenario_title]}"
-            )
+            scenario_title = f"{scenario_title} - {already_visited_scenarios[scenario_title]}"
             scenario_filename = f"{scenario_title.replace(' ', '_')}_{already_visited_scenarios[scenario_title]}.feature"
             output_file = os.path.join(output_dir, scenario_filename)
         already_visited_scenarios[scenario_title] += 1
 
         if dont_append_header and i > 0:
-            file_content = (
-                f"{prev_comment_lines}\n{all_scenarios[i]}{scenario_title}{f_scenario}"
-            )
+            file_content = f"{prev_comment_lines}\n{all_scenarios[i]}{scenario_title}{f_scenario}"
         else:
             file_content = f"{feature_header}\n\n{prev_comment_lines}\n{all_scenarios[i]}{scenario_title}{f_scenario}"
 
