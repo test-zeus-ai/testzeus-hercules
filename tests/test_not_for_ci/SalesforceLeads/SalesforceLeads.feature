@@ -7,4 +7,3 @@ Feature: Lead Creation
     And I click on the "Save" button
     Then the lead should be successfully created and saved in Salesforce
     And the lead detail page should display all entered information accurately
-    And any associated workflows or triggers should execute correctly
