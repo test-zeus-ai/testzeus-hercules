@@ -38,6 +38,7 @@ class JUnitXMLGenerator:
         suite_name: str,
         feature_file_path: str,
         output_file_path: str,
+        proofs_path: str,
         proofs_video_path: str,
         proofs_screenshot_path: str,
         network_logs_path: str,
@@ -57,6 +58,7 @@ class JUnitXMLGenerator:
         self.total_time = 0.0
         self.feature_file_path = feature_file_path
         self.output_file_path = output_file_path
+        self.proofs_path = proofs_path
         self.proofs_video_path = proofs_video_path
         self.proofs_screenshot_path = proofs_screenshot_path
         self.logs_path = logs_path
@@ -107,6 +109,12 @@ class JUnitXMLGenerator:
         test_props.add_property(Property(name="Feature File", value=str(self.feature_file_path)))
         test_props.add_property(Property(name="Output File", value=str(self.output_file_path)))
         test_props.add_property(Property(name="Proofs Video", value=str(self.proofs_video_path)))
+        test_props.add_property(
+            Property(
+                name="Proofs Base Folder, includes screenshots, recording, netwrok logs, api logs, sec logs, accessibility logs",
+                value=str(self.proofs_path),
+            )
+        )
         test_props.add_property(Property(name="Proofs Screenshot", value=str(self.proofs_screenshot_path)))
         test_props.add_property(Property(name="Network Logs", value=str(self.network_logs_path)))
         test_props.add_property(Property(name="Agents Internal Logs", value=str(self.logs_path)))
@@ -238,6 +246,7 @@ def build_junit_xml(
     scenario: str,
     feature_file_path: str = None,
     output_file_path: str = None,
+    proofs_path: str = None,
     proofs_video_path: str = None,
     proofs_screenshot_path: str = None,
     logs_path: str = None,
@@ -265,6 +274,7 @@ def build_junit_xml(
         feature,
         feature_file_path,
         file_path or output_file_path,
+        proofs_path,
         proofs_video_path,
         proofs_screenshot_path,
         network_logs_path,

@@ -10,6 +10,7 @@ from testzeus_hercules.core.memory.prompt_compressor import add_text_compressor
 from testzeus_hercules.core.memory.state_handler import *
 from testzeus_hercules.core.memory.static_ltm import get_user_ltm
 from testzeus_hercules.core.prompts import LLM_PROMPTS
+from testzeus_hercules.core.tools.accessibility_calls import *
 from testzeus_hercules.core.tools.captcha_solver import *
 from testzeus_hercules.core.tools.click_using_selector import click as click_element
 from testzeus_hercules.core.tools.dropdown_using_selector import *

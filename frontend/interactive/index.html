@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive CDP Stream Renderer</title>
+    <style>
+      body {
+        font-family: sans-serif;
+      }
+      #screencast {
+        border: 1px solid #ccc;
+        max-width: 100%;
+        display: block;
+        margin-top: 10px;
+        cursor: crosshair;
+      }
+      pre {
+        background: #f7f7f7;
+        padding: 10px;
+        border: 1px solid #ccc;
+      }
+      /* Hidden input to capture focus and prevent scrolling */
+      #dummyInput {
+        position: absolute;
+        left: -9999px;
+        top: -9999px;
+      }
+    </style>
+</head>
+<body>
+    <h1>Interactive CDP Stream Renderer</h1>
+    <pre id="output">Connecting...</pre>
+    <img id="screencast" alt="Screencast will appear here" />
+    <input id="dummyInput" type="text" />
+    <p>Click, drag, and type into the remote page here.</p>
+    <script src="app.js"></script>
+</body>
+</html>

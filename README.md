@@ -546,6 +546,15 @@ To cut down on some of the DOM noise, we use the **DOM Accessibility Tree** rath
 The distillation process is a work in progress. We look to refine this process and condense the DOM further, aiming to make interactions faster, cost-effective, and more accurate.
 
 ---
+### Non-Functional Capabilities
+
+#### Security Testing via Nuclei  
+Hercules integrates with **Nuclei** to automate vulnerability scanning directly from Gherkin test cases, identifying issues like **misconfigurations, OWASP Top 10 vulnerabilities**, and API flaws. Security reports are generated alongside testing outputs for seamless CI/CD integration.
+
+#### Accessibility Testing  
+Hercules supports **WCAG 2.0, 2.1, and 2.2** at **A, AA, and AAA levels**, enabling accessibility testing to ensure compliance with global standards. It identifies accessibility issues early, helping build inclusive and user-friendly applications.
+
+---
 
 ## 🔬 Testing and Evaluation: QEvals
 
