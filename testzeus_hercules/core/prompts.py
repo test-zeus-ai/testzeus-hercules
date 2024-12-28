@@ -24,7 +24,7 @@ LLM_PROMPTS = {
     
     Return Format:
 
-    Your reply must strictly be a well-formatted JSON with the following 7 attributes:
+    Your reply MUST STRICTLY be a WELL FORMATTED PROGRAMMATICALLY PARSABLE JSON ONLY with the following 7 attributes:
 
     1. "plan" (optional):
     - A string containing the high-level plan.
@@ -210,111 +210,119 @@ LLM_PROMPTS = {
     Example 1:
 
     *Task:* Find the cheapest premium economy flights from Helsinki to Stockholm on 15 March 2025 on Skyscanner. Current page: `www.google.com`
-
-    {
+    
+    ```{
     "plan": "1. Go to 'www.skyscanner.com'.\n2. List the interaction options available on the Skyscanner page relevant for flight reservation along with their default values.\n3. Set the journey type to 'One-way' if not default.\n4. Set the number of passengers to 1 if not default.\n5. Set the departure date to '15 March 2025'.\n6. Set ticket type to 'Premium Economy'.\n7. Set 'From' airport to 'Helsinki'.\n8. Set 'To' airport to 'Stockholm'.\n9. Confirm the current values in the source airport, destination airport, and departure date fields.\n10. Click on the 'Search' button to get the search results.\n11. Confirm that you are on the search results page.\n12. Extract the price of the cheapest flight from Helsinki to Stockholm from the search results.",
     "next_step": "Go to 'https://www.skyscanner.com'",
     "terminate": "no",
     "is_assert": false,
     "is_passed": true,
     "target_helper": "browser",
-    }
+    }```
+    
     Upon completion and termination:
 
-    {
+    ```{
     "terminate": "yes",
     "final_response": "The cheapest premium economy flight from Helsinki to Stockholm on 15 March 2025 costs €150.",
     "is_assert": false,
     "is_passed": true,
     "target_helper": "Not_Applicable",
-    }
+    }```
 
     Example 2:
     Task: Check if the product "White Nothing Phone 2" with 16GB RAM is present in the cart on Amazon. Current page: www.amazon.com
 
-    {
+    ```{
     "plan": "1. Search for 'White Nothing Phone 2 16GB RAM' on Amazon.\n2. Click on the product that matches the search.\n3. Click on the 'Add to Cart' button.\n4. Navigate to the cart page.\n5. Verify if the product 'White Nothing Phone 2' with 16GB RAM is present in the cart.",
     "next_step": "Search for 'White Nothing Phone 2 16GB RAM' on the current page.",
     "terminate": "no",
     "is_assert": false,
     "is_passed": true,
     "target_helper": "browser",
-    }
+    }```
+    
     Upon completion and termination:
-    {
+    ```{
     "terminate": "yes",
     "final_response": "The product 'White Nothing Phone 2' with 16GB RAM is present in the cart.",
     "is_assert": true,
     "assert_summary": "EXPECTED RESULT: The product 'White Nothing Phone 2' with 16GB RAM should be in the cart.\nACTUAL RESULT: The product is in the cart.",
     "is_passed": true,
     "target_helper": "Not_Applicable",
-    }
+    }```
 
     Example 3:
 
     Task: Validate if navigating to https://medium.com/non-existent-page gives a 404 error.
 
-    {
+    ```{
     "plan": "1. Navigate to 'https://medium.com/non-existent-page'.\n2. Verify that the page displays a 404 error.",
     "next_step": "Go to 'https://medium.com/non-existent-page'",
     "terminate": "no",
     "is_assert": false,
     "is_passed": true,
     "target_helper": "browser",
-    }
+    }```
+    
     Upon completion and termination:
-    {
+    
+    ```{
     "terminate": "yes",
     "final_response": "The page displays a 404 error as expected.",
     "is_assert": true,
     "assert_summary": "EXPECTED RESULT: The page should display a 404 error.\nACTUAL RESULT: The page displays a 404 error.",
     "is_passed": true,
     "target_helper": "Not_Applicable",
-    }
+    }```
 
     Example 4:
 
     Task: Retrieve the total number of users.
 
-    {
+    ```{
     "plan": "1. Inform the helper that we need to find the total number of users.\n2. Ask the helper to perform the necessary database operation to retrieve this information.\n3. Verify that the number of users is greater than zero.",
     "next_step": "Ask the helper to find the total number of users.",
     "terminate": "no",
     "is_assert": false,
     "is_passed": true,
     "target_helper": "sql",
-    }
+    }```
+    
     Upon completion and termination:
-    {
+    
+    ```{
     "terminate": "yes",
     "final_response": "The total number of users is 1,250.",
     "is_assert": true,
     "assert_summary": "EXPECTED RESULT: Total number of users should be greater than zero.\nACTUAL RESULT: Total number of users is 1,250.",
     "is_passed": true,
     "target_helper": "Not_Applicable",
-    }
+    }```
 
     Example 5:
 
     Task: Ensure that the API endpoint GET /api/v1/orders returns a status code 200.
 
-    {
+    ```{
     "plan": "1. Send a GET request to '/api/v1/orders'.\n2. Check the response status code.\n3. Verify that the status code is 200.",
     "next_step": "Ask the helper to send a GET request to '/api/v1/orders'.",
     "terminate": "no",
     "is_assert": false,
     "is_passed": true,
     "target_helper": "api",
-    }
+    }```
+    
     Upon completion and termination:
-    {
+    
+    ```{
     "terminate": "yes",
     "final_response": "The API endpoint 'GET /api/v1/orders' returned a status code 200.",
     "is_assert": true,
     "assert_summary": "EXPECTED RESULT: Status code should be 200.\nACTUAL RESULT: Status code is 200.",
     "is_passed": true,
     "target_helper": "Not_Applicable",
-    }
+    }```
 
     Remember:
 
