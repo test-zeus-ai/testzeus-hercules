@@ -13,6 +13,8 @@ class AgentsLLMConfig:
         "LLM_MODEL_BASE_URL": "base_url",
         "LLM_MODEL_API_TYPE": "api_type",
         "LLM_MODEL_API_VERSION": "api_version",
+        "LLM_MODEL_PROJECT_ID": "project_id",
+        "LLM_MODEL_REGION": "region",
     }
 
     # Mapping from environment keys to LLM config keys
@@ -30,6 +32,8 @@ class AgentsLLMConfig:
         "model_native_tool_calls": "native_tool_calls",
         "model_hide_tools": "hide_tools",
         "model_api_type": "api_type",
+        "model_project_id": "project_id",
+        "model_region": "region",
     }
 
     def __init__(self, llm_config: dict[str, Any] | None = None) -> None:
@@ -56,7 +60,6 @@ class AgentsLLMConfig:
                         # Process configurations for both planner_agent and browser_nav_agent
                         planner_config = self._normalize_config(raw_config.get("planner_agent", {}))
                         browser_nav_config = self._normalize_config(raw_config.get("browser_nav_agent", {}))
-
                         config = {
                             "planner_agent": planner_config,
                             "browser_nav_agent": browser_nav_config,

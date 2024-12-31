@@ -61,19 +61,26 @@ async def test_page_accessibility(
 
         # Output summary of violations
         violations = axe_results.get("violations", [])
-        accessibility_logger(page_path, violations)
+        incomplete = axe_results.get("incomplete", [])
+        failureSummaries = list()
+        for violation in violations:
+            nodes = violation.get("nodes", [])
+            for node in nodes:
+                failureSummaries.append(node.get("failureSummary"))        
+        
+        accessibility_logger(page_path, violations + incomplete)
         accessibility_logger_json(page_path, json.dumps(axe_results, indent=4))
-        if not violations:
+        if not failureSummaries:
             return {
                 "status": "success",
                 "message": "No accessibility violations found.",
-                "details": axe_results,
+                "details": "All good",
             }
 
         return {
-            "status": "success",
-            "message": f"Accessibility violations found: {len(violations)}",
-            "details": axe_results,
+            "status": "failure",
+            "message": f"Accessibility violations found: {len(failureSummaries)}",
+            "details": list(failureSummaries),
         }
 
     except Exception as e:
