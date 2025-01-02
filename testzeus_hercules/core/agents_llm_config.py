@@ -13,8 +13,8 @@ class AgentsLLMConfig:
         "LLM_MODEL_BASE_URL": "base_url",
         "LLM_MODEL_API_TYPE": "api_type",
         "LLM_MODEL_API_VERSION": "api_version",
-        "LLM_MODEL_PROJECT_ID": "project_id",
-        "LLM_MODEL_REGION": "region",
+        "LLM_MODEL_PROJECT_ID": "gcp_project_id",
+        "LLM_MODEL_REGION": "gcp_region",
     }
 
     # Mapping from environment keys to LLM config keys
@@ -32,8 +32,8 @@ class AgentsLLMConfig:
         "model_native_tool_calls": "native_tool_calls",
         "model_hide_tools": "hide_tools",
         "model_api_type": "api_type",
-        "model_project_id": "project_id",
-        "model_region": "region",
+        "model_project_id": "gcp_project_id",
+        "model_region": "gcp_region",
     }
 
     def __init__(self, llm_config: dict[str, Any] | None = None) -> None:

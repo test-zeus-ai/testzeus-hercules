@@ -49,14 +49,13 @@
             }
 		}
 	},
-    "ollama": {
+    "azure": {
 		"planner_agent": {
-			"model_name": "llama3-groq-tool-use",
+			"model_name": "gpt-4o",
 			"model_api_key": "",
-			"model_api_type": "ollama",
-            "model_client_host": "http://localhost:11434",
-            "model_native_tool_calls": true,
-            "model_hide_tools": "if_any_run",
+			"model_base_url": "",
+            "model_api_type": "azure",
+            "model_api_version": "2024-05-01-preview",
             "llm_config_params": {
                 "cache_seed": null,
                 "temperature": 0.0,
@@ -65,12 +64,11 @@
             }
 		},
 		"browser_nav_agent": {
-			"model_name": "llama3-groq-tool-use",
+			"model_name": "gpt-4o",
 			"model_api_key": "",
-			"model_api_type": "ollama",
-            "model_client_host": "http://localhost:11434",
-            "model_native_tool_calls": true,
-            "model_hide_tools": "if_any_run",
+			"model_base_url": "",
+            "model_api_type": "azure",
+            "model_api_version": "2024-05-01-preview",
             "llm_config_params": {
                 "cache_seed": null,
                 "temperature": 0.0,
@@ -78,7 +76,7 @@
                 "seed":12345
             }
 		}
-    },
+	},
     "groq": {
 		"planner_agent": {
 			"model_name": "llama3-groq-8b-8192-tool-use-preview",
@@ -103,6 +101,35 @@
             }
 		}
     },
+
+    "ollama": {
+		"planner_agent": {
+			"model_name": "llama3-groq-tool-use",
+			"model_api_key": "",
+			"model_api_type": "ollama",
+            "model_client_host": "http://localhost:11434",
+            "model_native_tool_calls": true,
+            "model_hide_tools": "if_any_run",
+            "llm_config_params": {
+                "cache_seed": null,
+                "temperature": 0.0,
+                "top_p": 0.001
+            }
+		},
+		"browser_nav_agent": {
+			"model_name": "llama3-groq-tool-use",
+			"model_api_key": "",
+			"model_api_type": "ollama",
+            "model_client_host": "http://localhost:11434",
+            "model_native_tool_calls": true,
+            "model_hide_tools": "if_any_run",
+            "llm_config_params": {
+                "cache_seed": null,
+                "temperature": 0.0,
+                "top_p": 0.001
+            }
+		}
+    },
     "anthropic": {
 		"planner_agent": {
 			"model_name": "claude-3-5-haiku-latest",
@@ -119,6 +146,56 @@
 			"model_name": "claude-3-5-haiku-latest",
 			"model_api_key": "",
 			"model_api_type": "anthropic",
+            "llm_config_params": {
+                "cache_seed": null,
+                "temperature": 0.0,
+                "top_p": 0.001,
+                "seed":12345
+            }
+		}
+    },
+    "anthropicvert": {
+		"planner_agent": {
+			"model_name": "claude-3-5-haiku@20241022",
+            "model_project_id": "gcp_project",
+            "model_region": "us-east5",
+			"model_api_type": "anthropic",
+            "llm_config_params": {
+                "cache_seed": null,
+                "temperature": 0.0,
+                "top_p": 0.001,
+                "seed":12345
+            }
+		},
+		"browser_nav_agent": {
+			"model_name": "claude-3-5-haiku@20241022",
+            "model_project_id": "gcp_project",
+            "model_region": "us-east5",
+			"model_api_type": "anthropic",
+            "llm_config_params": {
+                "cache_seed": null,
+                "temperature": 0.0,
+                "top_p": 0.001,
+                "seed":12345
+            }
+		}
+    },
+    "gemini": {
+		"planner_agent": {
+			"model_name": "gemini-1.5-pro-002",
+			
+			"model_api_type": "google",
+            "llm_config_params": {
+                "cache_seed": null,
+                "temperature": 0.0,
+                "top_p": 0.001,
+                "seed":12345
+            }
+		},
+		"browser_nav_agent": {
+			"model_name": "gemini-1.5-pro-002",
+			
+			"model_api_type": "google",
             "llm_config_params": {
                 "cache_seed": null,
                 "temperature": 0.0,
