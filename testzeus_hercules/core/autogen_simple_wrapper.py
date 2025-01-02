@@ -51,8 +51,8 @@ class AutogenSimpleWrapper:
     def __init__(
         self,
         save_chat_logs_to_files: bool = True,
-        planner_max_chat_round: int = 100,
-        browser_nav_max_chat_round: int = 20,
+        planner_max_chat_round: int = 500,
+        browser_nav_max_chat_round: int = 1000,
         stake_id: str | None = None,
     ):
         self.planner_number_of_rounds = planner_max_chat_round
@@ -84,8 +84,8 @@ class AutogenSimpleWrapper:
         planner_agent_config: dict[str, Any],
         browser_nav_agent_config: dict[str, Any],
         save_chat_logs_to_files: bool = True,
-        planner_max_chat_round: int = 50,
-        browser_nav_max_chat_round: int = 10,
+        planner_max_chat_round: int = 500,
+        browser_nav_max_chat_round: int = 1000,
     ) -> "AutogenSimpleWrapper":
         """
         Create an instance of AutogenSimpleWrapper.

@@ -39,11 +39,12 @@ class StaticLTM:
                 if filename.endswith((".json", ".yaml", ".yml")):
                     selected_files.append(file_path)
                 new_read = ""
+                sanitized_filename = filename.replace(".", "_").replace(" ", "_").replace("-", "_").replace(":", "_").replace("/", "_").replace("\\", "_").replace("(", "_").replace(")", "_").replace("[", "_").replace("]", "_").upper()
                 with open(file_path, "r", encoding="utf-8") as file:
                     data = file.read()
                     data = data.replace("  ", " ").replace("    ", " ").strip()
                     if data:
-                        new_read += f"following is test_data from {filename}\n" + data + "\n"
+                        new_read += f"following is test_data from {sanitized_filename}\n" + data + "\n"
                     logger.info("Test data loaded from: %s", file_path)
                 consolidated_data += new_read
         li_selected_files = ", ".join(selected_files)

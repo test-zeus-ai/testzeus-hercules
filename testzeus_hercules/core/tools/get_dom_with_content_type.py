@@ -102,79 +102,128 @@ async def get_dom_with_content_type(
 async def get_filtered_text_content(page: Page) -> str:
     text_content = await page.evaluate(
         """
-       () => {
-        // Array of query selectors to filter out
-        const selectorsToFilter = ['#hercules-overlay'];
+        () => {
+            const selectorsToFilter = ['#hercules-overlay'];
+            const originalStyles = [];
+            function hideElements(root, selector) {
+                if (!root) return;
+                const elements = root.querySelectorAll(selector);
+                elements.forEach(element => {
+                    originalStyles.push({
+                        element: element,
+                        originalStyle: element.style.visibility
+                    });
+                    element.style.visibility = 'hidden';
+                });
+            }
+            function processElementsInShadowDOM(root, selector) {
+                if (!root) return;
+                hideElements(root, selector);
+                const allNodes = root.querySelectorAll('*');
+                allNodes.forEach(node => {
+                    if (node.shadowRoot) {
+                        processElementsInShadowDOM(node.shadowRoot, selector);
+                    }
+                });
+            }
+            function processElementsInIframes(root, selector) {
+                if (!root) return;
+                const iframes = root.querySelectorAll('iframe');
+                iframes.forEach(iframe => {
+                    try {
+                        const iframeDoc = iframe.contentDocument;
+                        if (iframeDoc) {
+                            // Hide elements inside the iframe
+                            processElementsInShadowDOM(iframeDoc, selector);
+                            // Also recurse into nested iframes, if any
+                            processElementsInIframes(iframeDoc, selector);
+                        }
+                    } catch (err) {
+                        console.log('Error accessing iframe content:', err);
+                    }
+                });
+            }
+            function getTextContentFromShadowDOM(root) {
+                if (!root) return '';
+                let textContent = root.innerText || '';
+                const allNodes = root.querySelectorAll('*');
+                allNodes.forEach(node => {
+                    if (node.shadowRoot) {
+                        textContent += getTextContentFromShadowDOM(node.shadowRoot);
+                    }
+                });
+                return textContent;
+            }
+            function getTextContentFromIframes(root) {
+                if (!root) return '';
+                let iframeText = '';
+                const iframes = root.querySelectorAll('iframe');
+                iframes.forEach(iframe => {
+                    try {
+                        const iframeDoc = iframe.contentDocument;
+                        if (iframeDoc) {
+                            iframeText += getTextContentFromShadowDOM(iframeDoc.body);
+                            iframeText += getTextContentFromShadowDOM(iframeDoc.documentElement);
+                            iframeText += getTextContentFromIframes(iframeDoc);
+                        }
+                    } catch (err) {
+                        console.log('Error accessing iframe content:', err);
+                    }
+                });
+                return iframeText;
+            }
+            function getAltTextsFromShadowDOM(root) {
+                if (!root) return [];
+                let altTexts = Array.from(root.querySelectorAll('img')).map(img => img.alt);
+                const allNodes = root.querySelectorAll('*');
+                allNodes.forEach(node => {
+                    if (node.shadowRoot) {
+                        altTexts = altTexts.concat(getAltTextsFromShadowDOM(node.shadowRoot));
+                    }
+                });
+                return altTexts;
+            }
+            function getAltTextsFromIframes(root) {
+                if (!root) return [];
+                let iframeAltTexts = [];
+                const iframes = root.querySelectorAll('iframe');
+                iframes.forEach(iframe => {
+                    try {
+                        const iframeDoc = iframe.contentDocument;
+                        if (iframeDoc) {
+                            iframeAltTexts = iframeAltTexts.concat(getAltTextsFromShadowDOM(iframeDoc));
+                            iframeAltTexts = iframeAltTexts.concat(getAltTextsFromIframes(iframeDoc));
+                        }
+                    } catch (err) {
+                        console.log('Error accessing iframe content:', err);
+                    }
+                });
 
-        // Store the original visibility values to revert later
-        const originalStyles = [];
-
-        // Helper function to process both regular DOM and shadow DOM
-        const processElementsInShadowDOM = (parent, selector) => {
-            const elements = parent.querySelectorAll(selector);
-            elements.forEach(element => {
-                originalStyles.push({ element: element, originalStyle: element.style.visibility });
-                element.style.visibility = 'hidden';
+                return iframeAltTexts;
+            }
+            selectorsToFilter.forEach(selector => {
+                // Hide in the main document
+                processElementsInShadowDOM(document, selector);
+                // Hide inside iframes
+                processElementsInIframes(document, selector);
             });
 
-            // Check for shadow DOMs in this context and process them as well
-            const shadowHosts = parent.querySelectorAll('*');
-            shadowHosts.forEach(host => {
-                if (host.shadowRoot) {
-                    processElementsInShadowDOM(host.shadowRoot, selector);
-                }
-            });
-        };
+            let textContent = '';
+            textContent += getTextContentFromShadowDOM(document.body);
+            textContent += getTextContentFromShadowDOM(document.documentElement);
 
-        // Hide the elements matching the query selectors
-        selectorsToFilter.forEach(selector => {
-            processElementsInShadowDOM(document, selector); // Process in the regular DOM and shadow DOM
-        });
+            textContent += getTextContentFromIframes(document);
+            let altTexts = getAltTextsFromShadowDOM(document);
+            altTexts = altTexts.concat(getAltTextsFromIframes(document));
+            let altTextsString = 'Other Alt Texts in the page: ' + altTexts.join(' ');
 
-        // Get the text content of the page including shadow DOMs
-        const getTextContentFromShadowDOM = (parent) => {
-            let textContent = parent.innerText || "";
-
-            // Process shadow DOMs recursively
-            const shadowHosts = parent.querySelectorAll('*');
-            shadowHosts.forEach(host => {
-                if (host.shadowRoot) {
-                    textContent += getTextContentFromShadowDOM(host.shadowRoot);
-                }
+            originalStyles.forEach(entry => {
+                entry.element.style.visibility = entry.originalStyle;
             });
 
+            textContent = textContent + ' ' + altTextsString;
             return textContent;
-        };
-
-        // Get the text content from the regular DOM and shadow DOMs
-        let textContent = getTextContentFromShadowDOM(document.body) || getTextContentFromShadowDOM(document.documentElement) || "";
-
-        // Get all the alt text from images on the page, including shadow DOMs
-        const getAltTextsFromShadowDOM = (parent) => {
-            let altTexts = Array.from(parent.querySelectorAll('img')).map(img => img.alt);
-
-            // Check for shadow DOMs in this context and process them as well
-            const shadowHosts = parent.querySelectorAll('*');
-            shadowHosts.forEach(host => {
-                if (host.shadowRoot) {
-                    altTexts = altTexts.concat(getAltTextsFromShadowDOM(host.shadowRoot));
-                }
-            });
-
-            return altTexts;
-        };
-
-        let altTexts = getAltTextsFromShadowDOM(document);
-        altTexts = "Other Alt Texts in the page: " + altTexts.join(' ');
-
-        // Revert the visibility changes
-        originalStyles.forEach(entry => {
-            entry.element.style.visibility = entry.originalStyle;
-        });
-
-        textContent = textContent + " " + altTexts;
-        return textContent;
-    }
+        }
     """
     )
     return text_content

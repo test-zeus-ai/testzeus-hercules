@@ -1,5 +1,5 @@
 from collections import defaultdict, deque
-from typing import Annotated, Dict, Union
+from typing import Annotated, Dict, Union, Any
 
 from testzeus_hercules.config import DEFAULT_TEST_ID
 from testzeus_hercules.core.tools.tool_registry import tool
@@ -8,7 +8,7 @@ from testzeus_hercules.utils.logger import logger
 # Module-level state string
 _state_string: Dict[str, str] = defaultdict(str)
 
-_state_dict: Dict[str, str] = defaultdict(deque)
+_state_dict: Dict[str, Any] = defaultdict(deque)
 
 
 @tool(
@@ -48,7 +48,8 @@ def store_run_data(
     try:
         _state_dict[DEFAULT_TEST_ID].append(text)
         if len(_state_dict[DEFAULT_TEST_ID]) > 2:
-            _state_dict[DEFAULT_TEST_ID].popleft()
+            while len(_state_dict[DEFAULT_TEST_ID]) > 2:
+                _state_dict[DEFAULT_TEST_ID].popleft()
         processed_text = ", ".join(_state_dict[DEFAULT_TEST_ID])
         logger.info(f"Added to context. New state length: {len(processed_text)}")
         return {"message": "Context Added successfully."}
