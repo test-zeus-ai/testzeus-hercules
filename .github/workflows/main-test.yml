@@ -18,6 +18,8 @@ jobs:
     env:
       LLM_MODEL_NAME: ${{ secrets.LLM_MODEL_NAME }}
       LLM_MODEL_API_KEY: ${{ secrets.LLM_MODEL_API_KEY }}
+      ENABLE_TELEMETRY: 0
+      AUTO_MODE: 1
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
