@@ -24,8 +24,8 @@ class BaseRunner:
 
     def __init__(
         self,
-        planner_max_chat_round: int = 50,
-        browser_nav_max_chat_round: int = 10,
+        planner_max_chat_round: int = 500,
+        browser_nav_max_chat_round: int = 1000,
         stake_id: str | None = None,
         dont_terminate_browser_after_run: bool = False,
     ):

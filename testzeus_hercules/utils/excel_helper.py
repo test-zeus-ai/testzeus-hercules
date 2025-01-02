@@ -3,7 +3,9 @@ from typing import Dict, List
 import pandas as pd
 
 
-def parse_test_cases(file_path: str, sheet_name: str = "Sample Test Case") -> List[Dict[str, str]]:
+def parse_test_cases(
+    file_path: str, sheet_name: str = "Sample Test Case"
+) -> List[Dict[str, str]]:
     """
     Parses test cases from an Excel file following the specific template.
 
@@ -16,10 +18,9 @@ def parse_test_cases(file_path: str, sheet_name: str = "Sample Test Case") -> Li
     """
 
     # Load the Excel file and read the relevant sheet
-    df = pd.read_excel(file_path, sheet_name=sheet_name, skiprows=9)  # Skip metadata rows
-    import ipdb
-
-    ipdb.set_trace()
+    df = pd.read_excel(
+        file_path, sheet_name=sheet_name, skiprows=9
+    )  # Skip metadata rows
 
     # drop column 1
     df = df.drop(df.columns[0], axis=1)
@@ -70,7 +71,9 @@ def serialize_test_case(test_case: Dict[str, str]) -> str:
     return " #newline# ".join(serialized_parts)
 
 
-def process_and_serialize(file_path: str, sheet_name: str = "Sample Test Case") -> List[str]:
+def process_and_serialize(
+    file_path: str, sheet_name: str = "Sample Test Case"
+) -> List[str]:
     """
     Processes an Excel file and serializes all test cases into line-by-line joined strings.
 

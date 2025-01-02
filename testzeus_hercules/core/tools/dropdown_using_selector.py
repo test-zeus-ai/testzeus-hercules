@@ -91,18 +91,109 @@ async def select_option(
     subscribe(detect_dom_changes)
 
     result = await do_select_option(page, query_selector, option_value)
-    await asyncio.sleep(0.1)  # sleep for 100ms to allow the mutation observer to detect changes
+    await asyncio.sleep(
+        0.1
+    )  # sleep for 100ms to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
 
     await browser_manager.take_screenshots(f"{function_name}_end", page)
 
-    await browser_manager.notify_user(result["summary_message"], message_type=MessageType.ACTION)
+    await browser_manager.notify_user(
+        result["summary_message"], message_type=MessageType.ACTION
+    )
     if dom_changes_detected:
         return f"{result['detailed_message']}.\nAs a consequence of this action, new elements have appeared in view: {dom_changes_detected}. This means that the action of selecting option '{option_value}' is not yet executed and needs further interaction. Get all_fields DOM to complete the interaction."
     return result["detailed_message"]
 
 
-async def do_select_option(page: Page, selector: str, option_value: str) -> dict[str, str]:
+async def custom_select_option(page: Page, selector: str, option_value: str) -> None:
+    """
+    Selects an option in a dropdown element using JavaScript.
+
+    Args:
+        page (Page): The Playwright Page object.
+        selector (str): The CSS selector for the dropdown element.
+        option_value (str): The value or text of the option to select.
+    """
+    try:
+        selector = f"{selector}"  # Ensure the selector is treated as a string
+        result = await page.evaluate(
+            """(inputParams) => {
+                const selector = inputParams.selector;
+                const option_value = inputParams.option_value;
+
+                // Helper function to find element in DOM, Shadow DOM, and iframes
+                const findElementInShadowDOMAndIframes = (parent, selector) => {
+                    let element = parent.querySelector(selector);
+                    if (element) {
+                        return element;
+                    }
+
+                    const elements = parent.querySelectorAll('*');
+                    for (const el of elements) {
+                        // Search inside shadow DOMs
+                        if (el.shadowRoot) {
+                            element = findElementInShadowDOMAndIframes(el.shadowRoot, selector);
+                            if (element) {
+                                return element;
+                            }
+                        }
+                        // Search inside iframes
+                        if (el.tagName.toLowerCase() === 'iframe') {
+                            let iframeDocument;
+                            try {
+                                iframeDocument = el.contentDocument || el.contentWindow.document;
+                            } catch (e) {
+                                continue;
+                            }
+                            if (iframeDocument) {
+                                element = findElementInShadowDOMAndIframes(iframeDocument, selector);
+                                if (element) {
+                                    return element;
+                                }
+                            }
+                        }
+                    }
+                    return null;
+                };
+
+                const element = findElementInShadowDOMAndIframes(document, selector);
+
+                if (!element) {
+                    throw new Error(`Element not found: ${selector}`);
+                }
+
+                // Find the option to select
+                let optionFound = false;
+                for (const option of element.options) {
+                    if (option.value === option_value || option.text === option_value) {
+                        element.value = option.value;
+                        const event = new Event('change', { bubbles: true });
+                        element.dispatchEvent(event);
+                        optionFound = true;
+                        break;
+                    }
+                }
+
+                if (!optionFound) {
+                    throw new Error(`Option '${option_value}' not found in element '${selector}'`);
+                }
+
+                return `Option '${option_value}' selected in element '${selector}'`;
+            }""",
+            {"selector": selector, "option_value": option_value},
+        )
+        logger.debug(f"custom_select_option result: {result}")
+    except Exception as e:
+        logger.error(
+            f"Error in custom_select_option, Selector: {selector}, Option: {option_value}. Error: {str(e)}"
+        )
+        raise
+
+
+async def do_select_option(
+    page: Page, selector: str, option_value: str
+) -> dict[str, str]:
     """
     Performs the option selection operation on a dropdown or spinner element.
 
@@ -121,7 +212,9 @@ async def do_select_option(page: Page, selector: str, option_value: str) -> dict
         result = await do_select_option(page, '#country', 'United States')
     """
     try:
-        logger.debug(f"Looking for selector {selector} to select option: {option_value}")
+        logger.debug(
+            f"Looking for selector {selector} to select option: {option_value}"
+        )
 
         # Helper function to find element in DOM, Shadow DOM, or iframes
         async def find_element(page: Page, selector: str) -> ElementHandle:
@@ -186,8 +279,8 @@ async def do_select_option(page: Page, selector: str, option_value: str) -> dict
         tag_name = await element.evaluate("el => el.tagName.toLowerCase()")
 
         if tag_name == "select":
-            # For <select> elements, use Playwright's select_option method
-            await element.select_option(label=option_value)
+            # For <select> elements, use custom_select_option method
+            await custom_select_option(page, selector, option_value)
             element_outer_html = await get_element_outer_html(element, page)
             success_msg = f"Success. Option '{option_value}' selected in the dropdown with selector '{selector}'"
             return {
@@ -222,7 +315,10 @@ async def do_select_option(page: Page, selector: str, option_value: str) -> dict
             for option in options:
                 option_text = await option.inner_text()
                 option_value_attr = await option.get_attribute("value")
-                if option_text.strip() == option_value or option_value_attr == option_value:
+                if (
+                    option_text.strip() == option_value
+                    or option_value_attr == option_value
+                ):
                     await option.click()
                     option_found = True
                     break
@@ -283,8 +379,12 @@ async def bulk_select_option(
     for entry in entries:
         query_selector = entry["query_selector"]
         option_value = entry["value"]
-        logger.info(f"Selecting option: '{option_value}' in element with selector: '{query_selector}'")
-        result = await select_option(SelectOptionEntry(query_selector=query_selector, value=option_value))
+        logger.info(
+            f"Selecting option: '{option_value}' in element with selector: '{query_selector}'"
+        )
+        result = await select_option(
+            SelectOptionEntry(query_selector=query_selector, value=option_value)
+        )
 
         results.append({"query_selector": query_selector, "result": result})
 
