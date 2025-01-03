@@ -66,8 +66,8 @@ async def test_page_accessibility(
         for violation in violations:
             nodes = violation.get("nodes", [])
             for node in nodes:
-                failureSummaries.append(node.get("failureSummary"))        
-        
+                failureSummaries.append(node.get("failureSummary"))
+
         accessibility_logger(page_path, violations + incomplete)
         accessibility_logger_json(page_path, json.dumps(axe_results, indent=4))
         if not failureSummaries:

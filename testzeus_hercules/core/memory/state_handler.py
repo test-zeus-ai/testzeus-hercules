@@ -1,5 +1,5 @@
 from collections import defaultdict, deque
-from typing import Annotated, Dict, Union, Any
+from typing import Annotated, Any, Dict, Union
 
 from testzeus_hercules.config import DEFAULT_TEST_ID
 from testzeus_hercules.core.tools.tool_registry import tool

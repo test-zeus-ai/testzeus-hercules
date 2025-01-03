@@ -39,7 +39,19 @@ class StaticLTM:
                 if filename.endswith((".json", ".yaml", ".yml")):
                     selected_files.append(file_path)
                 new_read = ""
-                sanitized_filename = filename.replace(".", "_").replace(" ", "_").replace("-", "_").replace(":", "_").replace("/", "_").replace("\\", "_").replace("(", "_").replace(")", "_").replace("[", "_").replace("]", "_").upper()
+                sanitized_filename = (
+                    filename.replace(".", "_")
+                    .replace(" ", "_")
+                    .replace("-", "_")
+                    .replace(":", "_")
+                    .replace("/", "_")
+                    .replace("\\", "_")
+                    .replace("(", "_")
+                    .replace(")", "_")
+                    .replace("[", "_")
+                    .replace("]", "_")
+                    .upper()
+                )
                 with open(file_path, "r", encoding="utf-8") as file:
                     data = file.read()
                     data = data.replace("  ", " ").replace("    ", " ").strip()

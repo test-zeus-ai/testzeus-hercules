@@ -36,18 +36,12 @@ def test_feature_execution(feature_folder: str) -> None:
     load_env_in_dict["IS_TEST_ENV"] = "true"
     load_env_in_dict["MODE"] = "debug"
     load_env_in_dict["ENABLE_TELEMETRY"] = "0"
+    load_env_in_dict["AUTO_MODE"] = "1"
+    load_env_in_dict["LANG"] = "en_US.UTF-8"
 
     # Execute Hercules with the updated .env file
     try:
-        result = subprocess.run(
-            ["poetry", "run", "python", "-m", "testzeus_hercules"],
-            check=True,
-            capture_output=True,
-            env=load_env_in_dict | dict(os.environ),
-            encoding="utf-8",
-            text=True,
-            errors="replace",
-        )
+        result = subprocess.run(["poetry", "run", "python", "-m", "testzeus_hercules"], check=True, capture_output=True, text=True, encoding="utf-8", errors="replace", env=load_env_in_dict)
         print(f"Standard Output:\n{result.stdout}")
         print(f"Standard Error:\n{result.stderr}")
         print(f"Return Code: {result.returncode}")
