@@ -3,14 +3,7 @@ import json
 import os
 
 from junit2htmlreport.runner import run as prepare_html
-from testzeus_hercules.config import (
-    get_dont_close_browser,
-    get_input_gherkin_file_path,
-    get_junit_xml_base_path,
-    get_proof_path,
-    get_source_log_folder_path,
-    set_default_test_id,
-)
+from testzeus_hercules.config import CONF
 from testzeus_hercules.core.runner import SingleCommandInputRunner
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.gherkin_helper import (
@@ -42,14 +35,16 @@ def sequential_process() -> None:
     6. Merges all JUnit XML results into a single file.
     7. Logs the location of the final result file.
     """
-    dont_close_browser = get_dont_close_browser()
+    dont_close_browser = CONF.get_dont_close_browser()
     list_of_feats = process_feature_file(pass_background_to_all=dont_close_browser)
-    input_gherkin_file_path = get_input_gherkin_file_path()
+    input_gherkin_file_path = CONF.get_input_gherkin_file_path()
     # get name of the feature file using os package
     feature_file_name = os.path.basename(input_gherkin_file_path)
 
     result_of_tests = []
-    final_result_file_name = f"{get_junit_xml_base_path()}/{feature_file_name}_result.xml"
+    final_result_file_name = (
+        f"{CONF.get_junit_xml_base_path()}/{feature_file_name}_result.xml"
+    )
     add_event(EventType.RUN, EventData(detail="Total Runs: " + str(len(list_of_feats))))
     for feat in list_of_feats:
         file_path = feat["output_file"]
@@ -59,7 +54,7 @@ def sequential_process() -> None:
         stake_id = scenario.replace(" ", "_").replace(":", "_")
 
         # TODO: remove the following set default hack later.
-        set_default_test_id(stake_id)
+        CONF.set_default_test_id(stake_id)
 
         cmd = serialize_feature_file(file_path)
 
@@ -74,8 +69,44 @@ def sequential_process() -> None:
 
         runner_result = {}
         cost_metrics = {}
-        if runner.result and runner.result.cost:
-            cost_metrics = runner.result.cost
+
+        if CONF.get_token_verbose():
+            # Parse usage and sum across all agents based on keys
+            for ag_name, agent in runner.autogen_wrapper.agents_map.items():
+                if agent.client and agent.client.total_usage_summary:
+                    for key, value in agent.client.total_usage_summary.items():
+                        if key == "total_cost":
+                            # Sum total_cost across agents
+                            cost_metrics["total_cost"] = (
+                                cost_metrics.get("total_cost", 0) + value
+                            )
+                        elif isinstance(value, dict):
+                            if ag_name not in cost_metrics:
+                                cost_metrics[ag_name] = {}
+                            if key not in cost_metrics[ag_name]:
+                                cost_metrics[ag_name][key] = {
+                                    "cost": 0,
+                                    "prompt_tokens": 0,
+                                    "completion_tokens": 0,
+                                    "total_tokens": 0,
+                                }
+
+                            cost_metrics[ag_name][key]["cost"] += value.get("cost", 0)
+                            cost_metrics[ag_name][key]["prompt_tokens"] += value.get(
+                                "prompt_tokens", 0
+                            )
+                            cost_metrics[ag_name][key][
+                                "completion_tokens"
+                            ] += value.get("completion_tokens", 0)
+                            cost_metrics[ag_name][key]["total_tokens"] += value.get(
+                                "total_tokens", 0
+                            )
+                        else:
+                            # For unexpected keys, just add them as-is
+                            cost_metrics[ag_name][key] = (
+                                cost_metrics.get(key, 0) + value
+                            )
+
         execution_time = runner.execution_time
         if runner.result and runner.result.chat_history:
             s_rr = runner.result.chat_history[-1]["content"]
@@ -87,6 +118,8 @@ def sequential_process() -> None:
                 logger.error(f"Failed to decode JSON: {json_content}")
 
         logger.info(f"Run completed for testcase: {scenario}")
+        if cost_metrics:
+            logger.info(f"Test run cost is : {cost_metrics}")
         result_of_tests.append(
             build_junit_xml(
                 runner_result,
@@ -96,19 +129,22 @@ def sequential_process() -> None:
                 scenario,
                 feature_file_path=file_path,
                 output_file_path="",
-                proofs_path=get_proof_path(runner.browser_manager.stake_id),
+                proofs_path=CONF.get_proof_path(runner.browser_manager.stake_id),
                 proofs_screenshot_path=runner.browser_manager._screenshots_dir,
                 proofs_video_path=runner.browser_manager.get_latest_video_path(),
                 network_logs_path=runner.browser_manager.request_response_log_file,
-                logs_path=get_source_log_folder_path(stake_id),
-                planner_thoughts_path=get_source_log_folder_path(stake_id) + "/chat_messages.json",
+                logs_path=CONF.get_source_log_folder_path(stake_id),
+                planner_thoughts_path=CONF.get_source_log_folder_path(stake_id)
+                + "/chat_messages.json",
             )
         )
     JUnitXMLGenerator.merge_junit_xml(result_of_tests, final_result_file_name)
     logger.info(f"Results published in junitxml file: {final_result_file_name}")
 
     # building html from junitxml
-    final_result_html_file_name = f"{get_junit_xml_base_path()}/{feature_file_name}_result.html"
+    final_result_html_file_name = (
+        f"{CONF.get_junit_xml_base_path()}/{feature_file_name}_result.html"
+    )
     prepare_html([final_result_file_name, final_result_html_file_name])
     logger.info(f"Results published in html file: {final_result_html_file_name}")
 

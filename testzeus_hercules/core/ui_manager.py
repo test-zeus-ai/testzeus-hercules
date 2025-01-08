@@ -2,7 +2,7 @@ import os
 import traceback
 
 from playwright.async_api import Frame, Page
-from testzeus_hercules.config import PROJECT_SOURCE_ROOT
+from testzeus_hercules.config import CONF
 from testzeus_hercules.utils.js_helper import escape_js_message
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
@@ -44,7 +44,7 @@ class UIManager:
         """
         try:
             await frame.wait_for_load_state("load")
-            overlay_injection_file = os.path.join(PROJECT_SOURCE_ROOT, "js", "injectOverlay.js")
+            overlay_injection_file = os.path.join(CONF.get_project_source_root(), "js", "injectOverlay.js")
             with open(overlay_injection_file, "r") as file:  # noqa: UP015
                 js_code = file.read()
 

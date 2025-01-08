@@ -10,7 +10,7 @@ from testzeus_hercules.utils.ui_messagetype import MessageType
 async def openurl(
     url: Annotated[
         str,
-        "The URL to navigate to. Value must include the protocol (http:// or https://).",
+        "URL to navigate to. Value must include the protocol (http:// or https://).",
     ],
     timeout: Annotated[int, "Additional wait time in seconds after initial load."] = 3,
 ) -> Annotated[str, "Returns the result of this request in text form"]:
@@ -47,9 +47,13 @@ async def openurl(
         # Get the page title
         title = await page.title()
         url = page.url
+        # wait for the network to idle
+        await page.wait_for_load_state()
+        await browser_manager.wait_for_page_and_frames_load()
         return f"Page loaded: {url}, Title: {title}"  # type: ignore
     except PlaywrightTimeoutError as pte:
         logger.warning(f"Initial navigation to {url} failed: {pte}. Will try to continue anyway.")  # happens more often than not, but does not seem to be a problem
+        return f"Timeout error opening URL: {url}"
     except Exception as e:
         logger.error(f"An error occurred while opening the URL: {url}. Error: {e}")
         import traceback

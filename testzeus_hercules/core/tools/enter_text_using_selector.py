@@ -22,7 +22,7 @@ class EnterTextEntry:
     Represents an entry for text input.
 
     Attributes:
-        query_selector (str): A valid DOM selector query. Use the mmid attribute.
+        query_selector (str): A valid selector query. Use the md attribute.
         text (str): The text to enter in the element identified by the query_selector.
     """
 
@@ -38,7 +38,7 @@ class EnterTextEntry:
             raise KeyError(f"{key} is not a valid key")
 
 
-async def custom_fill_element(page: Page, selector: str, text_to_enter: str):
+async def custom_fill_element(page: Page, selector: str, text_to_enter: str) -> None:
     """
     Sets the value of a DOM element to a specified text without triggering keyboard input events.
 
@@ -132,11 +132,8 @@ async def custom_fill_element(page: Page, selector: str, text_to_enter: str):
 
 
 async def entertext(
-    entry: Annotated[
-        EnterTextEntry,
-        "An object containing 'query_selector' (DOM selector query using mmid attribute e.g. [mmid='114']) and 'text' (text to enter on the element).",
-    ]
-) -> Annotated[str, "Explanation of the outcome of this operation."]:
+    entry: Annotated[EnterTextEntry, "Text entry with selector and text to enter"],
+) -> Annotated[str, "Text entry result"]:
     """
     Enters text into a DOM element identified by a CSS selector.
 
@@ -145,7 +142,7 @@ async def entertext(
     The function supports both direct setting of the 'value' property and simulating keyboard typing.
 
     Args:
-        entry (EnterTextEntry): An object containing 'query_selector' (DOM selector query using mmid attribute)
+        entry (EnterTextEntry): An object containing 'query_selector' (selector query using md attribute)
                                 and 'text' (text to enter on the element).
 
     Returns:
@@ -255,7 +252,7 @@ async def entertext(
         0.1
     )  # sleep for 100ms to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
-
+    await page.wait_for_load_state()
     await browser_manager.take_screenshots(f"{function_name}_end", page)
 
     await browser_manager.notify_user(
@@ -268,7 +265,7 @@ async def entertext(
 
 async def do_entertext(
     page: Page, selector: str, text_to_enter: str, use_keyboard_fill: bool = True
-):
+) -> dict[str, str]:
     """
     Performs the text entry operation on a DOM or Shadow DOM element.
 
@@ -298,7 +295,7 @@ async def do_entertext(
         logger.debug(f"Looking for selector {selector} to enter text: {text_to_enter}")
 
         # Helper function to handle both regular DOM and Shadow DOM
-        async def find_element_in_shadow_dom(page: Page, selector: str):
+        async def find_element_in_shadow_dom(page: Page, selector: str) -> dict:
             # Try to find the element in the regular DOM first
             element = await page.query_selector(selector)
 
@@ -378,6 +375,7 @@ async def do_entertext(
             await custom_fill_element(page, selector, text_to_enter)
 
         await elem.focus()
+        await page.wait_for_load_state()
         logger.info(
             f'Success. Text "{text_to_enter}" set successfully in the element with selector {selector}'
         )
@@ -396,7 +394,7 @@ async def do_entertext(
 async def bulk_enter_text(
     entries: Annotated[
         List[EnterTextEntry],
-        "List of EnterTextEntry objects. An object containing 'query_selector' (DOM selector query using mmid attribute e.g. [mmid='114']) and 'text' (text to enter on the element).",
+        "List of EnterTextEntry objects. An object containing 'query_selector' (selector query using md attribute e.g. [md='114']) and 'text' (text to enter on the element).",
     ]  # noqa: UP006
 ) -> Annotated[
     List[str],

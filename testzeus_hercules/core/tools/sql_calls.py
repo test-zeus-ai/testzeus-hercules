@@ -15,9 +15,9 @@ from testzeus_hercules.utils.logger import logger
 async def execute_select_cte_query_sql(
     connection_string: Annotated[
         str,
-        "The async database connection string in SQLAlchemy format. " "E.g., 'postgresql+asyncpg://user:password@host:port/database'.",
+        "async database connection string in SQLAlchemy format. " "E.g., 'postgresql+asyncpg://user:password@host:port/database'.",
     ],
-    query: Annotated[str, "The SELECT SQL query to execute. Must start with 'SELECT' or 'WITH'."],
+    query: Annotated[str, "SELECT SQL query to execute. Must start with 'SELECT' or 'WITH'."],
     schema: Annotated[
         Optional[str | None],
         "Optional database schema to use. If not provided, assumes schema is specified in the query.",
@@ -28,7 +28,7 @@ async def execute_select_cte_query_sql(
     ],
 ) -> Annotated[
     Union[List[Dict[str, Any]], Dict[str, str]],
-    "The query results or an error message.",
+    "query results or an error message.",
 ]:
     """
     Execute a SELECT SQL query asynchronously using SQLAlchemy.

@@ -544,7 +544,7 @@ In practice, this means taking the expansive DOM and delivering a more digestibl
 
 It's a surgical procedure, carefully removing extraneous information while preserving the structure and content needed for the agent's operation. Of course, with any distillation, there could be casualties, but the idea is to refine this over time to limit/eliminate them.
 
-Since we can't rely on all web page authors to use best practices, such as adding unique IDs to each HTML element, we had to inject our own attribute (`mmid`) in every DOM element. We can then guide the LLM to rely on using `mmid` in the generated DOM queries.
+Since we can't rely on all web page authors to use best practices, such as adding unique IDs to each HTML element, we had to inject our own attribute (`md`) in every DOM element. We can then guide the LLM to rely on using `md` in the generated DOM queries.
 
 To cut down on some of the DOM noise, we use the **DOM Accessibility Tree** rather than the regular HTML DOM. The accessibility tree, by nature, is geared towards helping screen readers, which is closer to the mission of web automation than plain old HTML DOM.
 

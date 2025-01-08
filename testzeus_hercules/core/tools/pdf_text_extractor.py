@@ -3,19 +3,19 @@ from typing import Annotated
 
 import httpx
 import pdfplumber
-from testzeus_hercules.config import get_project_temp_path
+from testzeus_hercules.config import CONF
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
 
 
-async def extract_text_from_pdf(pdf_url: Annotated[str, "The URL of the PDF file to extract text from."]) -> Annotated[str, "All the text found in the PDF file."]:
+async def extract_text_from_pdf(pdf_url: Annotated[str, "URL of the PDF file to extract text from."]) -> Annotated[str, "All the text found in the PDF file."]:
     """
     Extract text from a PDF file.
     pdf_url: str - The URL of the PDF file to extract text from.
     returns: str - All the text found in the PDF.
     """
-    file_path = os.path.join(get_project_temp_path(), "downloaded_file.pdf")  # fixed file path for downloading the PDF
+    file_path = os.path.join(CONF.get_project_temp_path(), "downloaded_file.pdf")  # fixed file path for downloading the PDF
 
     try:
         # Create and use the PlaywrightManager

@@ -5,16 +5,16 @@ import traceback
 from typing import Annotated, Any
 
 from playwright.async_api import Page
-from testzeus_hercules.config import get_source_log_folder_path
+from testzeus_hercules.config import CONF
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.utils.logger import logger
 
-space_delimited_mmid = re.compile(r"^[\d ]+$")
+space_delimited_md = re.compile(r"^[\d ]+$")
 
 
-def is_space_delimited_mmid(s: str) -> bool:
+def is_space_delimited_md(s: str) -> bool:
     """
-    Check if the given string matches the the mmid pattern of number space repeated.
+    Check if the given string matches the the md pattern of number space repeated.
 
     Parameters:
     - s (str): The string to check against the pattern.
@@ -23,18 +23,18 @@ def is_space_delimited_mmid(s: str) -> bool:
     - bool: True if the string matches the pattern, False otherwise.
     """
     # Use fullmatch() to ensure the entire string matches the pattern
-    return bool(space_delimited_mmid.fullmatch(s))
+    return bool(space_delimited_md.fullmatch(s))
 
 
 async def __inject_attributes(page: Page) -> None:
     """
-    Injects 'mmid' and 'aria-keyshortcuts' into all DOM elements. If an element already has an 'aria-keyshortcuts',
+    Injects 'md' and 'aria-keyshortcuts' into all DOM elements. If an element already has an 'aria-keyshortcuts',
     it renames it to 'orig-aria-keyshortcuts' before injecting the new 'aria-keyshortcuts'
     This will be captured in the accessibility tree and thus make it easier to reconcile the tree with the DOM.
     'aria-keyshortcuts' is choosen because it is not widely used aria attribute.
     """
 
-    last_mmid = await page.evaluate(
+    last_md = await page.evaluate(
         """() => {
             // A recursive function to handle elements in DOM, shadow DOM, and iframes
             const processElements = (elements, idCounter) => {
@@ -63,9 +63,9 @@ async def __inject_attributes(page: Page) -> None:
                     // Check if the element is interactive (buttons, inputs, etc.)
                     if (isInteractiveElement(element)) {
                         const origAriaAttribute = element.getAttribute('aria-keyshortcuts');
-                        const mmid = `${++idCounter}`;
-                        element.setAttribute('mmid', mmid);
-                        element.setAttribute('aria-keyshortcuts', mmid);
+                        const md = `${++idCounter}`;
+                        element.setAttribute('md', md);
+                        element.setAttribute('aria-keyshortcuts', md);
 
                         // Preserve the original aria-keyshortcuts if it exists
                         if (origAriaAttribute) {
@@ -120,12 +120,12 @@ async def __inject_attributes(page: Page) -> None:
         };
         """
     )
-    logger.debug(f"Added MMID into {last_mmid} elements")
+    logger.debug(f"Added MD into {last_md} elements")
 
 
 async def __fetch_dom_info(page: Page, accessibility_tree: dict[str, Any], only_input_fields: bool) -> dict[str, Any]:
     """
-    Iterates over the accessibility tree, fetching additional information from the DOM based on 'mmid',
+    Iterates over the accessibility tree, fetching additional information from the DOM based on 'md',
     and constructs a new JSON structure with detailed information.
 
     Args:
@@ -143,7 +143,7 @@ async def __fetch_dom_info(page: Page, accessibility_tree: dict[str, Any], only_
         "name",
         "aria-label",
         "placeholder",
-        "mmid",
+        "md",
         "id",
         "for",
         "data-testid",
@@ -177,19 +177,19 @@ async def __fetch_dom_info(page: Page, accessibility_tree: dict[str, Any], only_
                 for child in node["children"]:
                     await process_node(child)
 
-            # Use 'name' attribute from the accessibility node as 'mmid'
-            mmid_temp: str = node.get("keyshortcuts")  # type: ignore
+            # Use 'name' attribute from the accessibility node as 'md'
+            md_temp: str = node.get("keyshortcuts")  # type: ignore
 
-            # If the name has multiple mmids, take the last one
-            if mmid_temp and is_space_delimited_mmid(mmid_temp):
-                # TODO: consider if we should grab each of the mmids and process them separately as seperate nodes copying this node's attributes
-                mmid_temp = mmid_temp.split(" ")[-1]
+            # If the name has multiple mds, take the last one
+            if md_temp and is_space_delimited_md(md_temp):
+                # TODO: consider if we should grab each of the mds and process them separately as seperate nodes copying this node's attributes
+                md_temp = md_temp.split(" ")[-1]
 
-            # focusing on nodes with mmid, which is the attribute we inject
+            # focusing on nodes with md, which is the attribute we inject
             try:
-                mmid = int(mmid_temp)
+                md = int(md_temp)
             except (ValueError, TypeError):
-                # logger.error(f"'name attribute contains \"{node.get('name')}\", which is not a valid numeric mmid. Adding node as is: {node}")
+                # logger.error(f"'name attribute contains \"{node.get('name')}\", which is not a valid numeric md. Adding node as is: {node}")
                 return node.get("name")
 
             if node["role"] == "menuitem":
@@ -200,22 +200,22 @@ async def __fetch_dom_info(page: Page, accessibility_tree: dict[str, Any], only_
                     "This is a modal dialog. Please interact with this dialog and close it to be able to interact with the full page (e.g. by pressing the close button or selecting an option)."
                 )
 
-            if mmid:
+            if md:
                 # Determine if we need to fetch 'innerText' based on the absence of 'children' in the accessibility node
                 should_fetch_inner_text = "children" not in node
 
                 js_code = """
                     (input_params) => {
                         const should_fetch_inner_text = input_params.should_fetch_inner_text;
-                        const mmid = input_params.mmid;
+                        const md = input_params.md;
                         const attributes = input_params.attributes;
                         const tags_to_ignore = input_params.tags_to_ignore;
                         const ids_to_ignore = input_params.ids_to_ignore;
 
-                        // Helper function to search for an element by mmid across DOM, shadow DOMs, and iframes
-                        const findElementByMmid = (parent, mmid) => {
+                        // Helper function to search for an element by md across DOM, shadow DOMs, and iframes
+                        const findElementByMd = (parent, md) => {
                             // Look in the parent context (can be document or shadow root)
-                            const element = parent.querySelector(`[mmid="${mmid}"]`);
+                            const element = parent.querySelector(`[md="${md}"]`);
 
                             if (element) {
                                 return element; // Found in parent context
@@ -226,7 +226,7 @@ async def __fetch_dom_info(page: Page, accessibility_tree: dict[str, Any], only_
                             for (const el of elements) {
                                 // Check for shadow DOM
                                 if (el.shadowRoot) {
-                                    const shadowElement = findElementByMmid(el.shadowRoot, mmid);
+                                    const shadowElement = findElementByMd(el.shadowRoot, md);
                                     if (shadowElement) {
                                         return shadowElement; // Found in shadow DOM
                                     }
@@ -241,7 +241,7 @@ async def __fetch_dom_info(page: Page, accessibility_tree: dict[str, Any], only_
                                         continue;
                                     }
                                     if (iframeDocument) {
-                                        const iframeElement = findElementByMmid(iframeDocument, mmid);
+                                        const iframeElement = findElementByMd(iframeDocument, md);
                                         if (iframeElement) {
                                             return iframeElement; // Found in iframe
                                         }
@@ -253,10 +253,10 @@ async def __fetch_dom_info(page: Page, accessibility_tree: dict[str, Any], only_
                         };
 
                         // Start the search in the document (regular DOM)
-                        const element = findElementByMmid(document, mmid);
+                        const element = findElementByMd(document, md);
 
                         if (!element) {
-                            console.log(`No element found with mmid: ${mmid}`);
+                            console.log(`No element found with md: ${md}`);
                             return null;
                         }
 
@@ -284,13 +284,13 @@ async def __fetch_dom_info(page: Page, accessibility_tree: dict[str, Any], only_
                         if (element.tagName.toLowerCase() === 'input') {
                             attributes_to_values['tag_type'] = element.type;
                         } else if (element.tagName.toLowerCase() === 'select') {
-                            attributes_to_values["mmid"] = element.getAttribute('mmid');
+                            attributes_to_values["md"] = element.getAttribute('md');
                             attributes_to_values["role"] = "combobox";
                             attributes_to_values["options"] = [];
 
                             for (const option of element.options) {
                                 let option_attributes_to_values = {
-                                    "mmid": option.getAttribute('mmid'),
+                                    "md": option.getAttribute('md'),
                                     "text": option.text,
                                     "value": option.value,
                                     "selected": option.selected
@@ -317,7 +317,7 @@ async def __fetch_dom_info(page: Page, accessibility_tree: dict[str, Any], only_
                             let children = element.children;
                             let filtered_children = Array.from(children).filter(child => child.getAttribute('role') === 'option');
                             console.log("Listbox or ul found: ", filtered_children);
-                            let attributes_to_include = ['mmid', 'role', 'aria-label', 'value'];
+                            let attributes_to_include = ['md', 'role', 'aria-label', 'value'];
                             attributes_to_values["additional_info"] = [];
 
                             for (const child of children) {
@@ -333,7 +333,7 @@ async def __fetch_dom_info(page: Page, accessibility_tree: dict[str, Any], only_
                             }
                         }
 
-                        const minimalKeys = ['tag', 'mmid'];
+                        const minimalKeys = ['tag', 'md'];
                         const hasMoreThanMinimalKeys = Object.keys(attributes_to_values).length > minimalKeys.length;
 
                         if (!hasMoreThanMinimalKeys) {
@@ -346,11 +346,11 @@ async def __fetch_dom_info(page: Page, accessibility_tree: dict[str, Any], only_
 
                             if (Object.keys(attributes_to_values).length <= minimalKeys.length) {
                                 if (element.tagName.toLowerCase() === 'button') {
-                                    attributes_to_values["mmid"] = element.getAttribute('mmid');
+                                    attributes_to_values["md"] = element.getAttribute('md');
                                     attributes_to_values["role"] = "button";
                                     attributes_to_values["additional_info"] = [];
                                     let children = element.children;
-                                    let attributes_to_exclude = ['width', 'height', 'path', 'class', 'viewBox', 'mmid'];
+                                    let attributes_to_exclude = ['width', 'height', 'path', 'class', 'viewBox', 'md'];
 
                                     if (element.innerText.trim() === '') {
                                         for (const child of children) {
@@ -378,11 +378,11 @@ async def __fetch_dom_info(page: Page, accessibility_tree: dict[str, Any], only_
 
                 """
 
-                # Fetch attributes and possibly 'innerText' from the DOM element by 'mmid'
+                # Fetch attributes and possibly 'innerText' from the DOM element by 'md'
                 element_attributes = await page.evaluate(
                     js_code,
                     {
-                        "mmid": mmid,
+                        "md": md,
                         "attributes": attributes,
                         "backup_attributes": backup_attributes,
                         "should_fetch_inner_text": should_fetch_inner_text,
@@ -394,14 +394,14 @@ async def __fetch_dom_info(page: Page, accessibility_tree: dict[str, Any], only_
                 if "keyshortcuts" in node:
                     del node["keyshortcuts"]  # remove keyshortcuts since it is not needed
 
-                node["mmid"] = mmid
+                node["md"] = md
 
                 # Update the node with fetched information
                 if element_attributes:
                     node.update(element_attributes)
 
-                    # check if 'name' and 'mmid' are the same
-                    if node.get("name") == node.get("mmid") and node.get("role") != "textbox":
+                    # check if 'name' and 'md' are the same
+                    if node.get("name") == node.get("md") and node.get("role") != "textbox":
                         del node["name"]  # Remove 'name' from the node
 
                     if (
@@ -490,9 +490,9 @@ async def __fetch_dom_info(page: Page, accessibility_tree: dict[str, Any], only_
                                     const referencedElement = findElementByAriaLabelledBy(document, inputParams.aria_labelled_by_query_value);
 
                                     if (referencedElement) {
-                                        const mmid = referencedElement.getAttribute('mmid');
-                                        if (mmid) {
-                                            return { "mmid": mmid, "tag": referencedElement.tagName.toLowerCase() };
+                                        const md = referencedElement.getAttribute('md');
+                                        if (md) {
+                                            return { "md": md, "tag": referencedElement.tagName.toLowerCase() };
                                         }
                                     }
 
@@ -508,7 +508,7 @@ async def __fetch_dom_info(page: Page, accessibility_tree: dict[str, Any], only_
                     if attribute_to_delete in node:
                         node.pop(attribute_to_delete, None)
             else:
-                logger.debug(f"No element found with mmid: {mmid}, deleting node: {node}")
+                logger.debug(f"No element found with md: {md}, deleting node: {node}")
                 node["marked_for_deletion_by_mm"] = True
 
     # Process each node in the tree starting from the root
@@ -530,8 +530,8 @@ async def __cleanup_dom(page: Page) -> None:
         """() => {
             // Recursive function to process elements in DOM, shadow DOM, and iframes
             const processElements = (parent) => {
-                // Select all elements with the 'mmid' attribute in the current parent (regular DOM or shadow DOM)
-                const allElements = parent.querySelectorAll('*[mmid]');
+                // Select all elements with the 'md' attribute in the current parent (regular DOM or shadow DOM)
+                const allElements = parent.querySelectorAll('*[md]');
 
                 // Iterate through each element and process its attributes
                 allElements.forEach(element => {
@@ -573,7 +573,7 @@ async def __cleanup_dom(page: Page) -> None:
     logger.debug("DOM cleanup complete")
 
 
-def __prune_tree(node: dict[str, Any], only_input_fields: bool) -> dict[str, Any] | None:
+def __prune_tree_old(node: dict[str, Any], only_input_fields: bool) -> dict[str, Any] | None:
     """
     Recursively prunes a tree starting from `node`, based on pruning conditions and handling of 'unraveling'.
 
@@ -640,6 +640,87 @@ def __prune_tree(node: dict[str, Any], only_input_fields: bool) -> dict[str, Any
     return None if __should_prune_node(node, only_input_fields) else node
 
 
+def __prune_tree(node: dict[str, Any], only_input_fields: bool) -> dict[str, Any] | None:
+    """
+    Recursively prunes the tree according to rules:
+      1) Drop 'level' from all nodes.
+      2) If a parent (without 'md') has exactly one child, and both share the same 'name',
+         collapse the parent into its child.
+      3) If a node with 'md' has a child with the same 'name', drop attributes in the child
+         that match the parent's attributes (to prevent duplication).
+      4) Retain 'md' nodes otherwise (except for dropping 'level').
+
+      'only_input_fields' is used by the existing __should_prune_node logic.
+    """
+    if not node or "marked_for_deletion_by_mm" in node:
+        return None
+
+    # 1) Drop the 'level' field from the current node
+    node.pop("level", None)
+
+    # Recursively prune children first
+    if "children" in node:
+        pruned_children = []
+        for child in node["children"]:
+            pruned_child = __prune_tree(child, only_input_fields)
+            if pruned_child:
+                pruned_children.append(pruned_child)
+        node["children"] = pruned_children
+
+        # ------------------------------------------------
+        # 2) Collapse a non-md parent with a single child if they share the same name
+        # ------------------------------------------------
+        if "md" not in node and len(node["children"]) == 1:  # Parent must NOT have md  # Only one child
+            child = node["children"][0]
+            if child.get("name") == node.get("name"):
+                # If parent has no unique attributes aside from 'children'
+                # that child doesn't have, we can collapse.
+                parent_keys = set(node.keys()) - {"children"}
+                child_keys = set(child.keys()) - {"children"}
+                # If parent's non-children keys are contained in child's keys
+                # or they are exactly the same, collapse the parent
+                if parent_keys.issubset(child_keys):
+                    return child  # effectively drop the parent
+
+        # ------------------------------------------------
+        # 3) If this node has md, check if any child has the same name. Drop duplicates in child.
+        # ------------------------------------------------
+        if "md" in node:
+            for child in node["children"]:
+                if child.get("name") == node.get("name"):
+                    _drop_duplicate_attrs(parent=node, child=child)
+
+        # Remove `children` if empty
+        if not node["children"]:
+            node.pop("children", None)
+
+    # If a node has `md`, we do NOT collapse or remove it (except 'level' which we already removed).
+    if "md" in node:
+        # We still run __should_prune_node in case there's a condition that truly prunes it,
+        # but typically md nodes are not pruned.
+        if __should_prune_node(node, only_input_fields):
+            return None
+        return node
+
+    # Existing pruning logic
+    if __should_prune_node(node, only_input_fields):
+        return None
+
+    return node
+
+
+def _drop_duplicate_attrs(parent: dict[str, Any], child: dict[str, Any]) -> None:
+    """
+    If child has the same attributes as the parent (same key AND same value),
+    drop those from the child to avoid duplication.
+    We skip 'children' and 'md' since they are structural or important IDs.
+    """
+    skip_keys = {"children", "md"}
+    for key in list(child.keys()):
+        if key not in skip_keys and key in parent and parent[key] == child[key]:
+            child.pop(key)
+
+
 def __should_prune_node(node: dict[str, Any], only_input_fields: bool) -> bool:
     """
     Determines if a node should be pruned based on its 'role' and 'element_attributes'.
@@ -673,31 +754,34 @@ def __should_prune_node(node: dict[str, Any], only_input_fields: bool) -> bool:
     # check if the node only have name and role, then delete that node
     if len(node) == 2 and "name" in node and "role" in node and not (node.get("role") == "text" and processed_name != ""):
         return True
+
+    if node.get("tag") == "span":
+        return True
     return False
 
 
-async def get_node_dom_element(page: Page, mmid: str) -> Any:
+async def get_node_dom_element(page: Page, md: str) -> Any:
     return await page.evaluate(
         """
-        (mmid) => {
-            return document.querySelector(`[mmid="${mmid}"]`);
+        (md) => {
+            return document.querySelector(`[md="${md}"]`);
         }
     """,
-        mmid,
+        md,
     )
 
 
-async def get_element_attributes(page: Page, mmid: str, attributes: list[str]) -> dict[str, Any]:
+async def get_element_attributes(page: Page, md: str, attributes: list[str]) -> dict[str, Any]:
     return await page.evaluate(
         """
         (inputParams) => {
-            const mmid = inputParams.mmid;
+            const md = inputParams.md;
             const attributes = inputParams.attributes;
 
-            // Helper function to recursively search for the element with the mmid in regular DOM, shadow DOMs, and iframes
-            const findElementByMmid = (parent, mmid) => {
+            // Helper function to recursively search for the element with the md in regular DOM, shadow DOMs, and iframes
+            const findElementByMd = (parent, md) => {
                 // First, try to find the element in the current DOM context (either document, shadowRoot, or iframe document)
-                let element = parent.querySelector(`[mmid="${mmid}"]`);
+                let element = parent.querySelector(`[md="${md}"]`);
                 
                 if (element) {
                     return element; // Found the element in the current context
@@ -708,7 +792,7 @@ async def get_element_attributes(page: Page, mmid: str, attributes: list[str]) -
                 for (const el of elements) {
                     // Search inside shadow DOMs
                     if (el.shadowRoot) {
-                        element = findElementByMmid(el.shadowRoot, mmid);
+                        element = findElementByMd(el.shadowRoot, md);
                         if (element) {
                             return element; // Element found in shadow DOM
                         }
@@ -724,7 +808,7 @@ async def get_element_attributes(page: Page, mmid: str, attributes: list[str]) -
                             continue;
                         }
                         if (iframeDocument) {
-                            element = findElementByMmid(iframeDocument, mmid);
+                            element = findElementByMd(iframeDocument, md);
                             if (element) {
                                 return element; // Element found inside iframe
                             }
@@ -736,7 +820,7 @@ async def get_element_attributes(page: Page, mmid: str, attributes: list[str]) -
             };
 
             // Start searching from the regular DOM (document)
-            const element = findElementByMmid(document, mmid);
+            const element = findElementByMd(document, md);
             if (!element) return null;  // Return null if element is not found
 
             // Collect the requested attributes from the found element
@@ -749,7 +833,7 @@ async def get_element_attributes(page: Page, mmid: str, attributes: list[str]) -
         }
 
     """,
-        {"mmid": mmid, "attributes": attributes},
+        {"md": md, "attributes": attributes},
     )
 
 
@@ -920,8 +1004,8 @@ async def do_get_accessibility_info(page: Page, only_input_fields: bool = False)
 
                         const node = {};
 
-                        const mmid = element.getAttribute('mmid');
-                        if (mmid) node.mmid = mmid;
+                        const md = element.getAttribute('md');
+                        if (md) node.md = md;
 
                         node.tag = element.tagName.toLowerCase();
 
@@ -958,8 +1042,8 @@ async def do_get_accessibility_info(page: Page, only_input_fields: bool = False)
                                                 level: level + 1,
                                                 children: [iframeTree]
                                             };
-                                            const iframeMmid = child.getAttribute('mmid');
-                                            if (iframeMmid) iframeNode.mmid = iframeMmid;
+                                            const iframeMd = child.getAttribute('md');
+                                            if (iframeMd) iframeNode.md = iframeMd;
                                             node.children.push(iframeNode);
                                         }
                                     }
@@ -998,7 +1082,7 @@ async def do_get_accessibility_info(page: Page, only_input_fields: bool = False)
     # accessibility_tree2: dict[str, Any] = await page.accessibility.snapshot(interesting_only=True)  # type: ignore
 
     with open(
-        os.path.join(get_source_log_folder_path(), "json_accessibility_dom.json"),
+        os.path.join(CONF.get_source_log_folder_path(), "json_accessibility_dom.json"),
         "w",
         encoding="utf-8",
     ) as f:
@@ -1012,7 +1096,10 @@ async def do_get_accessibility_info(page: Page, only_input_fields: bool = False)
         logger.debug("Enhanced Accessibility Tree ready")
 
         with open(
-            os.path.join(get_source_log_folder_path(), "json_accessibility_dom_enriched.json"),
+            os.path.join(
+                CONF.get_source_log_folder_path(),
+                "json_accessibility_dom_enriched.json",
+            ),
             "w",
             encoding="utf-8",
         ) as f:

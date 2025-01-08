@@ -5,7 +5,7 @@ from collections import defaultdict
 from collections.abc import Callable
 from typing import Any
 
-from testzeus_hercules.config import get_proof_path
+from testzeus_hercules.config import CONF
 from testzeus_hercules.utils.logger import logger
 
 # Define the type of the functions that will be registered as tools
@@ -49,7 +49,7 @@ def accessibility_logger(identity: str, violations_json: dict) -> None:
     ]
 
     # Open the CSV file for writing
-    proof_path = os.path.join(get_proof_path(), "accessibility_logs.csv")
+    proof_path = os.path.join(CONF.get_proof_path(), "accessibility_logs.csv")
     with open(proof_path, mode="w", newline="", encoding="utf-8") as csv_file:
         writer = csv.writer(csv_file)
 
@@ -93,7 +93,7 @@ def accessibility_logger_json(identity: str, logging_string: str) -> None:
     """
     # clean identity str
     identity = identity.replace("/", "").replace(":", "").lower().replace("#", "")
-    proof_path = os.path.join(get_proof_path(), f"{identity}_accessibility_logs.json")
+    proof_path = os.path.join(CONF.get_proof_path(), f"{identity}_accessibility_logs.json")
     with open(proof_path, "a", encoding="utf-8") as file:
         file.write(logging_string + "\n")
 
@@ -105,7 +105,7 @@ def api_logger(logging_string: str) -> None:
     Parameters:
     - logging_string (str): The string to log.
     """
-    proof_path = os.path.join(get_proof_path(), "api_logs.log")
+    proof_path = os.path.join(CONF.get_proof_path(), "api_logs.log")
     with open(proof_path, "a", encoding="utf-8") as file:
         file.write(logging_string + "\n")
 
@@ -117,7 +117,7 @@ def sec_logger(logging_string: str) -> None:
     Parameters:
     - logging_string (str): The string to log.
     """
-    proof_path = os.path.join(get_proof_path(), "sec_logs.log")
+    proof_path = os.path.join(CONF.get_proof_path(), "sec_logs.log")
     with open(proof_path, "a", encoding="utf-8") as file:
         file.write(logging_string + "\n")
 

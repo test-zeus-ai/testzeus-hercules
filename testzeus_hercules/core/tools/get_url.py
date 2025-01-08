@@ -18,6 +18,7 @@ async def geturl() -> Annotated[str, "Returns the full URL of the current active
         # Create and use the PlaywrightManager
         browser_manager = PlaywrightManager()
         page = await browser_manager.get_current_page()
+        await page.wait_for_load_state()
         # await page.route("**/*", block_ads)
 
         if not page:

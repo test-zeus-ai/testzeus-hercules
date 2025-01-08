@@ -4,10 +4,10 @@ from typing import Any, Dict, List
 
 from junitparser import Failure, JUnitXml, Property, TestCase, TestSuite
 from junitparser.junitparser import Properties, SystemOut
-from testzeus_hercules.config import MODE, get_junit_xml_base_path
+from testzeus_hercules.config import CONF
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 
-junit_xml_base_path = get_junit_xml_base_path()
+junit_xml_base_path = CONF.get_junit_xml_base_path()
 
 
 def flatten_dict(d: Dict[str, Any], parent_key: str = "", sep: str = ".") -> Dict[str, Any]:
@@ -138,33 +138,17 @@ class JUnitXMLGenerator:
         for opt_item in opt_list:
             test_case.append(SystemOut(opt_item))
 
-        for usage_type in [
-            "usage_including_cached_inference",
-            "usage_excluding_cached_inference",
-        ]:
-            for key, val in cost_metric.get(usage_type, {}).items():
-                parent_key = f"{usage_type}.{key}"
-                if isinstance(val, dict):
-                    for k, v in val.items():
-                        prop = Property(name=f"{parent_key}.{k}", value=str(v))
-                        test_props.add_property(prop)
-                        if k == "total_cost":
-                            self.total_execution_cost += float(v)
-                        elif k == "total_tokens":
-                            self.total_token_used += int(v)
-
-            total_cost = cost_metric.get(usage_type, {}).get("total_cost", 0.0)
-            self.total_execution_cost += float(total_cost)
-            total_tokens = cost_metric.get(usage_type, {}).get("total_tokens", 0)
-            self.total_token_used += int(total_tokens)
-
-        total_cost = cost_metric.get("usage_including_cached_inference", {}).get("total_cost", 0.0)
-        self.total_execution_cost += float(total_cost)
-        gpt_data = cost_metric.get("usage_including_cached_inference", {})
-        for key in gpt_data:
-            if key != "total_cost":
-                total_tokens = gpt_data[key].get("total_tokens", 0)
-                self.total_token_used += int(total_tokens)
+        for agent, metrics in cost_metric.items():
+            if agent == "total_cost":
+                self.total_execution_cost += float(metrics)
+                continue
+            for model, data in metrics.items():
+                parent_key = f"{agent}.{model}"
+                for k, v in data.items():
+                    prop = Property(name=f"{parent_key}.{k}", value=str(v))
+                    test_props.add_property(prop)
+                    if k == "total_tokens":
+                        self.total_token_used += int(v)
 
         self.total_time += float(execution_time)
         self.suite.add_testcase(test_case)
@@ -229,7 +213,7 @@ class JUnitXMLGenerator:
                     suite_dict[suite_name] = suite
 
             # delete the files of individual test cases
-            if os.path.exists(file) and MODE not in ["debug"]:
+            if os.path.exists(file) and CONF.get_mode() not in ["debug"]:
                 os.remove(file)
 
         for suite in suite_dict.values():
