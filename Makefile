@@ -72,17 +72,22 @@ virtualenv:       ## Create a virtual environment.
 	poetry install --all-extras && exit
 
 .PHONY: release
-release:          ## Create a new tag for release.
+release: ## Create a new tag for release.
 	@echo "WARNING: This operation will create a version tag and push to GitHub"
-	@read -p "Version bump (patch, minor, major)? : " BUMP  && \
-	poetry version $$BUMP
-	@VERSION=$(shell poetry version -s)  && \
-	git add pyproject.toml  && \
-	git commit -m "release: version $$VERSION 🚀"  && \
-	echo "creating git tag : $$VERSION"  && \
-	git tag $$VERSION
-	@git push -u origin HEAD --tags
-	@echo "Github Actions will detect the new tag and release the new version."
+	@( \
+	  read -p "Version bump (patch, minor, major)? : " BUMP; \
+	  poetry version $$BUMP; \
+	  read -p "Do you want to continue? (y/n) : " CONTINUE; \
+	  [ $$CONTINUE = "y" ] || exit 1; \
+	  VERSION=$$(poetry version -s); \
+	  echo "New Version: $$VERSION"; \
+	  git add pyproject.toml; \
+	  git commit -m "release: version $$VERSION 🚀"; \
+	  echo "creating git tag : $$VERSION"; \
+	  git tag $$VERSION; \
+	  git push -u origin HEAD --tags; \
+	  echo "GitHub Actions will detect the new tag and release the new version."; \
+	)
 
 .PHONY: build
 build:       ## build testzeus_hercules.

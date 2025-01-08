@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "testzeus-hercules"
-version = "0.0.18"
+version = "0.0.20"
 description = "Hercules: The World's First Open-Source AI Agent for End-to-End Testing"
 authors = ["Shriyansh Agnihotri <shriyansh@testzeus.com>"]
 readme = "README.md"
@@ -91,9 +91,9 @@ typer = "^0.12.3"
 uritemplate = "^4.1.1"
 urllib3 = "^2.2.3"
 watchfiles = "^0.24.0"
-websockets = "^13.1"
+websockets = ">=14,<15"
 typing-extensions = "^4.12.2"
-autogen = {extras = ["ollama", "long-context", "graph", "anthropic", "groq", "gemini", "lmm", "mistral", "bedrock", "gemini"], version = "^0.5.3"}
+autogen = {extras = ["ollama", "long-context", "graph", "anthropic", "groq", "gemini", "lmm", "mistral", "bedrock", "gemini"], version = "^0.6.1"}
 build = "^1.2.2.post1"
 sqlalchemy = "^2.0.36"
 asyncpg = "^0.30.0"

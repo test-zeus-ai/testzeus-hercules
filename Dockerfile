@@ -12,7 +12,7 @@ WORKDIR /testzeus-hercules
 COPY pyproject.toml poetry.lock /testzeus-hercules/
 
 # Install Poetry
-RUN pip install poetry
+RUN pip install poetry==1.8.4
 
 # Install dependencies and the package
 RUN poetry install --no-dev
