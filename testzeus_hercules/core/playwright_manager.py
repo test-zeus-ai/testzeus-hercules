@@ -12,15 +12,7 @@ from typing import Dict, List, Optional, Union
 import httpx
 from playwright.async_api import BrowserContext, BrowserType, Page, Playwright
 from playwright.async_api import async_playwright as playwright
-from testzeus_hercules.config import (
-    get_browser_type,
-    get_cdp_config,
-    get_proof_path,
-    should_capture_network,
-    should_record_video,
-    should_run_headless,
-    should_take_screenshots,
-)
+from testzeus_hercules.config import CONF
 from testzeus_hercules.core.notification_manager import NotificationManager
 from testzeus_hercules.core.ui_manager import UIManager
 from testzeus_hercules.utils.dom_mutation_observer import (
@@ -34,6 +26,10 @@ from testzeus_hercules.utils.ui_messagetype import MessageType
 # Ensures that playwright does not wait for font loading when taking screenshots.
 # Reference: https://github.com/microsoft/playwright/issues/28995
 os.environ["PW_TEST_SCREENSHOT_NO_FONTS_READY"] = "1"
+
+MAX_WAIT_PAGE_LOAD_TIME = 30
+WAIT_FOR_NETWORK_IDLE = 10000
+MIN_WAIT_PAGE_LOAD_TIME = 1
 
 
 class PlaywrightManager:
@@ -91,25 +87,25 @@ class PlaywrightManager:
         if self.__initialized and self._playwright is not None:
             return
         self.__initialized = True
-        self.browser_type = get_browser_type() or browser_type
-        self.isheadless = should_run_headless() or headless
-        self.cdp_config = get_cdp_config() or cdp_config
+        self.browser_type = CONF.get_browser_type() or browser_type
+        self.isheadless = CONF.should_run_headless() or headless
+        self.cdp_config = CONF.get_cdp_config() or cdp_config
         self.notification_manager = NotificationManager()
         self.user_response_future: Optional[asyncio.Future[str]] = None
         self.ui_manager: Optional[UIManager] = UIManager() if gui_input_mode else None
-        self._take_screenshots = should_take_screenshots() or take_screenshots
+        self._take_screenshots = CONF.should_take_screenshots() or take_screenshots
         self.stake_id = stake_id
-        self._screenshots_dir = os.path.join(get_proof_path(self.stake_id) or screenshots_dir, "screenshots")
-        self._record_video = should_record_video() or record_video
-        self._video_dir = os.path.join(get_proof_path(self.stake_id) or video_dir, "videos")
+        self._screenshots_dir = os.path.join(CONF.get_proof_path(self.stake_id) or screenshots_dir, "screenshots")
+        self._record_video = CONF.should_record_video() or record_video
+        self._video_dir = os.path.join(CONF.get_proof_path(self.stake_id) or video_dir, "videos")
         self._playwright: Optional[Playwright] = None
         self._browser_context: Optional[BrowserContext] = None
         self.__async_initialize_done = False
         self._latest_screenshot_bytes: Optional[bytes] = None  # Stores the latest screenshot bytes
         self._latest_video_path: Optional[str] = None  # Stores the latest video file path
-        self.log_requests_responses = should_capture_network() or log_requests_responses
+        self.log_requests_responses = CONF.should_capture_network() or log_requests_responses
         self.request_response_log_file = os.path.join(
-            get_proof_path(self.stake_id) or request_response_log_file,
+            CONF.get_proof_path(self.stake_id) or request_response_log_file,
             "network_logs.json",
         )
         self.request_response_logs: List[Dict] = []
@@ -915,3 +911,196 @@ class PlaywrightManager:
         page = await self.get_current_page()
         if self.ui_manager:
             await self.ui_manager.command_completed(page, command, elapsed_time)
+
+    async def _wait_for_stable_network(self) -> None:
+        page = await self.get_current_page()
+
+        pending_requests = set()
+        last_activity = asyncio.get_event_loop().time()
+
+        # Define relevant resource types and content types
+        RELEVANT_RESOURCE_TYPES = {
+            "document",
+            "stylesheet",
+            "image",
+            "font",
+            "script",
+            "iframe",
+        }
+
+        RELEVANT_CONTENT_TYPES = {
+            "text/html",
+            "text/css",
+            "application/javascript",
+            "image/",
+            "font/",
+            "application/json",
+        }
+
+        # Additional patterns to filter out
+        IGNORED_URL_PATTERNS = {
+            # Analytics and tracking
+            "analytics",
+            "tracking",
+            "telemetry",
+            "beacon",
+            "metrics",
+            # Ad-related
+            "doubleclick",
+            "adsystem",
+            "adserver",
+            "advertising",
+            # Social media widgets
+            "facebook.com/plugins",
+            "platform.twitter",
+            "linkedin.com/embed",
+            # Live chat and support
+            "livechat",
+            "zendesk",
+            "intercom",
+            "crisp.chat",
+            "hotjar",
+            # Push notifications
+            "push-notifications",
+            "onesignal",
+            "pushwoosh",
+            # Background sync/heartbeat
+            "heartbeat",
+            "ping",
+            "alive",
+            # WebRTC and streaming
+            "webrtc",
+            "rtmp://",
+            "wss://",
+            # Common CDNs for dynamic content
+            "cloudfront.net",
+            "fastly.net",
+        }
+
+        async def on_request(request: Any) -> None:
+            # Filter by resource type
+            if request.resource_type not in RELEVANT_RESOURCE_TYPES:
+                return
+
+            # Filter out streaming, websocket, and other real-time requests
+            if request.resource_type in {
+                "websocket",
+                "media",
+                "eventsource",
+                "manifest",
+                "other",
+            }:
+                return
+
+            # Filter out by URL patterns
+            url = request.url.lower()
+            if any(pattern in url for pattern in IGNORED_URL_PATTERNS):
+                return
+
+            # Filter out data URLs and blob URLs
+            if url.startswith(("data:", "blob:")):
+                return
+
+            # Filter out requests with certain headers
+            headers = request.headers
+            if headers.get("purpose") == "prefetch" or headers.get("sec-fetch-dest") in [
+                "video",
+                "audio",
+            ]:
+                return
+
+            nonlocal last_activity
+            pending_requests.add(request)
+            last_activity = asyncio.get_event_loop().time()
+            # logger.debug(f'Request started: {request.url} ({request.resource_type})')
+
+        async def on_response(response: Any) -> None:
+            request = response.request
+            if request not in pending_requests:
+                return
+
+            # Filter by content type if available
+            content_type = response.headers.get("content-type", "").lower()
+
+            # Skip if content type indicates streaming or real-time data
+            if any(
+                t in content_type
+                for t in [
+                    "streaming",
+                    "video",
+                    "audio",
+                    "webm",
+                    "mp4",
+                    "event-stream",
+                    "websocket",
+                    "protobuf",
+                ]
+            ):
+                pending_requests.remove(request)
+                return
+
+            # Only process relevant content types
+            if not any(ct in content_type for ct in RELEVANT_CONTENT_TYPES):
+                pending_requests.remove(request)
+                return
+
+            # Skip if response is too large (likely not essential for page load)
+            content_length = response.headers.get("content-length")
+            if content_length and int(content_length) > 5 * 1024 * 1024:  # 5MB
+                pending_requests.remove(request)
+                return
+
+            nonlocal last_activity
+            pending_requests.remove(request)
+            last_activity = asyncio.get_event_loop().time()
+            # logger.debug(f'Request resolved: {request.url} ({content_type})')
+
+        # Attach event listeners
+        page.on("request", on_request)
+        page.on("response", on_response)
+
+        try:
+            # Wait for idle time
+            start_time = asyncio.get_event_loop().time()
+            while True:
+                await asyncio.sleep(0.1)
+                now = asyncio.get_event_loop().time()
+                if len(pending_requests) == 0 and (now - last_activity) >= WAIT_FOR_NETWORK_IDLE:
+                    break
+                if now - start_time > MAX_WAIT_PAGE_LOAD_TIME:
+                    logger.debug(f"Network timeout after {MAX_WAIT_PAGE_LOAD_TIME}s with {len(pending_requests)} " f"pending requests: {[r.url for r in pending_requests]}")
+                    break
+
+        finally:
+            # Clean up event listeners
+            page.remove_listener("request", on_request)
+            page.remove_listener("response", on_response)
+
+        logger.debug(f"Network stabilized for {WAIT_FOR_NETWORK_IDLE} seconds")
+
+    async def wait_for_page_and_frames_load(self, timeout_overwrite: float | None = None) -> None:
+        """
+        Ensures page is fully loaded before continuing.
+        Waits for either network to be idle or minimum WAIT_TIME, whichever is longer.
+        """
+        # Start timing
+        start_time = time.time()
+
+        # await asyncio.sleep(self.minimum_wait_page_load_time)
+
+        # Wait for page load
+        try:
+            await self._wait_for_stable_network()
+        except Exception:
+            logger.warning("Page load failed, continuing...")
+            pass
+
+        # Calculate remaining time to meet minimum WAIT_TIME
+        elapsed = time.time() - start_time
+        remaining = max((timeout_overwrite or MIN_WAIT_PAGE_LOAD_TIME) - elapsed, 0)
+
+        logger.debug(f"--Page loaded in {elapsed:.2f} seconds, waiting for additional {remaining:.2f} seconds")
+
+        # Sleep remaining time if needed
+        if remaining > 0:
+            await asyncio.sleep(remaining)

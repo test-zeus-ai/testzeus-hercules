@@ -1,9 +1,11 @@
+import json
 import os
 import time
 from typing import Annotated, Any
 
+import yaml
 from playwright.async_api import Page
-from testzeus_hercules.config import get_source_log_folder_path
+from testzeus_hercules.config import CONF
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.dom_helper import wait_for_non_loading_dom_state
@@ -15,11 +17,8 @@ from testzeus_hercules.utils.ui_messagetype import MessageType
 
 
 async def get_dom_with_content_type(
-    content_type: Annotated[
-        str,
-        "The type of content to extract: 'text_only': Extracts the innerText of the highest element in the document and responds with text, or 'input_fields': Extracts the text input and button elements in the dom.",
-    ]
-) -> Annotated[dict[str, Any] | str | None, "The output based on the specified content type."]:
+    content_type: Annotated[str, "Type: text_only/input_fields/all_fields"],
+) -> Annotated[dict[str, Any] | str | None, "DOM content based on type"]:
     """
     Retrieves and processes the DOM of the active page in a browser instance based on the specified content type.
 
@@ -49,12 +48,16 @@ async def get_dom_with_content_type(
     start_time = time.time()
     # Create and use the PlaywrightManager
     browser_manager = PlaywrightManager()
+    await browser_manager.wait_for_page_and_frames_load()
     page = await browser_manager.get_current_page()
+    await page.wait_for_load_state()
     if page is None:  # type: ignore
         raise ValueError("No active page found. OpenURL command opens a new page.")
 
     extracted_data = None
-    await wait_for_non_loading_dom_state(page, 5000)  # wait for the DOM to be ready, non loading means external resources do not need to be loaded
+    await wait_for_non_loading_dom_state(
+        page, 5000
+    )  # wait for the DOM to be ready, non loading means external resources do not need to be loaded
     user_success_message = ""
     if content_type == "all_fields":
         user_success_message = "Fetched all the fields in the DOM"
@@ -70,7 +73,7 @@ async def get_dom_with_content_type(
         logger.debug("Fetching DOM for text_only")
         text_content = await get_filtered_text_content(page)
         with open(
-            os.path.join(get_source_log_folder_path(), "text_only_dom.txt"),
+            os.path.join(CONF.get_source_log_folder_path(), "text_only_dom.txt"),
             "w",
             encoding="utf-8",
         ) as f:
@@ -82,7 +85,9 @@ async def get_dom_with_content_type(
 
     elapsed_time = time.time() - start_time
     logger.info(f"Get DOM Command executed in {elapsed_time} seconds")
-    await browser_manager.notify_user(user_success_message, message_type=MessageType.ACTION)
+    await browser_manager.notify_user(
+        user_success_message, message_type=MessageType.ACTION
+    )
 
     # split extracted data into multiple lines and drop empty stripped lines and then get a count of lines.
     rr = 0
@@ -96,7 +101,69 @@ async def get_dom_with_content_type(
         EventData(detail=f"DETECTED {rr} components"),
     )
 
+    if isinstance(extracted_data, dict):
+
+        def rename_children(d: dict) -> dict:
+            if "children" in d:
+                d["c"] = d.pop("children")
+                for child in d["c"]:
+                    rename_children(child)
+            if "tag" in d:
+                d["t"] = d.pop("tag")
+            if "role" in d:
+                d["r"] = d.pop("role")
+            if "name" in d:
+                d["n"] = d.pop("name")
+            if "title" in d:
+                d["tl"] = d.pop("title")
+            return d
+
+        extracted_data = rename_children(extracted_data)
+        # extracted_data = yaml.dump(extracted_data, default_flow_style=True)
+        extracted_data = json.dumps(extracted_data, separators=(",", ":"))
+        extracted_data_legend = """
+Given is the JSON object representing Accessibility Tree DOM of current web page, they keys have following meanings, rest keys have normal meaning:
+t: tag
+r: role
+c: children
+n: name
+tl: title
+JSON >>
+"""
+        extracted_data = extracted_data_legend + extracted_data
     return extracted_data  # type: ignore
+
+
+def clean_text(text_content: str) -> str:
+    # Split the text into lines
+    lines = text_content.splitlines()
+
+    # Create a set to track unique lines
+    seen_lines = set()
+    cleaned_lines = []
+
+    for line in lines:
+        # Strip leading/trailing spaces, replace tabs with spaces, and collapse multiple spaces
+        cleaned_line = " ".join(line.strip().replace("\t", " ").split())
+        cleaned_line = cleaned_line.strip()
+
+        # Remove repeated words within the line
+        # words = cleaned_line.split()
+        # unique_words = []
+        # seen_words = set()
+        # for word in words:
+        #     if word not in seen_words:
+        #         unique_words.append(word)
+        #         seen_words.add(word)
+        # cleaned_line = " ".join(unique_words)
+
+        # Skip empty or duplicate lines
+        if cleaned_line and cleaned_line not in seen_lines:
+            cleaned_lines.append(cleaned_line)
+            # seen_lines.add(cleaned_line)
+
+    # Join the cleaned and unique lines with a single newline
+    return "\n".join(cleaned_lines)
 
 
 async def get_filtered_text_content(page: Page) -> str:
@@ -222,8 +289,12 @@ async def get_filtered_text_content(page: Page) -> str:
             });
 
             textContent = textContent + ' ' + altTextsString;
+            
+            // const sanitizeString = (input) => input.replace(/[\\n\\t]+/g, ', ');
+            
+            // textContent = sanitizeString(textContent);
             return textContent;
         }
     """
     )
-    return text_content
+    return clean_text(text_content)

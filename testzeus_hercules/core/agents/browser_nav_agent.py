@@ -28,6 +28,8 @@ from testzeus_hercules.core.tools.get_url import geturl
 from testzeus_hercules.core.tools.hover import hover
 from testzeus_hercules.core.tools.open_url import openurl
 from testzeus_hercules.core.tools.pdf_text_extractor import extract_text_from_pdf
+
+# from testzeus_hercules.core.tools.enter_text_and_click import enter_text_and_click
 from testzeus_hercules.core.tools.press_key_combination import press_key_combination
 from testzeus_hercules.core.tools.set_slider_value import *
 from testzeus_hercules.core.tools.tool_registry import tool_registry
@@ -49,7 +51,9 @@ class BrowserNavAgent(BaseNavAgent):
         self.agent.register_for_llm(description=LLM_PROMPTS["OPEN_URL_PROMPT"])(openurl)
         self.nav_executor.register_for_execution()(openurl)
 
-        # self.agent.register_for_llm(description=LLM_PROMPTS["ENTER_TEXT_AND_CLICK_PROMPT"])(enter_text_and_click)
+        # self.agent.register_for_llm(
+        #     description=LLM_PROMPTS["ENTER_TEXT_AND_CLICK_PROMPT"]
+        # )(enter_text_and_click)
         # self.nav_executor.register_for_execution()(enter_text_and_click)
 
         self.agent.register_for_llm(description=LLM_PROMPTS["GET_DOM_WITH_CONTENT_TYPE_PROMPT"])(get_dom_with_content_type)
@@ -64,8 +68,10 @@ class BrowserNavAgent(BaseNavAgent):
         self.agent.register_for_llm(description=LLM_PROMPTS["BULK_ENTER_TEXT_PROMPT"])(bulk_enter_text)
         self.nav_executor.register_for_execution()(bulk_enter_text)
 
-        self.agent.register_for_llm(description=LLM_PROMPTS["ENTER_TEXT_PROMPT"])(entertext)
-        self.nav_executor.register_for_execution()(entertext)
+        # self.agent.register_for_llm(description=LLM_PROMPTS["ENTER_TEXT_PROMPT"])(
+        #     entertext
+        # )
+        # self.nav_executor.register_for_execution()(entertext)
 
         self.agent.register_for_llm(description=LLM_PROMPTS["PRESS_KEY_COMBINATION_PROMPT"])(press_key_combination)
         self.nav_executor.register_for_execution()(press_key_combination)

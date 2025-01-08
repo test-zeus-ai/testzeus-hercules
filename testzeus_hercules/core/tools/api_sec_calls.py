@@ -9,7 +9,7 @@ from typing import Annotated, Any, List, Optional, Tuple
 
 import aiohttp
 from inflection import parameterize
-from testzeus_hercules.config import get_proof_path
+from testzeus_hercules.config import CONF
 from testzeus_hercules.core.tools.tool_registry import sec_logger as file_logger
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
@@ -256,7 +256,7 @@ for tag, explanation in security_terms_explanation.items():
             """
             start_time = time.perf_counter()
             try:
-                OUTPUT_PATH = get_proof_path() + "/nuclei_results"
+                OUTPUT_PATH = CONF.get_proof_path() + "/nuclei_results"
                 output_path = Path(OUTPUT_PATH)
                 output_path.mkdir(parents=True, exist_ok=True)
 

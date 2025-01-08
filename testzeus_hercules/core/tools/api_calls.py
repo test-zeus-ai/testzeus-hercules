@@ -1,3 +1,4 @@
+import json
 import time
 from typing import Annotated, Any, Dict, Optional, Tuple
 
@@ -39,6 +40,23 @@ async def log_response(response: httpx.Response) -> None:
     file_logger(f"Response Data: {log_data}")
 
 
+def determine_status_type(status_code: int) -> str:
+    """
+    A helper function to determine the status type (success, redirect, client_error, server_error, unknown)
+    based on the status code.
+    """
+    if 200 <= status_code < 300:
+        return "success"
+    elif 300 <= status_code < 400:
+        return "redirect"
+    elif 400 <= status_code < 500:
+        return "client_error"
+    elif 500 <= status_code < 600:
+        return "server_error"
+    else:
+        return "unknown"
+
+
 @tool(
     agent_names=["api_nav_agent"],
     name="create_resource_http_api",
@@ -58,21 +76,9 @@ async def create_resource_http_api(
     data: Annotated[Optional[Dict[str, Any]], "Form data to send in the request body."] = None,
     json_data: Annotated[Optional[Dict[str, Any]], "JSON data to send in the request body."] = None,
 ) -> Annotated[
-    Tuple[Any, float],
-    "A tuple containing the response data or error message, and the time taken for the API call in seconds.",
+    Tuple[str, float],
+    "A tuple containing a minified JSON string and the time taken for the API call in seconds.",
 ]:
-    """
-    Create a new resource by sending a POST request to the specified URL.
-
-    url: str - The API endpoint URL for creating the resource.
-    headers: Optional[Dict[str, str]] - Optional HTTP headers to include in the request.
-    auth: Optional[Dict[str, str]] - Optional basic authentication credentials.
-    token: Optional[str] - Optional bearer or JWT token for authentication.
-    data: Optional[Dict[str, Any]] - Form data to send in the request body.
-    json_data: Optional[Dict[str, Any]] - JSON data to send in the request body.
-
-    returns: Tuple[Any, float] - A tuple containing the response data or error message, and the time taken for the API call in seconds.
-    """
     start_time = time.perf_counter()
     try:
         logger.info(f"Sending POST request to {url}")
@@ -95,22 +101,53 @@ async def create_resource_http_api(
             end_time = time.perf_counter()
             duration = end_time - start_time
 
-            try:
-                response_data = response.json()
-            except:
-                response_data = response.text or {}
+            status_code = response.status_code
+            status_type = determine_status_type(status_code)
 
-            return (response_data, duration)
+            # Attempt to parse the response as JSON, else fallback to raw text
+            try:
+                parsed_body = response.json()
+            except json.JSONDecodeError:
+                parsed_body = response.text or ""
+
+            response_data = {
+                "status_code": status_code,
+                "status_type": status_type,
+                "body": parsed_body,
+            }
+
+            # Convert the response_data dict to a minified JSON string
+            response_str = json.dumps(response_data, separators=(",", ":")).replace('"', "'")
+            return (response_str, duration)
+
     except httpx.HTTPStatusError as e:
         end_time = time.perf_counter()
         duration = end_time - start_time
         logger.error(f"HTTP error occurred while creating resource: {e}")
-        return ({"error": str(e)}, duration)
+
+        status_code = e.response.status_code
+        status_type = determine_status_type(status_code)
+
+        response_data = {
+            "error": str(e),
+            "status_code": status_code,
+            "status_type": status_type,
+        }
+        response_str = json.dumps(response_data, separators=(",", ":")).replace('"', "'")
+        return (response_str, duration)
+
     except Exception as e:
         end_time = time.perf_counter()
         duration = end_time - start_time
         logger.error(f"An unexpected error occurred: {e}")
-        return ({"error": str(e)}, duration)
+
+        response_data = {
+            "error": str(e),
+            "status_code": None,
+            "status_type": "failure",
+        }
+        response_str = json.dumps(response_data, separators=(",", ":")).replace('"', "'")
+        return (response_str, duration)
 
 
 @tool(
@@ -131,25 +168,13 @@ async def read_resource_http_api(
     ] = None,
     params: Annotated[Optional[Dict[str, Any]], "Query parameters to include in the GET request."] = None,
 ) -> Annotated[
-    Tuple[Any, float],
-    "A tuple containing the response data or error message, and the time taken for the API call in seconds.",
+    Tuple[str, float],
+    "A tuple containing a minified JSON string and the time taken for the API call in seconds.",
 ]:
-    """
-    Read a resource by sending a GET request to the specified URL.
-
-    url: str - The API endpoint URL for reading the resource.
-    headers: Optional[Dict[str, str]] - Optional HTTP headers to include in the request.
-    auth: Optional[Dict[str, str]] - Optional basic authentication credentials.
-    token: Optional[str] - Optional bearer or JWT token for authentication.
-    params: Optional[Dict[str, Any]] - Query parameters to include in the GET request.
-
-    returns: Tuple[Any, float] - A tuple containing the response data or error message, and the time taken for the API call in seconds.
-    """
     start_time = time.perf_counter()
     try:
         logger.info(f"Sending GET request to {url}")
 
-        # Prepare headers
         request_headers = headers.copy() if headers else {}
         if token:
             request_headers["Authorization"] = f"Bearer {token}"
@@ -166,22 +191,51 @@ async def read_resource_http_api(
             end_time = time.perf_counter()
             duration = end_time - start_time
 
-            try:
-                response_data = response.json()
-            except:
-                response_data = response.text or {}
+            status_code = response.status_code
+            status_type = determine_status_type(status_code)
 
-            return (response_data, duration)
+            try:
+                parsed_body = response.json()
+            except json.JSONDecodeError:
+                parsed_body = response.text or ""
+
+            response_data = {
+                "status_code": status_code,
+                "status_type": status_type,
+                "body": parsed_body,
+            }
+
+            response_str = json.dumps(response_data, separators=(",", ":")).replace('"', "'")
+            return (response_str, duration)
+
     except httpx.HTTPStatusError as e:
         end_time = time.perf_counter()
         duration = end_time - start_time
         logger.error(f"HTTP error occurred while reading resource: {e}")
-        return ({"error": str(e)}, duration)
+
+        status_code = e.response.status_code
+        status_type = determine_status_type(status_code)
+
+        response_data = {
+            "error": str(e),
+            "status_code": status_code,
+            "status_type": status_type,
+        }
+        response_str = json.dumps(response_data, separators=(",", ":")).replace('"', "'")
+        return (response_str, duration)
+
     except Exception as e:
         end_time = time.perf_counter()
         duration = end_time - start_time
         logger.error(f"An unexpected error occurred: {e}")
-        return ({"error": str(e)}, duration)
+
+        response_data = {
+            "error": str(e),
+            "status_code": None,
+            "status_type": "failure",
+        }
+        response_str = json.dumps(response_data, separators=(",", ":")).replace('"', "'")
+        return (response_str, duration)
 
 
 @tool(
@@ -203,26 +257,13 @@ async def update_resource_http_api(
     data: Annotated[Optional[Dict[str, Any]], "Form data to send in the request body."] = None,
     json_data: Annotated[Optional[Dict[str, Any]], "JSON data to send in the request body."] = None,
 ) -> Annotated[
-    Tuple[Any, float],
-    "A tuple containing the response data or error message, and the time taken for the API call in seconds.",
+    Tuple[str, float],
+    "A tuple containing a minified JSON string and the time taken for the API call in seconds.",
 ]:
-    """
-    Update an existing resource by sending a PUT request to the specified URL.
-
-    url: str - The API endpoint URL for updating the resource.
-    headers: Optional[Dict[str, str]] - Optional HTTP headers to include in the request.
-    auth: Optional[Dict[str, str]] - Optional basic authentication credentials.
-    token: Optional[str] - Optional bearer or JWT token for authentication.
-    data: Optional[Dict[str, Any]] - Form data to send in the request body.
-    json_data: Optional[Dict[str, Any]] - JSON data to send in the request body.
-
-    returns: Tuple[Any, float] - A tuple containing the response data or error message, and the time taken for the API call in seconds.
-    """
     start_time = time.perf_counter()
     try:
         logger.info(f"Sending PUT request to {url}")
 
-        # Prepare headers
         request_headers = headers.copy() if headers else {}
         if token:
             request_headers["Authorization"] = f"Bearer {token}"
@@ -240,22 +281,51 @@ async def update_resource_http_api(
             end_time = time.perf_counter()
             duration = end_time - start_time
 
-            try:
-                response_data = response.json()
-            except:
-                response_data = response.text or {}
+            status_code = response.status_code
+            status_type = determine_status_type(status_code)
 
-            return (response_data, duration)
+            try:
+                parsed_body = response.json()
+            except json.JSONDecodeError:
+                parsed_body = response.text or ""
+
+            response_data = {
+                "status_code": status_code,
+                "status_type": status_type,
+                "body": parsed_body,
+            }
+
+            response_str = json.dumps(response_data, separators=(",", ":")).replace('"', "'")
+            return (response_str, duration)
+
     except httpx.HTTPStatusError as e:
         end_time = time.perf_counter()
         duration = end_time - start_time
         logger.error(f"HTTP error occurred while updating resource: {e}")
-        return ({"error": str(e)}, duration)
+
+        status_code = e.response.status_code
+        status_type = determine_status_type(status_code)
+
+        response_data = {
+            "error": str(e),
+            "status_code": status_code,
+            "status_type": status_type,
+        }
+        response_str = json.dumps(response_data, separators=(",", ":")).replace('"', "'")
+        return (response_str, duration)
+
     except Exception as e:
         end_time = time.perf_counter()
         duration = end_time - start_time
         logger.error(f"An unexpected error occurred: {e}")
-        return ({"error": str(e)}, duration)
+
+        response_data = {
+            "error": str(e),
+            "status_code": None,
+            "status_type": "failure",
+        }
+        response_str = json.dumps(response_data, separators=(",", ":")).replace('"', "'")
+        return (response_str, duration)
 
 
 @tool(
@@ -277,26 +347,13 @@ async def patch_resource_http_api(
     data: Annotated[Optional[Dict[str, Any]], "Form data to send in the request body."] = None,
     json_data: Annotated[Optional[Dict[str, Any]], "JSON data to send in the request body."] = None,
 ) -> Annotated[
-    Tuple[Any, float],
-    "A tuple containing the response data or error message, and the time taken for the API call in seconds.",
+    Tuple[str, float],
+    "A tuple containing a minified JSON string and the time taken for the API call in seconds.",
 ]:
-    """
-    Patch an existing resource by sending a PATCH request to the specified URL.
-
-    url: str - The API endpoint URL for patching the resource.
-    headers: Optional[Dict[str, str]] - Optional HTTP headers to include in the request.
-    auth: Optional[Dict[str, str]] - Optional basic authentication credentials.
-    token: Optional[str] - Optional bearer or JWT token for authentication.
-    data: Optional[Dict[str, Any]] - Form data to send in the request body.
-    json_data: Optional[Dict[str, Any]] - JSON data to send in the request body.
-
-    returns: Tuple[Any, float] - A tuple containing the response data or error message, and the time taken for the API call in seconds.
-    """
     start_time = time.perf_counter()
     try:
         logger.info(f"Sending PATCH request to {url}")
 
-        # Prepare headers
         request_headers = headers.copy() if headers else {}
         if token:
             request_headers["Authorization"] = f"Bearer {token}"
@@ -314,22 +371,51 @@ async def patch_resource_http_api(
             end_time = time.perf_counter()
             duration = end_time - start_time
 
-            try:
-                response_data = response.json()
-            except:
-                response_data = response.text or {}
+            status_code = response.status_code
+            status_type = determine_status_type(status_code)
 
-            return (response_data, duration)
+            try:
+                parsed_body = response.json()
+            except json.JSONDecodeError:
+                parsed_body = response.text or ""
+
+            response_data = {
+                "status_code": status_code,
+                "status_type": status_type,
+                "body": parsed_body,
+            }
+
+            response_str = json.dumps(response_data, separators=(",", ":")).replace('"', "'")
+            return (response_str, duration)
+
     except httpx.HTTPStatusError as e:
         end_time = time.perf_counter()
         duration = end_time - start_time
         logger.error(f"HTTP error occurred while patching resource: {e}")
-        return ({"error": str(e)}, duration)
+
+        status_code = e.response.status_code
+        status_type = determine_status_type(status_code)
+
+        response_data = {
+            "error": str(e),
+            "status_code": status_code,
+            "status_type": status_type,
+        }
+        response_str = json.dumps(response_data, separators=(",", ":")).replace('"', "'")
+        return (response_str, duration)
+
     except Exception as e:
         end_time = time.perf_counter()
         duration = end_time - start_time
         logger.error(f"An unexpected error occurred: {e}")
-        return ({"error": str(e)}, duration)
+
+        response_data = {
+            "error": str(e),
+            "status_code": None,
+            "status_type": "failure",
+        }
+        response_str = json.dumps(response_data, separators=(",", ":")).replace('"', "'")
+        return (response_str, duration)
 
 
 @tool(
@@ -349,24 +435,13 @@ async def delete_resource_http_api(
         "Optional bearer or JWT token for authentication. Include the token string without the 'Bearer ' prefix.",
     ] = None,
 ) -> Annotated[
-    Tuple[Any, float],
-    "A tuple containing the response data or error message, and the time taken for the API call in seconds.",
+    Tuple[str, float],
+    "A tuple containing a minified JSON string and the time taken for the API call in seconds.",
 ]:
-    """
-    Delete a resource by sending a DELETE request to the specified URL.
-
-    url: str - The API endpoint URL for deleting the resource.
-    headers: Optional[Dict[str, str]] - Optional HTTP headers to include in the request.
-    auth: Optional[Dict[str, str]] - Optional basic authentication credentials.
-    token: Optional[str] - Optional bearer or JWT token for authentication.
-
-    returns: Tuple[Any, float] - A tuple containing the response data or error message, and the time taken for the API call in seconds.
-    """
     start_time = time.perf_counter()
     try:
         logger.info(f"Sending DELETE request to {url}")
 
-        # Prepare headers
         request_headers = headers.copy() if headers else {}
         if token:
             request_headers["Authorization"] = f"Bearer {token}"
@@ -382,19 +457,48 @@ async def delete_resource_http_api(
             end_time = time.perf_counter()
             duration = end_time - start_time
 
-            try:
-                response_data = response.json()
-            except:
-                response_data = response.text or {}
+            status_code = response.status_code
+            status_type = determine_status_type(status_code)
 
-            return (response_data, duration)
+            try:
+                parsed_body = response.json()
+            except json.JSONDecodeError:
+                parsed_body = response.text or ""
+
+            response_data = {
+                "status_code": status_code,
+                "status_type": status_type,
+                "body": parsed_body,
+            }
+
+            response_str = json.dumps(response_data, separators=(",", ":")).replace('"', "'")
+            return (response_str, duration)
+
     except httpx.HTTPStatusError as e:
         end_time = time.perf_counter()
         duration = end_time - start_time
         logger.error(f"HTTP error occurred while deleting resource: {e}")
-        return ({"error": str(e)}, duration)
+
+        status_code = e.response.status_code
+        status_type = determine_status_type(status_code)
+
+        response_data = {
+            "error": str(e),
+            "status_code": status_code,
+            "status_type": status_type,
+        }
+        response_str = json.dumps(response_data, separators=(",", ":")).replace('"', "'")
+        return (response_str, duration)
+
     except Exception as e:
         end_time = time.perf_counter()
         duration = end_time - start_time
         logger.error(f"An unexpected error occurred: {e}")
-        return ({"error": str(e)}, duration)
+
+        response_data = {
+            "error": str(e),
+            "status_code": None,
+            "status_type": "failure",
+        }
+        response_str = json.dumps(response_data, separators=(",", ":")).replace('"', "'")
+        return (response_str, duration)

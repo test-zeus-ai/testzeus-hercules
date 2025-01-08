@@ -4,7 +4,7 @@ import os
 import time
 from typing import Any
 
-from testzeus_hercules.config import get_source_log_folder_path
+from testzeus_hercules.config import CONF
 from testzeus_hercules.core.agents_llm_config import AgentsLLMConfig
 from testzeus_hercules.core.autogen_simple_wrapper import AutogenSimpleWrapper
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
@@ -95,7 +95,7 @@ class BaseRunner:
 
             await self.save_planner_chat_messages()
             if result is not None:
-                logger.info(f'Command "{command}" took: {elapsed_time} seconds. and total cost metric is {result.cost}')  # type: ignore
+                logger.info(f'Command "{command}" took: {elapsed_time} seconds.')  # type: ignore
                 chat_history = result.chat_history  # type: ignore
                 last_message = chat_history[-1] if chat_history else None  # type: ignore
                 if last_message and "terminate" in last_message and last_message["terminate"] == "yes":
@@ -136,7 +136,7 @@ class BaseRunner:
         if self.save_chat_logs_to_files:
             with open(
                 os.path.join(
-                    get_source_log_folder_path(self.stake_id),
+                    CONF.get_source_log_folder_path(self.stake_id),
                     "agent_inner_thoughts.json",
                 ),
                 "w",
