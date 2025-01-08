@@ -4,11 +4,14 @@
 ![Docker Pulls](https://img.shields.io/docker/pulls/testzeus/hercules)
 [![CI Test](https://github.com/test-zeus-ai/testzeus-hercules/actions/workflows/main-test.yml/badge.svg)](https://github.com/test-zeus-ai/testzeus-hercules/actions/workflows/main-test.yml)
 
-Testing modern web applications can be difficult, with frequent changes and complex features making it hard to keep up. That’s where **Hercules** comes in. Hercules is the world’s first open-source testing agent, built to handle the toughest testing tasks so you don’t have to. It turns simple, easy-to-write Gherkin steps into fully automated **end to end** tests—no coding skills needed. Whether you’re working with tricky platforms like Salesforce or running tests in your CI/CD pipeline, Hercules adapts to your needs and takes care of the details. With Hercules, testing becomes simple, reliable, and efficient, helping teams everywhere deliver better software.
+Testing modern web applications can be difficult, with frequent changes and complex features making it hard to keep up. That’s where **Hercules** comes in. Hercules is the world’s first open-source testing agent, built to handle the toughest testing tasks so you don’t have to. It turns simple, easy-to-write Gherkin steps into fully automated **end to end** tests—no coding skills needed. Whether you’re working with tricky platforms like Salesforce or running tests in your CI/CD pipeline, Hercules adapts to your needs and takes care of the details. With Hercules, testing becomes simple, reliable, and efficient, helping teams everywhere deliver better software. Here's a quick demo of lead creation using natural english language test (without any code):
 
-Using Hercules is as simple as feeding in your Gherkin features, and getting the results:
+![HerculesUsage](statics/LeadcreationDemo.gif)
 
-![Hercules usage](statics/assets/hercules.svg)
+
+
+As you saw, using Hercules is as simple as feeding in your Gherkin features, and getting the results:
+![HerculesUsage](statics/assets/hercules.svg)
 
 At [TestZeus](www.testzeus.com), we believe that **trustworthy and open-source code** is the backbone of innovation. That's why we've built Hercules to be transparent, reliable, and community-driven.
 
@@ -20,7 +23,7 @@ Our mission? To **democratize and disrupt test automation**, making top-tier tes
 #### 🚀 **Getting Started with TestZeus Hercules**
 - **Introduction to TestZeus Hercules**  
   Learn about the core features of TestZeus Hercules and how it can streamline end-to-end testing for your projects. 
-   [![Autonomous execution with Hercules](statics/assets/IntroVideoThumbnail.png)](https://youtu.be/_m_NDjM6aZ0?si=ArtVKz8uSgGWTcAK)
+   [![Autonomous execution with Hercules](statics/assets/introvideothumbnail2.png)](https://youtu.be/_m_NDjM6aZ0?si=ArtVKz8uSgGWTcAK)
 
 - **Installation and Setup Guide**  
   Step-by-step instructions for installing and configuring TestZeus Hercules in your environment.  

@@ -39,6 +39,7 @@ LLM_PROMPTS = {
     3. "terminate":
     - A string: "yes" or "no".
     - Return "yes" when the task is complete without compromises, cannot be completed, or the assertion logic is failing.
+    - In case if there are iteration over test_data then return "no" until all the iterations are completed.
     - Mandatory for every response.
 
     4. "final_response":
