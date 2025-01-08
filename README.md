@@ -23,7 +23,7 @@ Our mission? To **democratize and disrupt test automation**, making top-tier tes
 #### 🚀 **Getting Started with TestZeus Hercules**
 - **Introduction to TestZeus Hercules**  
   Learn about the core features of TestZeus Hercules and how it can streamline end-to-end testing for your projects. 
-   [![Autonomous execution with Hercules](statics/assets/introvideothumbnail.png)](https://youtu.be/_m_NDjM6aZ0?si=ArtVKz8uSgGWTcAK)
+   [![Autonomous execution with Hercules](statics/assets/introvideothumbnail2.png)](https://youtu.be/_m_NDjM6aZ0?si=ArtVKz8uSgGWTcAK)
 
 - **Installation and Setup Guide**  
   Step-by-step instructions for installing and configuring TestZeus Hercules in your environment.  
