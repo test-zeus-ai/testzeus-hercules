@@ -143,11 +143,11 @@ async def custom_set_slider_value(
         raise
 
 
-@tool(
-    agent_names=["browser_nav_agent"],
-    description="Sets the specified value in the range slider DOM element matching the given md attribute value. This will only set the slider's value and not perform any additional actions.",
-    name="setslider",
-)
+# @tool(
+#     agent_names=["browser_nav_agent"],
+#     description="Sets the specified value in the range slider DOM element matching the given md attribute value. This will only set the slider's value and not perform any additional actions.",
+#     name="setslider",
+# )
 async def setslider(
     entry: Annotated[
         SetSliderEntry,
