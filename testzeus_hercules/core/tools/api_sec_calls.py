@@ -15,7 +15,7 @@ from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
 
 # Define cache and binary paths
-CACHE_DIR = Path(os.environ["HF_HOME"]) / "nuclei_tool"
+CACHE_DIR = Path(CONF.get_hf_home()) / "nuclei_tool"
 NUCLEI_BINARY = CACHE_DIR / "nuclei"
 
 

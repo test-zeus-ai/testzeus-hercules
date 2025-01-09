@@ -220,12 +220,26 @@ class PlaywrightManager:
 
     async def create_browser_context(self) -> None:
         user_dir: str = os.environ.get("BROWSER_STORAGE_DIR", "")
+        resolution: str = CONF.get_resolution()
         disable_args = [
-            "--disable-blink-features=AutomationControlled",
             "--disable-session-crashed-bubble",
-            "--disable-infobars",
-            "--disable-popup-blocking",
             "--disable-notifications",
+            "--no-sandbox",
+            "--disable-blink-features=AutomationControlled",
+            "--disable-infobars",
+            "--disable-background-timer-throttling",
+            "--disable-popup-blocking",
+            "--disable-backgrounding-occluded-windows",
+            "--disable-renderer-backgrounding",
+            "--disable-window-activation",
+            "--disable-focus-on-load",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--window-position=0,0",
+            "--disable-web-security",
+            "--disable-site-isolation-trials",
+            "--disable-features=IsolateOrigins,site-per-process",
+            f"--window-size={resolution}",
         ]
         if self.cdp_config:
             # Connect over CDP
