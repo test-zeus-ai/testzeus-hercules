@@ -359,65 +359,65 @@ tests-mypy = ["mypy (>=1.11.1)", "pytest-mypy-plugins"]
 
 [[package]]
 name = "autogen"
-version = "0.6.1"
+version = "0.7.0"
 description = "Alias package for pyautogen"
 optional = false
 python-versions = "<3.14,>=3.9"
 files = [
-    {file = "autogen-0.6.1-py3-none-any.whl", hash = "sha256:912a06871cb87afb731857db25b546c5303713c0dbedf98dda94a96e15ec9452"},
-    {file = "autogen-0.6.1.tar.gz", hash = "sha256:653ca6bbc68be8fb506ea126a6aa6dfe6de312be550769cb8dc436084cc76f25"},
+    {file = "autogen-0.7.0-py3-none-any.whl", hash = "sha256:4bb4e76de279ba81fe70e5f19aee24ccc8307efa6234067f64ef8f47dd648ecd"},
+    {file = "autogen-0.7.0.tar.gz", hash = "sha256:513193cb2b98029a217c65cac642728dccef81ad647a64c24aa9cbaf90c81edc"},
 ]
 
 [package.dependencies]
 pyautogen = [
-    {version = "0.6.1"},
-    {version = "0.6.1", extras = ["anthropic"], optional = true, markers = "extra == \"anthropic\""},
-    {version = "0.6.1", extras = ["bedrock"], optional = true, markers = "extra == \"bedrock\""},
-    {version = "0.6.1", extras = ["gemini"], optional = true, markers = "extra == \"gemini\""},
-    {version = "0.6.1", extras = ["graph"], optional = true, markers = "extra == \"graph\""},
-    {version = "0.6.1", extras = ["groq"], optional = true, markers = "extra == \"groq\""},
-    {version = "0.6.1", extras = ["lmm"], optional = true, markers = "extra == \"lmm\""},
-    {version = "0.6.1", extras = ["long-context"], optional = true, markers = "extra == \"long-context\""},
-    {version = "0.6.1", extras = ["mistral"], optional = true, markers = "extra == \"mistral\""},
-    {version = "0.6.1", extras = ["ollama"], optional = true, markers = "extra == \"ollama\""},
+    {version = "0.7.0"},
+    {version = "0.7.0", extras = ["anthropic"], optional = true, markers = "extra == \"anthropic\""},
+    {version = "0.7.0", extras = ["bedrock"], optional = true, markers = "extra == \"bedrock\""},
+    {version = "0.7.0", extras = ["gemini"], optional = true, markers = "extra == \"gemini\""},
+    {version = "0.7.0", extras = ["graph"], optional = true, markers = "extra == \"graph\""},
+    {version = "0.7.0", extras = ["groq"], optional = true, markers = "extra == \"groq\""},
+    {version = "0.7.0", extras = ["lmm"], optional = true, markers = "extra == \"lmm\""},
+    {version = "0.7.0", extras = ["long-context"], optional = true, markers = "extra == \"long-context\""},
+    {version = "0.7.0", extras = ["mistral"], optional = true, markers = "extra == \"mistral\""},
+    {version = "0.7.0", extras = ["ollama"], optional = true, markers = "extra == \"ollama\""},
 ]
 
 [package.extras]
-anthropic = ["pyautogen[anthropic] (==0.6.1)"]
-autobuild = ["pyautogen[autobuild] (==0.6.1)"]
-bedrock = ["pyautogen[bedrock] (==0.6.1)"]
-blendsearch = ["pyautogen[blendsearch] (==0.6.1)"]
-captainagent = ["pyautogen[captainagent] (==0.6.1)"]
-cerebras = ["pyautogen[cerebras] (==0.6.1)"]
-cohere = ["pyautogen[cohere] (==0.6.1)"]
-cosmosdb = ["pyautogen[cosmosdb] (==0.6.1)"]
-gemini = ["pyautogen[gemini] (==0.6.1)"]
-graph = ["pyautogen[graph] (==0.6.1)"]
-graph-rag-falkor-db = ["pyautogen[graph-rag-falkor-db] (==0.6.1)"]
-groq = ["pyautogen[groq] (==0.6.1)"]
-interop = ["pyautogen[interop] (==0.6.1)"]
-interop-crewai = ["pyautogen[interop-crewai] (==0.6.1)"]
-interop-langchain = ["pyautogen[interop-langchain] (==0.6.1)"]
-interop-pydantic-ai = ["pyautogen[interop-pydantic-ai] (==0.6.1)"]
-jupyter-executor = ["pyautogen[jupyter-executor] (==0.6.1)"]
-lmm = ["pyautogen[lmm] (==0.6.1)"]
-long-context = ["pyautogen[long-context] (==0.6.1)"]
-mathchat = ["pyautogen[mathchat] (==0.6.1)"]
-mistral = ["pyautogen[mistral] (==0.6.1)"]
-neo4j = ["pyautogen[neo4j] (==0.6.1)"]
-ollama = ["pyautogen[ollama] (==0.6.1)"]
-redis = ["pyautogen[redis] (==0.6.1)"]
-retrievechat = ["pyautogen[retrievechat] (==0.6.1)"]
-retrievechat-mongodb = ["pyautogen[retrievechat-mongodb] (==0.6.1)"]
-retrievechat-pgvector = ["pyautogen[retrievechat-pgvector] (==0.6.1)"]
-retrievechat-qdrant = ["pyautogen[retrievechat-qdrant] (==0.6.1)"]
-teachable = ["pyautogen[teachable] (==0.6.1)"]
-test = ["pyautogen[test] (==0.6.1)"]
-together = ["pyautogen[together] (==0.6.1)"]
-twilio = ["pyautogen[twilio] (==0.6.1)"]
-types = ["pyautogen[types] (==0.6.1)"]
-websockets = ["pyautogen[websockets] (==0.6.1)"]
-websurfer = ["pyautogen[websurfer] (==0.6.1)"]
+anthropic = ["pyautogen[anthropic] (==0.7.0)"]
+autobuild = ["pyautogen[autobuild] (==0.7.0)"]
+bedrock = ["pyautogen[bedrock] (==0.7.0)"]
+blendsearch = ["pyautogen[blendsearch] (==0.7.0)"]
+captainagent = ["pyautogen[captainagent] (==0.7.0)"]
+cerebras = ["pyautogen[cerebras] (==0.7.0)"]
+cohere = ["pyautogen[cohere] (==0.7.0)"]
+cosmosdb = ["pyautogen[cosmosdb] (==0.7.0)"]
+gemini = ["pyautogen[gemini] (==0.7.0)"]
+graph = ["pyautogen[graph] (==0.7.0)"]
+graph-rag-falkor-db = ["pyautogen[graph-rag-falkor-db] (==0.7.0)"]
+groq = ["pyautogen[groq] (==0.7.0)"]
+interop = ["pyautogen[interop] (==0.7.0)"]
+interop-crewai = ["pyautogen[interop-crewai] (==0.7.0)"]
+interop-langchain = ["pyautogen[interop-langchain] (==0.7.0)"]
+interop-pydantic-ai = ["pyautogen[interop-pydantic-ai] (==0.7.0)"]
+jupyter-executor = ["pyautogen[jupyter-executor] (==0.7.0)"]
+lmm = ["pyautogen[lmm] (==0.7.0)"]
+long-context = ["pyautogen[long-context] (==0.7.0)"]
+mathchat = ["pyautogen[mathchat] (==0.7.0)"]
+mistral = ["pyautogen[mistral] (==0.7.0)"]
+neo4j = ["pyautogen[neo4j] (==0.7.0)"]
+ollama = ["pyautogen[ollama] (==0.7.0)"]
+redis = ["pyautogen[redis] (==0.7.0)"]
+retrievechat = ["pyautogen[retrievechat] (==0.7.0)"]
+retrievechat-mongodb = ["pyautogen[retrievechat-mongodb] (==0.7.0)"]
+retrievechat-pgvector = ["pyautogen[retrievechat-pgvector] (==0.7.0)"]
+retrievechat-qdrant = ["pyautogen[retrievechat-qdrant] (==0.7.0)"]
+teachable = ["pyautogen[teachable] (==0.7.0)"]
+test = ["pyautogen[test] (==0.7.0)"]
+together = ["pyautogen[together] (==0.7.0)"]
+twilio = ["pyautogen[twilio] (==0.7.0)"]
+types = ["pyautogen[types] (==0.7.0)"]
+websockets = ["pyautogen[websockets] (==0.7.0)"]
+websurfer = ["pyautogen[websurfer] (==0.7.0)"]
 
 [[package]]
 name = "backports-tarfile"
@@ -480,17 +480,17 @@ uvloop = ["uvloop (>=0.15.2)"]
 
 [[package]]
 name = "boto3"
-version = "1.35.94"
+version = "1.35.95"
 description = "The AWS SDK for Python"
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "boto3-1.35.94-py3-none-any.whl", hash = "sha256:516c514fb447d6f216833d06a0781c003fcf43099a4ca2f5a363a8afe0942070"},
-    {file = "boto3-1.35.94.tar.gz", hash = "sha256:5aa606239f0fe0dca0506e0ad6bbe4c589048e7e6c2486cee5ec22b6aa7ec2f8"},
+    {file = "boto3-1.35.95-py3-none-any.whl", hash = "sha256:c81223488607457dacb7829ee0c99803c664593b34a2b0f86c71d421e7c3469a"},
+    {file = "boto3-1.35.95.tar.gz", hash = "sha256:d5671226819f6a78e31b1f37bd60f194afb8203254a543d06bdfb76de7d79236"},
 ]
 
 [package.dependencies]
-botocore = ">=1.35.94,<1.36.0"
+botocore = ">=1.35.95,<1.36.0"
 jmespath = ">=0.7.1,<2.0.0"
 s3transfer = ">=0.10.0,<0.11.0"
 
@@ -499,13 +499,13 @@ crt = ["botocore[crt] (>=1.21.0,<2.0a0)"]
 
 [[package]]
 name = "botocore"
-version = "1.35.94"
+version = "1.35.95"
 description = "Low-level, data-driven core of boto 3."
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "botocore-1.35.94-py3-none-any.whl", hash = "sha256:d784d944865d8279c79d2301fc09ac28b5221d4e7328fb4e23c642c253b9932c"},
-    {file = "botocore-1.35.94.tar.gz", hash = "sha256:2b3309b356541faa4d88bb957dcac1d8004aa44953c0b7d4521a6cc5d3d5d6ba"},
+    {file = "botocore-1.35.95-py3-none-any.whl", hash = "sha256:a672406f748ad6a5b2fb7ea0d8394539eb4fda5332fc5373467d232c4bb27b12"},
+    {file = "botocore-1.35.95.tar.gz", hash = "sha256:b03d2d7cc58a16aa96a7e8f21941b766e98abc6ea74f61a63de7dc26c03641d3"},
 ]
 
 [package.dependencies]
@@ -1158,6 +1158,21 @@ files = [
 
 [package.extras]
 tests = ["asttokens (>=2.1.0)", "coverage", "coverage-enable-subprocess", "ipython", "littleutils", "pytest", "rich"]
+
+[[package]]
+name = "fast-depends"
+version = "2.4.12"
+description = "FastDepends - extracted and cleared from HTTP domain logic FastAPI Dependency Injection System. Async and sync are both supported."
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "fast_depends-2.4.12-py3-none-any.whl", hash = "sha256:9e5d110ddc962329e46c9b35e5fe65655984247a13ee3ca5a33186db7d2d75c2"},
+    {file = "fast_depends-2.4.12.tar.gz", hash = "sha256:9393e6de827f7afa0141e54fa9553b737396aaf06bd0040e159d1f790487b16d"},
+]
+
+[package.dependencies]
+anyio = ">=3.0.0,<5.0.0"
+pydantic = ">=1.7.4,<1.8 || >1.8,<1.8.1 || >1.8.1,<3.0.0"
 
 [[package]]
 name = "filelock"
@@ -1877,13 +1892,13 @@ test = ["objgraph", "psutil"]
 
 [[package]]
 name = "groq"
-version = "0.13.1"
+version = "0.14.0"
 description = "The official Python library for the groq API"
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "groq-0.13.1-py3-none-any.whl", hash = "sha256:0c5d1d6df93de55de705fe73729b79baaa0c871f7575d6aa64b2962b56101b3e"},
-    {file = "groq-0.13.1.tar.gz", hash = "sha256:588fd5bee984f4eb46ec89552778d5698b9e9614435defef868645c19463cbcc"},
+    {file = "groq-0.14.0-py3-none-any.whl", hash = "sha256:0d573fa6b3eb5094de8c1fc22a45c525ab857ef37c55cccda77e86f88efffc57"},
+    {file = "groq-0.14.0.tar.gz", hash = "sha256:709d2080c121f82d3f2d4be0c742738729336d19bf35b008e1a41dff44b91770"},
 ]
 
 [package.dependencies]
@@ -4089,21 +4104,22 @@ pyasn1 = ">=0.4.6,<0.7.0"
 
 [[package]]
 name = "pyautogen"
-version = "0.6.1"
+version = "0.7.0"
 description = "A programming framework for agentic AI"
 optional = false
 python-versions = "<3.14,>=3.9"
 files = [
-    {file = "pyautogen-0.6.1-py3-none-any.whl", hash = "sha256:0f0534e3938c52a378bc19d45b228ef2bc0f616be65b878f6daf1d8a656514c4"},
-    {file = "pyautogen-0.6.1.tar.gz", hash = "sha256:4256db19558639e7a28bdc72a56d7c88df1c3b158229b31e31222c721bab2b0f"},
+    {file = "pyautogen-0.7.0-py3-none-any.whl", hash = "sha256:05e668c3fd2058b8a6ee07b52b98d10403a75efde845bf3d000456328cca7c52"},
+    {file = "pyautogen-0.7.0.tar.gz", hash = "sha256:38bd96d0984910a4bda05a444452e525137ec1e43060c938a588fe10f3860f51"},
 ]
 
 [package.dependencies]
-anthropic = {version = ">=0.23.1", optional = true, markers = "extra == \"anthropic\""}
-asyncer = ">=0.0.8"
+anthropic = {version = ">=0.23.1", extras = ["vertex"], optional = true, markers = "extra == \"anthropic\""}
+asyncer = "0.0.8"
 boto3 = {version = ">=1.34.149", optional = true, markers = "extra == \"bedrock\""}
 diskcache = "*"
 docker = "*"
+fast-depends = ">=2.4.12,<3"
 fix-busted-json = {version = ">=0.0.18", optional = true, markers = "extra == \"ollama\""}
 flaml = "*"
 google-auth = {version = "*", optional = true, markers = "extra == \"gemini\""}
@@ -4128,7 +4144,7 @@ tiktoken = "*"
 websockets = ">=14,<15"
 
 [package.extras]
-anthropic = ["anthropic (>=0.23.1)"]
+anthropic = ["anthropic[vertex] (>=0.23.1)"]
 autobuild = ["chromadb", "huggingface-hub", "pysqlite3-binary", "sentence-transformers"]
 bedrock = ["boto3 (>=1.34.149)"]
 blendsearch = ["flaml[blendsearch]"]
@@ -4140,8 +4156,8 @@ gemini = ["google-auth", "google-cloud-aiplatform", "google-generativeai (>=0.5,
 graph = ["matplotlib", "networkx"]
 graph-rag-falkor-db = ["falkordb (>=1.0.10)", "graphrag-sdk (==0.3.3)"]
 groq = ["groq (>=0.9.0)"]
-interop = ["crewai[tools] (>=0.86,<1)", "langchain-community (>=0.3.12,<1)", "pydantic-ai (==0.0.13)"]
-interop-crewai = ["crewai[tools] (>=0.86,<1)"]
+interop = ["crewai[tools] (>=0.86,<1)", "langchain-community (>=0.3.12,<1)", "pydantic-ai (==0.0.13)", "weaviate-client (==4.10.2)"]
+interop-crewai = ["crewai[tools] (>=0.86,<1)", "weaviate-client (==4.10.2)"]
 interop-langchain = ["langchain-community (>=0.3.12,<1)"]
 interop-pydantic-ai = ["pydantic-ai (==0.0.13)"]
 jupyter-executor = ["ipykernel (>=6.29.0)", "jupyter-client (>=8.6.0)", "jupyter-kernel-gateway", "requests", "websocket-client"]
@@ -4149,20 +4165,20 @@ lmm = ["pillow", "replicate"]
 long-context = ["llmlingua (<0.3)"]
 mathchat = ["pydantic (==1.10.9)", "sympy", "wolframalpha"]
 mistral = ["mistralai (>=1.0.1)"]
-neo4j = ["docx2txt (==0.8)", "llama-index (==0.12.5)", "llama-index-core (==0.12.5)", "llama-index-graph-stores-neo4j (==0.4.2)"]
+neo4j = ["docx2txt (==0.8)", "llama-index (==0.12.5)", "llama-index-core (==0.12.5)", "llama-index-graph-stores-neo4j (==0.4.2)", "llama-index-readers-web (==0.3.3)"]
 ollama = ["fix-busted-json (>=0.0.18)", "ollama (>=0.3.3)"]
 redis = ["redis"]
 retrievechat = ["beautifulsoup4", "chromadb (==0.5.3)", "ipython", "markdownify", "protobuf (==4.25.3)", "pypdf", "sentence-transformers"]
 retrievechat-mongodb = ["beautifulsoup4", "chromadb (==0.5.3)", "ipython", "markdownify", "protobuf (==4.25.3)", "pymongo (>=4.0.0)", "pypdf", "sentence-transformers"]
-retrievechat-pgvector = ["beautifulsoup4", "chromadb (==0.5.3)", "ipython", "markdownify", "pgvector (>=0.2.5)", "protobuf (==4.25.3)", "psycopg (>=3.1.18)", "pypdf", "sentence-transformers"]
+retrievechat-pgvector = ["beautifulsoup4", "chromadb (==0.5.3)", "ipython", "markdownify", "pgvector (>=0.2.5)", "protobuf (==4.25.3)", "psycopg (>=3.1.18)", "psycopg[binary] (>=3.1.18)", "pypdf", "sentence-transformers"]
 retrievechat-qdrant = ["beautifulsoup4", "chromadb (==0.5.3)", "fastembed (>=0.3.1)", "ipython", "markdownify", "protobuf (==4.25.3)", "pypdf", "qdrant-client", "sentence-transformers"]
 teachable = ["chromadb"]
 test = ["fastapi (>=0.115.0,<1)", "ipykernel", "nbconvert", "nbformat", "pandas", "pre-commit", "pytest (>=8,<9)", "pytest-asyncio", "pytest-cov (>=5)"]
 together = ["together (>=1.2)"]
 twilio = ["fastapi (>=0.115.0,<1)", "twilio (>=9.3.2)", "uvicorn (>=0.30.6,<1)"]
-types = ["crewai[tools] (>=0.86,<1)", "fastapi (>=0.115.0,<1)", "ipykernel", "ipykernel (>=6.29.0)", "jupyter-client (>=8.6.0)", "jupyter-kernel-gateway", "langchain-community (>=0.3.12,<1)", "mypy (==1.9.0)", "nbconvert", "nbformat", "pandas", "pre-commit", "pydantic-ai (==0.0.13)", "pytest (>=8,<9)", "pytest-asyncio", "pytest-cov (>=5)", "requests", "websocket-client"]
+types = ["crewai[tools] (>=0.86,<1)", "fastapi (>=0.115.0,<1)", "ipykernel", "ipykernel (>=6.29.0)", "jupyter-client (>=8.6.0)", "jupyter-kernel-gateway", "langchain-community (>=0.3.12,<1)", "mypy (==1.9.0)", "nbconvert", "nbformat", "pandas", "pre-commit", "pydantic-ai (==0.0.13)", "pytest (>=8,<9)", "pytest-asyncio", "pytest-cov (>=5)", "requests", "weaviate-client (==4.10.2)", "websocket-client"]
 websockets = ["websockets (>=14.0,<15)"]
-websurfer = ["beautifulsoup4", "markdownify", "pathvalidate", "pdfminer.six"]
+websurfer = ["beautifulsoup4", "markdownify", "pathvalidate", "pdfminer-six"]
 
 [[package]]
 name = "pycparser"
@@ -6375,4 +6391,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.0"
 python-versions = "<3.13,>=3.11"
-content-hash = "e428716c60c1822dc034e525532cf64c26884bccba2079f2226c455d05e62c24"
+content-hash = "63353620acb3c6964364d83823c589876888908223380be5cc944b62435f31da"
