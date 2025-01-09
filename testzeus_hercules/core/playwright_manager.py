@@ -237,7 +237,6 @@ class PlaywrightManager:
             "--no-default-browser-check",
             "--window-position=0,0",
             "--disable-web-security",
-            "--disable-site-isolation-trials",
             "--disable-features=IsolateOrigins,site-per-process",
             f"--window-size={resolution}",
         ]
