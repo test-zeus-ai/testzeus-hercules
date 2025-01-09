@@ -1,4 +1,5 @@
 #!/bin/bash
+set -ex
 
 # curl -sS https://bootstrap.pypa.io/get-pip.py | python3.11
 
@@ -18,8 +19,15 @@ export HEADLESS=false
 # create a new directory named 'opt'
 mkdir -p opt/input opt/output opt/test_data
 
-# create a intput/test.feature file
-echo "Feature: Open Google homepage\nScenario: User opens Google homepage\n  Given I have a web browser open\n  When I navigate to https://www.google.com\n  Then I should see the Google homepage" > opt/input/test.feature
+# create a input/test.feature file
+cat << 'EOF' > opt/input/test.feature
+Feature: Open Google homepage
+
+Scenario: User opens Google homepage
+  Given I have a web browser open
+  When I navigate to https://www.google.com
+  Then I should see the Google homepage
+EOF
 
 # get gpt-4o model API key by asking user
 echo "Enter your GPT-4o model API key:"

@@ -165,6 +165,7 @@ class BaseConfigManager:
             "TOKENIZERS_PARALLELISM",
             "DONT_CLOSE_BROWSER",
             "TOKEN_VERBOSE",
+            "BROWSER_RESOLUTION",
         ]
 
         for key in relevant_keys:
@@ -250,6 +251,7 @@ class BaseConfigManager:
             self._config["TOKENIZERS_PARALLELISM"] = "false"
 
         self._config.setdefault("TOKEN_VERBOSE", "false")
+        self._config.setdefault("BROWSER_RESOLUTION", "1920,1080")
 
         # HEADLESS, RECORD_VIDEO, etc. can also be "finalized" here if needed
         self._config.setdefault("HEADLESS", "true")
@@ -309,6 +311,9 @@ class BaseConfigManager:
 
     def should_capture_network(self) -> bool:
         return self._config["CAPTURE_NETWORK"].lower().strip() == "true"
+    
+    def get_hf_home(self) -> str:
+        return self._config["HF_HOME"]
 
     # -------------------------------------------------------------------------
     # Directory creation logic (mirroring your original code)
@@ -374,6 +379,9 @@ class BaseConfigManager:
 
     def get_token_verbose(self) -> bool:
         return self._config["TOKEN_VERBOSE"].lower().strip() == "true"
+    
+    def get_resolution(self) -> str:
+        return self._config["BROWSER_RESOLUTION"]
 
     # -------------------------------------------------------------------------
     # Telemetry
