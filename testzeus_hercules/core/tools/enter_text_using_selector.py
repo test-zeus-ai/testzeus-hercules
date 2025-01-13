@@ -394,7 +394,7 @@ async def do_entertext(
 async def bulk_enter_text(
     entries: Annotated[
         List[EnterTextEntry],
-        "List of EnterTextEntry objects. An object containing 'query_selector' (selector query using md attribute e.g. [md='114']) and 'text' (text to enter on the element).",
+        "List of EnterTextEntry objects. An object containing 'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'text' (text to enter on the element).",
     ]  # noqa: UP006
 ) -> Annotated[
     List[str],

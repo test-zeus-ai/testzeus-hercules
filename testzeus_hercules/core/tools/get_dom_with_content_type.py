@@ -18,7 +18,9 @@ from testzeus_hercules.utils.ui_messagetype import MessageType
 
 async def get_dom_with_content_type(
     content_type: Annotated[str, "Type: text_only/input_fields/all_fields"],
-) -> Annotated[dict[str, Any] | str | None, "DOM content based on type"]:
+) -> Annotated[
+    dict[str, Any] | str | None, "DOM content based on type to analyse and decide"
+]:
     """
     Retrieves and processes the DOM of the active page in a browser instance based on the specified content type.
 
@@ -93,7 +95,7 @@ async def get_dom_with_content_type(
     rr = 0
     if isinstance(extracted_data, dict):
         rr = len(extracted_data)
-    else:
+    elif extracted_data is not None:
         ed_t_tele = extracted_data.split("\n")
         rr = len([line for line in ed_t_tele if line.strip()])
     add_event(
@@ -131,7 +133,7 @@ tl: title
 JSON >>
 """
         extracted_data = extracted_data_legend + extracted_data
-    return extracted_data  # type: ignore
+    return extracted_data or "Its Empty, try something else"  # type: ignore
 
 
 def clean_text(text_content: str) -> str:

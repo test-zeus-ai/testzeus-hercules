@@ -16,7 +16,7 @@ from testzeus_hercules.utils.ui_messagetype import MessageType
 
 
 async def hover(
-    selector: Annotated[str, "selector using md attribute, eg:[md='114']"],
+    selector: Annotated[str, "selector using md attribute, eg:[md='114'] md is ID"],
     wait_before_execution: Annotated[float, "Wait time in seconds before hover"] = 0.0,
 ) -> Annotated[str, "Result of hover action with tooltip text"]:
     """

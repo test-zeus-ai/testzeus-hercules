@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from testzeus_hercules.utils.logger import logger
 
 
 class NotificationManager:
@@ -32,7 +33,7 @@ class NotificationManager:
             for listener in self.listeners:
                 listener(notification)
         else:
-            print(f"No listeners available, discarding message: {notification}")
+            logger.info(f"No listeners available, discarding message: {notification}")
 
     def register_listener(self, listener: Callable[[dict[str, str]], None]) -> None:
         """

@@ -45,7 +45,7 @@ class UploadFileEntry:
 async def upload_file(
     entry: Annotated[
         UploadFileEntry,
-        "object containing 'query_selector' (selector query using md attribute e.g. [md='114']) and 'file_path' (the path to the file to upload).",
+        "object containing 'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'file_path' (the path to the file to upload).",
     ]
 ) -> Annotated[str, "Explanation of the outcome of this operation."]:
     """

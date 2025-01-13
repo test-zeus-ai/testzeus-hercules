@@ -53,7 +53,7 @@ class AutogenSimpleWrapper:
         self,
         save_chat_logs_to_files: bool = True,
         planner_max_chat_round: int = 500,
-        browser_nav_max_chat_round: int = 1000,
+        browser_nav_max_chat_round: int = 10,
         stake_id: str | None = None,
     ):
         oai.Completion.set_cache(5, cache_path_root=".cache")
@@ -89,7 +89,7 @@ class AutogenSimpleWrapper:
         browser_nav_agent_config: dict[str, Any],
         save_chat_logs_to_files: bool = True,
         planner_max_chat_round: int = 500,
-        browser_nav_max_chat_round: int = 1000,
+        browser_nav_max_chat_round: int = 10,
     ) -> "AutogenSimpleWrapper":
         """
         Create an instance of AutogenSimpleWrapper.
@@ -116,7 +116,7 @@ class AutogenSimpleWrapper:
             AutogenSimpleWrapper: An instance of AutogenSimpleWrapper.
 
         """
-        print(
+        logger.info(
             f">>> Creating AutogenSimpleWrapper, Planner max chat rounds: {planner_max_chat_round}, browser nav max chat rounds: {browser_nav_max_chat_round}. Save chat logs to files: {save_chat_logs_to_files}"
         )
         # Create an instance of cls
@@ -190,8 +190,8 @@ class AutogenSimpleWrapper:
             else:
                 last_message = recipient.last_message(sender)["content"]  # type: ignore
             if not last_message or last_message.strip() == "":  # type: ignore
-                # print(f">>> Last message from browser nav was empty. Max turns: {self.browser_number_of_rounds*2}, number of messages: {len(list(sender.chat_messages.items())[0][1])}")
-                # print(">>> Sender messages:", json.dumps( list(sender.chat_messages.items())[0][1], indent=2))
+                # logger.info(f">>> Last message from browser nav was empty. Max turns: {self.browser_number_of_rounds*2}, number of messages: {len(list(sender.chat_messages.items())[0][1])}")
+                # logger.info(">>> Sender messages:", json.dumps( list(sender.chat_messages.items())[0][1], indent=2))
                 return "I received an empty message. This is not an error and is recoverable. Try to reformulate the task..."
             elif "##TERMINATE TASK##" in last_message:
                 last_message = last_message.replace("##TERMINATE TASK##", "")  # type: ignore
@@ -229,7 +229,7 @@ class AutogenSimpleWrapper:
                 else:
                     logger.error("Target helper not found in the response")
                     # this is some crazy trick, might backfire in long run, only time will tell.
-                    return "skip this step"  # type: ignore
+                    return "skip this step and return only JSON"  # type: ignore
 
         nav_agents_names = ["browser", "api", "sql", "sec"]
         group_participants_names = (
@@ -241,7 +241,6 @@ class AutogenSimpleWrapper:
 
         def state_transition(last_speaker, groupchat) -> autogen.ConversableAgent | None:  # type: ignore
             messages = groupchat.messages
-
             last_message = messages[-1]["content"]
             # extract "##target_helper: {target_helper}##" from last_message
             target_helper = (
@@ -354,7 +353,7 @@ class AutogenSimpleWrapper:
 
                 logger.debug(f"{sender.name} chat log: {val}")
                 content = val["content"]
-                if not isinstance(content, dict):
+                if isinstance(content, str):
                     content = content.replace("```json", "").replace("```", "").strip()
                     res_content = None
                     try:
@@ -363,6 +362,11 @@ class AutogenSimpleWrapper:
                         logger.debug(
                             f"Failed to decode JSON: {content}, keeping as multiline string"
                         )
+                        res_content = content
+                elif isinstance(content, dict):
+                    res_content = content
+                elif isinstance(content, list):
+                    if isinstance(content[0], dict):
                         res_content = content
                 else:
                     res_content = content
@@ -491,7 +495,7 @@ class AutogenSimpleWrapper:
                 messages = chat_messages[agent_key]  # type: ignore
                 return is_agent_stuck_in_loop(messages)  # type: ignore
             else:
-                print("Terminating browser executor")
+                logger.info("Terminating browser executor")
                 return True
 
         browser_nav_executor_agent = UserProxyAgent_SequentialFunctionExecution(
@@ -506,7 +510,9 @@ class AutogenSimpleWrapper:
                 "use_docker": False,
             },
         )
-        print(">>> Created browser_nav_executor_agent:", browser_nav_executor_agent)
+        logger.info(
+            ">>> Created browser_nav_executor_agent: %s", browser_nav_executor_agent
+        )
         return browser_nav_executor_agent
 
     def __create_browser_nav_agent(
@@ -530,7 +536,7 @@ class AutogenSimpleWrapper:
             agent_name="browser_navigation_agent",
             agent_prompt=LLM_PROMPTS["BROWSER_AGENT_PROMPT"],
         )  # type: ignore
-        # print(">>> browser agent tools:", json.dumps(browser_nav_agent.agent.llm_config.get("tools"), indent=2))
+        # logger.info(">>> browser agent tools:", json.dumps(browser_nav_agent.agent.llm_config.get("tools"), indent=2))
         return browser_nav_agent.agent
 
     def __create_api_nav_executor_agent(self) -> autogen.UserProxyAgent:
@@ -553,7 +559,7 @@ class AutogenSimpleWrapper:
                 messages = chat_messages[agent_key]  # type: ignore
                 return is_agent_stuck_in_loop(messages)  # type: ignore
             else:
-                print("Terminating api executor")
+                logger.info("Terminating api executor")
                 return True
 
         api_nav_executor_agent = UserProxyAgent_SequentialFunctionExecution(
@@ -568,7 +574,7 @@ class AutogenSimpleWrapper:
                 "use_docker": False,
             },
         )
-        print(">>> Created api_nav_executor_agent:", api_nav_executor_agent)
+        logger.info(">>> Created api_nav_executor_agent: %s", api_nav_executor_agent)
         return api_nav_executor_agent
 
     def __create_api_nav_agent(
@@ -592,7 +598,7 @@ class AutogenSimpleWrapper:
             agent_name="api_navigation_agent",
             agent_prompt=LLM_PROMPTS["API_AGENT_PROMPT"],
         )  # type: ignore
-        # print(">>> api agent tools:", json.dumps(api_nav_agent.agent.llm_config.get("tools"), indent=2))
+        # logger.info(">>> api agent tools:", json.dumps(api_nav_agent.agent.llm_config.get("tools"), indent=2))
         return api_nav_agent.agent
 
     def __create_sec_nav_executor_agent(self) -> autogen.UserProxyAgent:
@@ -615,7 +621,7 @@ class AutogenSimpleWrapper:
                 messages = chat_messages[agent_key]  # type: ignore
                 return is_agent_stuck_in_loop(messages)  # type: ignore
             else:
-                print("Terminating api sec executor")
+                logger.info("Terminating api sec executor")
                 return True
 
         api_nav_executor_agent = UserProxyAgent_SequentialFunctionExecution(
@@ -630,7 +636,7 @@ class AutogenSimpleWrapper:
                 "use_docker": False,
             },
         )
-        print(">>> Created api_nav_executor_agent:", api_nav_executor_agent)
+        logger.info(">>> Created api_nav_executor_agent: %s", api_nav_executor_agent)
         return api_nav_executor_agent
 
     def __create_sec_nav_agent(
@@ -654,7 +660,7 @@ class AutogenSimpleWrapper:
             agent_name="sec_nav_agent",
             agent_prompt=LLM_PROMPTS["SEC_NAV_AGENT_PROMPT"],
         )  # type: ignore
-        # print(">>> api agent tools:", json.dumps(sec_nav_agent.agent.llm_config.get("tools"), indent=2))
+        # logger.info(">>> api agent tools:", json.dumps(sec_nav_agent.agent.llm_config.get("tools"), indent=2))
         return sec_nav_agent.agent
 
     def __create_sql_nav_agent(
@@ -678,7 +684,7 @@ class AutogenSimpleWrapper:
             agent_name="sql_navigation_agent",
             agent_prompt=LLM_PROMPTS["DATABASE_AGENT_PROMPT"],
         )  # type: ignore
-        # print(">>> sql agent tools:", json.dumps(sql_nav_agent.agent.llm_config.get("tools"), indent=2))
+        # logger.info(">>> sql agent tools:", json.dumps(sql_nav_agent.agent.llm_config.get("tools"), indent=2))
         return sql_nav_agent.agent
 
     def __create_sql_nav_executor_agent(self) -> autogen.UserProxyAgent:
@@ -701,7 +707,7 @@ class AutogenSimpleWrapper:
                 messages = chat_messages[agent_key]  # type: ignore
                 return is_agent_stuck_in_loop(messages)  # type: ignore
             else:
-                print("Terminating sql executor")
+                logger.info("Terminating sql executor")
                 return True
 
         sql_nav_executor_agent = UserProxyAgent_SequentialFunctionExecution(
@@ -716,7 +722,7 @@ class AutogenSimpleWrapper:
                 "use_docker": False,
             },
         )
-        print(">>> Created sql_nav_executor_agent:", sql_nav_executor_agent)
+        logger.info(">>> Created sql_nav_executor_agent: %s", sql_nav_executor_agent)
         return sql_nav_executor_agent
 
     def __create_planner_agent(

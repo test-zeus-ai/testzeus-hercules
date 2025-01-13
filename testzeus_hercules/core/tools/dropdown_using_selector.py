@@ -45,7 +45,7 @@ class SelectOptionEntry:
 async def select_option(
     entry: Annotated[
         SelectOptionEntry,
-        "Object containing 'query_selector' (selector query using md attribute e.g. [md='114']) and 'value' (the value or text of the option to select).",
+        "Object containing 'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'value' (the value or text of the option to select).",
     ]
 ) -> Annotated[str, "Explanation of the outcome of of dropdown/spinner selection."]:
     """
