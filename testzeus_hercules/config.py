@@ -166,6 +166,14 @@ class BaseConfigManager:
             "DONT_CLOSE_BROWSER",
             "TOKEN_VERBOSE",
             "BROWSER_RESOLUTION",
+            "RUN_DEVICE",
+            "LOCALE",
+            "TIMEZONE",
+            "GEOLOCATION",
+            "COLOR_SCHEME",
+            "LOAD_EXTRA_TOOLS",
+            "GEO_PROVIDER",
+            "GEO_API_KEY",
         ]
 
         for key in relevant_keys:
@@ -252,6 +260,12 @@ class BaseConfigManager:
 
         self._config.setdefault("TOKEN_VERBOSE", "false")
         self._config.setdefault("BROWSER_RESOLUTION", "1920,1080")
+        self._config.setdefault("RUN_DEVICE", "desktop")
+        self._config.setdefault("LOAD_EXTRA_TOOLS", "false")
+        self._config.setdefault("LOCALE", "en-US")
+        self._config.setdefault("TIMEZONE", None)
+        self._config.setdefault("GEOLOCATION", None)
+        self._config.setdefault("COLOR_SCHEME", "light")
 
         # HEADLESS, RECORD_VIDEO, etc. can also be "finalized" here if needed
         self._config.setdefault("HEADLESS", "true")
@@ -260,6 +274,8 @@ class BaseConfigManager:
         self._config.setdefault("BROWSER_TYPE", "chromium")
         self._config.setdefault("CAPTURE_NETWORK", "true")
         self._config.setdefault("DONT_CLOSE_BROWSER", "false")
+        self._config.setdefault("GEO_PROVIDER", None)
+        self._config.setdefault("GEO_API_KEY", None)
 
     # -------------------------------------------------------------------------
     # Public Getters & Setters
@@ -311,7 +327,7 @@ class BaseConfigManager:
 
     def should_capture_network(self) -> bool:
         return self._config["CAPTURE_NETWORK"].lower().strip() == "true"
-    
+
     def get_hf_home(self) -> str:
         return self._config["HF_HOME"]
 
@@ -379,9 +395,33 @@ class BaseConfigManager:
 
     def get_token_verbose(self) -> bool:
         return self._config["TOKEN_VERBOSE"].lower().strip() == "true"
-    
+
     def get_resolution(self) -> str:
         return self._config["BROWSER_RESOLUTION"]
+
+    def get_run_device(self) -> str:
+        return self._config["RUN_DEVICE"]
+
+    def get_load_extra_tools(self) -> str:
+        return self._config["LOAD_EXTRA_TOOLS"]
+
+    def get_locale(self) -> str:
+        return self._config["LOCALE"]
+
+    def get_timezone(self) -> str:
+        return self._config["TIMEZONE"]
+
+    def get_geolocation(self) -> str:
+        return self._config["GEOLOCATION"]
+
+    def get_color_scheme(self) -> str:
+        return self._config["COLOR_SCHEME"]
+
+    def get_geo_provider(self) -> str:
+        return self._config["GEO_PROVIDER"]
+
+    def get_geo_api_key(self) -> str:
+        return self._config["GEO_API_KEY"]
 
     # -------------------------------------------------------------------------
     # Telemetry

@@ -28,10 +28,12 @@ def get_page_data(page: Any) -> dict:
 
 
 async def click(
-    selector: Annotated[str, "selector using md attribute, eg: [md='114']"],
+    selector: Annotated[str, "selector using md attribute, eg: [md='114'] md is ID"],
     user_input_dialog_response: Annotated[str | None, "Dialog input value"],
     expected_message_of_dialog: Annotated[str | None, "Expected dialog message"],
-    action_on_dialog: Annotated[str | None, "Dialog action: 'DISMISS' or 'ACCEPT'"],
+    action_on_dialog: Annotated[
+        str | None, "Dialog action: 'DISMISS' or 'ACCEPT'"
+    ] = None,
     type_of_click: Annotated[
         Optional[str], "Click type: click/right_click/double_click/middle_click"
     ] = "click",

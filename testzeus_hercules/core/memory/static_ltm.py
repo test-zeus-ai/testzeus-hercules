@@ -36,7 +36,9 @@ class StaticLTM:
             file_path = os.path.join(test_data_path, filename)
             if os.path.isfile(file_path):
                 # Skip non-text files
-                if not filename.endswith((".txt", ".json", ".csv", ".rft", ".yaml", ".yml")):
+                if not filename.endswith(
+                    (".txt", ".json", ".csv", ".rft", ".yaml", ".yml")
+                ):
                     logger.info("Skipping non-text file: %s", file_path)
                     continue
 
@@ -69,24 +71,44 @@ class StaticLTM:
                             try:
                                 yaml_data = yaml.safe_load(raw_data)
                                 # Minify by using flow style and removing extraneous spaces
-                                minified_yaml = yaml.safe_dump(yaml_data, default_flow_style=True, sort_keys=True).strip()
-                                new_read += f"following is test_data from {sanitized_filename}\n" + minified_yaml + "\n"
+                                minified_yaml = yaml.safe_dump(
+                                    yaml_data, default_flow_style=True, sort_keys=True
+                                ).strip()
+                                new_read += (
+                                    f"following is test_data from {sanitized_filename}\n"
+                                    + minified_yaml
+                                    + "\n"
+                                )
                             except Exception as e:
                                 # If YAML parsing fails, just add raw data
                                 logger.warning("Failed to parse YAML: %s", e)
-                                new_read += f"following is test_data from {sanitized_filename}\n" + raw_data + "\n"
+                                new_read += (
+                                    f"following is test_data from {sanitized_filename}\n"
+                                    + raw_data
+                                    + "\n"
+                                )
 
                         elif filename.endswith(".json"):
                             # Load JSON, then dump with minimal separators
                             try:
                                 json_data = json.loads(raw_data)
                                 # Minified JSON string
-                                minified_json = json.dumps(json_data, separators=(",", ":"))
-                                new_read += f"following is test_data from {sanitized_filename}\n" + minified_json + "\n"
+                                minified_json = json.dumps(
+                                    json_data, separators=(",", ":")
+                                )
+                                new_read += (
+                                    f"following is test_data from {sanitized_filename}\n"
+                                    + minified_json
+                                    + "\n"
+                                )
                             except Exception as e:
                                 # If JSON parsing fails, just add raw data
                                 logger.warning("Failed to parse JSON: %s", e)
-                                new_read += f"following is test_data from {sanitized_filename}\n" + raw_data + "\n"
+                                new_read += (
+                                    f"following is test_data from {sanitized_filename}\n"
+                                    + raw_data
+                                    + "\n"
+                                )
 
                         else:
                             # General file types: remove redundant empty lines
@@ -94,7 +116,11 @@ class StaticLTM:
                             # Keep only non-empty lines (strip each line)
                             cleaned_lines = [ln.strip() for ln in lines if ln.strip()]
                             cleaned_data = "\n".join(cleaned_lines)
-                            new_read += f"following is test_data from {sanitized_filename}\n" + cleaned_data + "\n"
+                            new_read += (
+                                f"following is test_data from {sanitized_filename}\n"
+                                + cleaned_data
+                                + "\n"
+                            )
 
                     logger.info("Test data loaded from: %s", file_path)
 
@@ -139,4 +165,4 @@ def get_user_ltm() -> Optional[str]:
 # Example usage
 if __name__ == "__main__":
     a = get_user_ltm()
-    # print(a)
+    # logger.info(a)

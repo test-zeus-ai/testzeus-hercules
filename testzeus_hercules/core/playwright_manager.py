@@ -7,11 +7,13 @@ import tempfile
 import time
 import zipfile
 from io import BytesIO
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Tuple, Union, Any
 
 import httpx
 from playwright.async_api import BrowserContext, BrowserType, Page, Playwright
 from playwright.async_api import async_playwright as playwright
+from playwright.async_api import Error as PlaywrightError  # for exception handling
+
 from testzeus_hercules.config import CONF
 from testzeus_hercules.core.notification_manager import NotificationManager
 from testzeus_hercules.core.ui_manager import UIManager
@@ -27,32 +29,39 @@ from testzeus_hercules.utils.ui_messagetype import MessageType
 # Reference: https://github.com/microsoft/playwright/issues/28995
 os.environ["PW_TEST_SCREENSHOT_NO_FONTS_READY"] = "1"
 
-MAX_WAIT_PAGE_LOAD_TIME = 30
-WAIT_FOR_NETWORK_IDLE = 10000
+MAX_WAIT_PAGE_LOAD_TIME = 3
+WAIT_FOR_NETWORK_IDLE = 100
 MIN_WAIT_PAGE_LOAD_TIME = 1
+
+ALL_POSSIBLE_PERMISSIONS = [
+    # "accelerometer",
+    # "accessibility-events",
+    # "ambient-light-sensor",
+    # "background-sync",
+    # "camera",
+    # "clipboard-read",
+    # "clipboard-write",
+    "geolocation",
+    # "gyroscope",
+    # "magnetometer",
+    # "microphone",
+    # "midi-sysex",  # system-exclusive MIDI
+    # "midi",
+    "notifications",
+    # "payment-handler",
+    # "storage-access",
+]
 
 
 class PlaywrightManager:
     """
     A singleton class to manage Playwright instances and browsers.
-
-    Attributes:
-        browser_type (str): The type of browser to use ('chromium', 'firefox', 'webkit').
-        isheadless (bool): Flag to launch the browser in headless mode or not.
-        cdp_config (Optional[dict]): Configuration for connecting over CDP.
-        record_video (bool): Flag to enable video recording.
-        video_dir (str): Directory to save video recordings.
-
-    The class ensures only one instance of itself, Playwright, and the browser is created during the application lifecycle.
     """
 
     _homepage = "about:blank"
     _instance = None
 
     def __new__(cls, *args, **kwargs) -> "PlaywrightManager":
-        """
-        Ensures that only one instance of PlaywrightManager is created (singleton pattern).
-        """
         if cls._instance is None:
             cls._instance = super().__new__(cls)
             cls._instance.__initialized: bool = False
@@ -61,126 +70,193 @@ class PlaywrightManager:
 
     def __init__(
         self,
-        browser_type: str = "chromium",
-        headless: bool = False,
+        # ----------------------
+        # FALLBACKS via CONF
+        # ----------------------
+        browser_type: Optional[str] = None,
+        headless: Optional[bool] = None,
         gui_input_mode: bool = False,
         stake_id: Optional[str] = None,
-        screenshots_dir: str = "",
-        take_screenshots: bool = False,
+        screenshots_dir: Optional[str] = None,
+        take_screenshots: Optional[bool] = None,
         cdp_config: Optional[Dict] = None,
-        record_video: bool = False,
+        record_video: Optional[bool] = None,
         video_dir: Optional[str] = None,
-        log_requests_responses: bool = False,
+        log_requests_responses: Optional[bool] = None,
         request_response_log_file: Optional[str] = None,
+        # --- Emulation-specific args ---
+        device_name: Optional[str] = None,
+        viewport: Optional[Tuple[int, int]] = None,
+        locale: Optional[str] = None,
+        timezone: Optional[str] = None,  # e.g. "America/New_York"
+        geolocation: Optional[
+            Dict[str, float]
+        ] = None,  # {"latitude": 51.5, "longitude": -0.13}
+        color_scheme: Optional[str] = None,  # "light", "dark", "no-preference"
+        allow_all_permissions: bool = True,
     ):
         """
-        Initializes the PlaywrightManager with the specified browser type and headless mode.
-        Initialization occurs only once due to the singleton pattern.
+        Initialize the PlaywrightManager.
 
-        Args:
-            browser_type (str, optional): The type of browser to use. Defaults to "chromium".
-            headless (bool, optional): Flag to launch the browser in headless mode or not. Defaults to False.
-            cdp_config (Optional[dict], optional): Configuration for connecting over CDP.
-            record_video (bool, optional): Flag to enable video recording. Defaults to False.
-            video_dir (Optional[str], optional): Directory to save video recordings. Defaults to None.
+        If any argument is None, we fallback to the appropriate CONF method.
+        Otherwise, we use the constructor-provided value.
+
+        If `device_name` is provided, the built-in descriptor overrides user-agent,
+        viewport, etc., *unless* you explicitly override them via other parameters.
         """
-        if self.__initialized and self._playwright is not None:
-            return
+        self.allow_all_permissions = allow_all_permissions
+        if self.__initialized:
+            return  # Already inited, no-op
+
         self.__initialized = True
-        self.browser_type = CONF.get_browser_type() or browser_type
-        self.isheadless = CONF.should_run_headless() or headless
-        self.cdp_config = CONF.get_cdp_config() or cdp_config
+
+        # ----------------------
+        # 1) BROWSER / HEADLESS
+        # ----------------------
+        self.browser_type = browser_type or CONF.get_browser_type() or "chromium"
+        self.isheadless = (
+            headless if headless is not None else CONF.should_run_headless()
+        )
+        self.cdp_config = cdp_config or CONF.get_cdp_config()
+
+        # ----------------------
+        # 2) BASIC FLAGS
+        # ----------------------
         self.notification_manager = NotificationManager()
         self.user_response_future: Optional[asyncio.Future[str]] = None
         self.ui_manager: Optional[UIManager] = UIManager() if gui_input_mode else None
-        self._take_screenshots = CONF.should_take_screenshots() or take_screenshots
+        self._take_screenshots = (
+            take_screenshots
+            if take_screenshots is not None
+            else CONF.should_take_screenshots()
+        )
         self.stake_id = stake_id
-        self._screenshots_dir = os.path.join(CONF.get_proof_path(self.stake_id) or screenshots_dir, "screenshots")
-        self._record_video = CONF.should_record_video() or record_video
-        self._video_dir = os.path.join(CONF.get_proof_path(self.stake_id) or video_dir, "videos")
+
+        # ----------------------
+        # 3) PATHS
+        # ----------------------
+        default_proof_path = CONF.get_proof_path(self.stake_id) or "."
+        self._screenshots_dir = screenshots_dir or os.path.join(
+            default_proof_path, "screenshots"
+        )
+        self._record_video = (
+            record_video if record_video is not None else CONF.should_record_video()
+        )
+        self._video_dir = video_dir or os.path.join(default_proof_path, "videos")
+
+        # ----------------------
+        # 4) LOGS
+        # ----------------------
+        self.log_requests_responses = (
+            log_requests_responses
+            if log_requests_responses is not None
+            else CONF.should_capture_network()
+        )
+        if request_response_log_file:
+            self.request_response_log_file = request_response_log_file
+        else:
+            # default to "network_logs.json" in proof path
+            self.request_response_log_file = os.path.join(
+                default_proof_path, "network_logs.json"
+            )
+        self.request_response_logs: List[Dict] = []
+
+        # ----------------------
+        # 5) INIT PLAYWRIGHT & BROWSERS
+        # ----------------------
         self._playwright: Optional[Playwright] = None
         self._browser_context: Optional[BrowserContext] = None
         self.__async_initialize_done = False
-        self._latest_screenshot_bytes: Optional[bytes] = None  # Stores the latest screenshot bytes
-        self._latest_video_path: Optional[str] = None  # Stores the latest video file path
-        self.log_requests_responses = CONF.should_capture_network() or log_requests_responses
-        self.request_response_log_file = os.path.join(
-            CONF.get_proof_path(self.stake_id) or request_response_log_file,
-            "network_logs.json",
-        )
-        self.request_response_logs: List[Dict] = []
+        self._latest_screenshot_bytes: Optional[bytes] = None
+        self._latest_video_path: Optional[str] = None
 
         # Extension caching directory
-        self._extension_cache_dir = os.path.join(".", ".cache", "browser", self.browser_type, "extension")
+        self._extension_cache_dir = os.path.join(
+            ".", ".cache", "browser", self.browser_type, "extension"
+        )
         self._extension_path: Optional[str] = None
 
+        # ----------------------
+        # 6) EMULATION: DEVICE & OVERRIDES
+        # ----------------------
+        # If device_name is None, try from CONF
+        device_name = device_name or CONF.get_run_device()
+        self.device_name = device_name
+        # If no device or device doesn't override viewport, fallback to conf
+        conf_res_str = CONF.get_resolution() or "1280,720"
+        cw, ch = conf_res_str.split(",")
+        conf_viewport = (int(cw), int(ch))
+        self.user_viewport = viewport or conf_viewport
+
+        self.user_locale = locale or CONF.get_locale()  # or None
+        self.user_timezone = timezone or CONF.get_timezone()  # or None
+        self.user_geolocation = geolocation or CONF.get_geolocation()  # or None
+        self.user_color_scheme = color_scheme or CONF.get_color_scheme() or "light"
+
+        # If iPhone, override browser
+        if self.device_name and "iphone" in self.device_name.lower():
+            logger.info(
+                f"Detected iPhone in device_name='{self.device_name}'; forcing browser_type=webkit."
+            )
+            self.browser_type = "webkit"
+
+        logger.debug(
+            f"PlaywrightManager init - "
+            f"browser_type={self.browser_type}, headless={self.isheadless}, "
+            f"device={self.device_name}, viewport={self.user_viewport}, "
+            f"locale={self.user_locale}, timezone={self.user_timezone}, "
+            f"geolocation={self.user_geolocation}, color_scheme={self.user_color_scheme}"
+        )
+
     async def async_initialize(self) -> None:
-        """
-        Asynchronously initialize necessary components and handlers for the browser context.
-        """
         if self.__async_initialize_done:
             return
 
-        # Step 1: Ensure Playwright is started and browser context is created
         await self.start_playwright()
         await self.ensure_browser_context()
 
-        # Step 2: Deferred setup of handlers
+        # Additional setup
         await self.setup_handlers()
-
-        # Step 3: Navigate to homepage
         await self.go_to_homepage()
 
         self.__async_initialize_done = True
 
     async def ensure_browser_context(self) -> None:
-        """
-        Ensure that a browser context exists, creating it if necessary.
-        """
         if self._browser_context is None:
             await self.create_browser_context()
 
     async def setup_handlers(self) -> None:
-        """
-        Setup various handlers after the browser context has been ensured.
-        """
         await self.set_overlay_state_handler()
         await self.set_user_response_handler()
         await self.set_navigation_handler()
 
     async def start_playwright(self) -> None:
-        """
-        Starts the Playwright instance if it hasn't been started yet. This method is idempotent.
-        """
         if not self._playwright:
             self._playwright = await playwright().start()
 
     async def stop_playwright(self) -> None:
-        """
-        Stops the Playwright instance and resets it to None. This method should be called to clean up resources.
-        """
-        # Close the browser context if it's initialized
         await self.close_browser_context()
-
-        # Stop the Playwright instance if it's initialized
         if self._playwright is not None:
             await self._playwright.stop()
             self._playwright = None
 
     async def prepare_extension(self) -> None:
-        """
-        Prepares the browser extension by downloading and caching it if necessary.
-        """
-        if os.name == "nt":  # Skip extension preparation on Windows
+        if os.name == "nt":
             logger.info("Skipping extension preparation on Windows.")
             return
 
         if self.browser_type == "chromium":
-            extension_url = "https://github.com/gorhill/uBlock/releases/download/1.61.0/uBlock0_1.61.0.chromium.zip"
+            extension_url = (
+                "https://github.com/gorhill/uBlock/releases/download/1.61.0/"
+                "uBlock0_1.61.0.chromium.zip"
+            )
             extension_file_name = "uBlock0_1.61.0.chromium.zip"
             extension_dir_name = "uBlock0_1.61.0.chromium"
         elif self.browser_type == "firefox":
-            extension_url = "https://addons.mozilla.org/firefox/downloads/file/4359936/ublock_origin-1.60.0.xpi"
+            extension_url = (
+                "https://addons.mozilla.org/firefox/downloads/file/4359936/"
+                "ublock_origin-1.60.0.xpi"
+            )
             extension_file_name = "uBlock0_1.60.0.firefox.xpi"
             extension_dir_name = "uBlock0_1.60.0.firefox"
         else:
@@ -191,36 +267,50 @@ class PlaywrightManager:
         extension_file_path = os.path.join(extension_dir, extension_file_name)
 
         if not os.path.exists(extension_dir):
-            os.makedirs(extension_dir)
+            await asyncio.to_thread(os.makedirs, extension_dir)
 
         if not os.path.exists(extension_file_path):
-            # Download the extension
             logger.info(f"Downloading extension from {extension_url}")
             async with httpx.AsyncClient(follow_redirects=True) as client:
                 response = await client.get(extension_url)
                 if response.status_code == 200:
-                    with open(extension_file_path, "wb") as f:
-                        f.write(response.content)
-                    logger.info(f"Extension downloaded and saved to {extension_file_path}")
+                    # Write asynchronously
+                    async def write_file_async(path, content):
+                        await asyncio.to_thread(lambda: open(path, "wb").write(content))
+
+                    await write_file_async(extension_file_path, response.content)
+                    logger.info(
+                        f"Extension downloaded and saved to {extension_file_path}"
+                    )
                 else:
-                    logger.error(f"Failed to download extension from {extension_url}, status {response.status_code}")
+                    logger.error(
+                        f"Failed to download extension from {extension_url}, "
+                        f"status {response.status_code}"
+                    )
                     return
 
         if self.browser_type == "chromium":
-            # Unzip the extension
             extension_unzip_dir = os.path.join(extension_dir, extension_dir_name)
             if not os.path.exists(extension_unzip_dir):
-                with zipfile.ZipFile(extension_file_path, "r") as zip_ref:
-                    zip_ref.extractall(extension_unzip_dir)
+                # Unzip asynchronously
+                def unzip_archive(zip_path, extract_dir):
+                    with zipfile.ZipFile(zip_path, "r") as zip_ref:
+                        zip_ref.extractall(extract_dir)
 
+                await asyncio.to_thread(
+                    unzip_archive, extension_file_path, extension_unzip_dir
+                )
             self._extension_path = extension_unzip_dir + "/uBlock0.chromium"
         elif self.browser_type == "firefox":
-            # For Firefox, use the .xpi file directly
             self._extension_path = extension_file_path
 
     async def create_browser_context(self) -> None:
+        """
+        Creates the browser context with device descriptor if any,
+        plus locale, timezone, geolocation, color scheme, etc.
+        """
         user_dir: str = os.environ.get("BROWSER_STORAGE_DIR", "")
-        resolution: str = CONF.get_resolution()
+
         disable_args = [
             "--disable-session-crashed-bubble",
             "--disable-notifications",
@@ -238,38 +328,92 @@ class PlaywrightManager:
             "--window-position=0,0",
             "--disable-web-security",
             "--disable-features=IsolateOrigins,site-per-process",
-            f"--window-size={resolution}",
         ]
+
+        if not self.device_name:
+            w, h = self.user_viewport
+            disable_args.append(f"--window-size={w},{h}")
+
         if self.cdp_config:
-            # Connect over CDP
             logger.info("Connecting over CDP with provided configuration.")
             endpoint_url = self.cdp_config.get("endpoint_url")
             if not endpoint_url:
                 raise ValueError("CDP config must include 'endpoint_url'.")
+
             browser_type = getattr(self._playwright, self.browser_type)
             _browser = await browser_type.connect_over_cdp(endpoint_url)
+
             if self._record_video:
-                # Record video in CDP mode
-                context_options = {
-                    "record_video_dir": self._video_dir,
-                    # "record_video_size": {"width": 1920, "height": 1080},
-                }
+                context_options = {"record_video_dir": self._video_dir}
+                context_options.update(self._build_emulation_context_options())
                 self._browser_context = await _browser.new_context(**context_options)
                 page = await self._browser_context.new_page()
                 await page.goto("https://www.google.com")
                 logger.info("Recording video in CDP mode.")
             else:
+                # Reuse existing context
                 self._browser_context = _browser.contexts[0]
+
         else:
             if self.browser_type != "chromium":
                 disable_args = []
+
             browser_type = getattr(self._playwright, self.browser_type)
-            # Prepare the extension
             await self.prepare_extension()
+
             if self._record_video:
-                await self._launch_browser_with_video(browser_type, user_dir, disable_args)
+                await self._launch_browser_with_video(
+                    browser_type, user_dir, disable_args
+                )
             else:
-                await self._launch_persistent_browser(browser_type, user_dir, disable_args)
+                await self._launch_persistent_browser(
+                    browser_type, user_dir, disable_args
+                )
+
+    def _build_emulation_context_options(self) -> Dict[str, Any]:
+        """
+        Combine device descriptor with user overrides (locale, timezone, geolocation,
+        color scheme, plus optional permissions).
+        """
+        context_options: Dict[str, Any] = {}
+
+        # 1) If device_name is set, retrieve from built-in devices
+        if self.device_name and self._playwright:
+            device = self._playwright.devices.get(self.device_name)
+            if device:
+                context_options.update(device)
+            else:
+                logger.warning(
+                    f"Device '{self.device_name}' not found. Using custom viewport."
+                )
+                context_options["viewport"] = {
+                    "width": self.user_viewport[0],
+                    "height": self.user_viewport[1],
+                }
+        else:
+            context_options["viewport"] = {
+                "width": self.user_viewport[0],
+                "height": self.user_viewport[1],
+            }
+
+        # 2) Additional overrides
+        if self.user_locale:
+            context_options["locale"] = self.user_locale
+        if self.user_timezone:
+            context_options["timezone_id"] = self.user_timezone
+        if self.user_geolocation:
+            context_options["geolocation"] = self.user_geolocation
+            # Optionally also set geolocation permission
+            # if you only want that single permission:
+            # context_options["permissions"] = ["geolocation"]
+        if self.user_color_scheme:
+            context_options["color_scheme"] = self.user_color_scheme
+
+        # 3) (New) If we want to allow all possible permissions, set them:
+        if self.allow_all_permissions:
+            context_options["permissions"] = ALL_POSSIBLE_PERMISSIONS
+
+        return context_options
 
     async def _launch_persistent_browser(
         self,
@@ -279,29 +423,37 @@ class PlaywrightManager:
     ) -> None:
         if disable_args is None:
             disable_args = []
-        logger.info("Launching %s with user dir: %s", self.browser_type, user_dir)
+
+        logger.info(f"Launching {self.browser_type} with user dir: {user_dir}")
+
         try:
             browser_context_kwargs = {
                 "headless": self.isheadless,
                 "args": disable_args,
-                "no_viewport": True,
             }
-            disable_args.append(f"--disable-extensions-except={self._extension_path}")
-            disable_args.append(f"--load-extension={self._extension_path}")
-            if self.browser_type == "firefox" and self._extension_path is not None:
+            browser_context_kwargs.update(self._build_emulation_context_options())
+
+            if self.browser_type == "chromium" and self._extension_path is not None:
+                disable_args.append(
+                    f"--disable-extensions-except={self._extension_path}"
+                )
+                disable_args.append(f"--load-extension={self._extension_path}")
+            elif self.browser_type == "firefox" and self._extension_path is not None:
                 browser_context_kwargs["firefox_user_prefs"] = {
-                    "xpinstall.signatures.required": False,  # Allow unsigned extensions
-                    "extensions.autoDisableScopes": 0,  # Prevent auto-disable for the extension
-                    "extensions.enabledScopes": 15,  # Enable all scopes
-                    "extensions.installDistroAddons": False,  # Disable distro add-ons
-                    "extensions.update.enabled": False,  # Prevent automatic extension updates
-                    "browser.shell.checkDefaultBrowser": False,  # Prevent default browser check
-                    "browser.startup.homepage": "about:blank",  # Start with a blank page
-                    "toolkit.telemetry.reportingpolicy.firstRun": False,  # Disable telemetry
-                    "extensions.webextensions.userScripts.enabled": True,  # Allow web extensions without prompt
+                    "xpinstall.signatures.required": False,
+                    "extensions.autoDisableScopes": 0,
+                    "extensions.enabledScopes": 15,
+                    "extensions.installDistroAddons": False,
+                    "extensions.update.enabled": False,
+                    "browser.shell.checkDefaultBrowser": False,
+                    "browser.startup.homepage": "about:blank",
+                    "toolkit.telemetry.reportingpolicy.firstRun": False,
+                    "extensions.webextensions.userScripts.enabled": True,
                 }
 
-            self._browser_context = await browser_type.launch_persistent_context(user_dir, **browser_context_kwargs)
+            self._browser_context = await browser_type.launch_persistent_context(
+                user_dir, **browser_context_kwargs
+            )
         except (PlaywrightError, OSError) as e:
             await self._handle_launch_exception(e, user_dir, browser_type, disable_args)
 
@@ -311,31 +463,32 @@ class PlaywrightManager:
         user_dir: str,
         disable_args: Optional[List[str]] = None,
     ) -> None:
-        logger.info("Launching %s with video recording enabled.", self.browser_type)
-        # Copy user data to a temporary directory
+        logger.info(f"Launching {self.browser_type} with video recording enabled.")
         temp_user_dir = tempfile.mkdtemp(prefix="playwright-user-data-")
+        # copy user_dir to temp in a separate thread
         if user_dir and os.path.exists(user_dir):
-            shutil.copytree(user_dir, temp_user_dir, dirs_exist_ok=True)
+            await asyncio.to_thread(shutil.copytree, user_dir, temp_user_dir, True)
         else:
             user_dir = temp_user_dir
 
         try:
             if self.browser_type == "chromium" and self._extension_path is not None:
-                disable_args.append(f"--disable-extensions-except={self._extension_path}")
+                disable_args.append(
+                    f"--disable-extensions-except={self._extension_path}"
+                )
                 disable_args.append(f"--load-extension={self._extension_path}")
+
             browser = await browser_type.launch(
                 headless=self.isheadless,
                 args=disable_args,
             )
-            context_options = {
-                "record_video_dir": self._video_dir,
-                # "record_video_size": {"width": 1920, "height": 1080},
-            }
-            # if self.browser_type == "firefox" and self._extension_path is not None:
-            #     context_options["extensions"] = [self._extension_path]
+
+            context_options = {"record_video_dir": self._video_dir}
+            context_options.update(self._build_emulation_context_options())
+
             self._browser_context = await browser.new_context(**context_options)  # type: ignore
         except Exception as e:
-            logger.error("Failed to launch browser with video recording: %s", e)
+            logger.error(f"Failed to launch browser with video recording: {e}")
             raise e
 
     async def _handle_launch_exception(
@@ -348,67 +501,42 @@ class PlaywrightManager:
         if "Target page, context or browser has been closed" in str(e):
             new_user_dir = tempfile.mkdtemp()
             logger.error(
-                "Failed to launch persistent context with user dir %s: %s. Trying to launch with a new user dir %s",
-                user_dir,
-                e,
-                new_user_dir,
+                f"Failed to launch persistent context with user dir {user_dir}: {e}. "
+                f"Trying with a new user dir {new_user_dir}"
             )
             self._browser_context = await browser_type.launch_persistent_context(
                 new_user_dir,
                 headless=self.isheadless,
                 args=args or [],
-                no_viewport=True,
             )
         elif "Chromium distribution 'chrome' is not found" in str(e):
             raise ValueError(
-                "Chrome is not installed on this device. Install Google Chrome or install playwright using 'playwright install chrome'. Refer to the readme for more information."
+                "Chrome is not installed on this device. Install Google Chrome or use 'playwright install'."
             ) from None
         else:
             raise e from None
 
     async def get_browser_context(self) -> BrowserContext:
-        """
-        Returns the existing browser context, or creates a new one if it doesn't exist.
-        """
         await self.ensure_browser_context()
         if self._browser_context is None:
             raise RuntimeError("Browser context is not available.")
         return self._browser_context
 
     async def setup_request_response_logging(self, page: Page) -> None:
-        """
-        Sets up logging for request and response events.
-
-        Args:
-            page (Page): The Playwright Page object.
-        """
         if not self.log_requests_responses:
             return
-
-        # Handler for logging request details
         page.on("request", self.log_request)
-
-        # Handler for logging response details
         page.on("response", self.log_response)
 
     def log_request(self, request) -> None:
-        """
-        Logs request details and writes to the file incrementally.
-
-        Args:
-            request: The Playwright Request object.
-        """
         try:
-            # Attempt to decode post_data
             post_data = request.post_data
             try:
-                # Decode as UTF-8 if it's text data
                 decoded_post_data = post_data.decode("utf-8")
             except (UnicodeDecodeError, AttributeError):
-                # Encode in Base64 if it's binary data
                 decoded_post_data = base64.b64encode(post_data).decode("utf-8")
         except Exception:
-            decoded_post_data = None  # Handle cases where post_data is missing or inaccessible
+            decoded_post_data = None
 
         log_entry = {
             "type": "request",
@@ -418,45 +546,35 @@ class PlaywrightManager:
             "headers": request.headers,
             "post_data": decoded_post_data,
         }
-        self.write_log_entry_to_file(log_entry)
+        # Instead of writing directly, do it via asyncio
+        asyncio.ensure_future(self._write_log_entry_to_file(log_entry))
 
     def log_response(self, response) -> None:
-        """
-        Logs response details and writes to the file incrementally.
-
-        Args:
-            response: The Playwright Response object.
-        """
         log_entry = {
             "type": "response",
             "timestamp": time.time(),
             "status": response.status,
             "url": response.url,
             "headers": response.headers,
-            "body": None,  # You can add logic to capture the response body if needed
+            "body": None,
         }
-        self.write_log_entry_to_file(log_entry)
+        asyncio.ensure_future(self._write_log_entry_to_file(log_entry))
 
-    def write_log_entry_to_file(self, log_entry: Dict) -> None:
-        """
-        Writes a single log entry to the log file in an incremental manner.
-
-        Args:
-            log_entry (dict): The log entry to write.
-        """
+    async def _write_log_entry_to_file(self, log_entry: Dict) -> None:
+        """Write a single log entry asynchronously."""
         try:
-            with open(self.request_response_log_file, "a", encoding="utf-8") as file:
-                file.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
+            line = json.dumps(log_entry, ensure_ascii=False) + "\n"
+
+            # We'll open the file in append mode within a thread
+            def append_line(filepath, text):
+                with open(filepath, "a", encoding="utf-8") as file:
+                    file.write(text)
+
+            await asyncio.to_thread(append_line, self.request_response_log_file, line)
         except Exception as e:
             logger.error(f"Failed to write request/response log to file: {e}")
 
     async def get_current_url(self) -> Optional[str]:
-        """
-        Get the current URL of the current page.
-
-        Returns:
-            Optional[str]: The current URL if any.
-        """
         try:
             current_page: Page = await self.get_current_page()
             return current_page.url
@@ -465,42 +583,30 @@ class PlaywrightManager:
         return None
 
     async def get_current_page(self) -> Page:
-        """
-        Get the current page of the browser.
-
-        Returns:
-            Page: The current page if any.
-        """
         try:
             browser_context = await self.get_browser_context()
-            # Filter out closed pages
-            pages: list[Page] = [page for page in browser_context.pages if not page.is_closed()]
+            pages: list[Page] = [p for p in browser_context.pages if not p.is_closed()]
             page: Optional[Page] = pages[-1] if pages else None
+
             logger.debug(f"Current page: {page.url if page else None}")
-            if page is not None:
-                return page
-            else:
+            if page is None:
+                logger.debug("Creating new page. No pages found.")
                 page = await browser_context.new_page()
                 await self.setup_request_response_logging(page)
-                return page
+            return page
+
         except Exception as e:
-            logger.warning(f"Error getting current page: {e}. Creating a new browser context.")
+            logger.warning(f"Error getting current page: {e}. Creating new context.")
             self._browser_context = None
             await self.ensure_browser_context()
             browser_context = await self.get_browser_context()
-            pages = [page for page in browser_context.pages if not page.is_closed()]
+            pages = [p for p in browser_context.pages if not p.is_closed()]
             if pages:
                 return pages[-1]
             else:
                 return await browser_context.new_page()
 
     async def close_all_tabs(self, keep_first_tab: bool = True) -> None:
-        """
-        Closes all tabs in the browser context, except for the first tab if `keep_first_tab` is set to True.
-
-        Args:
-            keep_first_tab (bool, optional): Whether to keep the first tab open. Defaults to True.
-        """
         browser_context = await self.get_browser_context()
         pages: list[Page] = browser_context.pages
         if keep_first_tab:
@@ -511,12 +617,6 @@ class PlaywrightManager:
             await page.close()
 
     async def close_except_specified_tab(self, page_to_keep: Page) -> None:
-        """
-        Closes all tabs in the browser context, except for the specified tab.
-
-        Args:
-            page_to_keep (Page): The Playwright page object representing the tab that should remain open.
-        """
         browser_context = await self.get_browser_context()
         for page in browser_context.pages:
             if page != page_to_keep:
@@ -528,36 +628,38 @@ class PlaywrightManager:
 
     async def set_navigation_handler(self) -> None:
         page: Page = await self.get_current_page()
-
-        # Set event listeners for the main page
         if self.ui_manager:
             page.on("domcontentloaded", self.ui_manager.handle_navigation)
         page.on("domcontentloaded", handle_navigation_for_mutation_observer)
 
-        # Function to set event listeners for all iframes
         async def set_iframe_navigation_handlers() -> None:
             for frame in page.frames:
-                # Check if the frame is not the main frame
                 if frame != page.main_frame:
-                    frame.on("domcontentloaded", handle_navigation_for_mutation_observer)
+                    frame.on(
+                        "domcontentloaded", handle_navigation_for_mutation_observer
+                    )
 
-        # Set event listeners for current iframes
         await set_iframe_navigation_handlers()
 
-        # Expose the function for DOM mutation change detection
-        await page.expose_function("dom_mutation_change_detected", dom_mutation_change_detected)
-
-        # Optionally, you can add a listener to capture new iframes as they are added dynamically
+        await page.expose_function(
+            "dom_mutation_change_detected", dom_mutation_change_detected
+        )
         page.on(
             "frameattached",
-            lambda frame: frame.on("domcontentloaded", handle_navigation_for_mutation_observer),
+            lambda frame: frame.on(
+                "domcontentloaded", handle_navigation_for_mutation_observer
+            ),
         )
 
     async def set_overlay_state_handler(self) -> None:
         logger.debug("Setting overlay state handler")
         context = await self.get_browser_context()
-        await context.expose_function("overlay_state_changed", self.overlay_state_handler)
-        await context.expose_function("show_steps_state_changed", self.show_steps_state_handler)
+        await context.expose_function(
+            "overlay_state_changed", self.overlay_state_handler
+        )
+        await context.expose_function(
+            "show_steps_state_changed", self.show_steps_state_handler
+        )
 
     async def overlay_state_handler(self, is_collapsed: bool) -> None:
         page = await self.get_current_page()
@@ -575,18 +677,12 @@ class PlaywrightManager:
         context = await self.get_browser_context()
         await context.expose_function("user_response", self.receive_user_response)
 
-    async def notify_user(self, message: str, message_type: MessageType = MessageType.STEP) -> None:
-        """
-        Notify the user with a message.
-
-        Args:
-            message (str): The message to notify the user with.
-            message_type (MessageType, optional): The type of message. Defaults to MessageType.STEP.
-        """
+    async def notify_user(
+        self, message: str, message_type: MessageType = MessageType.STEP
+    ) -> None:
         message = message.strip(":,")
         if message_type == MessageType.PLAN:
-            message = beautify_plan_message(message)
-            message = "Plan:\n" + message
+            message = "Plan:\n" + beautify_plan_message(message)
         elif message_type == MessageType.STEP:
             if "confirm" in message.lower():
                 message = "Verify: " + message
@@ -602,8 +698,6 @@ class PlaywrightManager:
         safe_message = escape_js_message(message)
         if self.ui_manager:
             self.ui_manager.new_system_message(safe_message, message_type)
-
-        if self.ui_manager:
             if not self.ui_manager.overlay_show_details and message_type not in (
                 MessageType.PLAN,
                 MessageType.QUESTION,
@@ -620,66 +714,50 @@ class PlaywrightManager:
             ):
                 return
 
-            safe_message_type = escape_js_message(message_type.value)
+            safe_message_type = escape_js_message(message_type)
             try:
-                js_code = f"addSystemMessage({safe_message}, is_awaiting_user_response=false, message_type={safe_message_type});"
+                js_code = (
+                    f"addSystemMessage({safe_message}, "
+                    f"is_awaiting_user_response=false, "
+                    f"message_type={safe_message_type});"
+                )
                 page = await self.get_current_page()
                 await page.evaluate(js_code)
             except Exception as e:
-                logger.error(f'Failed to notify user with message "{message}". This may resolve after the page loads: {e}')
-        msg = message_type
-        if not isinstance(msg, str):
-            msg = message_type.value  # type: ignore
-        self.notification_manager.notify(message, str(msg))
+                logger.error(f'Failed to notify user with "{message}": {e}')
+
+        self.notification_manager.notify(message, str(message_type))
 
     async def highlight_element(self, selector: str, add_highlight: bool) -> None:
         try:
             page: Page = await self.get_current_page()
 
-            # Helper function to apply or remove highlight in both regular and shadow DOM
-            async def highlight_in_shadow_dom(selector, add_highlight) -> None:
-                if add_highlight:
-                    # Apply highlight, including in Shadow DOM elements
+            async def highlight_in_shadow_dom(sel, do_add) -> None:
+                if do_add:
                     await page.evaluate(
                         """(selector) => {
                             const findElementInShadowDOMAndIframes = (parent, selector) => {
-                                // Try to find the element in the current context
                                 let element = parent.querySelector(selector);
-                                if (element) {
-                                    return element; // Element found in the current context
-                                }
-
-                                // Search inside shadow DOMs and iframes
+                                if (element) return element;
                                 const elements = parent.querySelectorAll('*');
                                 for (const el of elements) {
-                                    // Search inside shadow DOMs
                                     if (el.shadowRoot) {
                                         element = findElementInShadowDOMAndIframes(el.shadowRoot, selector);
-                                        if (element) {
-                                            return element; // Element found in shadow DOM
-                                        }
+                                        if (element) return element;
                                     }
-                                    // Search inside iframes
                                     if (el.tagName.toLowerCase() === 'iframe') {
                                         let iframeDocument;
                                         try {
-                                            // Access the iframe's document if it's same-origin
                                             iframeDocument = el.contentDocument || el.contentWindow.document;
-                                        } catch (e) {
-                                            // Cannot access cross-origin iframe; skip to the next element
-                                            continue;
-                                        }
+                                        } catch (e) { continue; }
                                         if (iframeDocument) {
                                             element = findElementInShadowDOMAndIframes(iframeDocument, selector);
-                                            if (element) {
-                                                return element; // Element found inside iframe
-                                            }
+                                            if (element) return element;
                                         }
                                     }
                                 }
-                                return null; // Element not found
+                                return null;
                             };
-
                             const element = findElementInShadowDOMAndIframes(document, selector);
                             if (element) {
                                 element.classList.add('hercules-ui-automation-highlight');
@@ -687,98 +765,72 @@ class PlaywrightManager:
                                     element.classList.remove('hercules-ui-automation-highlight');
                                 });
                             }
-                        }
-                        """,
-                        selector,
+                        }""",
+                        sel,
                     )
-                    logger.debug(f"Applied pulsating border to element with selector {selector} to indicate operation")
+                    logger.debug(f"Applied highlight to {sel}")
                 else:
-                    # Remove highlight from both regular and shadow DOM elements
                     await page.evaluate(
                         """(selector) => {
                             const findElementInShadowDOMAndIframes = (parent, selector) => {
-                                // Try to find the element in the current context
                                 let element = parent.querySelector(selector);
-                                if (element) {
-                                    return element; // Element found in the current context
-                                }
-
-                                // Search inside shadow DOMs and iframes
+                                if (element) return element;
                                 const elements = parent.querySelectorAll('*');
                                 for (const el of elements) {
-                                    // Search inside shadow DOMs
                                     if (el.shadowRoot) {
                                         element = findElementInShadowDOMAndIframes(el.shadowRoot, selector);
-                                        if (element) {
-                                            return element; // Element found in shadow DOM
-                                        }
+                                        if (element) return element;
                                     }
-                                    // Search inside iframes
                                     if (el.tagName.toLowerCase() === 'iframe') {
                                         let iframeDocument;
                                         try {
-                                            // Access the iframe's document if it's same-origin
                                             iframeDocument = el.contentDocument || el.contentWindow.document;
-                                        } catch (e) {
-                                            // Cannot access cross-origin iframe; skip to the next element
-                                            continue;
-                                        }
+                                        } catch (e) { continue; }
                                         if (iframeDocument) {
                                             element = findElementInShadowDOMAndIframes(iframeDocument, selector);
-                                            if (element) {
-                                                return element; // Element found inside iframe
-                                            }
+                                            if (element) return element;
                                         }
                                     }
                                 }
-                                return null; // Element not found
+                                return null;
                             };
-
                             const element = findElementInShadowDOMAndIframes(document, selector);
                             if (element) {
                                 element.classList.remove('hercules-ui-automation-highlight');
                             }
-                        }
-                        """,
-                        selector,
+                        }""",
+                        sel,
                     )
-                    logger.debug(f"Removed pulsating border from element with selector {selector} after operation")
+                    logger.debug(f"Removed highlight from {sel}")
 
-            # Call the helper function to apply or remove highlight
             await highlight_in_shadow_dom(selector, add_highlight)
-
         except Exception as e:
-            # This is not significant enough to fail the operation
-            logger.warning(f"An error occurred in highlight_element: {e}")
+            logger.warning(
+                f"Error in highlight_element({selector}, {add_highlight}): {e}"
+            )
 
     async def receive_user_response(self, response: str) -> None:
-        logger.debug(f"Received user response to system prompt: {response}")
+        logger.debug(f"Received user response: {response}")
         if self.user_response_future and not self.user_response_future.done():
             self.user_response_future.set_result(response)
 
     async def prompt_user(self, message: str) -> str:
-        """
-        Prompt the user with a message and wait for a response.
-
-        Args:
-            message (str): The message to prompt the user with.
-
-        Returns:
-            str: The user's response.
-        """
-        logger.debug(f'Prompting user with message: "{message}"')
+        logger.debug(f'Prompting user with: "{message}"')
         page = await self.get_current_page()
 
         if self.ui_manager:
             await self.ui_manager.show_overlay(page)
             self.log_system_message(message, MessageType.QUESTION)
             safe_message = escape_js_message(message)
-            js_code = f"addSystemMessage({safe_message}, is_awaiting_user_response=true, message_type='question');"
+            js_code = (
+                f"addSystemMessage({safe_message}, "
+                f"is_awaiting_user_response=true, message_type='question');"
+            )
             await page.evaluate(js_code)
 
         self.user_response_future = asyncio.Future()
         result = await self.user_response_future
-        logger.info(f'User prompt response to "{message}": {result}')
+        logger.info(f'User response to "{message}": {result}')
         self.user_response_future = None
         if self.ui_manager:
             self.ui_manager.new_user_message(result)
@@ -803,7 +855,7 @@ class PlaywrightManager:
         full_page: bool = True,
         include_timestamp: bool = True,
         load_state: str = "domcontentloaded",
-        take_snapshot_timeout: int = 5 * 1000,
+        take_snapshot_timeout: int = 5000,
     ) -> None:
         if not self._take_screenshots:
             return
@@ -811,13 +863,15 @@ class PlaywrightManager:
             page = await self.get_current_page()
 
         screenshot_name = name
-
         if include_timestamp:
-            screenshot_name = f"{screenshot_name}_{int(time.time_ns())}"
+            screenshot_name += f"_{int(time.time_ns())}"
         screenshot_name += ".png"
         screenshot_path = os.path.join(self.get_screenshots_dir(), screenshot_name)
+
         try:
-            await page.wait_for_load_state(state=load_state, timeout=take_snapshot_timeout)
+            await page.wait_for_load_state(
+                state=load_state, timeout=take_snapshot_timeout
+            )
             screenshot_bytes = await page.screenshot(
                 path=screenshot_path,
                 full_page=full_page,
@@ -825,18 +879,12 @@ class PlaywrightManager:
                 caret="initial",
                 scale="device",
             )
-            self._latest_screenshot_bytes = screenshot_bytes  # Store the latest screenshot bytes
-            logger.debug(f"Screenshot saved to: {screenshot_path}")
+            self._latest_screenshot_bytes = screenshot_bytes
+            logger.debug(f"Screenshot saved: {screenshot_path}")
         except Exception as e:
-            logger.error(f'Failed to take screenshot and save to "{screenshot_path}". Error: {e}')
+            logger.error(f"Failed to take screenshot at {screenshot_path}: {e}")
 
     async def get_latest_screenshot_stream(self) -> Optional[BytesIO]:
-        """
-        Retrieves the latest screenshot as a byte stream.
-
-        Returns:
-            Optional[BytesIO]: A BytesIO stream of the latest screenshot, or None if no screenshot is available.
-        """
         if self._latest_screenshot_bytes:
             return BytesIO(self._latest_screenshot_bytes)
         else:
@@ -844,12 +892,6 @@ class PlaywrightManager:
             return None
 
     def get_latest_video_path(self) -> Optional[str]:
-        """
-        Retrieves the path to the latest video recording.
-
-        Returns:
-            Optional[str]: The file path of the latest video recording, or None if not available.
-        """
         if self._latest_video_path and os.path.exists(self._latest_video_path):
             return self._latest_video_path
         else:
@@ -857,81 +899,72 @@ class PlaywrightManager:
             return None
 
     async def close_browser_context(self) -> None:
-        """
-        Closes the browser context and handles video recording finalization.
-        """
-        if self._browser_context is not None:
+        if self._browser_context:
             if self._record_video:
                 pages = self._browser_context.pages
                 for page in pages:
                     try:
                         if page.video:
                             video_path = await page.video.path()
-                            # rename the video file to include the page URL
-                            video_name = f"{self.stake_id}.webm" or os.path.basename(video_path)
+                            if self.stake_id:
+                                video_name = f"{self.stake_id}.webm"
+                            else:
+                                video_name = os.path.basename(video_path)
                             video_dir = os.path.dirname(video_path)
-                            video_url = "video_of" or page.url.replace("://", "_").replace("/", "_")
-                            new_video_path = os.path.join(video_dir, f"{video_url}_{video_name}")
-                            os.rename(video_path, new_video_path)
+                            safe_url = (
+                                page.url.replace("://", "_").replace("/", "_")
+                                if page.url
+                                else "video_of"
+                            )
+                            new_video_path = os.path.join(
+                                video_dir, f"{safe_url}_{video_name}"
+                            )
+
+                            # rename asynchronously
+                            def rename_file(src, dst):
+                                os.rename(src, dst)
+
+                            await asyncio.to_thread(
+                                rename_file, video_path, new_video_path
+                            )
                             self._latest_video_path = new_video_path
-                            logger.info(f"Video recorded at: {new_video_path}")
+                            logger.info(f"Video recorded at {new_video_path}")
                     except Exception as e:
-                        logger.error(f"Failed to finalize video recording: {e}")
+                        logger.error(f"Could not finalize video: {e}")
             await self._browser_context.close()
             self._browser_context = None
 
     def log_user_message(self, message: str) -> None:
-        """
-        Log the user's message.
-
-        Args:
-            message (str): The user's message to log.
-        """
         if self.ui_manager:
             self.ui_manager.new_user_message(message)
 
-    def log_system_message(self, message: str, message_type: MessageType = MessageType.STEP) -> None:
-        """
-        Log a system message.
-
-        Args:
-            message (str): The system message to log.
-            message_type (MessageType, optional): The type of message. Defaults to MessageType.STEP.
-        """
+    def log_system_message(
+        self, message: str, message_type: MessageType = MessageType.STEP
+    ) -> None:
         if self.ui_manager:
             self.ui_manager.new_system_message(message, message_type)
 
     async def update_processing_state(self, processing_state: str) -> None:
-        """
-        Update the processing state of the overlay.
-
-        Args:
-            processing_state (str): "init", "processing", or "done"
-        """
         page = await self.get_current_page()
         if self.ui_manager:
             await self.ui_manager.update_processing_state(processing_state, page)
 
-    async def command_completed(self, command: str, elapsed_time: Optional[float] = None) -> None:
-        """
-        Notify the overlay that the command has been completed.
-
-        Args:
-            command (str): The command that has been completed.
-            elapsed_time (Optional[float]): The time taken to execute the command.
-        """
-        logger.debug(f'Command "{command}" has been completed. Focusing on the overlay input if it is open.')
+    async def command_completed(
+        self, command: str, elapsed_time: Optional[float] = None
+    ) -> None:
+        logger.debug(f'Command "{command}" completed.')
         page = await self.get_current_page()
         if self.ui_manager:
             await self.ui_manager.command_completed(page, command, elapsed_time)
 
+    # -------------------------------------------------------------------------
+    # Additional helpers for stable network wait
+    # -------------------------------------------------------------------------
     async def _wait_for_stable_network(self) -> None:
         page = await self.get_current_page()
-
         pending_requests = set()
         last_activity = asyncio.get_event_loop().time()
 
-        # Define relevant resource types and content types
         RELEVANT_RESOURCE_TYPES = {
             "document",
             "stylesheet",
@@ -940,7 +973,6 @@ class PlaywrightManager:
             "script",
             "iframe",
         }
-
         RELEVANT_CONTENT_TYPES = {
             "text/html",
             "text/css",
@@ -949,53 +981,40 @@ class PlaywrightManager:
             "font/",
             "application/json",
         }
-
-        # Additional patterns to filter out
         IGNORED_URL_PATTERNS = {
-            # Analytics and tracking
             "analytics",
             "tracking",
             "telemetry",
             "beacon",
             "metrics",
-            # Ad-related
             "doubleclick",
             "adsystem",
             "adserver",
             "advertising",
-            # Social media widgets
             "facebook.com/plugins",
             "platform.twitter",
             "linkedin.com/embed",
-            # Live chat and support
             "livechat",
             "zendesk",
             "intercom",
             "crisp.chat",
             "hotjar",
-            # Push notifications
             "push-notifications",
             "onesignal",
             "pushwoosh",
-            # Background sync/heartbeat
             "heartbeat",
             "ping",
             "alive",
-            # WebRTC and streaming
             "webrtc",
             "rtmp://",
             "wss://",
-            # Common CDNs for dynamic content
             "cloudfront.net",
             "fastly.net",
         }
 
         async def on_request(request: Any) -> None:
-            # Filter by resource type
             if request.resource_type not in RELEVANT_RESOURCE_TYPES:
                 return
-
-            # Filter out streaming, websocket, and other real-time requests
             if request.resource_type in {
                 "websocket",
                 "media",
@@ -1004,38 +1023,25 @@ class PlaywrightManager:
                 "other",
             }:
                 return
-
-            # Filter out by URL patterns
             url = request.url.lower()
-            if any(pattern in url for pattern in IGNORED_URL_PATTERNS):
+            if any(p in url for p in IGNORED_URL_PATTERNS):
                 return
-
-            # Filter out data URLs and blob URLs
             if url.startswith(("data:", "blob:")):
                 return
-
-            # Filter out requests with certain headers
             headers = request.headers
-            if headers.get("purpose") == "prefetch" or headers.get("sec-fetch-dest") in [
-                "video",
-                "audio",
-            ]:
+            if headers.get("purpose") == "prefetch" or headers.get(
+                "sec-fetch-dest"
+            ) in ["video", "audio"]:
                 return
-
             nonlocal last_activity
             pending_requests.add(request)
             last_activity = asyncio.get_event_loop().time()
-            # logger.debug(f'Request started: {request.url} ({request.resource_type})')
 
         async def on_response(response: Any) -> None:
             request = response.request
             if request not in pending_requests:
                 return
-
-            # Filter by content type if available
             content_type = response.headers.get("content-type", "").lower()
-
-            # Skip if content type indicates streaming or real-time data
             if any(
                 t in content_type
                 for t in [
@@ -1051,69 +1057,97 @@ class PlaywrightManager:
             ):
                 pending_requests.remove(request)
                 return
-
-            # Only process relevant content types
             if not any(ct in content_type for ct in RELEVANT_CONTENT_TYPES):
                 pending_requests.remove(request)
                 return
-
-            # Skip if response is too large (likely not essential for page load)
             content_length = response.headers.get("content-length")
-            if content_length and int(content_length) > 5 * 1024 * 1024:  # 5MB
+            if content_length and int(content_length) > 5 * 1024 * 1024:
                 pending_requests.remove(request)
                 return
-
             nonlocal last_activity
             pending_requests.remove(request)
             last_activity = asyncio.get_event_loop().time()
-            # logger.debug(f'Request resolved: {request.url} ({content_type})')
 
-        # Attach event listeners
         page.on("request", on_request)
         page.on("response", on_response)
 
         try:
-            # Wait for idle time
             start_time = asyncio.get_event_loop().time()
             while True:
                 await asyncio.sleep(0.1)
                 now = asyncio.get_event_loop().time()
-                if len(pending_requests) == 0 and (now - last_activity) >= WAIT_FOR_NETWORK_IDLE:
+                if (len(pending_requests) == 0) and (
+                    (now - last_activity) >= WAIT_FOR_NETWORK_IDLE
+                ):
                     break
                 if now - start_time > MAX_WAIT_PAGE_LOAD_TIME:
-                    logger.debug(f"Network timeout after {MAX_WAIT_PAGE_LOAD_TIME}s with {len(pending_requests)} " f"pending requests: {[r.url for r in pending_requests]}")
+                    logger.debug(
+                        f"Network timeout after {MAX_WAIT_PAGE_LOAD_TIME}s with {len(pending_requests)} pending requests"
+                    )
                     break
-
         finally:
-            # Clean up event listeners
             page.remove_listener("request", on_request)
             page.remove_listener("response", on_response)
 
-        logger.debug(f"Network stabilized for {WAIT_FOR_NETWORK_IDLE} seconds")
+        logger.debug(f"Network stabilized for {WAIT_FOR_NETWORK_IDLE} ms")
 
-    async def wait_for_page_and_frames_load(self, timeout_overwrite: float | None = None) -> None:
-        """
-        Ensures page is fully loaded before continuing.
-        Waits for either network to be idle or minimum WAIT_TIME, whichever is longer.
-        """
-        # Start timing
+    async def wait_for_page_and_frames_load(
+        self, timeout_overwrite: Optional[float] = None
+    ) -> None:
         start_time = time.time()
-
-        # await asyncio.sleep(self.minimum_wait_page_load_time)
-
-        # Wait for page load
         try:
             await self._wait_for_stable_network()
         except Exception:
-            logger.warning("Page load failed, continuing...")
-            pass
+            logger.warning("Page load stable-network check failed, continuing...")
 
-        # Calculate remaining time to meet minimum WAIT_TIME
         elapsed = time.time() - start_time
         remaining = max((timeout_overwrite or MIN_WAIT_PAGE_LOAD_TIME) - elapsed, 0)
-
-        logger.debug(f"--Page loaded in {elapsed:.2f} seconds, waiting for additional {remaining:.2f} seconds")
-
-        # Sleep remaining time if needed
+        logger.debug(
+            f"Page loaded in {elapsed:.2f}s, waiting {remaining:.2f}s more for stability."
+        )
         if remaining > 0:
             await asyncio.sleep(remaining)
+
+    # -------------------------------------------------------------------------
+    # NEW METHODS for updating context properties on the fly
+    # -------------------------------------------------------------------------
+    async def set_size(self, width: int, height: int) -> None:
+        """Change the viewport size on the current page (runtime only)."""
+        page = await self.get_current_page()
+        await page.set_viewport_size({"width": width, "height": height})
+        logger.debug(f"Viewport changed to {width}x{height} (runtime)")
+
+    async def set_locale(self, locale: str) -> None:
+        """
+        Changing locale at runtime requires a new context in Playwright.
+        We'll store the new locale, close & recreate the context, and reopen the homepage.
+        """
+        logger.debug(f"Updating locale to {locale}")
+        self.user_locale = locale
+        await self._recreate_browser_context()
+
+    async def set_timezone(self, timezone: str) -> None:
+        logger.debug(f"Updating timezone to {timezone}")
+        self.user_timezone = timezone
+        await self._recreate_browser_context()
+
+    async def set_geolocation(self, latitude: float, longitude: float) -> None:
+        logger.debug(f"Updating geolocation to lat={latitude}, long={longitude}")
+        self.user_geolocation = {"latitude": latitude, "longitude": longitude}
+        context = await self.get_browser_context()
+        await context.set_geolocation({"latitude": latitude, "longitude": longitude})
+
+    async def set_color_scheme(self, color_scheme: str) -> None:
+        logger.debug(f"Updating color scheme to {color_scheme}")
+        self.user_color_scheme = color_scheme
+        page = await self.get_current_page()
+        await page.emulate_media(color_scheme=self.user_color_scheme)
+
+    async def _recreate_browser_context(self) -> None:
+        """Close the current context, re-create with updated emulation settings, then navigate home."""
+        logger.debug("Recreating browser context to apply new emulation settings.")
+        if self._browser_context:
+            await self._browser_context.close()
+            self._browser_context = None
+        await self.create_browser_context()
+        await self.go_to_homepage()

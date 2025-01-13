@@ -159,11 +159,13 @@ To set up and run Hercules on a Windows machine:
 
 
 #### Supported AI Models for TestZeus-Hercules
-- Anthropic Haiku: Compatible with Haiku 3.5 and above.
+- Anthropic Haiku : Compatible with Haiku 3.5 and above.
 - Groq: Supports any version with function calling and coding capabilities.
-- Mistral: Supports any version with function calling and coding capabilities.
-- OpenAI: Fully compatible with GPT-4o and above. Note: OpenAI GPT-4o-mini is not supported.
-- Ollama: Not supported based on current testing.
+- Mistral: Supports any version with function calling and coding capabilities. Mistral-large, Mistral-medium
+- OpenAI: Fully compatible with GPT-4o and above. Note: OpenAI GPT-4o-mini is only supported for sub agents, for planner it is still recommended to use GPT-4o.
+- Ollama: Supported with medium models and function calling.
+- Gemini: not supported, as function calling keeps breaking. Open bug.
+- Hosting: supported on AWS bedrock, GCP VertexAI, AzureAI.
 
 #### Execution Flow
 
@@ -333,6 +335,80 @@ For the hardcore enthusiasts, you can use Hercules via the source code to get a 
 
    - This will trigger an input prompt where you can chat with Hercules, and it will perform actions based on your commands.
 
+### Approach 4: Setting Up via helper_script_custom.sh
+
+For those who want a fully automated setup experience on Linux/macOS environments, we provide a helper_script.sh. This script installs Python 3.11 (if needed), creates a virtual environment, installs TestZeus Hercules, and sets up the base project directories in an opt folder.
+
+#### Prerequisites
+
+- Ensure you have **Python 3.11** installed on your system.
+
+#### Steps to Run from helper_script_custom.sh
+1. **Download or Create the Script**
+  You can copy the script below into a file named helper_script_custom.sh:
+  ```bash
+  #!/bin/bash
+  # set -ex
+
+  # curl -sS https://bootstrap.pypa.io/get-pip.py | python3.11
+
+  # Create a new Python virtual environment named 'test'
+  python3.11 -m venv test
+
+  # Activate the virtual environment
+  source test/bin/activate
+
+  # Upgrade the 'testzeus-hercules' package
+  pip install --upgrade testzeus-hercules
+  playwright install --with-deps
+
+  # create a new directory named 'opt'
+  mkdir -p opt/input opt/output opt/test_data
+
+  # download https://raw.githubusercontent.com/test-zeus-ai/testzeus-hercules/refs/heads/main/agents_llm_config-example.json
+  curl -sS https://raw.githubusercontent.com/test-zeus-ai/testzeus-hercules/main/agents_llm_config-example.json > agents_llm_config-example.json
+  mv agents_llm_config-example.json agents_llm_config.json
+
+  # prompt user that they need to edit the 'agents_llm_config.json' file, halt the script and open the file in an editor
+  echo "Please edit the 'agents_llm_config.json' file to add your API key and other configurations."
+
+  # halt the script and mention the absolute path of the agents_llm_config.json file so that user can edit it in the editor
+  echo "The 'agents_llm_config.json' file is located at $(pwd)/agents_llm_config.json"
+  read -p "Press Enter if file is updated"
+
+  # download https://raw.githubusercontent.com/test-zeus-ai/testzeus-hercules/blob/main/.env-example
+  curl -sS https://raw.githubusercontent.com/test-zeus-ai/testzeus-hercules/main/.env-example > .env-example
+  mv .env-example .env
+
+  # prompt user that they need to edit the .env file, halt the script and open the file in an editor
+  echo "The '.env' file is located at $(pwd)/.env"
+  read -p "Press Enter if file is updated"
+
+  # create a input/test.feature file
+  # download https://raw.githubusercontent.com/test-zeus-ai/testzeus-hercules/refs/heads/main/opt/input/test.feature and save in opt/input/test.feature
+  curl -sS https://raw.githubusercontent.com/test-zeus-ai/testzeus-hercules/main/opt/input/test.feature > opt/input/test.feature
+
+  # download https://raw.githubusercontent.com/test-zeus-ai/testzeus-hercules/refs/heads/main/opt/test_data/test_data.json and save in opt/test_data/test_data.json
+  curl -sS https://raw.githubusercontent.com/test-zeus-ai/testzeus-hercules/main/opt/test_data/test_data.json > opt/test_data/test_data.json
+
+  # Run the 'testzeus-hercules' command with the specified parameters
+  testzeus-hercules --project-base=opt
+  ```
+2. **Make the Script Executable and Run**
+```bash
+chmod +x helper_script.sh
+./helper_script.sh
+```
+-	The script will:
+	•	Create a Python 3.11 virtual environment named test.
+	•	Install testzeus-hercules and Playwright dependencies.
+	•	Create the opt folder structure (for input/output/test data).
+	•	Download sample config files: agents_llm_config.json, .env, and example feature/test data files.
+	•	Important: You will be prompted to edit both agents_llm_config.json and .env files. After you’ve added your API keys and other custom configurations, press Enter to continue.
+
+3. **Script Output**
+	-	After completion, the script automatically runs testzeus-hercules --project-base=opt.
+	-	Your logs and results will appear in opt/output, opt/log_files, and opt/proofs.
 ---
 
 ## 📝 Configuration Details
@@ -480,6 +556,33 @@ Grounded in the powerful foundations of TestZeus, Hercules tackles UI assertions
 Run Hercules locally or integrate it seamlessly into your CI/CD pipeline. Docker-native and one-command ready, Hercules fits smoothly into your deployment workflows, keeping testing quick, consistent, and hassle-free.
 
 With Hercules, testing is no longer just a step in the process—it's a powerful, streamlined experience that brings quality to the forefront.
+
+### Mobile Device Emulation
+
+Hercules supports running the browser in “mobile mode” for a variety of device types. Playwright provides a large list of device descriptors here:
+DeviceDescriptorsSource.json
+
+#### Enabling Mobile Mode
+Set the RUN_DEVICE environment variable in your .env (or directly as an environment variable):
+```bash
+RUN_DEVICE="iPhone 15 Pro Max"
+```
+When Hercules runs, it will now launch the browser with the corresponding viewport and user-agent for the chosen device, simulating a real mobile environment.
+
+#### Attaching Advanced Tools
+Hercules can be extended with more powerful tools for advanced scenarios. Enable it by setting:
+```bash
+LOAD_EXTRA_TOOLS=true
+```
+With LOAD_EXTRA_TOOLS enabled, Hercules looks for additional tool modules that can expand capabilities (e.g., geolocation handling).
+
+For location-based tests, configure:
+supported geo providers are maps.co and google
+```bash
+GEO_API_KEY=somekey
+GEO_PROVIDER=maps_co
+```
+This allows Hercules to alter or simulate user location during test execution, broadening your test coverage for scenarios that rely on user geography.
 
 ---
 

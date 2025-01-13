@@ -10,25 +10,32 @@ def parse_response(message: str) -> dict[str, Any]:
     """
     # Parse the response content
     json_response = {}
-    # if message starts with ``` and ends with ``` then remove them
-    if message.startswith("```"):
-        message = message[3:]
-    if message.endswith("```"):
-        message = message[:-3]
-    if message.startswith("json"):
-        message = message[4:]
+
+    # Check if message is wrapped in ```json ``` blocks
+    if "```json" in message:
+        start_idx = message.find("```json") + 7
+        end_idx = message.rfind("```")
+        message = message[start_idx:end_idx]
+    else:
+        # Original handling for ``` blocks
+        if message.startswith("```"):
+            message = message[3:]
+        if message.endswith("```"):
+            message = message[:-3]
+        if message.startswith("json"):
+            message = message[4:]
 
     message = message.strip()
     message = message.replace("\\n", "\n")
     message = message.replace("\n", " ")  # type: ignore
-    # message = message.replace("<tool_call>", "")
-    # message = message.replace("</tool_call>", "")  # type: ignore
+
     try:
         json_response: dict[str, Any] = json.loads(message)
     except Exception as e:
-        # If the response is not a valid JSON, try pass it using string matching.
-        # This should seldom be triggered
-        logger.warn(f'LLM response was not properly formed JSON. Will try to use it as is. LLM response: "{message}". Error: {e}')
+        # Rest of the error handling remains the same
+        logger.warn(
+            f'LLM response was not properly formed JSON. Will try to use it as is. LLM response: "{message}". Error: {e}'
+        )
 
         if "plan" in message and "next_step" in message:
             start = message.index("plan") + len("plan")
@@ -49,8 +56,9 @@ def parse_response(message: str) -> dict[str, Any]:
 
             start = message.index("final_response") + len("final_response")
             end = len(message) - 1
-            json_response["final_response"] = message[start:end].replace('"', "").strip()
-            # json_response["final_response"] += ", You can TERMINATE the execution"
+            json_response["final_response"] = (
+                message[start:end].replace('"', "").strip()
+            )
 
         elif "terminate" in message:
             start = message.index("terminate") + len("terminate")
@@ -60,6 +68,5 @@ def parse_response(message: str) -> dict[str, Any]:
                 json_response["terminate"] = "yes"
             else:
                 json_response["terminate"] = "no"
-            # json_response["final_response"] += ", You can TERMINATE the execution"
 
     return json_response

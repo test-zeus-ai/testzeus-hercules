@@ -15,9 +15,12 @@ from testzeus_hercules.utils.logger import logger
 async def execute_select_cte_query_sql(
     connection_string: Annotated[
         str,
-        "async database connection string in SQLAlchemy format. " "E.g., 'postgresql+asyncpg://user:password@host:port/database'.",
+        "async database connection string in SQLAlchemy format. "
+        "E.g., 'postgresql+asyncpg://user:password@host:port/database'.",
     ],
-    query: Annotated[str, "SELECT SQL query to execute. Must start with 'SELECT' or 'WITH'."],
+    query: Annotated[
+        str, "SELECT SQL query to execute. Must start with 'SELECT' or 'WITH'."
+    ],
     schema: Annotated[
         Optional[str | None],
         "Optional database schema to use. If not provided, assumes schema is specified in the query.",
@@ -81,11 +84,11 @@ async def execute_select_cte_query_sql(
 
         # Check for errors
         if isinstance(results, dict) and "error" in results:
-            print(f"Error: {results['error']}")
+            logger.info(f"Error: {results['error']}")
         else:
             # Process the results
             for row in results:
-                print(row)
+                logger.info(row)
 
     # Run the async main function
     asyncio.run(main())

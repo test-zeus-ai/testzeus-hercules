@@ -151,7 +151,7 @@ async def custom_set_slider_value(
 async def setslider(
     entry: Annotated[
         SetSliderEntry,
-        "An object containing 'query_selector' (selector query using md attribute e.g. [md='114']) and 'value' (numeric value to set on the slider).",
+        "An object containing 'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'value' (numeric value to set on the slider).",
     ]
 ) -> Annotated[str, "Explanation of the outcome of this operation."]:
     """

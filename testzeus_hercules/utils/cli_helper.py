@@ -27,8 +27,8 @@ async def answer_questions_over_cli(questions: list[str]) -> dict[str, str]:
     - A dictionary where each key is a question and each value is the user's response.
     """
     answers: dict[str, str] = {}
-    print("*********************************")
+    logger.info("*********************************")
     for question in questions:
         answers[question] = await async_input("Question: " + str(question) + " : ")
-    print("*********************************")
+    logger.info("*********************************")
     return answers
