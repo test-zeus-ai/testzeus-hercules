@@ -1,4 +1,5 @@
 from collections.abc import Callable
+
 from testzeus_hercules.utils.logger import logger
 
 

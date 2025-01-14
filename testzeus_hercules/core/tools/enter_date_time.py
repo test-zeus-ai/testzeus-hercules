@@ -88,24 +88,18 @@ async def set_date_time_value(
     subscribe(detect_dom_changes)
 
     result = await do_set_date_time_value(page, query_selector, input_value)
-    await asyncio.sleep(
-        0.1
-    )  # sleep for 100ms to allow the mutation observer to detect changes
+    await asyncio.sleep(0.1)  # sleep for 100ms to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
     await page.wait_for_load_state()
     await browser_manager.take_screenshots(f"{function_name}_end", page)
 
-    await browser_manager.notify_user(
-        result["summary_message"], message_type=MessageType.ACTION
-    )
+    await browser_manager.notify_user(result["summary_message"], message_type=MessageType.ACTION)
     if dom_changes_detected:
         return f"{result['detailed_message']}.\nAs a consequence of this action, new elements have appeared in view: {dom_changes_detected}. This means that the action of setting input value '{input_value}' is not yet executed and needs further interaction. Get all_fields DOM to complete the interaction."
     return result["detailed_message"]
 
 
-async def do_set_date_time_value(
-    page: Page, selector: str, input_value: str
-) -> dict[str, str]:
+async def do_set_date_time_value(page: Page, selector: str, input_value: str) -> dict[str, str]:
     """
     Performs the input value setting operation on an input element.
 
@@ -124,9 +118,7 @@ async def do_set_date_time_value(
         result = await do_set_date_time_value(page, '#dateInput', '2023-10-10')
     """
     try:
-        logger.debug(
-            f"Looking for selector {selector} to set input value: {input_value}"
-        )
+        logger.debug(f"Looking for selector {selector} to set input value: {input_value}")
 
         # Helper function to find element in DOM, Shadow DOM, or iframes
         async def find_element(page: Page, selector: str) -> ElementHandle:
@@ -249,12 +241,8 @@ async def bulk_set_date_time_value(
     for entry in entries:
         query_selector = entry["query_selector"]
         input_value = entry["value"]
-        logger.info(
-            f"Setting input value: '{input_value}' in element with selector: '{query_selector}'"
-        )
-        result = await set_date_time_value(
-            SetInputValueEntry(query_selector=query_selector, value=input_value)
-        )
+        logger.info(f"Setting input value: '{input_value}' in element with selector: '{query_selector}'")
+        result = await set_date_time_value(SetInputValueEntry(query_selector=query_selector, value=input_value))
 
         results.append({"query_selector": query_selector, "result": result})
 

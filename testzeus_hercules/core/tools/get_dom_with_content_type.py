@@ -18,9 +18,7 @@ from testzeus_hercules.utils.ui_messagetype import MessageType
 
 async def get_dom_with_content_type(
     content_type: Annotated[str, "Type: text_only/input_fields/all_fields"],
-) -> Annotated[
-    dict[str, Any] | str | None, "DOM content based on type to analyse and decide"
-]:
+) -> Annotated[dict[str, Any] | str | None, "DOM content based on type to analyse and decide"]:
     """
     Retrieves and processes the DOM of the active page in a browser instance based on the specified content type.
 
@@ -57,9 +55,7 @@ async def get_dom_with_content_type(
         raise ValueError("No active page found. OpenURL command opens a new page.")
 
     extracted_data = None
-    await wait_for_non_loading_dom_state(
-        page, 5000
-    )  # wait for the DOM to be ready, non loading means external resources do not need to be loaded
+    await wait_for_non_loading_dom_state(page, 5000)  # wait for the DOM to be ready, non loading means external resources do not need to be loaded
     user_success_message = ""
     if content_type == "all_fields":
         user_success_message = "Fetched all the fields in the DOM"
@@ -87,9 +83,7 @@ async def get_dom_with_content_type(
 
     elapsed_time = time.time() - start_time
     logger.info(f"Get DOM Command executed in {elapsed_time} seconds")
-    await browser_manager.notify_user(
-        user_success_message, message_type=MessageType.ACTION
-    )
+    await browser_manager.notify_user(user_success_message, message_type=MessageType.ACTION)
 
     # split extracted data into multiple lines and drop empty stripped lines and then get a count of lines.
     rr = 0

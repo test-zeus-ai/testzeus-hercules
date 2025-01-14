@@ -6,6 +6,7 @@ from typing import Any
 
 import autogen  # type: ignore
 from testzeus_hercules.core.agents.base_nav_agent import BaseNavAgent
+from testzeus_hercules.core.extra_tools.geo_tools import *
 from testzeus_hercules.core.memory.prompt_compressor import add_text_compressor
 from testzeus_hercules.core.memory.state_handler import *
 from testzeus_hercules.core.memory.static_ltm import get_user_ltm
@@ -34,7 +35,6 @@ from testzeus_hercules.core.tools.press_key_combination import press_key_combina
 from testzeus_hercules.core.tools.set_slider_value import *
 from testzeus_hercules.core.tools.tool_registry import tool_registry
 from testzeus_hercules.core.tools.upload_file import *
-from testzeus_hercules.core.extra_tools.geo_tools import *
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.logger import logger
 
@@ -57,22 +57,16 @@ class BrowserNavAgent(BaseNavAgent):
         # )(enter_text_and_click)
         # self.nav_executor.register_for_execution()(enter_text_and_click)
 
-        self.agent.register_for_llm(
-            description=LLM_PROMPTS["GET_DOM_WITH_CONTENT_TYPE_PROMPT"]
-        )(get_dom_with_content_type)
+        self.agent.register_for_llm(description=LLM_PROMPTS["GET_DOM_WITH_CONTENT_TYPE_PROMPT"])(get_dom_with_content_type)
         self.nav_executor.register_for_execution()(get_dom_with_content_type)
 
-        self.agent.register_for_llm(description=LLM_PROMPTS["CLICK_PROMPT"])(
-            click_element
-        )
+        self.agent.register_for_llm(description=LLM_PROMPTS["CLICK_PROMPT"])(click_element)
         self.nav_executor.register_for_execution()(click_element)
 
         self.agent.register_for_llm(description=LLM_PROMPTS["GET_URL_PROMPT"])(geturl)
         self.nav_executor.register_for_execution()(geturl)
 
-        self.agent.register_for_llm(description=LLM_PROMPTS["BULK_ENTER_TEXT_PROMPT"])(
-            bulk_enter_text
-        )
+        self.agent.register_for_llm(description=LLM_PROMPTS["BULK_ENTER_TEXT_PROMPT"])(bulk_enter_text)
         self.nav_executor.register_for_execution()(bulk_enter_text)
 
         # self.agent.register_for_llm(description=LLM_PROMPTS["ENTER_TEXT_PROMPT"])(
@@ -80,14 +74,10 @@ class BrowserNavAgent(BaseNavAgent):
         # )
         # self.nav_executor.register_for_execution()(entertext)
 
-        self.agent.register_for_llm(
-            description=LLM_PROMPTS["PRESS_KEY_COMBINATION_PROMPT"]
-        )(press_key_combination)
+        self.agent.register_for_llm(description=LLM_PROMPTS["PRESS_KEY_COMBINATION_PROMPT"])(press_key_combination)
         self.nav_executor.register_for_execution()(press_key_combination)
 
-        self.agent.register_for_llm(
-            description=LLM_PROMPTS["EXTRACT_TEXT_FROM_PDF_PROMPT"]
-        )(extract_text_from_pdf)
+        self.agent.register_for_llm(description=LLM_PROMPTS["EXTRACT_TEXT_FROM_PDF_PROMPT"])(extract_text_from_pdf)
         self.nav_executor.register_for_execution()(extract_text_from_pdf)
 
         self.agent.register_for_llm(description=LLM_PROMPTS["HOVER_PROMPT"])(hover)

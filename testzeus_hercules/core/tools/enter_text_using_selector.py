@@ -125,9 +125,7 @@ async def custom_fill_element(page: Page, selector: str, text_to_enter: str) -> 
         )
         logger.debug(f"custom_fill_element result: {result}")
     except Exception as e:
-        logger.error(
-            f"Error in custom_fill_element, Selector: {selector}, Text: {text_to_enter}. Error: {str(e)}"
-        )
+        logger.error(f"Error in custom_fill_element, Selector: {selector}, Text: {text_to_enter}. Error: {str(e)}")
         raise
 
 
@@ -248,24 +246,18 @@ async def entertext(
     )
 
     result = await do_entertext(page, query_selector, text_to_enter)
-    await asyncio.sleep(
-        0.1
-    )  # sleep for 100ms to allow the mutation observer to detect changes
+    await asyncio.sleep(0.1)  # sleep for 100ms to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
     await page.wait_for_load_state()
     await browser_manager.take_screenshots(f"{function_name}_end", page)
 
-    await browser_manager.notify_user(
-        result["summary_message"], message_type=MessageType.ACTION
-    )
+    await browser_manager.notify_user(result["summary_message"], message_type=MessageType.ACTION)
     if dom_changes_detected:
         return f"{result['detailed_message']}.\n As a consequence of this action, new elements have appeared in view: {dom_changes_detected}. This means that the action of entering text {text_to_enter} is not yet executed and needs further interaction. Get all_fields DOM to complete the interaction."
     return result["detailed_message"]
 
 
-async def do_entertext(
-    page: Page, selector: str, text_to_enter: str, use_keyboard_fill: bool = True
-) -> dict[str, str]:
+async def do_entertext(page: Page, selector: str, text_to_enter: str, use_keyboard_fill: bool = True) -> dict[str, str]:
     """
     Performs the text entry operation on a DOM or Shadow DOM element.
 
@@ -376,9 +368,7 @@ async def do_entertext(
 
         await elem.focus()
         await page.wait_for_load_state()
-        logger.info(
-            f'Success. Text "{text_to_enter}" set successfully in the element with selector {selector}'
-        )
+        logger.info(f'Success. Text "{text_to_enter}" set successfully in the element with selector {selector}')
         success_msg = f'Success. Text "{text_to_enter}" set successfully in the element with selector {selector}'
         return {
             "summary_message": success_msg,
@@ -428,9 +418,7 @@ async def bulk_enter_text(
     results: List[str] = []  # noqa: UP006
     logger.info("Executing bulk Enter Text Command")
     for entry in entries:
-        logger.info(
-            f"Entering text: {entry['text']} in element with selector: {entry['query_selector']}"
-        )
+        logger.info(f"Entering text: {entry['text']} in element with selector: {entry['query_selector']}")
         result = await entertext(entry)
         results.append(result)
     return results
