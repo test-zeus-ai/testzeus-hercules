@@ -158,5 +158,5 @@ testzeus-hercules/**/*.feature
 **/agents_llm_config.json
 **/helper_scripts/output
 **/raw_jsons
-
+**/output_txt
 **/installation_id.txt

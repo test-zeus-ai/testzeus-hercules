@@ -683,6 +683,18 @@ class AutogenSimpleWrapper:
             assistant_agent,
         )  # type: ignore
         return planner_agent.agent
+    
+    async def clean_up_plan(self) -> None:
+        """
+        Clean up the plan after each command is processed.
+
+        """
+        for agent in self.agents_map.values():
+            if hasattr(agent, "client") and agent.client is not None:
+                agent.client.clear_usage_summary()
+            agent.reset()
+        self.agents_map["planner_agent"] = self.__create_planner_agent(self.agents_map["user"])
+        logger.info("Plan cleaned up.")
 
     async def process_command(self, command: str, *args: Any, current_url: str | None = None, **kwargs: Any) -> autogen.ChatResult | None:
         """

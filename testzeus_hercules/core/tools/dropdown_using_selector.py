@@ -13,6 +13,7 @@ from testzeus_hercules.utils.dom_helper import get_element_outer_html
 from testzeus_hercules.utils.dom_mutation_observer import subscribe, unsubscribe
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
+from testzeus_hercules.core.tools.click_using_selector import do_click
 
 
 @dataclass
@@ -296,7 +297,9 @@ async def do_select_option(page: Page, selector: str, option_value: str) -> dict
                 return {"summary_message": error, "detailed_message": error}
         else:
             # Handle custom dropdowns or spinners
-            await element.click()
+            
+            await do_click(page, selector, 1, "click")
+            # await element.click()
             await asyncio.sleep(0.5)  # Wait for options to appear
 
             # Try to select the option
