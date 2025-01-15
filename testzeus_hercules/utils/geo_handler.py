@@ -26,9 +26,7 @@ class GeoLocationSDK:
         Validate that the current provider matches the expected provider.
         """
         if self.provider != expected_provider:
-            raise ValueError(
-                f"This method requires the '{expected_provider}' provider."
-            )
+            raise ValueError(f"This method requires the '{expected_provider}' provider.")
 
     # ----------------------------------------------------------------
     # 1) Convert (lat, lng) -> a single address
@@ -72,11 +70,7 @@ class GeoLocationSDK:
                 raise Exception(f"Google Maps API error: {data.get('error_message')}")
             results = data.get("results", [])
             # Format for single best match
-            addresses = [
-                r.get("formatted_address")
-                for r in results
-                if r.get("formatted_address")
-            ]
+            addresses = [r.get("formatted_address") for r in results if r.get("formatted_address")]
         else:
             # maps_co reverse returns a single dict
             # Example:
@@ -162,11 +156,7 @@ class GeoLocationSDK:
         if hint:
             hint_lower = hint.lower()
             for r in results:
-                address_match = (
-                    r.get("formatted_address")
-                    if self.provider == "google"
-                    else r.get("display_name")
-                )
+                address_match = r.get("formatted_address") if self.provider == "google" else r.get("display_name")
                 if address_match and hint_lower in address_match.lower():
                     if self.provider == "google":
                         return r.get("geometry", {}).get("location", {})
@@ -227,11 +217,7 @@ class GeoLocationSDK:
         if self.provider == "google":
             if data.get("status") != "OK":
                 raise Exception(f"Google Maps API error: {data.get('error_message')}")
-            return [
-                r.get("formatted_address")
-                for r in data.get("results", [])
-                if r.get("formatted_address")
-            ]
+            return [r.get("formatted_address") for r in data.get("results", []) if r.get("formatted_address")]
         else:
             # maps_co reverse -> single dict or list
             if isinstance(data, dict):
@@ -280,11 +266,7 @@ class GeoLocationSDK:
             if data.get("status") != "OK":
                 raise Exception(f"Google Maps API error: {data.get('error_message')}")
             # Each result has geometry.location
-            return [
-                r.get("geometry", {}).get("location")
-                for r in data.get("results", [])
-                if r.get("geometry", {}).get("location") is not None
-            ]
+            return [r.get("geometry", {}).get("location") for r in data.get("results", []) if r.get("geometry", {}).get("location") is not None]
         else:
             # maps_co -> can be a list or a single dict
             if isinstance(data, dict):

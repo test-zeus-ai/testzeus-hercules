@@ -35,9 +35,7 @@ class SetSliderEntry:
             raise KeyError(f"{key} is not a valid key")
 
 
-async def custom_set_slider_value(
-    page: Page, selector: str, value_to_set: float
-) -> None:
+async def custom_set_slider_value(page: Page, selector: str, value_to_set: float) -> None:
     """
     Sets the value of a range slider input element to a specified value.
 
@@ -137,9 +135,7 @@ async def custom_set_slider_value(
         )
         logger.debug(f"custom_set_slider_value result: {result}")
     except Exception as e:
-        logger.error(
-            f"Error in custom_set_slider_value, Selector: {selector}, Value: {value_to_set}. Error: {str(e)}"
-        )
+        logger.error(f"Error in custom_set_slider_value, Selector: {selector}, Value: {value_to_set}. Error: {str(e)}")
         raise
 
 
@@ -196,24 +192,18 @@ async def setslider(
     subscribe(detect_dom_changes)
 
     result = await do_setslider(page, query_selector, value_to_set)
-    await asyncio.sleep(
-        0.1
-    )  # sleep for 100ms to allow the mutation observer to detect changes
+    await asyncio.sleep(0.1)  # sleep for 100ms to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
     await page.wait_for_load_state()
     await browser_manager.take_screenshots(f"{function_name}_end", page)
 
-    await browser_manager.notify_user(
-        result["summary_message"], message_type=MessageType.ACTION
-    )
+    await browser_manager.notify_user(result["summary_message"], message_type=MessageType.ACTION)
     if dom_changes_detected:
         return f"{result['detailed_message']}.\n As a consequence of this action, new elements have appeared in view: {dom_changes_detected}. This means that the action of setting slider value {value_to_set} is not yet executed and needs further interaction. Get all_fields DOM to complete the interaction."
     return result["detailed_message"]
 
 
-async def do_setslider(
-    page: Page, selector: str, value_to_set: float
-) -> dict[str, str]:
+async def do_setslider(page: Page, selector: str, value_to_set: float) -> dict[str, str]:
     """
     Performs the slider value setting operation on a DOM or Shadow DOM element.
 
@@ -232,9 +222,7 @@ async def do_setslider(
         result = await do_setslider(page, '#volume', 75)
     """
     try:
-        logger.debug(
-            f"Looking for selector {selector} to set slider value: {value_to_set}"
-        )
+        logger.debug(f"Looking for selector {selector} to set slider value: {value_to_set}")
 
         # Helper function to handle both regular DOM and Shadow DOM
         async def find_element_in_shadow_dom(page: Page, selector: str) -> None:
@@ -308,9 +296,7 @@ async def do_setslider(
 
         await elem_handle.focus()
         await page.wait_for_load_state()
-        logger.info(
-            f"Success. Slider value {value_to_set} set successfully in the element with selector {selector}"
-        )
+        logger.info(f"Success. Slider value {value_to_set} set successfully in the element with selector {selector}")
         success_msg = f"Success. Slider value {value_to_set} set successfully in the element with selector {selector}"
         return {
             "summary_message": success_msg,
@@ -362,12 +348,8 @@ async def bulk_set_slider(
     for entry in entries:
         query_selector = entry["query_selector"]
         value_to_set = entry["value"]
-        logger.info(
-            f"Setting slider value: {value_to_set} in element with selector: {query_selector}"
-        )
-        result = await setslider(
-            SetSliderEntry(query_selector=query_selector, value=value_to_set)
-        )
+        logger.info(f"Setting slider value: {value_to_set} in element with selector: {query_selector}")
+        result = await setslider(SetSliderEntry(query_selector=query_selector, value=value_to_set))
 
         results.append({"query_selector": query_selector, "result": result})
 

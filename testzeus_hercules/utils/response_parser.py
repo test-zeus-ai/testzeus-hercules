@@ -33,9 +33,7 @@ def parse_response(message: str) -> dict[str, Any]:
         json_response: dict[str, Any] = json.loads(message)
     except Exception as e:
         # Rest of the error handling remains the same
-        logger.warn(
-            f'LLM response was not properly formed JSON. Will try to use it as is. LLM response: "{message}". Error: {e}'
-        )
+        logger.warn(f'LLM response was not properly formed JSON. Will try to use it as is. LLM response: "{message}". Error: {e}')
 
         if "plan" in message and "next_step" in message:
             start = message.index("plan") + len("plan")
@@ -56,9 +54,7 @@ def parse_response(message: str) -> dict[str, Any]:
 
             start = message.index("final_response") + len("final_response")
             end = len(message) - 1
-            json_response["final_response"] = (
-                message[start:end].replace('"', "").strip()
-            )
+            json_response["final_response"] = message[start:end].replace('"', "").strip()
 
         elif "terminate" in message:
             start = message.index("terminate") + len("terminate")

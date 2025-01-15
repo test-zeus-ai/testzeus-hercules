@@ -560,7 +560,7 @@ With Hercules, testing is no longer just a step in the process—it's a powerful
 ### Mobile Device Emulation
 
 Hercules supports running the browser in “mobile mode” for a variety of device types. Playwright provides a large list of device descriptors here:
-DeviceDescriptorsSource.json
+[List of mobile devices supported](https://github.com/microsoft/playwright/blob/main/packages/playwright-core/src/server/deviceDescriptorsSource.json)
 
 #### Enabling Mobile Mode
 Set the RUN_DEVICE environment variable in your .env (or directly as an environment variable):
@@ -568,6 +568,8 @@ Set the RUN_DEVICE environment variable in your .env (or directly as an environm
 RUN_DEVICE="iPhone 15 Pro Max"
 ```
 When Hercules runs, it will now launch the browser with the corresponding viewport and user-agent for the chosen device, simulating a real mobile environment.
+Here's a quick demo:
+![MobileDemo](statics/mobiledemo.gif)
 
 #### Attaching Advanced Tools
 Hercules can be extended with more powerful tools for advanced scenarios. Enable it by setting:

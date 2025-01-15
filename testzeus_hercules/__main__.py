@@ -42,9 +42,7 @@ def sequential_process() -> None:
     feature_file_name = os.path.basename(input_gherkin_file_path)
 
     result_of_tests = []
-    final_result_file_name = (
-        f"{CONF.get_junit_xml_base_path()}/{feature_file_name}_result.xml"
-    )
+    final_result_file_name = f"{CONF.get_junit_xml_base_path()}/{feature_file_name}_result.xml"
     add_event(EventType.RUN, EventData(detail="Total Runs: " + str(len(list_of_feats))))
     for feat in list_of_feats:
         file_path = feat["output_file"]
@@ -77,9 +75,7 @@ def sequential_process() -> None:
                     for key, value in agent.client.total_usage_summary.items():
                         if key == "total_cost":
                             # Sum total_cost across agents
-                            cost_metrics["total_cost"] = (
-                                cost_metrics.get("total_cost", 0) + value
-                            )
+                            cost_metrics["total_cost"] = cost_metrics.get("total_cost", 0) + value
                         elif isinstance(value, dict):
                             if ag_name not in cost_metrics:
                                 cost_metrics[ag_name] = {}
@@ -92,20 +88,12 @@ def sequential_process() -> None:
                                 }
 
                             cost_metrics[ag_name][key]["cost"] += value.get("cost", 0)
-                            cost_metrics[ag_name][key]["prompt_tokens"] += value.get(
-                                "prompt_tokens", 0
-                            )
-                            cost_metrics[ag_name][key][
-                                "completion_tokens"
-                            ] += value.get("completion_tokens", 0)
-                            cost_metrics[ag_name][key]["total_tokens"] += value.get(
-                                "total_tokens", 0
-                            )
+                            cost_metrics[ag_name][key]["prompt_tokens"] += value.get("prompt_tokens", 0)
+                            cost_metrics[ag_name][key]["completion_tokens"] += value.get("completion_tokens", 0)
+                            cost_metrics[ag_name][key]["total_tokens"] += value.get("total_tokens", 0)
                         else:
                             # For unexpected keys, just add them as-is
-                            cost_metrics[ag_name][key] = (
-                                cost_metrics.get(key, 0) + value
-                            )
+                            cost_metrics[ag_name][key] = cost_metrics.get(key, 0) + value
 
         execution_time = runner.execution_time
         if runner.result and runner.result.chat_history:
@@ -134,17 +122,14 @@ def sequential_process() -> None:
                 proofs_video_path=runner.browser_manager.get_latest_video_path(),
                 network_logs_path=runner.browser_manager.request_response_log_file,
                 logs_path=CONF.get_source_log_folder_path(stake_id),
-                planner_thoughts_path=CONF.get_source_log_folder_path(stake_id)
-                + "/chat_messages.json",
+                planner_thoughts_path=CONF.get_source_log_folder_path(stake_id) + "/chat_messages.json",
             )
         )
     JUnitXMLGenerator.merge_junit_xml(result_of_tests, final_result_file_name)
     logger.info(f"Results published in junitxml file: {final_result_file_name}")
 
     # building html from junitxml
-    final_result_html_file_name = (
-        f"{CONF.get_junit_xml_base_path()}/{feature_file_name}_result.html"
-    )
+    final_result_html_file_name = f"{CONF.get_junit_xml_base_path()}/{feature_file_name}_result.html"
     prepare_html([final_result_file_name, final_result_html_file_name])
     logger.info(f"Results published in html file: {final_result_html_file_name}")
 

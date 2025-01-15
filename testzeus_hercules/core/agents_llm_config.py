@@ -34,6 +34,7 @@ class AgentsLLMConfig:
         "model_api_type": "api_type",
         "model_project_id": "gcp_project_id",
         "model_region": "gcp_region",
+        "model_api_version": "api_version",
     }
 
     def __init__(self, llm_config: dict[str, Any] | None = None) -> None:
