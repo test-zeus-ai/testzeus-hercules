@@ -33,15 +33,18 @@ async def openurl(
         url = ensure_protocol(url)
         if page.url == url:
             logger.info(f"Current page URL is the same as the new URL: {url}. No need to refresh.")
-            title = await page.title()
-            return f"Page already loaded: {url}, Title: {title}"  # type: ignore
+            try:
+                title = await page.title()
+                return f"Page already loaded: {url}, Title: {title}"  # type: ignore
+            except Exception as e:
+                logger.error(f"An error occurred while getting the page title: {e}, but will continue to load the page.")
 
         # Navigate to the URL with a short timeout to ensure the initial load starts
         function_name = inspect.currentframe().f_code.co_name  # type: ignore
 
         await browser_manager.take_screenshots(f"{function_name}_start", page)
 
-        await page.goto(url, timeout=timeout * 1000)  # type: ignore
+        await page.goto(url, timeout=timeout * 10000)  # type: ignore
         await browser_manager.take_screenshots(f"{function_name}_end", page)
         await browser_manager.notify_user(f"Opened URL: {url}", message_type=MessageType.ACTION)
         # Get the page title

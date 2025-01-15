@@ -60,6 +60,13 @@ class BaseRunner:
 
         self.browser_manager = PlaywrightManager(gui_input_mode=False, stake_id=self.stake_id)
         await self.browser_manager.async_initialize()
+        
+        
+    async def clean_up_plan(self) -> None:
+        """
+        Clean up the plan after each command is processed.
+        """
+        await self.autogen_wrapper.clean_up_plan()
 
     async def process_command(self, command: str) -> tuple[Any, float]:
         """
@@ -185,6 +192,7 @@ class CommandPromptRunner(BaseRunner):
         while not self.is_running:
             command: str = await async_input("Enter your command (or type 'exit' to quit): ")
             await self.process_command(command)
+            await self.clean_up_plan()
             if self.shutdown_event.is_set():
                 break
         await self.wait_for_exit()
