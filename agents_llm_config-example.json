@@ -12,7 +12,7 @@
                 "seed":12345
             }
 		},
-		"browser_nav_agent": {
+		"nav_agent": {
 			"model_name": "ministral-8b-latest",
 			"model_api_key": "",
 			"model_base_url": "https://api.mistral.ai/v1",
@@ -37,7 +37,7 @@
                 "seed":12345
             }
 		},
-		"browser_nav_agent": {
+		"nav_agent": {
             "model_name": "gpt-4o",
 			"model_api_key": "",
 			"model_base_url": null,
@@ -63,7 +63,7 @@
                 "seed":12345
             }
 		},
-		"browser_nav_agent": {
+		"nav_agent": {
 			"model_name": "gpt-4o",
 			"model_api_key": "",
 			"model_base_url": "",
@@ -89,7 +89,7 @@
                 "seed":12345
             }
 		},
-		"browser_nav_agent": {
+		"nav_agent": {
 			"model_name": "llama3-groq-8b-8192-tool-use-preview",
 			"model_api_key": "",
 			"model_api_type": "groq",
@@ -116,7 +116,7 @@
                 "top_p": 0.001
             }
 		},
-		"browser_nav_agent": {
+		"nav_agent": {
 			"model_name": "llama3-groq-tool-use",
 			"model_api_key": "",
 			"model_api_type": "ollama",
@@ -142,7 +142,7 @@
                 "seed":12345
             }
 		},
-		"browser_nav_agent": {
+		"nav_agent": {
 			"model_name": "claude-3-5-haiku-latest",
 			"model_api_key": "",
 			"model_api_type": "anthropic",
@@ -167,7 +167,7 @@
                 "seed":12345
             }
 		},
-		"browser_nav_agent": {
+		"nav_agent": {
 			"model_name": "claude-3-5-haiku@20241022",
             "model_project_id": "",
             "model_region": "us-east5",
@@ -192,7 +192,7 @@
                 "seed":12345
             }
 		},
-		"browser_nav_agent": {
+		"nav_agent": {
 			"model_name": "gemini-1.5-pro-002",
 			
 			"model_api_type": "google",
@@ -217,7 +217,7 @@
                 "seed":12345
             }
 		},
-		"browser_nav_agent": {
+		"nav_agent": {
             "model_name": "deepseek-chat",
 			"model_api_key": "",
 			"model_base_url": "https://api.deepseek.com/v1",

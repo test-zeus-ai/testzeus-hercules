@@ -6,8 +6,8 @@ from typing import Any
 
 from testzeus_hercules.config import CONF
 from testzeus_hercules.core.agents_llm_config import AgentsLLMConfig
-from testzeus_hercules.core.autogen_simple_wrapper import AutogenSimpleWrapper
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
+from testzeus_hercules.core.simple_hercules import SimpleHercules
 from testzeus_hercules.utils.cli_helper import async_input  # type: ignore
 from testzeus_hercules.utils.logger import logger
 
@@ -18,7 +18,7 @@ class BaseRunner:
 
     Attributes:
         planner_number_of_rounds (int): The maximum number of chat rounds for the planner.
-        browser_number_of_rounds (int): The maximum number of chat rounds for the browser navigation agent.
+        nav_agent_number_of_rounds (int): The maximum number of chat rounds for the browser navigation agent.
         save_chat_logs_to_files (bool): Flag indicating whether to save chat logs to files.
     """
 
@@ -30,9 +30,9 @@ class BaseRunner:
         dont_terminate_browser_after_run: bool = False,
     ):
         self.planner_number_of_rounds = planner_max_chat_round
-        self.browser_number_of_rounds = browser_nav_max_chat_round
+        self.nav_agent_number_of_rounds = browser_nav_max_chat_round
         self.browser_manager = None
-        self.autogen_wrapper = None
+        self.simple_hercules = None
         self.is_running = False
         self.stake_id = stake_id
         self.dont_terminate_browser_after_run = dont_terminate_browser_after_run
@@ -48,25 +48,24 @@ class BaseRunner:
         """
         llm_config = AgentsLLMConfig()
         self.planner_agent_config = llm_config.get_planner_agent_config()
-        self.browser_nav_agent_config = llm_config.get_browser_nav_agent_config()
+        self.nav_agent_config = llm_config.get_nav_agent_config()
 
-        self.autogen_wrapper = await AutogenSimpleWrapper.create(
+        self.simple_hercules = await SimpleHercules.create(
             self.planner_agent_config,
-            self.browser_nav_agent_config,
+            self.nav_agent_config,
             save_chat_logs_to_files=self.save_chat_logs_to_files,
             planner_max_chat_round=self.planner_number_of_rounds,
-            browser_nav_max_chat_round=self.browser_number_of_rounds,
+            browser_nav_max_chat_round=self.nav_agent_number_of_rounds,
         )
 
         self.browser_manager = PlaywrightManager(gui_input_mode=False, stake_id=self.stake_id)
         await self.browser_manager.async_initialize()
-        
-        
+
     async def clean_up_plan(self) -> None:
         """
         Clean up the plan after each command is processed.
         """
-        await self.autogen_wrapper.clean_up_plan()
+        await self.simple_hercules.clean_up_plan()
 
     async def process_command(self, command: str) -> tuple[Any, float]:
         """
@@ -90,12 +89,11 @@ class BaseRunner:
             self.is_running = True
             start_time = time.time()
             current_url = await self.browser_manager.get_current_url() if self.browser_manager else None
-            self.browser_manager.log_user_message(command)  # type: ignore
             result = None
             logger.info(f"Processing command: {command}")
-            if self.autogen_wrapper:
+            if self.simple_hercules:
                 await self.browser_manager.update_processing_state("processing")  # type: ignore
-                result = await self.autogen_wrapper.process_command(command, current_url)
+                result = await self.simple_hercules.process_command(command, current_url)
                 await self.browser_manager.update_processing_state("done")  # type: ignore
             end_time = time.time()
             elapsed_time = round(end_time - start_time, 2)
@@ -106,9 +104,8 @@ class BaseRunner:
                 chat_history = result.chat_history  # type: ignore
                 last_message = chat_history[-1] if chat_history else None  # type: ignore
                 if last_message and "terminate" in last_message and last_message["terminate"] == "yes":
-                    await self.browser_manager.notify_user(last_message, "answer")  # type: ignore
+                    logger.info(f"Final message: {last_message}")
 
-            await self.browser_manager.notify_user(f"Task Completed ({elapsed_time}s).", "info")  # type: ignore
             await self.browser_manager.command_completed(command, elapsed_time)  # type: ignore
             self.is_running = False
         return result, elapsed_time
@@ -117,7 +114,7 @@ class BaseRunner:
         """
         Saves chat messages to a file or logs them based on configuration.
         """
-        messages = self.autogen_wrapper.agents_map[self.planner_agent_name].chat_messages
+        messages = self.simple_hercules.agents_map[self.planner_agent_name].chat_messages
         messages_str_keys = {str(key): value for key, value in messages.items()}
         res_output_thoughts_logs_di = {}
         for key, value in messages_str_keys.items():

@@ -5,10 +5,11 @@ import httpx
 import pdfplumber
 from testzeus_hercules.config import CONF
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
+from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
-from testzeus_hercules.utils.ui_messagetype import MessageType
 
 
+@tool(agent_names=["browser_nav_agent"], description="""Extracts text from PDF at given URL.""", name="extract_text_from_pdf")
 async def extract_text_from_pdf(pdf_url: Annotated[str, "URL of the PDF file to extract text from."]) -> Annotated[str, "All the text found in the PDF file."]:
     """
     Extract text from a PDF file.
@@ -35,10 +36,7 @@ async def extract_text_from_pdf(pdf_url: Annotated[str, "URL of the PDF file to 
                     text += page_text + "\n"
         extracted_text = text.strip()
         word_count = len(extracted_text.split())
-        await browser_manager.notify_user(
-            f"Extracted text from the PDF successfully. Found {word_count} words.",
-            message_type=MessageType.ACTION,
-        )
+
         return "Text found in the PDF:\n" + extracted_text
     except httpx.HTTPStatusError as e:
         logger.error(f"An error occurred while downloading the PDF from {pdf_url}: {str(e)}")

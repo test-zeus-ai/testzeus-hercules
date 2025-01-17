@@ -10,28 +10,26 @@ from io import BytesIO
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import httpx
-from playwright.async_api import BrowserContext, BrowserType
+from playwright.async_api import BrowserContext, BrowserType, ElementHandle
 from playwright.async_api import Error as PlaywrightError  # for exception handling
 from playwright.async_api import Page, Playwright
 from playwright.async_api import async_playwright as playwright
 from testzeus_hercules.config import CONF
 from testzeus_hercules.core.notification_manager import NotificationManager
-from testzeus_hercules.core.ui_manager import UIManager
 from testzeus_hercules.utils.dom_mutation_observer import (
     dom_mutation_change_detected,
     handle_navigation_for_mutation_observer,
 )
-from testzeus_hercules.utils.js_helper import beautify_plan_message, escape_js_message
+from testzeus_hercules.utils.js_helper import get_js_with_element_finder
 from testzeus_hercules.utils.logger import logger
-from testzeus_hercules.utils.ui_messagetype import MessageType
 
 # Ensures that playwright does not wait for font loading when taking screenshots.
 # Reference: https://github.com/microsoft/playwright/issues/28995
 os.environ["PW_TEST_SCREENSHOT_NO_FONTS_READY"] = "1"
 
-MAX_WAIT_PAGE_LOAD_TIME = 3
-WAIT_FOR_NETWORK_IDLE = 100
-MIN_WAIT_PAGE_LOAD_TIME = 1
+MAX_WAIT_PAGE_LOAD_TIME = 0.5
+WAIT_FOR_NETWORK_IDLE = 10
+MIN_WAIT_PAGE_LOAD_TIME = 0.1
 
 ALL_POSSIBLE_PERMISSIONS = [
     # "accelerometer",
@@ -55,18 +53,68 @@ ALL_POSSIBLE_PERMISSIONS = [
 
 class PlaywrightManager:
     """
-    A singleton class to manage Playwright instances and browsers.
+    Manages Playwright instances and browsers. Now supports stake_id-based singleton instances.
     """
 
+    _instances: Dict[str, "PlaywrightManager"] = {}
+    _default_instance: Optional["PlaywrightManager"] = None
     _homepage = "about:blank"
-    _instance = None
 
-    def __new__(cls, *args, **kwargs) -> "PlaywrightManager":
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance.__initialized: bool = False
-            logger.debug("PlaywrightManager instance created.")
-        return cls._instance
+    def __new__(cls, *args, stake_id: Optional[str] = None, **kwargs) -> "PlaywrightManager":
+        # If no stake_id provided and we have a default instance, return it
+        if stake_id is None:
+            if cls._default_instance is None:
+                # Create default instance with stake_id "0"
+                instance = super().__new__(cls)
+                instance.__initialized = False
+                cls._default_instance = instance
+                cls._instances["0"] = instance
+                logger.debug("Created default PlaywrightManager instance with stake_id '0'")
+            return cls._default_instance
+
+        # If stake_id provided, get or create instance for that stake_id
+        if stake_id not in cls._instances:
+            instance = super().__new__(cls)
+            instance.__initialized = False
+            cls._instances[stake_id] = instance
+            logger.debug(f"Created new PlaywrightManager instance for stake_id '{stake_id}'")
+            # If this is the first instance ever, make it the default
+            if cls._default_instance is None:
+                cls._default_instance = instance
+        return cls._instances[stake_id]
+
+    @classmethod
+    def get_instance(cls, stake_id: Optional[str] = None) -> "PlaywrightManager":
+        """Get PlaywrightManager instance for given stake_id, or default instance if none provided."""
+        if stake_id is None:
+            if cls._default_instance is None:
+                # This will create the default instance
+                return cls()
+            return cls._default_instance
+        if stake_id not in cls._instances:
+            # This will create a new instance for this stake_id
+            return cls(stake_id=stake_id)
+        return cls._instances[stake_id]
+
+    @classmethod
+    def close_instance(cls, stake_id: Optional[str] = None) -> None:
+        """Close and remove a specific PlaywrightManager instance."""
+        target_id = stake_id if stake_id is not None else "0"
+        if target_id in cls._instances:
+            instance = cls._instances[target_id]
+            asyncio.create_task(instance.stop_playwright())
+            del cls._instances[target_id]
+            if instance == cls._default_instance:
+                cls._default_instance = None
+                # If there are other instances, make the first one the default
+                if cls._instances:
+                    cls._default_instance = next(iter(cls._instances.values()))
+
+    @classmethod
+    def close_all_instances(cls) -> None:
+        """Close all PlaywrightManager instances."""
+        for stake_id in list(cls._instances.keys()):
+            cls.close_instance(stake_id)
 
     def __init__(
         self,
@@ -75,7 +123,7 @@ class PlaywrightManager:
         # ----------------------
         browser_type: Optional[str] = None,
         headless: Optional[bool] = None,
-        gui_input_mode: bool = False,
+        gui_input_mode: bool = False,  # This parameter is now unused but kept for compatibility
         stake_id: Optional[str] = None,
         screenshots_dir: Optional[str] = None,
         take_screenshots: Optional[bool] = None,
@@ -108,6 +156,9 @@ class PlaywrightManager:
 
         self.__initialized = True
 
+        # Store stake_id
+        self.stake_id = stake_id or "0"
+
         # ----------------------
         # 1) BROWSER / HEADLESS
         # ----------------------
@@ -120,7 +171,6 @@ class PlaywrightManager:
         # ----------------------
         self.notification_manager = NotificationManager()
         self.user_response_future: Optional[asyncio.Future[str]] = None
-        self.ui_manager: Optional[UIManager] = UIManager() if gui_input_mode else None
         self._take_screenshots = take_screenshots if take_screenshots is not None else CONF.should_take_screenshots()
         self.stake_id = stake_id
 
@@ -204,8 +254,6 @@ class PlaywrightManager:
             await self.create_browser_context()
 
     async def setup_handlers(self) -> None:
-        await self.set_overlay_state_handler()
-        await self.set_user_response_handler()
         await self.set_navigation_handler()
 
     async def start_playwright(self) -> None:
@@ -476,7 +524,7 @@ class PlaywrightManager:
         page.on("request", self.log_request)
         page.on("response", self.log_response)
 
-    def log_request(self, request) -> None:
+    def log_request(self, request: Any) -> None:
         try:
             post_data = request.post_data
             try:
@@ -497,7 +545,7 @@ class PlaywrightManager:
         # Instead of writing directly, do it via asyncio
         asyncio.ensure_future(self._write_log_entry_to_file(log_entry))
 
-    def log_response(self, response) -> None:
+    def log_response(self, response: Any) -> None:
         log_entry = {
             "type": "response",
             "timestamp": time.time(),
@@ -576,8 +624,6 @@ class PlaywrightManager:
 
     async def set_navigation_handler(self) -> None:
         page: Page = await self.get_current_page()
-        if self.ui_manager:
-            page.on("domcontentloaded", self.ui_manager.handle_navigation)
         page.on("domcontentloaded", handle_navigation_for_mutation_observer)
 
         async def set_iframe_navigation_handlers() -> None:
@@ -593,151 +639,27 @@ class PlaywrightManager:
             lambda frame: frame.on("domcontentloaded", handle_navigation_for_mutation_observer),
         )
 
-    async def set_overlay_state_handler(self) -> None:
-        logger.debug("Setting overlay state handler")
-        context = await self.get_browser_context()
-        await context.expose_function("overlay_state_changed", self.overlay_state_handler)
-        await context.expose_function("show_steps_state_changed", self.show_steps_state_handler)
+    async def highlight_element(self, selector: str) -> None:
+        # try:
+        #     element = await self.find_element(selector)
+        #     if isinstance(element, ElementHandle):
+        #         box = await element.bounding_box()
+        #     else:
+        #         await element.highlight()
+        # except Exception as e:
+        #     logger.warning(f"Error in highlight_element({selector}): {e}")
+        pass
 
-    async def overlay_state_handler(self, is_collapsed: bool) -> None:
-        page = await self.get_current_page()
-        if self.ui_manager:
-            self.ui_manager.update_overlay_state(is_collapsed)
-            if not is_collapsed:
-                await self.ui_manager.update_overlay_chat_history(page)
-
-    async def show_steps_state_handler(self, show_details: bool) -> None:
-        page = await self.get_current_page()
-        if self.ui_manager:
-            await self.ui_manager.update_overlay_show_details(show_details, page)
-
-    async def set_user_response_handler(self) -> None:
-        context = await self.get_browser_context()
-        await context.expose_function("user_response", self.receive_user_response)
-
-    async def notify_user(self, message: str, message_type: MessageType = MessageType.STEP) -> None:
-        message = message.strip(":,")
-        if message_type == MessageType.PLAN:
-            message = "Plan:\n" + beautify_plan_message(message)
-        elif message_type == MessageType.STEP:
-            if "confirm" in message.lower():
-                message = "Verify: " + message
-            else:
-                message = "Next step: " + message
-        elif message_type == MessageType.QUESTION:
-            message = "Question: " + message
-        elif message_type == MessageType.ANSWER:
-            message = "Response: " + message
-        elif message_type == MessageType.DONE:
-            message = "TERMINATE: " + message
-
-        safe_message = escape_js_message(message)
-        if self.ui_manager:
-            self.ui_manager.new_system_message(safe_message, message_type)
-            if not self.ui_manager.overlay_show_details and message_type not in (
-                MessageType.PLAN,
-                MessageType.QUESTION,
-                MessageType.ANSWER,
-                MessageType.INFO,
-            ):
-                return
-            if self.ui_manager.overlay_show_details and message_type not in (
-                MessageType.PLAN,
-                MessageType.QUESTION,
-                MessageType.ANSWER,
-                MessageType.INFO,
-                MessageType.STEP,
-            ):
-                return
-
-            safe_message_type = escape_js_message(message_type)
-            try:
-                js_code = f"addSystemMessage({safe_message}, " f"is_awaiting_user_response=false, " f"message_type={safe_message_type});"
-                page = await self.get_current_page()
-                await page.evaluate(js_code)
-            except Exception as e:
-                logger.error(f'Failed to notify user with "{message}": {e}')
-
-        self.notification_manager.notify(message, str(message_type))
-
-    async def highlight_element(self, selector: str, add_highlight: bool) -> None:
-        try:
-            page: Page = await self.get_current_page()
-
-            async def highlight_in_shadow_dom(sel, do_add) -> None:
-                if do_add:
-                    await page.evaluate(
-                        """(selector) => {
-                            const findElementInShadowDOMAndIframes = (parent, selector) => {
-                                let element = parent.querySelector(selector);
-                                if (element) return element;
-                                const elements = parent.querySelectorAll('*');
-                                for (const el of elements) {
-                                    if (el.shadowRoot) {
-                                        element = findElementInShadowDOMAndIframes(el.shadowRoot, selector);
-                                        if (element) return element;
-                                    }
-                                    if (el.tagName.toLowerCase() === 'iframe') {
-                                        let iframeDocument;
-                                        try {
-                                            iframeDocument = el.contentDocument || el.contentWindow.document;
-                                        } catch (e) { continue; }
-                                        if (iframeDocument) {
-                                            element = findElementInShadowDOMAndIframes(iframeDocument, selector);
-                                            if (element) return element;
-                                        }
-                                    }
-                                }
-                                return null;
-                            };
-                            const element = findElementInShadowDOMAndIframes(document, selector);
-                            if (element) {
-                                element.classList.add('hercules-ui-automation-highlight');
-                                element.addEventListener('animationend', () => {
-                                    element.classList.remove('hercules-ui-automation-highlight');
-                                });
-                            }
-                        }""",
-                        sel,
-                    )
-                    logger.debug(f"Applied highlight to {sel}")
-                else:
-                    await page.evaluate(
-                        """(selector) => {
-                            const findElementInShadowDOMAndIframes = (parent, selector) => {
-                                let element = parent.querySelector(selector);
-                                if (element) return element;
-                                const elements = parent.querySelectorAll('*');
-                                for (const el of elements) {
-                                    if (el.shadowRoot) {
-                                        element = findElementInShadowDOMAndIframes(el.shadowRoot, selector);
-                                        if (element) return element;
-                                    }
-                                    if (el.tagName.toLowerCase() === 'iframe') {
-                                        let iframeDocument;
-                                        try {
-                                            iframeDocument = el.contentDocument || el.contentWindow.document;
-                                        } catch (e) { continue; }
-                                        if (iframeDocument) {
-                                            element = findElementInShadowDOMAndIframes(iframeDocument, selector);
-                                            if (element) return element;
-                                        }
-                                    }
-                                }
-                                return null;
-                            };
-                            const element = findElementInShadowDOMAndIframes(document, selector);
-                            if (element) {
-                                element.classList.remove('hercules-ui-automation-highlight');
-                            }
-                        }""",
-                        sel,
-                    )
-                    logger.debug(f"Removed highlight from {sel}")
-
-            await highlight_in_shadow_dom(selector, add_highlight)
-        except Exception as e:
-            logger.warning(f"Error in highlight_element({selector}, {add_highlight}): {e}")
+    async def highlight_element(self, selector: str) -> None:
+        # try:
+        #     element = await self.find_element(selector)
+        #     if isinstance(element, ElementHandle):
+        #         box = await element.bounding_box()
+        #     else:
+        #         await element.highlight()
+        # except Exception as e:
+        #     logger.warning(f"Error in highlight_element({selector}): {e}")
+        pass
 
     async def receive_user_response(self, response: str) -> None:
         logger.debug(f"Received user response: {response}")
@@ -748,19 +670,10 @@ class PlaywrightManager:
         logger.debug(f'Prompting user with: "{message}"')
         page = await self.get_current_page()
 
-        if self.ui_manager:
-            await self.ui_manager.show_overlay(page)
-            self.log_system_message(message, MessageType.QUESTION)
-            safe_message = escape_js_message(message)
-            js_code = f"addSystemMessage({safe_message}, " f"is_awaiting_user_response=true, message_type='question');"
-            await page.evaluate(js_code)
-
         self.user_response_future = asyncio.Future()
         result = await self.user_response_future
         logger.info(f'User response to "{message}": {result}')
         self.user_response_future = None
-        if self.ui_manager:
-            self.ui_manager.new_user_message(result)
         return result
 
     def set_take_screenshots(self, take_screenshots: bool) -> None:
@@ -851,24 +764,12 @@ class PlaywrightManager:
             await self._browser_context.close()
             self._browser_context = None
 
-    def log_user_message(self, message: str) -> None:
-        if self.ui_manager:
-            self.ui_manager.new_user_message(message)
-
-    def log_system_message(self, message: str, message_type: MessageType = MessageType.STEP) -> None:
-        if self.ui_manager:
-            self.ui_manager.new_system_message(message, message_type)
-
     async def update_processing_state(self, processing_state: str) -> None:
         page = await self.get_current_page()
-        if self.ui_manager:
-            await self.ui_manager.update_processing_state(processing_state, page)
 
     async def command_completed(self, command: str, elapsed_time: Optional[float] = None) -> None:
         logger.debug(f'Command "{command}" completed.')
         page = await self.get_current_page()
-        if self.ui_manager:
-            await self.ui_manager.command_completed(page, command, elapsed_time)
 
     # -------------------------------------------------------------------------
     # Additional helpers for stable network wait
@@ -1008,8 +909,6 @@ class PlaywrightManager:
         elapsed = time.time() - start_time
         remaining = max((timeout_overwrite or MIN_WAIT_PAGE_LOAD_TIME) - elapsed, 0)
         logger.debug(f"Page loaded in {elapsed:.2f}s, waiting {remaining:.2f}s more for stability.")
-        if remaining > 0:
-            await asyncio.sleep(remaining)
 
     # -------------------------------------------------------------------------
     # NEW METHODS for updating context properties on the fly
@@ -1054,3 +953,269 @@ class PlaywrightManager:
             self._browser_context = None
         await self.create_browser_context()
         await self.go_to_homepage()
+
+    async def perform_javascript_click(self, page: Page, selector: str, type_of_click: str) -> str:
+        js_code = """(params) => {
+            /*INJECT_FIND_ELEMENT_IN_SHADOW_DOM*/
+            const selector = params[0];
+            const type_of_click = params[1];
+
+            let element = findElementInShadowDOMAndIframes(document, selector);
+            if (!element) {
+                console.log(`perform_javascript_click: Element with selector ${selector} not found`);
+                return `perform_javascript_click: Element with selector ${selector} not found`;
+            }
+
+            if (element.tagName.toLowerCase() === "a") {
+                element.target = "_self";
+            }
+            
+            let ariaExpandedBeforeClick = element.getAttribute('aria-expanded');
+
+            // Get the element's bounding rectangle for mouse events
+            const rect = element.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+
+            // Common mouse move event
+            const mouseMove = new MouseEvent('mousemove', {
+                bubbles: true,
+                cancelable: true,
+                clientX: centerX,
+                clientY: centerY,
+                view: window
+            });
+            element.dispatchEvent(mouseMove);
+
+            // Handle different click types
+            switch(type_of_click) {
+                case 'right_click':
+                    const contextMenuEvent = new MouseEvent('contextmenu', {
+                        bubbles: true,
+                        cancelable: true,
+                        clientX: centerX,
+                        clientY: centerY,
+                        button: 2,
+                        view: window
+                    });
+                    element.dispatchEvent(contextMenuEvent);
+                    break;
+
+                case 'double_click':
+                    const dblClickEvent = new MouseEvent('dblclick', {
+                        bubbles: true,
+                        cancelable: true,
+                        clientX: centerX,
+                        clientY: centerY,
+                        button: 0,
+                        view: window
+                    });
+                    element.dispatchEvent(dblClickEvent);
+                    break;
+
+                case 'middle_click':
+                    const middleClickEvent = new MouseEvent('click', {
+                        bubbles: true,
+                        cancelable: true,
+                        button: 1,
+                        view: window
+                    });
+                    element.dispatchEvent(middleClickEvent);
+                    break;
+
+                default: // normal click
+                    element.click();
+                    break;
+            }
+
+            const ariaExpandedAfterClick = element.getAttribute('aria-expanded');
+            if (ariaExpandedBeforeClick === 'false' && ariaExpandedAfterClick === 'true') {
+                return "Executed " + type_of_click + " on element with selector: " + selector + 
+                    ". Very important: As a consequence, a menu has appeared where you may need to make further selection. " +
+                    "Very important: Get all_fields DOM to complete the action.";
+            }
+            return "Executed " + type_of_click + " on element with selector: " + selector;
+        }"""
+
+        try:
+            logger.info(f"Executing JavaScript '{type_of_click}' on element with selector: {selector}")
+            result: str = await page.evaluate(get_js_with_element_finder(js_code), (selector, type_of_click))
+            logger.debug(f"Executed JavaScript '{type_of_click}' on element with selector: {selector}")
+            return result
+        except Exception as e:
+            logger.error(f"Error executing JavaScript '{type_of_click}' on element with selector: {selector}. Error: {e}")
+            traceback.print_exc()
+            return f"Error executing JavaScript '{type_of_click}' on element with selector: {selector}"
+
+    async def is_element_present(self, selector: str, page: Optional[Page] = None) -> bool:
+        """Check if an element is present in DOM/Shadow DOM/iframes."""
+        if page is None:
+            page = await self.get_current_page()
+
+        # Try regular DOM first
+        element = await page.query_selector(selector)
+        if element:
+            return True
+
+        # Check Shadow DOM and iframes
+        js_code = """(selector) => {
+            /*INJECT_FIND_ELEMENT_IN_SHADOW_DOM*/
+            return findElementInShadowDOMAndIframes(document, selector) !== null;
+        }"""
+
+        return await page.evaluate_handle(get_js_with_element_finder(js_code), selector)
+
+    async def find_element(self, selector: str, page: Optional[Page] = None) -> Optional[ElementHandle]:
+        """Find element in DOM/Shadow DOM/iframes and return ElementHandle."""
+        if page is None:
+            page = await self.get_current_page()
+
+        # Try regular DOM first
+        element = await page.query_selector(selector)
+        if element:
+            return element
+
+        # Check Shadow DOM and iframes
+        js_code = """(selector) => {
+            /*INJECT_FIND_ELEMENT_IN_SHADOW_DOM*/
+            return findElementInShadowDOMAndIframes(document, selector);
+        }"""
+
+        element = await page.evaluate_handle(get_js_with_element_finder(js_code), selector)
+        if element:
+            return element.as_element()
+
+        return None
+
+    async def perform_javascript_click(self, page: Page, selector: str, type_of_click: str) -> str:
+        js_code = """(params) => {
+            /*INJECT_FIND_ELEMENT_IN_SHADOW_DOM*/
+            const selector = params[0];
+            const type_of_click = params[1];
+
+            let element = findElementInShadowDOMAndIframes(document, selector);
+            if (!element) {
+                console.log(`perform_javascript_click: Element with selector ${selector} not found`);
+                return `perform_javascript_click: Element with selector ${selector} not found`;
+            }
+
+            if (element.tagName.toLowerCase() === "a") {
+                element.target = "_self";
+            }
+            
+            let ariaExpandedBeforeClick = element.getAttribute('aria-expanded');
+
+            // Get the element's bounding rectangle for mouse events
+            const rect = element.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+
+            // Common mouse move event
+            const mouseMove = new MouseEvent('mousemove', {
+                bubbles: true,
+                cancelable: true,
+                clientX: centerX,
+                clientY: centerY,
+                view: window
+            });
+            element.dispatchEvent(mouseMove);
+
+            // Handle different click types
+            switch(type_of_click) {
+                case 'right_click':
+                    const contextMenuEvent = new MouseEvent('contextmenu', {
+                        bubbles: true,
+                        cancelable: true,
+                        clientX: centerX,
+                        clientY: centerY,
+                        button: 2,
+                        view: window
+                    });
+                    element.dispatchEvent(contextMenuEvent);
+                    break;
+
+                case 'double_click':
+                    const dblClickEvent = new MouseEvent('dblclick', {
+                        bubbles: true,
+                        cancelable: true,
+                        clientX: centerX,
+                        clientY: centerY,
+                        button: 0,
+                        view: window
+                    });
+                    element.dispatchEvent(dblClickEvent);
+                    break;
+
+                case 'middle_click':
+                    const middleClickEvent = new MouseEvent('click', {
+                        bubbles: true,
+                        cancelable: true,
+                        button: 1,
+                        view: window
+                    });
+                    element.dispatchEvent(middleClickEvent);
+                    break;
+
+                default: // normal click
+                    element.click();
+                    break;
+            }
+
+            const ariaExpandedAfterClick = element.getAttribute('aria-expanded');
+            if (ariaExpandedBeforeClick === 'false' && ariaExpandedAfterClick === 'true') {
+                return "Executed " + type_of_click + " on element with selector: " + selector + 
+                    ". Very important: As a consequence, a menu has appeared where you may need to make further selection. " +
+                    "Very important: Get all_fields DOM to complete the action.";
+            }
+            return "Executed " + type_of_click + " on element with selector: " + selector;
+        }"""
+
+        try:
+            logger.info(f"Executing JavaScript '{type_of_click}' on element with selector: {selector}")
+            result: str = await page.evaluate(get_js_with_element_finder(js_code), (selector, type_of_click))
+            logger.debug(f"Executed JavaScript '{type_of_click}' on element with selector: {selector}")
+            return result
+        except Exception as e:
+            logger.error(f"Error executing JavaScript '{type_of_click}' on element with selector: {selector}. Error: {e}")
+            traceback.print_exc()
+            return f"Error executing JavaScript '{type_of_click}' on element with selector: {selector}"
+
+    async def is_element_present(self, selector: str, page: Optional[Page] = None) -> bool:
+        """Check if an element is present in DOM/Shadow DOM/iframes."""
+        if page is None:
+            page = await self.get_current_page()
+
+        # Try regular DOM first
+        element = await page.query_selector(selector)
+        if element:
+            return True
+
+        # Check Shadow DOM and iframes
+        js_code = """(selector) => {
+            /*INJECT_FIND_ELEMENT_IN_SHADOW_DOM*/
+            return findElementInShadowDOMAndIframes(document, selector) !== null;
+        }"""
+
+        return await page.evaluate_handle(get_js_with_element_finder(js_code), selector)
+
+    async def find_element(self, selector: str, page: Optional[Page] = None) -> Optional[ElementHandle]:
+        """Find element in DOM/Shadow DOM/iframes and return ElementHandle."""
+        if page is None:
+            page = await self.get_current_page()
+
+        # Try regular DOM first
+        element = await page.query_selector(selector)
+        if element:
+            return element
+
+        # Check Shadow DOM and iframes
+        js_code = """(selector) => {
+            /*INJECT_FIND_ELEMENT_IN_SHADOW_DOM*/
+            return findElementInShadowDOMAndIframes(document, selector);
+        }"""
+
+        element = await page.evaluate_handle(get_js_with_element_finder(js_code), selector)
+        if element:
+            return element.as_element()
+
+        return None

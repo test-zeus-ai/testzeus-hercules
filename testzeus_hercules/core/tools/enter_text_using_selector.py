@@ -7,11 +7,13 @@ from typing import Annotated
 
 from playwright.async_api import Page
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
+from testzeus_hercules.core.prompts import LLM_PROMPTS
 from testzeus_hercules.core.tools.press_key_combination import press_key_combination
+from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.dom_helper import get_element_outer_html
 from testzeus_hercules.utils.dom_mutation_observer import subscribe, unsubscribe
-from testzeus_hercules.utils.js_helper import block_ads
+from testzeus_hercules.utils.js_helper import block_ads, get_js_with_element_finder
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
 
@@ -62,65 +64,29 @@ async def custom_fill_element(page: Page, selector: str, text_to_enter: str) -> 
     """
     selector = f"{selector}"  # Ensures the selector is treated as a string
     try:
+        js_code = """(inputParams) => {
+            /*INJECT_FIND_ELEMENT_IN_SHADOW_DOM*/
+            const selector = inputParams.selector;
+            let text_to_enter = inputParams.text_to_enter.trim();
+
+            // Start by searching in the regular document (DOM)
+            const element = findElementInShadowDOMAndIframes(document, selector);
+
+            if (!element) {
+                throw new Error(`Element not found: ${selector}`);
+            }
+
+            // Set the value for the element
+            element.value = "";
+            element.value = text_to_enter;
+            element.dispatchEvent(new Event('input', { bubbles: true }));
+            element.dispatchEvent(new Event('change', { bubbles: true }));
+
+            return `Value set for ${selector}`;
+        }"""
+
         result = await page.evaluate(
-            """(inputParams) => {
-                    const selector = inputParams.selector;
-                    let text_to_enter = inputParams.text_to_enter.trim();
-
-                    // Helper function to search for an element in regular DOM, shadow DOMs, and iframes
-                    const findElementInShadowDOMAndIframes = (parent, selector) => {
-                        // Try to find the element in the current DOM context (either document or shadowRoot)
-                        let element = parent.querySelector(selector);
-
-                        if (element) {
-                            return element; // Element found in the current context
-                        }
-
-                        // If not found, look inside shadow roots and iframes of elements in this context
-                        const elements = parent.querySelectorAll('*');
-                        for (const el of elements) {
-                            // Search inside shadow DOMs
-                            if (el.shadowRoot) {
-                                element = findElementInShadowDOMAndIframes(el.shadowRoot, selector);
-                                if (element) {
-                                    return element; // Element found in shadow DOM
-                                }
-                            }
-                            // Search inside iframes
-                            if (el.tagName.toLowerCase() === 'iframe') {
-                                let iframeDocument;
-                                try {
-                                    iframeDocument = el.contentDocument || el.contentWindow.document;
-                                } catch (e) {
-                                    // Cannot access cross-origin iframe; skip to the next element
-                                    continue;
-                                }
-                                if (iframeDocument) {
-                                    element = findElementInShadowDOMAndIframes(iframeDocument, selector);
-                                    if (element) {
-                                        return element; // Element found inside iframe
-                                    }
-                                }
-                            }
-                        }
-
-                        return null; // Element not found
-                    };
-
-                    // Start by searching in the regular document (DOM)
-                    const element = findElementInShadowDOMAndIframes(document, selector);
-
-                    if (!element) {
-                        throw new Error(`Element not found: ${selector}`);
-                    }
-
-                    // Set the value for the element
-                    element.value = text_to_enter;
-
-                    return `Value set for ${selector}`;
-                }
-
-        """,
+            get_js_with_element_finder(js_code),
             {"selector": selector, "text_to_enter": text_to_enter},
         )
         logger.debug(f"custom_fill_element result: {result}")
@@ -129,6 +95,11 @@ async def custom_fill_element(page: Page, selector: str, text_to_enter: str) -> 
         raise
 
 
+# @tool(
+#     agent_names=["browser_nav_agent"],
+#     description="""Enters text in element by md. Text-only operation without Enter press.""",
+#     name="entertext"
+# )
 async def entertext(
     entry: Annotated[EnterTextEntry, "Text entry with selector and text to enter"],
 ) -> Annotated[str, "Text entry result"]:
@@ -177,7 +148,7 @@ async def entertext(
 
     await browser_manager.take_screenshots(f"{function_name}_start", page)
 
-    await browser_manager.highlight_element(query_selector, True)
+    await browser_manager.highlight_element(query_selector)
 
     dom_changes_detected = None
 
@@ -188,60 +159,19 @@ async def entertext(
     subscribe(detect_dom_changes)
 
     await page.evaluate(
-        """
+        get_js_with_element_finder(
+            """
         (selector) => {
-                // Helper function to search for an element in regular DOM, shadow DOMs, and iframes
-                const findElementInShadowDOMAndIframes = (parent, selector) => {
-                    // First, try to find the element in the current DOM context (either document or shadowRoot)
-                    let element = parent.querySelector(selector);
-                    
-                    if (element) {
-                        return element; // Element found in the current context
-                    }
-                    
-                    // If not found, look inside shadow roots and iframes of elements in this context
-                    const elements = parent.querySelectorAll('*');
-                    for (const el of elements) {
-                        // Search inside shadow DOMs
-                        if (el.shadowRoot) {
-                            element = findElementInShadowDOMAndIframes(el.shadowRoot, selector);
-                            if (element) {
-                                return element; // Element found in shadow DOM
-                            }
-                        }
-                        // Search inside iframes
-                        if (el.tagName.toLowerCase() === 'iframe') {
-                            let iframeDocument;
-                            try {
-                                // Access the iframe's document if it's same-origin
-                                iframeDocument = el.contentDocument || el.contentWindow.document;
-                            } catch (e) {
-                                // Cannot access cross-origin iframe; skip to the next element
-                                continue;
-                            }
-                            if (iframeDocument) {
-                                element = findElementInShadowDOMAndIframes(iframeDocument, selector);
-                                if (element) {
-                                    return element; // Element found inside iframe
-                                }
-                            }
-                        }
-                    }
-
-                    return null; // Element not found
-                };
-
-                // Start by searching in the regular document (DOM)
-                const element = findElementInShadowDOMAndIframes(document, selector);
-
-                if (element) {
-                    element.value = ''; // Clear the value if element is found
-                } else {
-                    console.error('Element not found:', selector);
-                }
+            /*INJECT_FIND_ELEMENT_IN_SHADOW_DOM*/
+            const element = findElementInShadowDOMAndIframes(document, selector);
+            if (element) {
+                element.value = '';
+            } else {
+                console.error('Element not found:', selector);
             }
-
-        """,
+        }
+        """
+        ),
         query_selector,
     )
 
@@ -251,7 +181,6 @@ async def entertext(
     await page.wait_for_load_state()
     await browser_manager.take_screenshots(f"{function_name}_end", page)
 
-    await browser_manager.notify_user(result["summary_message"], message_type=MessageType.ACTION)
     if dom_changes_detected:
         return f"{result['detailed_message']}.\n As a consequence of this action, new elements have appeared in view: {dom_changes_detected}. This means that the action of entering text {text_to_enter} is not yet executed and needs further interaction. Get all_fields DOM to complete the interaction."
     return result["detailed_message"]
@@ -286,68 +215,9 @@ async def do_entertext(page: Page, selector: str, text_to_enter: str, use_keyboa
     try:
         logger.debug(f"Looking for selector {selector} to enter text: {text_to_enter}")
 
-        # Helper function to handle both regular DOM and Shadow DOM
-        async def find_element_in_shadow_dom(page: Page, selector: str) -> dict:
-            # Try to find the element in the regular DOM first
-            element = await page.query_selector(selector)
-
-            if element:
-                return element
-
-            # If the element is not found, recursively search inside shadow DOMs
-            element = await page.evaluate(
-                """
-                    (selector) => {
-                        const findElementInShadowDOMAndIframes = (parent, selector) => {
-                            // Try to find the element in the current context
-                            let element = parent.querySelector(selector);
-                            if (element) {
-                                return element; // Element found in the current context
-                            }
-
-                            // Search inside shadow DOMs and iframes
-                            const elements = parent.querySelectorAll('*');
-                            for (const el of elements) {
-                                // Search inside shadow DOMs
-                                if (el.shadowRoot) {
-                                    element = findElementInShadowDOMAndIframes(el.shadowRoot, selector);
-                                    if (element) {
-                                        return element; // Element found in shadow DOM
-                                    }
-                                }
-                                // Search inside iframes
-                                if (el.tagName.toLowerCase() === 'iframe') {
-                                    let iframeDocument;
-                                    try {
-                                        // Access the iframe's document if it's same-origin
-                                        iframeDocument = el.contentDocument || el.contentWindow.document;
-                                    } catch (e) {
-                                        // Cannot access cross-origin iframe; skip to the next element
-                                        continue;
-                                    }
-                                    if (iframeDocument) {
-                                        element = findElementInShadowDOMAndIframes(iframeDocument, selector);
-                                        if (element) {
-                                            return element; // Element found inside iframe
-                                        }
-                                    }
-                                }
-                            }
-                            return null; // Element not found
-                        };
-                        return findElementInShadowDOMAndIframes(document, selector);
-                    }
-
-                """,
-                selector,
-            )
-
-            return element
-
-        # Find the element in the DOM or Shadow DOM
-        elem = await find_element_in_shadow_dom(page, selector)
-
-        if elem is None:
+        browser_manager = PlaywrightManager()
+        elem = await browser_manager.find_element(selector, page)
+        if not elem:
             error = f"Error: Selector {selector} not found. Unable to continue."
             return {"summary_message": error, "detailed_message": error}
 
@@ -381,6 +251,11 @@ async def do_entertext(page: Page, selector: str, text_to_enter: str, use_keyboa
         return {"summary_message": error, "detailed_message": f"{error} Error: {e}"}
 
 
+@tool(
+    agent_names=["browser_nav_agent"],
+    name="bulk_enter_text",
+    description="Enters text into multiple DOM elements using a bulk operation. An object containing 'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'text' (text to enter on the element).",
+)
 async def bulk_enter_text(
     entries: Annotated[
         List[EnterTextEntry],

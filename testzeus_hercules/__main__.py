@@ -70,7 +70,7 @@ def sequential_process() -> None:
 
         if CONF.get_token_verbose():
             # Parse usage and sum across all agents based on keys
-            for ag_name, agent in runner.autogen_wrapper.agents_map.items():
+            for ag_name, agent in runner.simple_hercules.agents_map.items():
                 if agent.client and agent.client.total_usage_summary:
                     for key, value in agent.client.total_usage_summary.items():
                         if key == "total_cost":

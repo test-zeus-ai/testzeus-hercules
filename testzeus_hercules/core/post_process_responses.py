@@ -44,7 +44,4 @@ def final_reply_callback_user_proxy(
 
 def final_reply_callback_planner_agent(message: str, message_type: MessageType = MessageType.STEP):  # type: ignore
     add_event(EventType.STEP, EventData(detail=message_type.value))
-    browser_manager = PlaywrightManager()
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(browser_manager.notify_user(message, message_type=message_type))
     return False, None  # required to ensure the agent communication flow continues

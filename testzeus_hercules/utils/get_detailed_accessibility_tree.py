@@ -77,7 +77,6 @@ async def __inject_attributes(page: Page) -> None:
             };
             function isInteractiveElement(element) {
                 // Common semantic interactive elements
-                
                 const interactiveTags = ['button', 'a', 'input', 'select', 'textarea'];
                 if (interactiveTags.includes(element.tagName.toLowerCase())) {
                     return true;
@@ -94,18 +93,45 @@ async def __inject_attributes(page: Page) -> None:
                 ];
                 for (const attr of inlineEventAttributes) {
                     if (element.hasAttribute(attr)) {
-                    return true;
+                        return true;
                     }
                 }
+
+                // Check computed styles that might indicate interactivity
+                const computedStyle = window.getComputedStyle(element);
+                if (
+                    computedStyle.cursor === 'pointer' || 
+                    computedStyle.cursor === 'hand'
+                ) {
+                    return true;
+                }
+
+                // Common interactive class names
+                const interactiveClasses = [
+                    'text_box',
+                    'button',
+                    'clickable',
+                    'interactive',
+                    'selectable',
+                    'input',
+                    'dropdown',
+                    'menu-item'
+                ];
                 
-                const hasTextBoxClass = element.classList && element.classList.contains('text_box');
-                if (hasTextBoxClass) {
+                for (const className of interactiveClasses) {
+                    if (element.classList.contains(className)) {
+                        return true;
+                    }
+                }
+
+                // Check for tabindex attribute
+                if (element.hasAttribute('tabindex') && element.getAttribute('tabindex') !== '-1') {
                     return true;
                 }
 
                 return false;
-                }
-                
+            }
+
             // Helper function to determine if an element is interactive
             // const isInteractiveElement = (element) => {
             //     const interactiveTags = ['button', 'a', 'input', 'select', 'textarea'];
@@ -732,11 +758,33 @@ def __should_prune_node(node: dict[str, Any], only_input_fields: bool) -> bool:
     Returns:
         bool: True if the node should be pruned, False otherwise.
     """
+    list_of_interactive_roles = set(
+        [
+            "WebArea",
+            "button",
+            "checkbox",
+            "combobox",
+            "gridcell",
+            "listbox",
+            "menuitem",
+            "menuitemcheckbox",
+            "menuitemradio",
+            "option",
+            "radio",
+            "searchbox",
+            "slider",
+            "spinbutton",
+            "switch",
+            "textbox",
+            "treeitem",
+        ]
+    )
     # If the request is for only input fields and this is not an input field, then mark the node for prunning
     if node.get("tag") == "noscript":
         return True
-    if node.get("role") != "WebArea" and only_input_fields and not (node.get("tag") in ("input", "button", "textarea") or node.get("role") == "button"):
-        return True
+    if not only_input_fields:
+        if node.get("role") in list_of_interactive_roles or node.get("tag") in ("input", "button", "textarea"):
+            return False
 
     if node.get("role") == "generic" and "children" not in node and not ("name" in node and node.get("name")):  # The presence of 'children' is checked after potentially deleting it above
         return True

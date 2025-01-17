@@ -4,8 +4,7 @@ from playwright.async_api import ElementHandle, Page
 from testzeus_hercules.utils.logger import logger
 
 
-async def wait_for_non_loading_dom_state(page: Page, max_wait_millis: int):
-    max_wait_seconds = max_wait_millis / 1000
+async def wait_for_non_loading_dom_state(page: Page, max_wait_seconds: int) -> None:
     end_time = asyncio.get_event_loop().time() + max_wait_seconds
     while asyncio.get_event_loop().time() < end_time:
         all_frames_ready = True
@@ -17,7 +16,7 @@ async def wait_for_non_loading_dom_state(page: Page, max_wait_millis: int):
         if all_frames_ready:
             logger.debug("All frames have DOM state not 'loading'")
             break  # Exit the outer loop if all frames are ready
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.1)
 
 
 async def get_element_outer_html(element: ElementHandle, page: Page, element_tag_name: str | None = None) -> str:

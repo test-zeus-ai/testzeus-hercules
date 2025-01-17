@@ -186,7 +186,7 @@ class AgentsLLMConfig:
     def get_planner_agent_config(self) -> dict[str, Any]:
         return self.config["planner_agent"]
 
-    def get_browser_nav_agent_config(self) -> dict[str, Any]:
+    def get_nav_agent_config(self) -> dict[str, Any]:
         return self.config["browser_nav_agent"]
 
     def get_full_config(self) -> dict[str, Any]:
@@ -198,4 +198,4 @@ class AgentsLLMConfig:
 #     config = AgentsLLMConfig()
 
 #     planner_config = config.get_planner_agent_config()
-#     browser_nav_config = config.get_browser_nav_agent_config()
+#     browser_nav_config = config.get_nav_agent_config()

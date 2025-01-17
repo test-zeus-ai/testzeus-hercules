@@ -14,7 +14,7 @@ def parse_response(message: str) -> dict[str, Any]:
     # Check if message is wrapped in ```json ``` blocks
     if "```json" in message:
         start_idx = message.find("```json") + 7
-        end_idx = message.rfind("```")
+        end_idx = message.find("```", start_idx + 7)
         message = message[start_idx:end_idx]
     else:
         # Original handling for ``` blocks

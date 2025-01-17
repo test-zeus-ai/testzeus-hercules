@@ -3,10 +3,11 @@ from typing import Annotated
 
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
+from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
-from testzeus_hercules.utils.ui_messagetype import MessageType
 
 
+@tool(agent_names=["browser_nav_agent"], description="""Opens specified URL in browser. Returns new page URL or error message.""", name="openurl")
 async def openurl(
     url: Annotated[
         str,
@@ -46,10 +47,10 @@ async def openurl(
 
         await page.goto(url, timeout=timeout * 10000)  # type: ignore
         await browser_manager.take_screenshots(f"{function_name}_end", page)
-        await browser_manager.notify_user(f"Opened URL: {url}", message_type=MessageType.ACTION)
         # Get the page title
         title = await page.title()
         url = page.url
+        # wait for the network to idle
         # wait for the network to idle
         await page.wait_for_load_state()
         await browser_manager.wait_for_page_and_frames_load()
