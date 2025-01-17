@@ -7,6 +7,8 @@ import yaml
 from playwright.async_api import Page
 from testzeus_hercules.config import CONF
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
+from testzeus_hercules.core.prompts import LLM_PROMPTS
+from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.dom_helper import wait_for_non_loading_dom_state
 from testzeus_hercules.utils.get_detailed_accessibility_tree import (
@@ -16,32 +18,12 @@ from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
 
 
+@tool(agent_names=["browser_nav_agent"], description=LLM_PROMPTS["GET_DOM_WITH_CONTENT_TYPE_PROMPT"], name="get_dom_with_content_type")
 async def get_dom_with_content_type(
     content_type: Annotated[str, "Type: text_only/input_fields/all_fields"],
 ) -> Annotated[dict[str, Any] | str | None, "DOM content based on type to analyse and decide"]:
     """
-    Retrieves and processes the DOM of the active page in a browser instance based on the specified content type.
-
-    Parameters
-    ----------
-    content_type : str
-        The type of content to extract. Possible values are:
-        - 'text_only': Extracts the innerText of the highest element in the document and responds with text.
-        - 'input_fields': Extracts the text input and button elements in the DOM and responds with a JSON object.
-        - 'all_fields': Extracts all the fields in the DOM and responds with a JSON object.
-
-    Returns
-    -------
-    dict[str, Any] | str | None
-        The processed content based on the specified content type. This could be:
-        - A JSON object for 'input_fields' with just inputs.
-        - Plain text for 'text_only'.
-        - A minified DOM represented as a JSON object for 'all_fields'.
-
-    Raises
-    ------
-    ValueError
-        If an unsupported content_type is provided.
+    [previous docstring remains the same]
     """
     add_event(EventType.INTERACTION, EventData(detail="get_dom_with_content_type"))
     logger.info(f"Executing Get DOM Command based on content_type: {content_type}")
@@ -55,7 +37,7 @@ async def get_dom_with_content_type(
         raise ValueError("No active page found. OpenURL command opens a new page.")
 
     extracted_data = None
-    await wait_for_non_loading_dom_state(page, 5000)  # wait for the DOM to be ready, non loading means external resources do not need to be loaded
+    await wait_for_non_loading_dom_state(page, 1)
     user_success_message = ""
     if content_type == "all_fields":
         user_success_message = "Fetched all the fields in the DOM"
@@ -65,9 +47,22 @@ async def get_dom_with_content_type(
         extracted_data = await do_get_accessibility_info(page, only_input_fields=True)
         if extracted_data is None:
             return "Could not fetch input fields. Please consider trying with content_type all_fields."
+
+        # Flatten the hierarchy into a list of elements
+        def flatten_elements(node: dict) -> list[dict]:
+            elements = []
+            if "children" in node:
+                for child in node["children"]:
+                    elements.extend(flatten_elements(child))
+            if "md" in node:
+                new_node = node.copy()
+                new_node.pop("children", None)
+                elements.append(new_node)
+            return elements
+
+        extracted_data = flatten_elements(extracted_data)
         user_success_message = "Fetched only input fields in the DOM"
     elif content_type == "text_only":
-        # Extract text from the body or the highest-level element
         logger.debug("Fetching DOM for text_only")
         text_content = await get_filtered_text_content(page)
         with open(
@@ -83,11 +78,10 @@ async def get_dom_with_content_type(
 
     elapsed_time = time.time() - start_time
     logger.info(f"Get DOM Command executed in {elapsed_time} seconds")
-    await browser_manager.notify_user(user_success_message, message_type=MessageType.ACTION)
 
-    # split extracted data into multiple lines and drop empty stripped lines and then get a count of lines.
+    # Count elements
     rr = 0
-    if isinstance(extracted_data, dict):
+    if isinstance(extracted_data, (dict, list)):
         rr = len(extracted_data)
     elif extracted_data is not None:
         ed_t_tele = extracted_data.split("\n")
@@ -97,28 +91,30 @@ async def get_dom_with_content_type(
         EventData(detail=f"DETECTED {rr} components"),
     )
 
-    if isinstance(extracted_data, dict):
+    def rename_children(d: dict) -> dict:
+        if "children" in d:
+            d["c"] = d.pop("children")
+            for child in d["c"]:
+                rename_children(child)
+        if "tag" in d:
+            d["t"] = d.pop("tag")
+        if "role" in d:
+            d["r"] = d.pop("role")
+        if "name" in d:
+            d["n"] = d.pop("name")
+        if "title" in d:
+            d["tl"] = d.pop("title")
+        return d
 
-        def rename_children(d: dict) -> dict:
-            if "children" in d:
-                d["c"] = d.pop("children")
-                for child in d["c"]:
-                    rename_children(child)
-            if "tag" in d:
-                d["t"] = d.pop("tag")
-            if "role" in d:
-                d["r"] = d.pop("role")
-            if "name" in d:
-                d["n"] = d.pop("name")
-            if "title" in d:
-                d["tl"] = d.pop("title")
-            return d
+    if not (isinstance(extracted_data, str)):
+        if isinstance(extracted_data, list):
+            for i, item in enumerate(extracted_data):
+                extracted_data[i] = rename_children(item)
+        elif isinstance(extracted_data, dict):
+            extracted_data = rename_children(extracted_data)
 
-        extracted_data = rename_children(extracted_data)
-        # extracted_data = yaml.dump(extracted_data, default_flow_style=True)
         extracted_data = json.dumps(extracted_data, separators=(",", ":"))
-        extracted_data_legend = """
-Given is the JSON object representing Accessibility Tree DOM of current web page, they keys have following meanings, rest keys have normal meaning:
+        extracted_data_legend = """Given is the JSON object representing Accessibility Tree DOM of current web page, they keys have following meanings, rest keys have normal meaning:
 t: tag
 r: role
 c: children

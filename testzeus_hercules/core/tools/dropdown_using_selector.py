@@ -7,13 +7,13 @@ from typing import Annotated
 
 from playwright.async_api import ElementHandle, Page
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
+from testzeus_hercules.core.tools.click_using_selector import do_click
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.dom_helper import get_element_outer_html
 from testzeus_hercules.utils.dom_mutation_observer import subscribe, unsubscribe
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
-from testzeus_hercules.core.tools.click_using_selector import do_click
 
 
 @dataclass
@@ -38,11 +38,11 @@ class SelectOptionEntry:
             raise KeyError(f"{key} is not a valid key")
 
 
-@tool(
-    agent_names=["browser_nav_agent"],
-    name="select_option",
-    description="used to Selects an option from a dropdown or spinner.",
-)
+# @tool(
+#     agent_names=["browser_nav_agent"],
+#     name="select_option",
+#     description="used to Selects an option from a dropdown or spinner.",
+# )
 async def select_option(
     entry: Annotated[
         SelectOptionEntry,
@@ -81,7 +81,7 @@ async def select_option(
 
     await browser_manager.take_screenshots(f"{function_name}_start", page)
 
-    await browser_manager.highlight_element(query_selector, True)
+    await browser_manager.highlight_element(query_selector)
 
     dom_changes_detected = None
 
@@ -99,8 +99,6 @@ async def select_option(
 
     await browser_manager.take_screenshots(f"{function_name}_end", page)
 
-    await browser_manager.notify_user(result["summary_message"], message_type=MessageType.ACTION)
-
     if dom_changes_detected:
         return f"{result['detailed_message']}.\nAs a consequence of this action, new elements have appeared in view: {dom_changes_detected}. This means that the action of selecting option '{option_value}' is not yet executed and needs further interaction. Get all_fields DOM to complete the interaction."
     return result["detailed_message"]
@@ -117,70 +115,37 @@ async def custom_select_option(page: Page, selector: str, option_value: str) -> 
     """
     try:
         selector = f"{selector}"  # Ensure the selector is treated as a string
+        js_code = """(inputParams) => {
+            /*INJECT_FIND_ELEMENT_IN_SHADOW_DOM*/
+            const selector = inputParams.selector;
+            const option_value = inputParams.option_value;
+
+            const element = findElementInShadowDOMAndIframes(document, selector);
+            if (!element) {
+                throw new Error(`Element not found: ${selector}`);
+            }
+
+            // Find the option to select
+            let optionFound = false;
+            for (const option of element.options) {
+                if (option.value === option_value || option.text === option_value) {
+                    element.value = option.value;
+                    const event = new Event('change', { bubbles: true });
+                    element.dispatchEvent(event);
+                    optionFound = true;
+                    break;
+                }
+            }
+
+            if (!optionFound) {
+                throw new Error(`Option '${option_value}' not found in element '${selector}'`);
+            }
+
+            return `Option '${option_value}' selected in element '${selector}'`;
+        }"""
+
         result = await page.evaluate(
-            """(inputParams) => {
-                const selector = inputParams.selector;
-                const option_value = inputParams.option_value;
-
-                // Helper function to find element in DOM, Shadow DOM, and iframes
-                const findElementInShadowDOMAndIframes = (parent, selector) => {
-                    let element = parent.querySelector(selector);
-                    if (element) {
-                        return element;
-                    }
-
-                    const elements = parent.querySelectorAll('*');
-                    for (const el of elements) {
-                        // Search inside shadow DOMs
-                        if (el.shadowRoot) {
-                            element = findElementInShadowDOMAndIframes(el.shadowRoot, selector);
-                            if (element) {
-                                return element;
-                            }
-                        }
-                        // Search inside iframes
-                        if (el.tagName.toLowerCase() === 'iframe') {
-                            let iframeDocument;
-                            try {
-                                iframeDocument = el.contentDocument || el.contentWindow.document;
-                            } catch (e) {
-                                continue;
-                            }
-                            if (iframeDocument) {
-                                element = findElementInShadowDOMAndIframes(iframeDocument, selector);
-                                if (element) {
-                                    return element;
-                                }
-                            }
-                        }
-                    }
-                    return null;
-                };
-
-                const element = findElementInShadowDOMAndIframes(document, selector);
-
-                if (!element) {
-                    throw new Error(`Element not found: ${selector}`);
-                }
-
-                // Find the option to select
-                let optionFound = false;
-                for (const option of element.options) {
-                    if (option.value === option_value || option.text === option_value) {
-                        element.value = option.value;
-                        const event = new Event('change', { bubbles: true });
-                        element.dispatchEvent(event);
-                        optionFound = true;
-                        break;
-                    }
-                }
-
-                if (!optionFound) {
-                    throw new Error(`Option '${option_value}' not found in element '${selector}'`);
-                }
-
-                return `Option '${option_value}' selected in element '${selector}'`;
-            }""",
+            get_js_with_element_finder(js_code),
             {"selector": selector, "option_value": option_value},
         )
         logger.debug(f"custom_select_option result: {result}")
@@ -210,60 +175,9 @@ async def do_select_option(page: Page, selector: str, option_value: str) -> dict
     try:
         logger.debug(f"Looking for selector {selector} to select option: {option_value}")
 
-        # Helper function to find element in DOM, Shadow DOM, or iframes
-        async def find_element(page: Page, selector: str) -> ElementHandle:
-            # Try to find the element in the regular DOM first
-            element = await page.query_selector(selector)
-            if element:
-                return element
-
-            # If not found, search inside Shadow DOM and iframes
-            element = await page.evaluate_handle(
-                """
-                (selector) => {
-                    const findElementInShadowDOMAndIframes = (parent, selector) => {
-                        let element = parent.querySelector(selector);
-                        if (element) {
-                            return element;
-                        }
-                        const elements = parent.querySelectorAll('*');
-                        for (const el of elements) {
-                            if (el.shadowRoot) {
-                                element = findElementInShadowDOMAndIframes(el.shadowRoot, selector);
-                                if (element) {
-                                    return element;
-                                }
-                            }
-                            if (el.tagName.toLowerCase() === 'iframe') {
-                                let iframeDocument;
-                                try {
-                                    iframeDocument = el.contentDocument || el.contentWindow.document;
-                                } catch (e) {
-                                    continue;
-                                }
-                                if (iframeDocument) {
-                                    element = findElementInShadowDOMAndIframes(iframeDocument, selector);
-                                    if (element) {
-                                        return element;
-                                    }
-                                }
-                            }
-                        }
-                        return null;
-                    };
-                    return findElementInShadowDOMAndIframes(document, selector);
-                }
-                """,
-                selector,
-            )
-            if element:
-                return element.as_element()
-
-            return None
-
-        # Find the dropdown or spinner element
-        element = await find_element(page, selector)
-        if element is None:
+        browser_manager = PlaywrightManager()
+        element = browser_manager.find_element(selector, page)
+        if not element:
             error = f"Error: Selector '{selector}' not found. Unable to continue."
             return {"summary_message": error, "detailed_message": error}
 
@@ -297,7 +211,7 @@ async def do_select_option(page: Page, selector: str, option_value: str) -> dict
                 return {"summary_message": error, "detailed_message": error}
         else:
             # Handle custom dropdowns or spinners
-            
+
             await do_click(page, selector, 1, "click")
             # await element.click()
             await asyncio.sleep(0.5)  # Wait for options to appear

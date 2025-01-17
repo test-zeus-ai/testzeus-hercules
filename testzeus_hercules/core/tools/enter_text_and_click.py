@@ -3,9 +3,13 @@ import inspect
 from typing import Annotated, Any, Optional
 
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
+from testzeus_hercules.core.prompts import LLM_PROMPTS
 from testzeus_hercules.core.tools.click_using_selector import do_click
 from testzeus_hercules.core.tools.enter_text_using_selector import do_entertext
 from testzeus_hercules.core.tools.press_key_combination import do_press_key_combination
+
+# Add imports
+from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.js_helper import block_ads
 from testzeus_hercules.utils.logger import logger
@@ -24,6 +28,11 @@ def get_page_data(page: Any) -> dict:
     return page_data_store.get(page)
 
 
+# @tool(
+#     agent_names=["browser_nav_agent"],
+#     description=LLM_PROMPTS["ENTER_TEXT_AND_CLICK_PROMPT"],
+#     name="enter_text_and_click"
+# )
 async def enter_text_and_click(
     text_selector: Annotated[str, "Text input selector"],
     text_to_enter: Annotated[str, "Text to enter"],
@@ -97,14 +106,13 @@ async def enter_text_and_click(
         logger.error("No active page found")
         raise ValueError("No active page found. OpenURL command opens a new page.")
 
-    await browser_manager.highlight_element(text_selector, True)
+    await browser_manager.highlight_element(text_selector)
 
     function_name = inspect.currentframe().f_code.co_name  # type: ignore
     await browser_manager.take_screenshots(f"{function_name}_start", page)
 
     text_entry_result = await do_entertext(page, text_selector, text_to_enter, use_keyboard_fill=True)
     await page.wait_for_load_state()
-    # await browser_manager.notify_user(text_entry_result["summary_message"])
     if not text_entry_result["summary_message"].startswith("Success"):
         await browser_manager.take_screenshots(f"{function_name}_end", page)
         return f"Failed to enter text '{text_to_enter}' into element with selector '{text_selector}'. Check that the selctor is valid."
@@ -126,24 +134,14 @@ async def enter_text_and_click(
         do_press_key_combination_result = await do_press_key_combination(browser_manager, page, "Enter")
         if do_press_key_combination_result:
             result["detailed_message"] += f' Instead of click, pressed the Enter key successfully on element: "{click_selector}".'
-            await browser_manager.notify_user(
-                f'Pressed the Enter key successfully on element: "{click_selector}".',
-                message_type=MessageType.ACTION,
-            )
         else:
             result[
                 "detailed_message"
             ] += f' Clicking the same element after entering text in it, is of no value. Tried pressing the Enter key on element "{click_selector}" instead of click and failed.'
-            await browser_manager.notify_user(
-                'Failed to press the Enter key on element "{click_selector}".',
-                message_type=MessageType.ACTION,
-            )
     else:
-        await browser_manager.highlight_element(click_selector, True)
-
+        await browser_manager.highlight_element(click_selector)
         do_click_result = await do_click(page, click_selector, wait_before_click_execution)
         result["detailed_message"] += f' {do_click_result["detailed_message"]}'
-        # await browser_manager.notify_user(do_click_result["summary_message"])
 
     await asyncio.sleep(0.1)  # sleep for 100ms to allow the mutation observer to detect changes
 

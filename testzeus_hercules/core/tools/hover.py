@@ -7,6 +7,8 @@ import playwright
 import playwright.async_api
 from playwright.async_api import ElementHandle, Page
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
+from testzeus_hercules.core.prompts import LLM_PROMPTS
+from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.dom_helper import get_element_outer_html
 from testzeus_hercules.utils.dom_mutation_observer import subscribe  # type: ignore
@@ -15,6 +17,7 @@ from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
 
 
+@tool(agent_names=["browser_nav_agent"], description=LLM_PROMPTS["HOVER_PROMPT"], name="hover")
 async def hover(
     selector: Annotated[str, "selector using md attribute, eg:[md='114'] md is ID"],
     wait_before_execution: Annotated[float, "Wait time in seconds before hover"] = 0.0,
@@ -43,7 +46,7 @@ async def hover(
 
     await browser_manager.take_screenshots(f"{function_name}_start", page)
 
-    await browser_manager.highlight_element(selector, True)
+    await browser_manager.highlight_element(selector)
 
     dom_changes_detected = None
 
@@ -57,7 +60,6 @@ async def hover(
     unsubscribe(detect_dom_changes)
     await page.wait_for_load_state()
     await browser_manager.take_screenshots(f"{function_name}_end", page)
-    await browser_manager.notify_user(result["summary_message"], message_type=MessageType.ACTION)
 
     if dom_changes_detected:
         return f"Success: {result['summary_message']}.\nAs a consequence of this action, new elements have appeared in view: {dom_changes_detected}. You may need further interaction. Get all_fields DOM to complete the interaction, if needed, also the tooltip data is already in the message"
@@ -83,51 +85,13 @@ async def do_hover(page: Page, selector: str, wait_before_execution: float) -> d
     if wait_before_execution > 0:
         await asyncio.sleep(wait_before_execution)
 
-    # Function to search for the element, including within iframes and shadow DOMs
-    async def find_element_within_iframes_and_shadow_dom(context: Union[Page, ElementHandle]) -> Optional[ElementHandle]:
-        """
-        Recursively searches for the element within the given context, including shadow DOMs and iframes.
-
-        Parameters:
-        - context: The context to search in (Page, Frame, or ElementHandle)
-
-        Returns:
-        - ElementHandle if found, None otherwise
-        """
-        # Try to find the element in the current context
-        try:
-            element = await context.query_selector(selector)
-            if element:
-                return element
-        except playwright.async_api.Error:
-            pass  # Continue searching in shadow roots and iframes
-
-        # Search inside shadow DOMs
-        shadow_hosts = await context.query_selector_all("*")
-        for host in shadow_hosts:
-            try:
-                shadow_root = await host.evaluate_handle("(el) => el.shadowRoot")
-                if shadow_root:
-                    element = await find_element_within_iframes_and_shadow_dom(shadow_root)
-                    if element:
-                        return element
-            except Exception:
-                pass  # Continue with next host
-
-        # Search inside iframes
-        frames = context.frames if isinstance(context, Page) else []
-        for frame in frames:
-            element = await find_element_within_iframes_and_shadow_dom(frame)
-            if element:
-                return element
-
-        return None  # type: ignore
-
     try:
         logger.info(f'Executing HoverElement with "{selector}" as the selector. Waiting for the element to be attached and visible.')
 
         # Attempt to find the element on the main page or in shadow DOMs and iframes
-        element = await find_element_within_iframes_and_shadow_dom(page)
+        browser_manager = PlaywrightManager()
+
+        element = await browser_manager.find_element(selector, page)
         if element is None:
             raise ValueError(f'Element with selector: "{selector}" not found')
 

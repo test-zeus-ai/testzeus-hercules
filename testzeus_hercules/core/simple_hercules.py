@@ -12,31 +12,33 @@ import nest_asyncio  # type: ignore
 import openai
 from autogen import Cache
 from testzeus_hercules.config import CONF
+
 from testzeus_hercules.core.agents.api_nav_agent import ApiNavAgent
 from testzeus_hercules.core.agents.browser_nav_agent import BrowserNavAgent
 from testzeus_hercules.core.agents.high_level_planner_agent import PlannerAgent
 from testzeus_hercules.core.agents.sec_nav_agent import SecNavAgent
 from testzeus_hercules.core.agents.sql_nav_agent import SqlNavAgent
 from testzeus_hercules.core.memory.state_handler import store_run_data
+from testzeus_hercules.core.tools import *
 from testzeus_hercules.core.post_process_responses import (
     final_reply_callback_planner_agent as notify_planner_messages,  # type: ignore
 )
 from testzeus_hercules.core.prompts import LLM_PROMPTS
 from testzeus_hercules.core.tools.get_url import geturl
 from testzeus_hercules.telemetry import EventData, EventType, add_event
-from testzeus_hercules.utils.autogen_sequential_function_call import (
-    UserProxyAgent_SequentialFunctionExecution,
-)
 from testzeus_hercules.utils.detect_llm_loops import is_agent_stuck_in_loop
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.response_parser import parse_response
+from testzeus_hercules.utils.sequential_function_call import (
+    UserProxyAgent_SequentialFunctionExecution,
+)
 from testzeus_hercules.utils.ui_messagetype import MessageType
 
 nest_asyncio.apply()  # type: ignore
 from autogen import oai
 
 
-class AutogenSimpleWrapper:
+class SimpleHercules:
     """
     A wrapper class for interacting with the Autogen library.
 
@@ -88,9 +90,9 @@ class AutogenSimpleWrapper:
         save_chat_logs_to_files: bool = True,
         planner_max_chat_round: int = 500,
         browser_nav_max_chat_round: int = 10,
-    ) -> "AutogenSimpleWrapper":
+    ) -> "SimpleHercules":
         """
-        Create an instance of AutogenSimpleWrapper.
+        Create an instance of SimpleHercules.
 
         Args:
             planner_agent_config: dict[str, Any]: A dictionary containing the configuration parameters for the planner agent. For example:
@@ -111,11 +113,11 @@ class AutogenSimpleWrapper:
             browser_nav_max_chat_round (int, optional): The maximum number of chat rounds for the browser navigation agent. Defaults to 10.
 
         Returns:
-            AutogenSimpleWrapper: An instance of AutogenSimpleWrapper.
+            SimpleHercules: An instance of SimpleHercules.
 
         """
         logger.info(
-            f">>> Creating AutogenSimpleWrapper, Planner max chat rounds: {planner_max_chat_round}, browser nav max chat rounds: {browser_nav_max_chat_round}. Save chat logs to files: {save_chat_logs_to_files}"
+            f">>> Creating SimpleHercules, Planner max chat rounds: {planner_max_chat_round}, browser nav max chat rounds: {browser_nav_max_chat_round}. Save chat logs to files: {save_chat_logs_to_files}"
         )
         # Create an instance of cls
         self = cls(
@@ -482,10 +484,7 @@ class AutogenSimpleWrapper:
             self.browser_nav_agent_config["llm_config_params"],  # type: ignore
             self.browser_nav_agent_config["other_settings"].get("system_prompt", None),
             user_proxy_agent,
-            agent_name="browser_navigation_agent",
-            agent_prompt=LLM_PROMPTS["BROWSER_AGENT_PROMPT"],
         )  # type: ignore
-        # logger.info(">>> browser agent tools:", json.dumps(browser_nav_agent.agent.llm_config.get("tools"), indent=2))
         return browser_nav_agent.agent
 
     def __create_api_nav_executor_agent(self) -> autogen.UserProxyAgent:
@@ -542,10 +541,7 @@ class AutogenSimpleWrapper:
             self.browser_nav_agent_config["llm_config_params"],  # type: ignore
             self.browser_nav_agent_config["other_settings"].get("system_prompt", None),
             user_proxy_agent,
-            agent_name="api_navigation_agent",
-            agent_prompt=LLM_PROMPTS["API_AGENT_PROMPT"],
         )  # type: ignore
-        # logger.info(">>> api agent tools:", json.dumps(api_nav_agent.agent.llm_config.get("tools"), indent=2))
         return api_nav_agent.agent
 
     def __create_sec_nav_executor_agent(self) -> autogen.UserProxyAgent:
@@ -602,10 +598,7 @@ class AutogenSimpleWrapper:
             self.browser_nav_agent_config["llm_config_params"],  # type: ignore
             self.browser_nav_agent_config["other_settings"].get("system_prompt", None),
             user_proxy_agent,
-            agent_name="sec_nav_agent",
-            agent_prompt=LLM_PROMPTS["SEC_NAV_AGENT_PROMPT"],
         )  # type: ignore
-        # logger.info(">>> api agent tools:", json.dumps(sec_nav_agent.agent.llm_config.get("tools"), indent=2))
         return sec_nav_agent.agent
 
     def __create_sql_nav_agent(self, user_proxy_agent: UserProxyAgent_SequentialFunctionExecution) -> autogen.ConversableAgent:
@@ -624,10 +617,7 @@ class AutogenSimpleWrapper:
             self.browser_nav_agent_config["llm_config_params"],  # type: ignore
             self.browser_nav_agent_config["other_settings"].get("system_prompt", None),
             user_proxy_agent,
-            agent_name="sql_navigation_agent",
-            agent_prompt=LLM_PROMPTS["DATABASE_AGENT_PROMPT"],
         )  # type: ignore
-        # logger.info(">>> sql agent tools:", json.dumps(sql_nav_agent.agent.llm_config.get("tools"), indent=2))
         return sql_nav_agent.agent
 
     def __create_sql_nav_executor_agent(self) -> autogen.UserProxyAgent:
@@ -683,17 +673,13 @@ class AutogenSimpleWrapper:
             assistant_agent,
         )  # type: ignore
         return planner_agent.agent
-    
+
     async def clean_up_plan(self) -> None:
         """
         Clean up the plan after each command is processed.
 
         """
-        for agent in self.agents_map.values():
-            if hasattr(agent, "client") and agent.client is not None:
-                agent.client.clear_usage_summary()
-            agent.reset()
-        self.agents_map["planner_agent"] = self.__create_planner_agent(self.agents_map["user"])
+        await self.__initialize_agents()
         logger.info("Plan cleaned up.")
 
     async def process_command(self, command: str, *args: Any, current_url: str | None = None, **kwargs: Any) -> autogen.ChatResult | None:

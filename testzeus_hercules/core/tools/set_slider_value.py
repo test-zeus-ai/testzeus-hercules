@@ -9,6 +9,7 @@ from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.tool_registry import tool, tool_registry
 from testzeus_hercules.utils.dom_helper import get_element_outer_html
 from testzeus_hercules.utils.dom_mutation_observer import subscribe, unsubscribe
+from testzeus_hercules.utils.js_helper import get_js_with_element_finder
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
 
@@ -53,84 +54,37 @@ async def custom_set_slider_value(page: Page, selector: str, value_to_set: float
     selector = f"{selector}"  # Ensures the selector is treated as a string
     try:
         result = await page.evaluate(
-            """(inputParams) => {
-                const selector = inputParams.selector;
-                let value_to_set = inputParams.value_to_set;
-
-                // Helper function to search for an element in regular DOM, shadow DOMs, and iframes
-                const findElementInShadowDOMAndIframes = (parent, selector) => {
-                    // Try to find the element in the current DOM context (either document or shadowRoot)
-                    let element = parent.querySelector(selector);
-
-                    if (element) {
-                        return element; // Element found in the current context
-                    }
-
-                    // If not found, look inside shadow roots and iframes of elements in this context
-                    const elements = parent.querySelectorAll('*');
-                    for (const el of elements) {
-                        // Search inside shadow DOMs
-                        if (el.shadowRoot) {
-                            element = findElementInShadowDOMAndIframes(el.shadowRoot, selector);
-                            if (element) {
-                                return element; // Element found in shadow DOM
-                            }
-                        }
-                        // Search inside iframes
-                        if (el.tagName.toLowerCase() === 'iframe') {
-                            let iframeDocument;
-                            try {
-                                iframeDocument = el.contentDocument || el.contentWindow.document;
-                            } catch (e) {
-                                // Cannot access cross-origin iframe; skip to the next element
-                                continue;
-                            }
-                            if (iframeDocument) {
-                                element = findElementInShadowDOMAndIframes(iframeDocument, selector);
-                                if (element) {
-                                    return element; // Element found inside iframe
-                                }
-                            }
-                        }
-                    }
-
-                    return null; // Element not found
-                };
-
-                // Start by searching in the regular document (DOM)
+            get_js_with_element_finder(
+                """
+            (inputParams) => {
+                /*INJECT_FIND_ELEMENT_IN_SHADOW_DOM*/
+                const { selector, value_to_set } = inputParams;
                 const element = findElementInShadowDOMAndIframes(document, selector);
-
                 if (!element) {
                     throw new Error(`Element not found: ${selector}`);
                 }
-
                 if (element.type !== 'range') {
                     throw new Error(`Element is not a range input: ${selector}`);
                 }
-
                 // Get min, max, and step values
                 const min = parseFloat(element.min) || 0;
                 const max = parseFloat(element.max) || 100;
                 const step = parseFloat(element.step) || 1;
-
                 // Clamp the value within the allowed range
                 value_to_set = Math.max(min, Math.min(max, value_to_set));
-
                 // Adjust value to the nearest step
                 value_to_set = min + Math.round((value_to_set - min) / step) * step;
-
                 // Set the value
                 element.value = value_to_set;
-
                 // Dispatch input and change events to simulate user interaction
                 const inputEvent = new Event('input', { bubbles: true });
                 const changeEvent = new Event('change', { bubbles: true });
-
                 element.dispatchEvent(inputEvent);
                 element.dispatchEvent(changeEvent);
-
                 return `Value set for ${selector}`;
-            }""",
+            }
+            """
+            ),
             {"selector": selector, "value_to_set": value_to_set},
         )
         logger.debug(f"custom_set_slider_value result: {result}")
@@ -181,7 +135,7 @@ async def setslider(
 
     await browser_manager.take_screenshots(f"{function_name}_start", page)
 
-    await browser_manager.highlight_element(query_selector, True)
+    await browser_manager.highlight_element(query_selector)
 
     dom_changes_detected = None
 
@@ -197,7 +151,6 @@ async def setslider(
     await page.wait_for_load_state()
     await browser_manager.take_screenshots(f"{function_name}_end", page)
 
-    await browser_manager.notify_user(result["summary_message"], message_type=MessageType.ACTION)
     if dom_changes_detected:
         return f"{result['detailed_message']}.\n As a consequence of this action, new elements have appeared in view: {dom_changes_detected}. This means that the action of setting slider value {value_to_set} is not yet executed and needs further interaction. Get all_fields DOM to complete the interaction."
     return result["detailed_message"]
@@ -224,65 +177,9 @@ async def do_setslider(page: Page, selector: str, value_to_set: float) -> dict[s
     try:
         logger.debug(f"Looking for selector {selector} to set slider value: {value_to_set}")
 
-        # Helper function to handle both regular DOM and Shadow DOM
-        async def find_element_in_shadow_dom(page: Page, selector: str) -> None:
-            # Try to find the element in the regular DOM first
-            element = await page.query_selector(selector)
-
-            if element:
-                return element
-
-            # If the element is not found, recursively search inside shadow DOMs
-            element = await page.evaluate_handle(
-                """
-                    (selector) => {
-                        const findElementInShadowDOMAndIframes = (parent, selector) => {
-                            // Try to find the element in the current context
-                            let element = parent.querySelector(selector);
-                            if (element) {
-                                return element; // Element found in the current context
-                            }
-
-                            // Search inside shadow DOMs and iframes
-                            const elements = parent.querySelectorAll('*');
-                            for (const el of elements) {
-                                // Search inside shadow DOMs
-                                if (el.shadowRoot) {
-                                    element = findElementInShadowDOMAndIframes(el.shadowRoot, selector);
-                                    if (element) {
-                                        return element; // Element found in shadow DOM
-                                    }
-                                }
-                                // Search inside iframes
-                                if (el.tagName.toLowerCase() === 'iframe') {
-                                    let iframeDocument;
-                                    try {
-                                        // Access the iframe's document if it's same-origin
-                                        iframeDocument = el.contentDocument || el.contentWindow.document;
-                                    } catch (e) {
-                                        // Cannot access cross-origin iframe; skip to the next element
-                                        continue;
-                                    }
-                                    if (iframeDocument) {
-                                        element = findElementInShadowDOMAndIframes(iframeDocument, selector);
-                                        if (element) {
-                                            return element; // Element found inside iframe
-                                        }
-                                    }
-                                }
-                            }
-                            return null; // Element not found
-                        };
-                        return findElementInShadowDOMAndIframes(document, selector);
-                    }
-                """,
-                selector,
-            )
-
-            return element
-
         # Find the element in the DOM or Shadow DOM
-        elem_handle = await find_element_in_shadow_dom(page, selector)
+        browser_manager = PlaywrightManager()
+        elem_handle = await browser_manager.find_element(selector, page)
 
         if elem_handle is None:
             error = f"Error: Selector {selector} not found. Unable to continue."

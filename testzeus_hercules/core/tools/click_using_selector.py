@@ -6,11 +6,13 @@ from typing import Annotated, Any, Optional
 
 from playwright.async_api import ElementHandle, Page
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
+from testzeus_hercules.core.prompts import LLM_PROMPTS
+from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.dom_helper import get_element_outer_html
 from testzeus_hercules.utils.dom_mutation_observer import subscribe  # type: ignore
 from testzeus_hercules.utils.dom_mutation_observer import unsubscribe  # type: ignore
-from testzeus_hercules.utils.js_helper import block_ads
+from testzeus_hercules.utils.js_helper import block_ads, get_js_with_element_finder
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
 
@@ -27,6 +29,7 @@ def get_page_data(page: Any) -> dict:
     return page_data_store.get(page)
 
 
+@tool(agent_names=["browser_nav_agent"], description=LLM_PROMPTS["CLICK_PROMPT"], name="click")
 async def click(
     selector: Annotated[str, "selector using md attribute, eg: [md='114'] md is ID"],
     user_input_dialog_response: Annotated[str | None, "Dialog input value"],
@@ -98,7 +101,7 @@ async def click(
 
     await browser_manager.take_screenshots(f"{function_name}_start", page)
 
-    await browser_manager.highlight_element(selector, True)
+    await browser_manager.highlight_element(selector)
 
     dom_changes_detected = None
 
@@ -126,7 +129,6 @@ async def click(
 
     await page.wait_for_load_state()
     await browser_manager.take_screenshots(f"{function_name}_end", page)
-    await browser_manager.notify_user(result["summary_message"], message_type=MessageType.ACTION)
 
     if dom_changes_detected:
         return f"Success: {result['summary_message']}.\n As a consequence of this action, new elements have appeared in view: {dom_changes_detected}. This means that the action to click {selector} is not yet executed and needs further interaction. Get all_fields DOM to complete the interaction."
@@ -153,26 +155,13 @@ async def do_click(page: Page, selector: str, wait_before_execution: float, type
     if wait_before_execution > 0:
         await asyncio.sleep(wait_before_execution)
 
-    # Function to search for the element, including within iframes
-    async def find_element_within_iframes() -> ElementHandle | None:
-        # Check for the element on the main page
-        element = await page.query_selector(selector)
-        if element:
-            return element
-
-        # If not found, iterate over all iframes and search
-        for frame in page.frames:
-            element = await frame.query_selector(selector)
-            if element:
-                return element
-        return None
-
     # Wait for the selector to be present and ensure it's attached and visible. If timeout, try JavaScript click
     try:
         logger.info(f'Executing ClickElement with "{selector}" as the selector. Waiting for the element to be attached and visible.')
 
         # Attempt to find the element on the main page or in iframes
-        element = await find_element_within_iframes()
+        browser_manager = PlaywrightManager()
+        element = await browser_manager.find_element(selector, page)
         if element is None:
             raise ValueError(f'Element with selector: "{selector}" not found')
 
@@ -206,7 +195,7 @@ async def do_click(page: Page, selector: str, wait_before_execution: float, type
                 "detailed_message": f'Select menu option "{element_value}" selected. The select element\'s outer HTML is: {element_outer_html}.',
             }
 
-        msg = await perform_javascript_click(page, selector, type_of_click)
+        msg = await browser_manager.perform_javascript_click(page, selector, type_of_click)
         return {
             "summary_message": msg,
             "detailed_message": f"{msg} The clicked element's outer HTML is: {element_outer_html}.",
@@ -216,268 +205,3 @@ async def do_click(page: Page, selector: str, wait_before_execution: float, type
         traceback.print_exc()
         msg = f'Unable to click element with selector: "{selector}" since the selector is invalid. Proceed by retrieving DOM again.'
         return {"summary_message": msg, "detailed_message": f"{msg}. Error: {e}"}
-
-
-async def is_element_present(page: Page, selector: str) -> bool:
-    """
-    Checks if an element is present on the page, either in the regular DOM or inside a shadow DOM.
-
-    Parameters:
-    - page: The Playwright page instance.
-    - selector: The query selector string to identify the element.
-
-    Returns:
-    - True if the element is present, False otherwise.
-    """
-    element = await page.query_selector(selector)
-
-    # If the element is found in the regular DOM, return True
-    if element is not None:
-        return True
-
-    # If not found in the regular DOM, check inside shadow DOMs
-    is_in_shadow_dom = await page.evaluate(
-        """
-            (selector) => {
-                const findElementInShadowDOMAndIframes = (parent, selector) => {
-                    // Try to find the element in the current context
-                    let element = parent.querySelector(selector);
-                    if (element) {
-                        return element; // Element found in the current context
-                    }
-
-                    // Search inside shadow DOMs and iframes
-                    const elements = parent.querySelectorAll('*');
-                    for (const el of elements) {
-                        // Search inside shadow DOMs
-                        if (el.shadowRoot) {
-                            element = findElementInShadowDOMAndIframes(el.shadowRoot, selector);
-                            if (element) {
-                                return element; // Element found in shadow DOM
-                            }
-                        }
-                        // Search inside iframes
-                        if (el.tagName.toLowerCase() === 'iframe') {
-                            let iframeDocument;
-                            try {
-                                // Access the iframe's document if it's same-origin
-                                iframeDocument = el.contentDocument || el.contentWindow.document;
-                            } catch (e) {
-                                // Cannot access cross-origin iframe; skip to the next element
-                                continue;
-                            }
-                            if (iframeDocument) {
-                                element = findElementInShadowDOMAndIframes(iframeDocument, selector);
-                                if (element) {
-                                    return element; // Element found inside iframe
-                                }
-                            }
-                        }
-                    }
-                    return null; // Element not found
-                };
-                return findElementInShadowDOMAndIframes(document, selector) !== null;
-            }
-
-    """,
-        selector,
-    )
-
-    return is_in_shadow_dom
-
-
-async def perform_playwright_click(element: ElementHandle, selector: str) -> None:
-    """
-    Performs a click action on the element using Playwright's click method.
-
-    Parameters:
-    - element: The Playwright ElementHandle instance representing the element to be clicked.
-    - selector: The query selector string of the element.
-
-    Returns:
-    - None
-    """
-    logger.info(f"Performing first Step: Playwright Click on element with selector: {selector}")
-    await element.click(force=True, timeout=200)
-
-
-async def perform_javascript_click(page: Page, selector: str, type_of_click: str) -> str:
-    """
-    Performs a click action on the element using JavaScript.
-
-    Parameters:
-    - page: The Playwright page instance.
-    - selector: The query selector string of the element.
-    - type_of_click: The type of click to perform.
-
-    Returns:
-    - A message indicating the result of the click action.
-    """
-    js_code = """(params) => {
-                selector = params[0];
-                type_of_click = params[1];
-                // Helper function to search for an element in regular DOM, shadow DOMs, and iframes
-                const findElementInShadowDOMAndIframes = (parent, selector) => {
-                    // First, try to find the element in the current DOM context (either document or shadowRoot)
-                    let element = parent.querySelector(selector);
-                    
-                    if (element) {
-                        return element; // Element found in the current context
-                    }
-                    
-                    // If not found, look inside shadow roots and iframes of elements in this context
-                    const elements = parent.querySelectorAll('*');
-                    for (const el of elements) {
-                        // Search inside shadow DOMs
-                        if (el.shadowRoot) {
-                            element = findElementInShadowDOMAndIframes(el.shadowRoot, selector);
-                            if (element) {
-                                return element; // Element found in shadow DOM
-                            }
-                        }
-                        // Search inside iframes
-                        if (el.tagName.toLowerCase() === 'iframe') {
-                            let iframeDocument;
-                            try {
-                                // Access the iframe's document if it's same-origin
-                                iframeDocument = el.contentDocument || el.contentWindow.document;
-                            } catch (e) {
-                                // Cannot access cross-origin iframe; skip to the next element
-                                continue;
-                            }
-                            if (iframeDocument) {
-                                element = findElementInShadowDOMAndIframes(iframeDocument, selector);
-                                if (element) {
-                                    return element; // Element found inside iframe
-                                }
-                            }
-                        }
-                    }
-                    
-                    return null; // Element not found
-                };
-
-                // Start by searching in the regular document (DOM)
-                let element = findElementInShadowDOMAndIframes(document, selector);
-
-                if (!element) {
-                    console.log(`perform_javascript_click: Element with selector ${selector} not found`);
-                    return `perform_javascript_click: Element with selector ${selector} not found`;
-                }
-
-                if (element.tagName.toLowerCase() === "option") {
-                    let value = element.text;
-                    let parent = element.parentElement;
-
-                    parent.value = element.value; // Directly set the value if possible
-                    // Trigger change event if necessary
-                    let event = new Event('change', { bubbles: true });
-                    parent.dispatchEvent(event);
-
-                    console.log("Select menu option", value, "selected");
-                    return "Select menu option: " + value + " selected";
-                } else {
-                    console.log("About to click selector", selector);
-                    // If the element is a link, make it open in the same tab
-                    if (element.tagName.toLowerCase() === "a") {
-                        element.target = "_self";
-                    }
-                    let ariaExpandedBeforeClick = element.getAttribute('aria-expanded');
-
-                    // Determine the type of click
-                    let event;
-                    if (type_of_click === 'right_click') {
-
-                        // Get the element's bounding rectangle
-                        const rect = element.getBoundingClientRect();
-                        // Calculate the center coordinates
-                        const centerX = rect.left + rect.width / 2;
-                        const centerY = rect.top + rect.height / 2;
-
-                        // Simulate moving the mouse to the center and right-clicking
-                        const mouseMove = new MouseEvent('mousemove', {
-                            bubbles: true,
-                            cancelable: true,
-                            clientX: centerX,
-                            clientY: centerY,
-                            view: window
-                        });
-                        
-                        const doubleClickEvent = new MouseEvent('contextmenu', {
-                            bubbles: true,
-                            cancelable: true,
-                            clientX: centerX,
-                            clientY: centerY,
-                            view: window
-                        });
-
-                        // Dispatch mousemove and then right-click at the calculated position
-                        element.dispatchEvent(mouseMove);
-                        element.dispatchEvent(doubleClickEvent);
-                    } else if (type_of_click === 'double_click') {
-                        // Get the element's bounding rectangle
-                        const rect = element.getBoundingClientRect();
-                        // Calculate the center coordinates
-                        const centerX = rect.left + rect.width / 2;
-                        const centerY = rect.top + rect.height / 2;
-
-                        // Simulate moving the mouse to the center and double-clicking
-                        const mouseMove = new MouseEvent('mousemove', {
-                            bubbles: true,
-                            cancelable: true,
-                            clientX: centerX,
-                            clientY: centerY,
-                            view: window
-                        });
-                        
-                        const doubleClickEvent = new MouseEvent('dblclick', {
-                            bubbles: true,
-                            cancelable: true,
-                            clientX: centerX,
-                            clientY: centerY,
-                            view: window
-                        });
-
-                        // Dispatch mousemove and then double-click at the calculated position
-                        element.dispatchEvent(mouseMove);
-                        element.dispatchEvent(doubleClickEvent);
-                    } else if (type_of_click === 'middle_click') {
-                        event = new MouseEvent('click', {
-                            bubbles: true,
-                            cancelable: true,
-                            view: window,
-                            button: 1 // 1 represents the middle mouse button
-                        });
-                        element.dispatchEvent(event);
-                    } else {
-                        // Default to left click
-                        // event = new MouseEvent('click', {
-                        //     bubbles: true,
-                        //     cancelable: true,
-                        //     view: window,
-                        //     button: 0 // 0 represents the left mouse button
-                        // });
-                        // element.dispatchEvent(event);
-                        element.click();
-                    }
-
-                    
-
-                    ariaExpandedAfterClick = element.getAttribute('aria-expanded');
-                    if (ariaExpandedBeforeClick === 'false' && ariaExpandedAfterClick === 'true') {
-                        return "Executed " + type_of_click + " on element with selector: " + selector + ". Very important: As a consequence, a menu has appeared where you may need to make further selection. Very important: Get all_fields DOM to complete the action.";
-                    }
-                    return "Executed " + type_of_click + " on element with selector: " + selector;
-                }
-            }
-
-    """
-    try:
-        logger.info(f"Executing JavaScript '{type_of_click}' on element with selector: {selector}")
-        result: str = await page.evaluate(js_code, (selector, type_of_click))
-        logger.debug(f"Executed JavaScript '{type_of_click}' on element with selector: {selector}")
-        return result
-    except Exception as e:
-        logger.error(f"Error executing JavaScript '{type_of_click}' on element with selector: {selector}. Error: {e}")
-        traceback.print_exc()
-    return f"Error executing JavaScript '{type_of_click}' on element with selector: {selector}"

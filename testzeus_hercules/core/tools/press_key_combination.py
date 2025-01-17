@@ -4,12 +4,15 @@ from typing import Annotated
 
 from playwright.async_api import Page  # type: ignore
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
+from testzeus_hercules.core.prompts import LLM_PROMPTS
+from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.dom_mutation_observer import subscribe  # type: ignore
 from testzeus_hercules.utils.dom_mutation_observer import unsubscribe  # type: ignore
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
 
 
+@tool(agent_names=["browser_nav_agent"], description=LLM_PROMPTS["PRESS_KEY_COMBINATION_PROMPT"], name="press_key_combination")
 async def press_key_combination(key_combination: Annotated[str, "key to press, e.g., Enter, PageDown etc"]) -> str:
     """
     Presses a key combination on the current active page managed by PlaywrightManager.
@@ -62,7 +65,6 @@ async def press_key_combination(key_combination: Annotated[str, "key to press, e
     if dom_changes_detected:
         return f"Key {key_combination} executed successfully.\n As a consequence of this action, new elements have appeared in view:{dom_changes_detected}. This means that the action is not yet executed and needs further interaction. Get all_fields DOM to complete the interaction."
 
-    await browser_manager.notify_user(f"Key {key_combination} executed successfully", message_type=MessageType.ACTION)
     return f"Key {key_combination} executed successfully"
 
 

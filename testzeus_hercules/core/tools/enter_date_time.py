@@ -11,6 +11,7 @@ from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.dom_helper import get_element_outer_html
 from testzeus_hercules.utils.dom_mutation_observer import subscribe, unsubscribe
+from testzeus_hercules.utils.js_helper import get_js_with_element_finder
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
 
@@ -77,7 +78,7 @@ async def set_date_time_value(
 
     await browser_manager.take_screenshots(f"{function_name}_start", page)
 
-    await browser_manager.highlight_element(query_selector, True)
+    await browser_manager.highlight_element(query_selector)
 
     dom_changes_detected = None
 
@@ -93,7 +94,6 @@ async def set_date_time_value(
     await page.wait_for_load_state()
     await browser_manager.take_screenshots(f"{function_name}_end", page)
 
-    await browser_manager.notify_user(result["summary_message"], message_type=MessageType.ACTION)
     if dom_changes_detected:
         return f"{result['detailed_message']}.\nAs a consequence of this action, new elements have appeared in view: {dom_changes_detected}. This means that the action of setting input value '{input_value}' is not yet executed and needs further interaction. Get all_fields DOM to complete the interaction."
     return result["detailed_message"]
@@ -119,60 +119,8 @@ async def do_set_date_time_value(page: Page, selector: str, input_value: str) ->
     """
     try:
         logger.debug(f"Looking for selector {selector} to set input value: {input_value}")
-
-        # Helper function to find element in DOM, Shadow DOM, or iframes
-        async def find_element(page: Page, selector: str) -> ElementHandle:
-            # Try to find the element in the regular DOM first
-            element = await page.query_selector(selector)
-            if element:
-                return element
-
-            # If not found, search inside Shadow DOM and iframes
-            element = await page.evaluate_handle(
-                """
-                    (selector) => {
-                        const findElementInShadowDOMAndIframes = (parent, selector) => {
-                            let element = parent.querySelector(selector);
-                            if (element) {
-                                return element;
-                            }
-                            const elements = parent.querySelectorAll('*');
-                            for (const el of elements) {
-                                if (el.shadowRoot) {
-                                    element = findElementInShadowDOMAndIframes(el.shadowRoot, selector);
-                                    if (element) {
-                                        return element;
-                                    }
-                                }
-                                if (el.tagName.toLowerCase() === 'iframe') {
-                                    let iframeDocument;
-                                    try {
-                                        iframeDocument = el.contentDocument || el.contentWindow.document;
-                                    } catch (e) {
-                                        continue;
-                                    }
-                                    if (iframeDocument) {
-                                        element = findElementInShadowDOMAndIframes(iframeDocument, selector);
-                                        if (element) {
-                                            return element;
-                                        }
-                                    }
-                                }
-                            }
-                            return null;
-                        };
-                        return findElementInShadowDOMAndIframes(document, selector);
-                    }
-                    """,
-                selector,
-            )
-            if element:
-                return element.as_element()
-
-            return None
-
-        # Find the input element
-        element = await find_element(page, selector)
+        browser_manager = PlaywrightManager()
+        element = await browser_manager.find_element(selector, page)
         if element is None:
             error = f"Error: Selector '{selector}' not found. Unable to continue."
             return {"summary_message": error, "detailed_message": error}
