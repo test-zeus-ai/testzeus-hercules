@@ -693,6 +693,7 @@ class AutogenSimpleWrapper:
             if hasattr(agent, "client") and agent.client is not None:
                 agent.client.clear_usage_summary()
             agent.reset()
+        self.agents_map["planner_agent"] = self.__create_planner_agent(self.agents_map["user"])
         logger.info("Plan cleaned up.")
 
     async def process_command(self, command: str, *args: Any, current_url: str | None = None, **kwargs: Any) -> autogen.ChatResult | None:

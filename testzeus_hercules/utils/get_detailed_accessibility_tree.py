@@ -757,7 +757,7 @@ def __should_prune_node(node: dict[str, Any], only_input_fields: bool) -> bool:
     if len(node) == 2 and "name" in node and "role" in node and not (node.get("role") == "text" and processed_name != ""):
         return True
 
-    if node.get("tag") == "span":
+    if node.get("tag") == "span" and not node.get("role"):
         return True
     return False
 
