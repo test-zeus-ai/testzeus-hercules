@@ -480,34 +480,34 @@ For example: If you would like to run with a "Headful" browser, you can set the 
 
   ```json
   {
-    "mistral-large": {
-      "planner_agent": {
-        "model_name": "mistral",
-        "model_api_key": "",
-        "model_base_url": "https://...",
-        "system_prompt": "You are a web automation task planner....",
-        "llm_config_params": {
-          "cache_seed": null,
-          "temperature": 0.1,
-          "top_p": 0.1
-        }
-      },
-      "browser_nav_agent": {
-        "model_name": "mistral",
-        "model_api_key": "",
-        "model_base_url": "https://...",
-        "system_prompt": "You will perform web navigation tasks with the functions that you have...\nOnce a task is completed, confirm completion with ##TERMINATE TASK##.",
-        "llm_config_params": {
-          "cache_seed": null,
-          "temperature": 0.1,
-          "top_p": 0.1
-        }
-      }
+    "anthropic": {
+		"planner_agent": {
+			"model_name": "claude-3-5-haiku-latest",
+			"model_api_key": "",
+			"model_api_type": "anthropic",
+            "llm_config_params": {
+                "cache_seed": null,
+                "temperature": 0.0,
+                "top_p": 0.001,
+                "seed":12345
+            }
+		},
+		"nav_agent": {
+			"model_name": "claude-3-5-haiku-latest",
+			"model_api_key": "",
+			"model_api_type": "anthropic",
+            "llm_config_params": {
+                "cache_seed": null,
+                "temperature": 0.0,
+                "top_p": 0.001,
+                "seed":12345
+            }
+		}
     }
   }
   ```
 
-- The key is the name of the spec that is passed in `AGENTS_LLM_CONFIG_FILE_REF_KEY`, whereas the Hercules information is passed in sub-dicts `planner_agent` and `browser_nav_agent`.
+- The key is the name of the spec that is passed in `AGENTS_LLM_CONFIG_FILE_REF_KEY`, whereas the Hercules information is passed in sub-dicts `planner_agent` and `nav_agent`.
 
 - **Note**: This option should be ignored until you are sure what you are doing. Discuss with us while playing around with these options in our Slack communication. Join us at our [Slack](https://join.slack.com/t/testzeuscommunityhq/shared_invite/zt-2v2br8wog-FAmo_76xRHx~k~1oNaGQ0Q)
 
@@ -796,11 +796,6 @@ We welcome contributions from the community!
 3. **Direct Addition (Not Recommended)**
 
    - In case you opt for adding the tools directly, then just put your new tools in the `testzeus_hercules/core/tools` path of the cloned repository.
-   - Then make sure you import your tool module in the `testzeus_hercules/core/agents/browser_nav_agent.py` file as:
-
-     ```python
-     from testzeus_hercules.core.tools.sql_calls import *
-     ```
 
    - **Note**: This way is not recommended. We prefer you try to use the `ADDITIONAL_TOOL_DIRS` approach.
 

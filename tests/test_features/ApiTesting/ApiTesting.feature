@@ -34,7 +34,7 @@ Feature: End-to-End Pet Store Flow Validation
         "status": "<updatedStatus>"
       }
       """
-    Then I should receive a "200 OK" response
+    Then I should receive a "200 OK" response, don't do get on pet
 
     Examples:
       | storedPetId | updatedName  | updatedStatus |

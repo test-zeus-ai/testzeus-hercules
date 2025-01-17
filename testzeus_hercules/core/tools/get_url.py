@@ -1,12 +1,9 @@
 from typing import Annotated
 
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
-from testzeus_hercules.core.prompts import LLM_PROMPTS
-from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.js_helper import block_ads
 
 
-@tool(agent_names=["browser_nav_agent"], description=LLM_PROMPTS["GET_URL_PROMPT"], name="geturl")
 async def geturl() -> Annotated[str, "Returns the full URL of the current active web site/page."]:
     """
     Returns the full URL of the current page

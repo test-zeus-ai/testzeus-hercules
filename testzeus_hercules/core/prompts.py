@@ -23,52 +23,15 @@ LLM_PROMPTS = {
    2. Determine task completion status
    3. Identify incomplete elements
    4. Suggest next steps for completion""",
-    "ENTER_TEXT_AND_CLICK_PROMPT": """# Text Entry and Click Tool
-
-   Purpose: Combines text entry and element clicking using DOM selectors.
-   Advantages:
-   - Superior to separate commands
-   - Streamlined operation
-   - Better performance
-
-   Operation:
-   - Enters text in specified element
-   - Clicks target element
-   - Returns success/failure status""",
-    "OPEN_URL_PROMPT": """Opens specified URL in browser. Returns new page URL or error message.""",
     "GO_BACK_PROMPT": """Navigates to previous page in browser history. Returns full URL after navigation.""",
     "COMMAND_EXECUTION_PROMPT": """Execute the user task "$command" $current_url_prompt_segment""",
     "GET_DOM_WITHOUT_CONTENT_TYPE_PROMPT": """Retrieves current page DOM with injected "md" attributes for interaction. Returns minified HTML.""",
-    "GET_DOM_WITH_CONTENT_TYPE_PROMPT": """# DOM Retrieval Tool, output helps you to read the page content
-
-   Fetches DOM based on content type:
-   1. text_only: Plain text for information retrieval
-   2. input_fields: JSON list of text input elements with md
-   3. all_fields: JSON list of all interactive elements with md
-
-   Notes:
-   - Elements ordered as displayed
-   - Try different content types if information missing
-   - Consider ordinal/numbered item positions""",
     "GET_ACCESSIBILITY_TREE": """Retrieves accessibility tree with elements in display order.""",
-    "CLICK_PROMPT": """Clicks element by md attribute. Returns success/failure status.""",
     "CLICK_PROMPT_ACCESSIBILITY": """Clicks element by name and role. Returns success/failure status.""",
-    "GET_URL_PROMPT": """Retrieves current page URL. Use for actions on open websites.""",
-    "ENTER_TEXT_PROMPT": """Enters text in element by md. Text-only operation without Enter press.""",
     "CLICK_BY_TEXT_PROMPT": """Clicks all elements matching text. Use as last resort.""",
-    "BULK_ENTER_TEXT_PROMPT": """# Bulk Text Entry Tool
-
-   Preferred for multiple field entry:
-   - Fills multiple fields by md
-   - No Enter press
-   - All fields filled sequentially
-   Returns success/failure status""",
-    "PRESS_KEY_COMBINATION_PROMPT": """Executes key press on page (Enter, PageDown, ArrowDown, etc.).""",
     "ADD_TO_MEMORY_PROMPT": """Saves information for later use (tasks, preferences, URLs, etc.).""",
-    "HOVER_PROMPT": """Hovers over element by md. Returns tooltip details.""",
     "GET_MEMORY_PROMPT": """Retrieves all stored memory information.""",
     "PRESS_ENTER_KEY_PROMPT": """Presses Enter in specified field. Optimal for text inputs.""",
-    "EXTRACT_TEXT_FROM_PDF_PROMPT": """Extracts text from PDF at given URL.""",
     "BROWSER_AGENT_NO_TOOLS_PROMPT": """You are an autonomous agent tasked with performing web navigation on a Playwright instance, including logging into websites and executing other web-based actions.
    You will receive user commands, formulate a plan and then write the PYTHON code that is needed for the task to be completed.
    It is possible that the code you are writing is for one step at a time in the plan. This will ensure proper execution of the task.

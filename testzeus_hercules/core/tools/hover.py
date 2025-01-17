@@ -1,23 +1,20 @@
 import asyncio
 import inspect
 import traceback
-from typing import Annotated, Optional, Union
+from typing import Annotated
 
-import playwright
 import playwright.async_api
 from playwright.async_api import ElementHandle, Page
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
-from testzeus_hercules.core.prompts import LLM_PROMPTS
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.dom_helper import get_element_outer_html
 from testzeus_hercules.utils.dom_mutation_observer import subscribe  # type: ignore
 from testzeus_hercules.utils.dom_mutation_observer import unsubscribe  # type: ignore
 from testzeus_hercules.utils.logger import logger
-from testzeus_hercules.utils.ui_messagetype import MessageType
 
 
-@tool(agent_names=["browser_nav_agent"], description=LLM_PROMPTS["HOVER_PROMPT"], name="hover")
+@tool(agent_names=["browser_nav_agent"], description="""Hovers over element by md. Returns tooltip details.""", name="hover")
 async def hover(
     selector: Annotated[str, "selector using md attribute, eg:[md='114'] md is ID"],
     wait_before_execution: Annotated[float, "Wait time in seconds before hover"] = 0.0,
@@ -56,7 +53,7 @@ async def hover(
 
     subscribe(detect_dom_changes)
     result = await do_hover(page, selector, wait_before_execution)
-    await asyncio.sleep(0.5)  # sleep for 500ms to allow the mutation observer to detect changes
+    await asyncio.sleep(0.2)  # sleep for 200ms to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
     await page.wait_for_load_state()
     await browser_manager.take_screenshots(f"{function_name}_end", page)
@@ -116,7 +113,7 @@ async def do_hover(page: Page, selector: str, wait_before_execution: float) -> d
         await perform_playwright_hover(element, selector)
 
         # Wait briefly to allow any tooltips to appear
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.2)
 
         # Capture tooltip information
         tooltip_text = await get_tooltip_text(page)

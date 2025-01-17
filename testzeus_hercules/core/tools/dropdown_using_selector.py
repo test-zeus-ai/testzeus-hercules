@@ -214,7 +214,7 @@ async def do_select_option(page: Page, selector: str, option_value: str) -> dict
 
             await do_click(page, selector, 1, "click")
             # await element.click()
-            await asyncio.sleep(0.5)  # Wait for options to appear
+            await asyncio.sleep(0.2)  # Wait for options to appear
 
             # Try to select the option
             option_selector = f"{selector} option"

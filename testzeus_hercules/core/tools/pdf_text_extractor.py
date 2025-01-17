@@ -5,13 +5,11 @@ import httpx
 import pdfplumber
 from testzeus_hercules.config import CONF
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
-from testzeus_hercules.core.prompts import LLM_PROMPTS
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
-from testzeus_hercules.utils.ui_messagetype import MessageType
 
 
-@tool(agent_names=["browser_nav_agent"], description=LLM_PROMPTS["EXTRACT_TEXT_FROM_PDF_PROMPT"], name="extract_text_from_pdf")
+@tool(agent_names=["browser_nav_agent"], description="""Extracts text from PDF at given URL.""", name="extract_text_from_pdf")
 async def extract_text_from_pdf(pdf_url: Annotated[str, "URL of the PDF file to extract text from."]) -> Annotated[str, "All the text found in the PDF file."]:
     """
     Extract text from a PDF file.

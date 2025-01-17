@@ -3,13 +3,11 @@ from typing import Annotated
 
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
-from testzeus_hercules.core.prompts import LLM_PROMPTS
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
-from testzeus_hercules.utils.ui_messagetype import MessageType
 
 
-@tool(agent_names=["browser_nav_agent"], description=LLM_PROMPTS["OPEN_URL_PROMPT"], name="openurl")
+@tool(agent_names=["browser_nav_agent"], description="""Opens specified URL in browser. Returns new page URL or error message.""", name="openurl")
 async def openurl(
     url: Annotated[
         str,

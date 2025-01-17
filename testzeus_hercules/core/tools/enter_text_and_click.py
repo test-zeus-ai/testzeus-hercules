@@ -9,11 +9,8 @@ from testzeus_hercules.core.tools.enter_text_using_selector import do_entertext
 from testzeus_hercules.core.tools.press_key_combination import do_press_key_combination
 
 # Add imports
-from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
-from testzeus_hercules.utils.js_helper import block_ads
 from testzeus_hercules.utils.logger import logger
-from testzeus_hercules.utils.ui_messagetype import MessageType
 
 page_data_store = {}
 
@@ -30,7 +27,21 @@ def get_page_data(page: Any) -> dict:
 
 # @tool(
 #     agent_names=["browser_nav_agent"],
-#     description=LLM_PROMPTS["ENTER_TEXT_AND_CLICK_PROMPT"],
+#     description="""
+# Text Entry and Click Tool
+
+#    Purpose: Combines text entry and element clicking using DOM selectors.
+#    Advantages:
+#    - Superior to separate commands
+#    - Streamlined operation
+#    - Better performance
+
+
+#    Operation:
+#    - Enters text in specified element
+#    - Clicks target element
+#    - Returns success/failure status
+# """,
 #     name="enter_text_and_click"
 # )
 async def enter_text_and_click(
@@ -62,6 +73,8 @@ async def enter_text_and_click(
     await enter_text_and_click("[md='1234']", "Hello, World!", "[md='5678']", wait_before_click_execution=1.5)
     ```
     """
+    if "md=" not in text_selector:
+        text_selector = f"[md='{text_selector}']"
     logger.info(f"Entering text '{text_to_enter}' into element with selector '{text_selector}' and then clicking element with selector '{click_selector}'.")
     add_event(EventType.INTERACTION, EventData(detail="enter_text_and_click"))
     # Initialize PlaywrightManager and get the active browser page

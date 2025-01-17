@@ -3,11 +3,9 @@ import os
 import time
 from typing import Annotated, Any
 
-import yaml
 from playwright.async_api import Page
 from testzeus_hercules.config import CONF
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
-from testzeus_hercules.core.prompts import LLM_PROMPTS
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.dom_helper import wait_for_non_loading_dom_state
@@ -15,10 +13,21 @@ from testzeus_hercules.utils.get_detailed_accessibility_tree import (
     do_get_accessibility_info,
 )
 from testzeus_hercules.utils.logger import logger
-from testzeus_hercules.utils.ui_messagetype import MessageType
 
 
-@tool(agent_names=["browser_nav_agent"], description=LLM_PROMPTS["GET_DOM_WITH_CONTENT_TYPE_PROMPT"], name="get_dom_with_content_type")
+@tool(
+    agent_names=["browser_nav_agent"],
+    description="""# DOM Retrieval Tool, output helps you to read the page content
+Fetches DOM based on content type:
+1. text_only: Plain text for information retrieval
+2. input_fields: JSON list of text input elements with md
+3. all_fields: JSON list of all interactive elements with md
+Notes:
+- Elements ordered as displayed
+- Try different content types if information missing
+- Consider ordinal/numbered item positions""",
+    name="get_dom_with_content_type",
+)
 async def get_dom_with_content_type(
     content_type: Annotated[str, "Type: text_only/input_fields/all_fields"],
 ) -> Annotated[dict[str, Any] | str | None, "DOM content based on type to analyse and decide"]:
@@ -104,6 +113,8 @@ async def get_dom_with_content_type(
             d["n"] = d.pop("name")
         if "title" in d:
             d["tl"] = d.pop("title")
+        if "md" in d:
+            d["md"] = int(d.pop("md"))
         return d
 
     if not (isinstance(extracted_data, str)):

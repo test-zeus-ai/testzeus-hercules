@@ -97,7 +97,7 @@ async def custom_fill_element(page: Page, selector: str, text_to_enter: str) -> 
 
 # @tool(
 #     agent_names=["browser_nav_agent"],
-#     description=LLM_PROMPTS["ENTER_TEXT_PROMPT"],
+#     description="""Enters text in element by md. Text-only operation without Enter press.""",
 #     name="entertext"
 # )
 async def entertext(

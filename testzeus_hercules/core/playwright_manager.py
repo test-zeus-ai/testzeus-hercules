@@ -27,7 +27,7 @@ from testzeus_hercules.utils.logger import logger
 # Reference: https://github.com/microsoft/playwright/issues/28995
 os.environ["PW_TEST_SCREENSHOT_NO_FONTS_READY"] = "1"
 
-MAX_WAIT_PAGE_LOAD_TIME = 1
+MAX_WAIT_PAGE_LOAD_TIME = 0.5
 WAIT_FOR_NETWORK_IDLE = 10
 MIN_WAIT_PAGE_LOAD_TIME = 0.1
 
@@ -53,18 +53,68 @@ ALL_POSSIBLE_PERMISSIONS = [
 
 class PlaywrightManager:
     """
-    Manages Playwright instances and browsers. Removed UI overlay management.
+    Manages Playwright instances and browsers. Now supports stake_id-based singleton instances.
     """
 
+    _instances: Dict[str, "PlaywrightManager"] = {}
+    _default_instance: Optional["PlaywrightManager"] = None
     _homepage = "about:blank"
-    _instance = None
 
-    def __new__(cls, *args, **kwargs) -> "PlaywrightManager":
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance.__initialized: bool = False
-            logger.debug("PlaywrightManager instance created.")
-        return cls._instance
+    def __new__(cls, *args, stake_id: Optional[str] = None, **kwargs) -> "PlaywrightManager":
+        # If no stake_id provided and we have a default instance, return it
+        if stake_id is None:
+            if cls._default_instance is None:
+                # Create default instance with stake_id "0"
+                instance = super().__new__(cls)
+                instance.__initialized = False
+                cls._default_instance = instance
+                cls._instances["0"] = instance
+                logger.debug("Created default PlaywrightManager instance with stake_id '0'")
+            return cls._default_instance
+
+        # If stake_id provided, get or create instance for that stake_id
+        if stake_id not in cls._instances:
+            instance = super().__new__(cls)
+            instance.__initialized = False
+            cls._instances[stake_id] = instance
+            logger.debug(f"Created new PlaywrightManager instance for stake_id '{stake_id}'")
+            # If this is the first instance ever, make it the default
+            if cls._default_instance is None:
+                cls._default_instance = instance
+        return cls._instances[stake_id]
+
+    @classmethod
+    def get_instance(cls, stake_id: Optional[str] = None) -> "PlaywrightManager":
+        """Get PlaywrightManager instance for given stake_id, or default instance if none provided."""
+        if stake_id is None:
+            if cls._default_instance is None:
+                # This will create the default instance
+                return cls()
+            return cls._default_instance
+        if stake_id not in cls._instances:
+            # This will create a new instance for this stake_id
+            return cls(stake_id=stake_id)
+        return cls._instances[stake_id]
+
+    @classmethod
+    def close_instance(cls, stake_id: Optional[str] = None) -> None:
+        """Close and remove a specific PlaywrightManager instance."""
+        target_id = stake_id if stake_id is not None else "0"
+        if target_id in cls._instances:
+            instance = cls._instances[target_id]
+            asyncio.create_task(instance.stop_playwright())
+            del cls._instances[target_id]
+            if instance == cls._default_instance:
+                cls._default_instance = None
+                # If there are other instances, make the first one the default
+                if cls._instances:
+                    cls._default_instance = next(iter(cls._instances.values()))
+
+    @classmethod
+    def close_all_instances(cls) -> None:
+        """Close all PlaywrightManager instances."""
+        for stake_id in list(cls._instances.keys()):
+            cls.close_instance(stake_id)
 
     def __init__(
         self,
@@ -105,6 +155,9 @@ class PlaywrightManager:
             return  # Already inited, no-op
 
         self.__initialized = True
+
+        # Store stake_id
+        self.stake_id = stake_id or "0"
 
         # ----------------------
         # 1) BROWSER / HEADLESS
@@ -597,6 +650,17 @@ class PlaywrightManager:
         #     logger.warning(f"Error in highlight_element({selector}): {e}")
         pass
 
+    async def highlight_element(self, selector: str) -> None:
+        # try:
+        #     element = await self.find_element(selector)
+        #     if isinstance(element, ElementHandle):
+        #         box = await element.bounding_box()
+        #     else:
+        #         await element.highlight()
+        # except Exception as e:
+        #     logger.warning(f"Error in highlight_element({selector}): {e}")
+        pass
+
     async def receive_user_response(self, response: str) -> None:
         logger.debug(f"Received user response: {response}")
         if self.user_response_future and not self.user_response_future.done():
@@ -889,6 +953,139 @@ class PlaywrightManager:
             self._browser_context = None
         await self.create_browser_context()
         await self.go_to_homepage()
+
+    async def perform_javascript_click(self, page: Page, selector: str, type_of_click: str) -> str:
+        js_code = """(params) => {
+            /*INJECT_FIND_ELEMENT_IN_SHADOW_DOM*/
+            const selector = params[0];
+            const type_of_click = params[1];
+
+            let element = findElementInShadowDOMAndIframes(document, selector);
+            if (!element) {
+                console.log(`perform_javascript_click: Element with selector ${selector} not found`);
+                return `perform_javascript_click: Element with selector ${selector} not found`;
+            }
+
+            if (element.tagName.toLowerCase() === "a") {
+                element.target = "_self";
+            }
+            
+            let ariaExpandedBeforeClick = element.getAttribute('aria-expanded');
+
+            // Get the element's bounding rectangle for mouse events
+            const rect = element.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+
+            // Common mouse move event
+            const mouseMove = new MouseEvent('mousemove', {
+                bubbles: true,
+                cancelable: true,
+                clientX: centerX,
+                clientY: centerY,
+                view: window
+            });
+            element.dispatchEvent(mouseMove);
+
+            // Handle different click types
+            switch(type_of_click) {
+                case 'right_click':
+                    const contextMenuEvent = new MouseEvent('contextmenu', {
+                        bubbles: true,
+                        cancelable: true,
+                        clientX: centerX,
+                        clientY: centerY,
+                        button: 2,
+                        view: window
+                    });
+                    element.dispatchEvent(contextMenuEvent);
+                    break;
+
+                case 'double_click':
+                    const dblClickEvent = new MouseEvent('dblclick', {
+                        bubbles: true,
+                        cancelable: true,
+                        clientX: centerX,
+                        clientY: centerY,
+                        button: 0,
+                        view: window
+                    });
+                    element.dispatchEvent(dblClickEvent);
+                    break;
+
+                case 'middle_click':
+                    const middleClickEvent = new MouseEvent('click', {
+                        bubbles: true,
+                        cancelable: true,
+                        button: 1,
+                        view: window
+                    });
+                    element.dispatchEvent(middleClickEvent);
+                    break;
+
+                default: // normal click
+                    element.click();
+                    break;
+            }
+
+            const ariaExpandedAfterClick = element.getAttribute('aria-expanded');
+            if (ariaExpandedBeforeClick === 'false' && ariaExpandedAfterClick === 'true') {
+                return "Executed " + type_of_click + " on element with selector: " + selector + 
+                    ". Very important: As a consequence, a menu has appeared where you may need to make further selection. " +
+                    "Very important: Get all_fields DOM to complete the action.";
+            }
+            return "Executed " + type_of_click + " on element with selector: " + selector;
+        }"""
+
+        try:
+            logger.info(f"Executing JavaScript '{type_of_click}' on element with selector: {selector}")
+            result: str = await page.evaluate(get_js_with_element_finder(js_code), (selector, type_of_click))
+            logger.debug(f"Executed JavaScript '{type_of_click}' on element with selector: {selector}")
+            return result
+        except Exception as e:
+            logger.error(f"Error executing JavaScript '{type_of_click}' on element with selector: {selector}. Error: {e}")
+            traceback.print_exc()
+            return f"Error executing JavaScript '{type_of_click}' on element with selector: {selector}"
+
+    async def is_element_present(self, selector: str, page: Optional[Page] = None) -> bool:
+        """Check if an element is present in DOM/Shadow DOM/iframes."""
+        if page is None:
+            page = await self.get_current_page()
+
+        # Try regular DOM first
+        element = await page.query_selector(selector)
+        if element:
+            return True
+
+        # Check Shadow DOM and iframes
+        js_code = """(selector) => {
+            /*INJECT_FIND_ELEMENT_IN_SHADOW_DOM*/
+            return findElementInShadowDOMAndIframes(document, selector) !== null;
+        }"""
+
+        return await page.evaluate_handle(get_js_with_element_finder(js_code), selector)
+
+    async def find_element(self, selector: str, page: Optional[Page] = None) -> Optional[ElementHandle]:
+        """Find element in DOM/Shadow DOM/iframes and return ElementHandle."""
+        if page is None:
+            page = await self.get_current_page()
+
+        # Try regular DOM first
+        element = await page.query_selector(selector)
+        if element:
+            return element
+
+        # Check Shadow DOM and iframes
+        js_code = """(selector) => {
+            /*INJECT_FIND_ELEMENT_IN_SHADOW_DOM*/
+            return findElementInShadowDOMAndIframes(document, selector);
+        }"""
+
+        element = await page.evaluate_handle(get_js_with_element_finder(js_code), selector)
+        if element:
+            return element.as_element()
+
+        return None
 
     async def perform_javascript_click(self, page: Page, selector: str, type_of_click: str) -> str:
         js_code = """(params) => {

@@ -4,15 +4,13 @@ from typing import Annotated
 
 from playwright.async_api import Page  # type: ignore
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
-from testzeus_hercules.core.prompts import LLM_PROMPTS
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.dom_mutation_observer import subscribe  # type: ignore
 from testzeus_hercules.utils.dom_mutation_observer import unsubscribe  # type: ignore
 from testzeus_hercules.utils.logger import logger
-from testzeus_hercules.utils.ui_messagetype import MessageType
 
 
-@tool(agent_names=["browser_nav_agent"], description=LLM_PROMPTS["PRESS_KEY_COMBINATION_PROMPT"], name="press_key_combination")
+@tool(agent_names=["browser_nav_agent"], description="""Executes key press on page (Enter, PageDown, ArrowDown, etc.).""", name="press_key_combination")
 async def press_key_combination(key_combination: Annotated[str, "key to press, e.g., Enter, PageDown etc"]) -> str:
     """
     Presses a key combination on the current active page managed by PlaywrightManager.

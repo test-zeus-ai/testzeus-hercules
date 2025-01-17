@@ -1,5 +1,6 @@
 from testzeus_hercules.core.agents.base_nav_agent import BaseNavAgent
 
+
 class SecNavAgent(BaseNavAgent):
     agent_name: str = "sec_nav_agent"
     prompt = """# Security Testing Agent

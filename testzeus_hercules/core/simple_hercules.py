@@ -12,18 +12,17 @@ import nest_asyncio  # type: ignore
 import openai
 from autogen import Cache
 from testzeus_hercules.config import CONF
-
 from testzeus_hercules.core.agents.api_nav_agent import ApiNavAgent
 from testzeus_hercules.core.agents.browser_nav_agent import BrowserNavAgent
 from testzeus_hercules.core.agents.high_level_planner_agent import PlannerAgent
 from testzeus_hercules.core.agents.sec_nav_agent import SecNavAgent
 from testzeus_hercules.core.agents.sql_nav_agent import SqlNavAgent
 from testzeus_hercules.core.memory.state_handler import store_run_data
-from testzeus_hercules.core.tools import *
 from testzeus_hercules.core.post_process_responses import (
     final_reply_callback_planner_agent as notify_planner_messages,  # type: ignore
 )
 from testzeus_hercules.core.prompts import LLM_PROMPTS
+from testzeus_hercules.core.tools import *
 from testzeus_hercules.core.tools.get_url import geturl
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.detect_llm_loops import is_agent_stuck_in_loop
@@ -60,7 +59,7 @@ class SimpleHercules:
     ):
         oai.Completion.set_cache(5, cache_path_root=".cache")
         self.planner_number_of_rounds = planner_max_chat_round
-        self.browser_number_of_rounds = browser_nav_max_chat_round
+        self.nav_agent_number_of_rounds = browser_nav_max_chat_round
 
         self.agents_map: (
             dict[
@@ -77,7 +76,7 @@ class SimpleHercules:
         self.sql_nav_agent_model_config: list[dict[str, str]] | None = None
 
         self.planner_agent_config: dict[str, Any] | None = None
-        self.browser_nav_agent_config: dict[str, Any] | None = None
+        self.nav_agent_config: dict[str, Any] | None = None
         self.stake_id = stake_id
         self.chat_logs_dir: str = CONF.get_source_log_folder_path(self.stake_id)
         self.save_chat_logs_to_files = save_chat_logs_to_files
@@ -86,7 +85,7 @@ class SimpleHercules:
     async def create(
         cls,
         planner_agent_config: dict[str, Any],
-        browser_nav_agent_config: dict[str, Any],
+        nav_agent_config: dict[str, Any],
         save_chat_logs_to_files: bool = True,
         planner_max_chat_round: int = 500,
         browser_nav_max_chat_round: int = 10,
@@ -107,7 +106,7 @@ class SimpleHercules:
                         "top_p": 0.001
                     }
                 }
-            browser_nav_agent_config: dict[str, Any]: A dictionary containing the configuration parameters for the browser navigation agent. Same format as planner_agent_config.
+            nav_agent_config: dict[str, Any]: A dictionary containing the configuration parameters for the browser navigation agent. Same format as planner_agent_config.
             save_chat_logs_to_files (bool, optional): Whether to save chat logs to files. Defaults to True.
             planner_max_chat_rounds (int, optional): The maximum number of chat rounds for the planner. Defaults to 50.
             browser_nav_max_chat_round (int, optional): The maximum number of chat rounds for the browser navigation agent. Defaults to 10.
@@ -129,13 +128,13 @@ class SimpleHercules:
         os.environ["AUTOGEN_USE_DOCKER"] = "False"
 
         self.planner_agent_config = planner_agent_config
-        self.browser_nav_agent_config = browser_nav_agent_config
+        self.nav_agent_config = nav_agent_config
 
         self.planner_agent_model_config = self.convert_model_config_to_autogen_format(self.planner_agent_config["model_config_params"])
-        self.browser_nav_agent_model_config = self.convert_model_config_to_autogen_format(self.browser_nav_agent_config["model_config_params"])
-        self.api_nav_agent_model_config = self.convert_model_config_to_autogen_format(self.browser_nav_agent_config["model_config_params"])
-        self.sec_nav_agent_model_config = self.convert_model_config_to_autogen_format(self.browser_nav_agent_config["model_config_params"])
-        self.sql_nav_agent_model_config = self.convert_model_config_to_autogen_format(self.browser_nav_agent_config["model_config_params"])
+        self.browser_nav_agent_model_config = self.convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
+        self.api_nav_agent_model_config = self.convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
+        self.sec_nav_agent_model_config = self.convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
+        self.sql_nav_agent_model_config = self.convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
         self.agents_map = await self.__initialize_agents()
 
         def trigger_nested_chat(manager: autogen.ConversableAgent) -> bool:  # type: ignore
@@ -176,7 +175,7 @@ class SimpleHercules:
             else:
                 last_message = recipient.last_message(sender)["content"]  # type: ignore
             if not last_message or last_message.strip() == "":  # type: ignore
-                # logger.info(f">>> Last message from browser nav was empty. Max turns: {self.browser_number_of_rounds*2}, number of messages: {len(list(sender.chat_messages.items())[0][1])}")
+                # logger.info(f">>> Last message from browser nav was empty. Max turns: {self.nav_agent_number_of_rounds*2}, number of messages: {len(list(sender.chat_messages.items())[0][1])}")
                 # logger.info(">>> Sender messages:", json.dumps( list(sender.chat_messages.items())[0][1], indent=2))
                 return "I received an empty message. This is not an error and is recoverable. Try to reformulate the task..."
             elif "##TERMINATE TASK##" in last_message:
@@ -188,7 +187,7 @@ class SimpleHercules:
                     store_run_data(mem)
                 # t_l = last_message.strip()
                 # if not t_l:
-                #     logger.info("Last message from browser nav was empty. Max turns: {self.browser_number_of_rounds*2}, number of messages: {len(list(sender.chat_messages.items())[0][1])}")
+                #     logger.info("Last message from browser nav was empty. Max turns: {self.nav_agent_number_of_rounds*2}, number of messages: {len(list(sender.chat_messages.items())[0][1])}")
                 notify_planner_messages(last_message, message_type=MessageType.ACTION)  # type: ignore
                 return last_message  #  type: ignore
             notify_planner_messages(last_message, message_type=MessageType.ACTION)  # type: ignore
@@ -458,7 +457,7 @@ class SimpleHercules:
             is_termination_msg=is_browser_executor_termination_message,
             human_input_mode="NEVER",
             llm_config=None,
-            max_consecutive_auto_reply=self.browser_number_of_rounds,
+            max_consecutive_auto_reply=self.nav_agent_number_of_rounds,
             code_execution_config={
                 "last_n_messages": 1,
                 "work_dir": "tasks",
@@ -481,8 +480,8 @@ class SimpleHercules:
         """
         browser_nav_agent = BrowserNavAgent(
             self.browser_nav_agent_model_config,
-            self.browser_nav_agent_config["llm_config_params"],  # type: ignore
-            self.browser_nav_agent_config["other_settings"].get("system_prompt", None),
+            self.nav_agent_config["llm_config_params"],  # type: ignore
+            self.nav_agent_config["other_settings"].get("system_prompt", None),
             user_proxy_agent,
         )  # type: ignore
         return browser_nav_agent.agent
@@ -515,7 +514,7 @@ class SimpleHercules:
             is_termination_msg=is_api_executor_termination_message,
             human_input_mode="NEVER",
             llm_config=None,
-            max_consecutive_auto_reply=self.browser_number_of_rounds,
+            max_consecutive_auto_reply=self.nav_agent_number_of_rounds,
             code_execution_config={
                 "last_n_messages": 1,
                 "work_dir": "tasks",
@@ -538,8 +537,8 @@ class SimpleHercules:
         """
         api_nav_agent = ApiNavAgent(
             self.api_nav_agent_model_config,
-            self.browser_nav_agent_config["llm_config_params"],  # type: ignore
-            self.browser_nav_agent_config["other_settings"].get("system_prompt", None),
+            self.nav_agent_config["llm_config_params"],  # type: ignore
+            self.nav_agent_config["other_settings"].get("system_prompt", None),
             user_proxy_agent,
         )  # type: ignore
         return api_nav_agent.agent
@@ -572,7 +571,7 @@ class SimpleHercules:
             is_termination_msg=is_api_executor_termination_message,
             human_input_mode="NEVER",
             llm_config=None,
-            max_consecutive_auto_reply=self.browser_number_of_rounds,
+            max_consecutive_auto_reply=self.nav_agent_number_of_rounds,
             code_execution_config={
                 "last_n_messages": 1,
                 "work_dir": "tasks",
@@ -595,8 +594,8 @@ class SimpleHercules:
         """
         sec_nav_agent = SecNavAgent(
             self.sec_nav_agent_model_config,
-            self.browser_nav_agent_config["llm_config_params"],  # type: ignore
-            self.browser_nav_agent_config["other_settings"].get("system_prompt", None),
+            self.nav_agent_config["llm_config_params"],  # type: ignore
+            self.nav_agent_config["other_settings"].get("system_prompt", None),
             user_proxy_agent,
         )  # type: ignore
         return sec_nav_agent.agent
@@ -614,8 +613,8 @@ class SimpleHercules:
         """
         sql_nav_agent = SqlNavAgent(
             self.sql_nav_agent_model_config,
-            self.browser_nav_agent_config["llm_config_params"],  # type: ignore
-            self.browser_nav_agent_config["other_settings"].get("system_prompt", None),
+            self.nav_agent_config["llm_config_params"],  # type: ignore
+            self.nav_agent_config["other_settings"].get("system_prompt", None),
             user_proxy_agent,
         )  # type: ignore
         return sql_nav_agent.agent
@@ -648,7 +647,7 @@ class SimpleHercules:
             is_termination_msg=is_sql_executor_termination_message,
             human_input_mode="NEVER",
             llm_config=None,
-            max_consecutive_auto_reply=self.browser_number_of_rounds,
+            max_consecutive_auto_reply=self.nav_agent_number_of_rounds,
             code_execution_config={
                 "last_n_messages": 1,
                 "work_dir": "tasks",

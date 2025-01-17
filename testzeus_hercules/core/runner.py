@@ -18,7 +18,7 @@ class BaseRunner:
 
     Attributes:
         planner_number_of_rounds (int): The maximum number of chat rounds for the planner.
-        browser_number_of_rounds (int): The maximum number of chat rounds for the browser navigation agent.
+        nav_agent_number_of_rounds (int): The maximum number of chat rounds for the browser navigation agent.
         save_chat_logs_to_files (bool): Flag indicating whether to save chat logs to files.
     """
 
@@ -30,7 +30,7 @@ class BaseRunner:
         dont_terminate_browser_after_run: bool = False,
     ):
         self.planner_number_of_rounds = planner_max_chat_round
-        self.browser_number_of_rounds = browser_nav_max_chat_round
+        self.nav_agent_number_of_rounds = browser_nav_max_chat_round
         self.browser_manager = None
         self.simple_hercules = None
         self.is_running = False
@@ -48,14 +48,14 @@ class BaseRunner:
         """
         llm_config = AgentsLLMConfig()
         self.planner_agent_config = llm_config.get_planner_agent_config()
-        self.browser_nav_agent_config = llm_config.get_browser_nav_agent_config()
+        self.nav_agent_config = llm_config.get_nav_agent_config()
 
         self.simple_hercules = await SimpleHercules.create(
             self.planner_agent_config,
-            self.browser_nav_agent_config,
+            self.nav_agent_config,
             save_chat_logs_to_files=self.save_chat_logs_to_files,
             planner_max_chat_round=self.planner_number_of_rounds,
-            browser_nav_max_chat_round=self.browser_number_of_rounds,
+            browser_nav_max_chat_round=self.nav_agent_number_of_rounds,
         )
 
         self.browser_manager = PlaywrightManager(gui_input_mode=False, stake_id=self.stake_id)

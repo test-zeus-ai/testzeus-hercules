@@ -6,7 +6,6 @@ from typing import Annotated, Any, Optional
 
 from playwright.async_api import ElementHandle, Page
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
-from testzeus_hercules.core.prompts import LLM_PROMPTS
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.dom_helper import get_element_outer_html
@@ -29,7 +28,7 @@ def get_page_data(page: Any) -> dict:
     return page_data_store.get(page)
 
 
-@tool(agent_names=["browser_nav_agent"], description=LLM_PROMPTS["CLICK_PROMPT"], name="click")
+@tool(agent_names=["browser_nav_agent"], description="""Clicks element by md attribute. Returns success/failure status.""", name="click")
 async def click(
     selector: Annotated[str, "selector using md attribute, eg: [md='114'] md is ID"],
     user_input_dialog_response: Annotated[str | None, "Dialog input value"],
@@ -53,6 +52,10 @@ async def click(
     Returns:
     - Success if the click was successful, appropriate error message otherwise.
     """
+
+    if "md=" not in selector:
+        selector = f"[md='{selector}']"
+
     logger.info(f'Executing ClickElement with "{selector}" as the selector')
     add_event(EventType.INTERACTION, EventData(detail="click"))
     # Initialize PlaywrightManager and get the active browser page
@@ -124,7 +127,7 @@ async def click(
     page.on("dialog", handle_dialog)
     result = await do_click(page, selector, wait_before_execution, type_of_click)
 
-    await asyncio.sleep(0.5)  # sleep for 500ms to allow the mutation observer to detect changes
+    await asyncio.sleep(0.2)  # sleep for 200ms to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
 
     await page.wait_for_load_state()
