@@ -140,6 +140,8 @@ class PlaywrightManager:
         geolocation: Optional[Dict[str, float]] = None,  # {"latitude": 51.5, "longitude": -0.13}
         color_scheme: Optional[str] = None,  # "light", "dark", "no-preference"
         allow_all_permissions: bool = True,
+        log_console: Optional[bool] = None,
+        console_log_file: Optional[str] = None,
     ):
         """
         Initialize the PlaywrightManager.
@@ -227,6 +229,16 @@ class PlaywrightManager:
         if self.device_name and "iphone" in self.device_name.lower():
             logger.info(f"Detected iPhone in device_name='{self.device_name}'; forcing browser_type=webkit.")
             self.browser_type = "webkit"
+
+        # logging console messages
+        self.log_console = log_console if log_console is not None else True
+        if console_log_file:
+            self.console_log_file = console_log_file
+        else:
+            # default to "console_logs.json" in proof path (just like network_logs.json)
+            default_proof_path = CONF.get_proof_path(self.stake_id) or "."
+            self.console_log_file = os.path.join(default_proof_path, "console_logs.json")
+
 
         logger.debug(
             f"PlaywrightManager init - "
@@ -543,7 +555,7 @@ class PlaywrightManager:
             "post_data": decoded_post_data,
         }
         # Instead of writing directly, do it via asyncio
-        asyncio.ensure_future(self._write_log_entry_to_file(log_entry))
+        asyncio.ensure_future(self._write_log_entry_to_file(log_entry, self.request_response_log_file))
 
     def log_response(self, response: Any) -> None:
         log_entry = {
@@ -554,19 +566,20 @@ class PlaywrightManager:
             "headers": response.headers,
             "body": None,
         }
-        asyncio.ensure_future(self._write_log_entry_to_file(log_entry))
+        asyncio.ensure_future(self._write_log_entry_to_file(log_entry, self.request_response_log_file))
 
-    async def _write_log_entry_to_file(self, log_entry: Dict) -> None:
+    async def _write_log_entry_to_file(self, log_entry: Dict, log_file: str) -> None:
         """Write a single log entry asynchronously."""
         try:
             line = json.dumps(log_entry, ensure_ascii=False) + "\n"
 
             # We'll open the file in append mode within a thread
-            def append_line(filepath, text):
+            def append_line(filepath: str, text: str) -> None:
+                """Append a line to a file."""
                 with open(filepath, "a", encoding="utf-8") as file:
                     file.write(text)
 
-            await asyncio.to_thread(append_line, self.request_response_log_file, line)
+            await asyncio.to_thread(append_line, log_file, line)
         except Exception as e:
             logger.error(f"Failed to write request/response log to file: {e}")
 
@@ -589,6 +602,7 @@ class PlaywrightManager:
                 logger.debug("Creating new page. No pages found.")
                 page = await browser_context.new_page()
                 await self.setup_request_response_logging(page)
+                await self.setup_console_logging(page)
             return page
 
         except Exception as e:
@@ -1219,3 +1233,24 @@ class PlaywrightManager:
             return element.as_element()
 
         return None
+
+    async def setup_console_logging(self, page: Page) -> None:
+        """Attach an event listener to capture console logs if enabled."""
+        if not self.log_console:
+            return
+
+        # Attach the listener
+        page.on("console", self.log_console_message)
+        
+    def log_console_message(self, msg: Any) -> None:
+        """Callback to handle console messages and write them to a file as JSON lines."""
+        # Collect desired info
+        log_entry = {
+            "type": "console",
+            "level": msg.type,       # 'log', 'warning', 'error', etc.
+            "timestamp": time.time(),
+            "text": msg.text,
+            "location": msg.location,  # has 'url', 'lineNumber', 'columnNumber'
+        }
+        # Write asynchronously to console_log_file
+        asyncio.ensure_future(self._write_log_entry_to_file(log_entry, self.console_log_file))
