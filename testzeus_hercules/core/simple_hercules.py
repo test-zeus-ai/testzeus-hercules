@@ -23,6 +23,7 @@ from testzeus_hercules.core.post_process_responses import (
 )
 from testzeus_hercules.core.prompts import LLM_PROMPTS
 from testzeus_hercules.core.tools import *
+from testzeus_hercules.core.extra_tools import *
 from testzeus_hercules.core.tools.get_url import geturl
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.detect_llm_loops import is_agent_stuck_in_loop
@@ -32,6 +33,13 @@ from testzeus_hercules.utils.sequential_function_call import (
     UserProxyAgent_SequentialFunctionExecution,
 )
 from testzeus_hercules.utils.ui_messagetype import MessageType
+from testzeus_hercules.utils.llm_helper import (
+    convert_model_config_to_autogen_format,
+    process_chat_message_content,
+    extract_target_helper,
+    parse_agent_response,
+    format_plan_steps
+)
 
 nest_asyncio.apply()  # type: ignore
 from autogen import oai
@@ -130,33 +138,31 @@ class SimpleHercules:
         self.planner_agent_config = planner_agent_config
         self.nav_agent_config = nav_agent_config
 
-        self.planner_agent_model_config = self.convert_model_config_to_autogen_format(self.planner_agent_config["model_config_params"])
-        self.browser_nav_agent_model_config = self.convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
-        self.api_nav_agent_model_config = self.convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
-        self.sec_nav_agent_model_config = self.convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
-        self.sql_nav_agent_model_config = self.convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
+        self.planner_agent_model_config = convert_model_config_to_autogen_format(self.planner_agent_config["model_config_params"])
+        self.browser_nav_agent_model_config = convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
+        self.api_nav_agent_model_config = convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
+        self.sec_nav_agent_model_config = convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
+        self.sql_nav_agent_model_config = convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
         self.agents_map = await self.__initialize_agents()
 
         def trigger_nested_chat(manager: autogen.ConversableAgent) -> bool:  # type: ignore
-            if isinstance(manager, autogen.GroupChatManager):
-                content: str = manager.last_message(manager.last_speaker)["content"]  # type: ignore
-            else:
-                content: str = manager.last_message()["content"]  # type: ignore
-            content_json = parse_response(content)  # type: ignore
-            next_step = content_json.get("next_step", None)
-            plan = content_json.get("plan", None)
-            if plan is not None:
-                # if plan is list then create string with join and add index+1 as step number.
-                if isinstance(plan, list):
-                    plan = "\n".join([f"{idx+1}. {step}" for idx, step in enumerate(plan)])
+            content: str = (manager.last_message(manager.last_speaker)["content"] 
+                          if isinstance(manager, autogen.GroupChatManager)
+                          else manager.last_message()["content"])
+            
+            parsed = parse_agent_response(content)
+            next_step = parsed.get("next_step")
+            plan = parsed.get("plan")
+            
+            if plan is not None and isinstance(plan, list):
+                plan = format_plan_steps(plan)
                 notify_planner_messages(plan, message_type=MessageType.PLAN)
 
             if next_step is None:
-                notify_planner_messages("Received no response, terminating..", message_type=MessageType.INFO)  # type: ignore
+                notify_planner_messages("Received no response, terminating..", message_type=MessageType.INFO)
                 return False
-            else:
-                notify_planner_messages(next_step, message_type=MessageType.STEP)  # type: ignore
-                return True
+            notify_planner_messages(next_step, message_type=MessageType.STEP)
+            return True
 
         def get_url() -> str:
             # return geturl()
@@ -225,10 +231,8 @@ class SimpleHercules:
         )
 
         def state_transition(last_speaker, groupchat) -> autogen.ConversableAgent | None:  # type: ignore
-            messages = groupchat.messages
-            last_message = messages[-1]["content"]
-            # extract "##target_helper: {target_helper}##" from last_message
-            target_helper = last_message.split("##target_helper: ")[-1].split("##")[0].strip()
+            last_message = groupchat.messages[-1]["content"]
+            target_helper = extract_target_helper(last_message)
 
             if "##TERMINATE TASK##" in last_message.strip():
                 return None
@@ -239,13 +243,6 @@ class SimpleHercules:
                 return None
             elif last_speaker in [self.agents_map[f"{agent_name}_nav_agent"] for agent_name in nav_agents_names]:
                 return self.agents_map[f"{last_speaker.name.split('_')[0]}_nav_executor"]
-            # elif last_speaker in [
-            #     self.agents_map[f"{agent_name}_nav_executor"]
-            #     for agent_name in nav_agents_names
-            # ]:
-            #     return self.agents_map[f"{last_speaker.name.split('_')[0]}_nav_agent"]
-            # else:
-            #     return None
             else:
                 return self.agents_map[f"{last_speaker.name.split('_')[0]}_nav_agent"]
 
@@ -283,7 +280,8 @@ class SimpleHercules:
             )
         return self
 
-    def convert_model_config_to_autogen_format(self, model_config: dict[str, str]) -> list[dict[str, Any]]:
+    @classmethod
+    def convert_model_config_to_autogen_format(cls, model_config: dict[str, str]) -> list[dict[str, Any]]:
         env_var: list[dict[str, str]] = [model_config]
         with tempfile.NamedTemporaryFile(delete=False, mode="w") as temp:
             json.dump(env_var, temp)
@@ -340,7 +338,7 @@ class SimpleHercules:
                         res_content = content
                 else:
                     res_content = content
-                res_output_thoughts_logs_di[key][idx]["content"] = res_content
+                res_output_thoughts_logs_di[key][idx]["content"] = process_chat_message_content(val["content"])
         if not self.save_chat_logs_to_files:
             logger.info(
                 "Nested chat logs",
