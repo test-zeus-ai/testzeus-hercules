@@ -16,6 +16,7 @@ from testzeus_hercules.utils.dom_mutation_observer import subscribe, unsubscribe
 from testzeus_hercules.utils.js_helper import block_ads, get_js_with_element_finder
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
+from testzeus_hercules.config import CONF  # Add this import
 
 
 @dataclass
@@ -176,7 +177,7 @@ async def entertext(
     )
 
     result = await do_entertext(page, query_selector, text_to_enter)
-    await asyncio.sleep(0.1)  # sleep for 100ms to allow the mutation observer to detect changes
+    await asyncio.sleep(CONF.get_delay_time())  # sleep to allow the mutation observer to detect changes 
     unsubscribe(detect_dom_changes)
     await page.wait_for_load_state()
     await browser_manager.take_screenshots(f"{function_name}_end", page)

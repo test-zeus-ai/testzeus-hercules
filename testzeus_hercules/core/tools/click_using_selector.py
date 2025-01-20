@@ -14,6 +14,7 @@ from testzeus_hercules.utils.dom_mutation_observer import unsubscribe  # type: i
 from testzeus_hercules.utils.js_helper import block_ads, get_js_with_element_finder
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
+from testzeus_hercules.config import CONF  # Add this import
 
 page_data_store = {}
 
@@ -127,7 +128,7 @@ async def click(
     page.on("dialog", handle_dialog)
     result = await do_click(page, selector, wait_before_execution, type_of_click)
 
-    await asyncio.sleep(0.2)  # sleep for 200ms to allow the mutation observer to detect changes
+    await asyncio.sleep(CONF.get_delay_time())  # sleep to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
 
     await page.wait_for_load_state()

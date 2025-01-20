@@ -12,6 +12,7 @@ from testzeus_hercules.utils.dom_helper import get_element_outer_html
 from testzeus_hercules.utils.dom_mutation_observer import subscribe  # type: ignore
 from testzeus_hercules.utils.dom_mutation_observer import unsubscribe  # type: ignore
 from testzeus_hercules.utils.logger import logger
+from testzeus_hercules.config import CONF  # Add this import
 
 
 @tool(agent_names=["browser_nav_agent"], description="""Hovers over element by md. Returns tooltip details.""", name="hover")
@@ -53,7 +54,7 @@ async def hover(
 
     subscribe(detect_dom_changes)
     result = await do_hover(page, selector, wait_before_execution)
-    await asyncio.sleep(0.2)  # sleep for 200ms to allow the mutation observer to detect changes
+    await asyncio.sleep(CONF.get_delay_time())  # sleep to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
     await page.wait_for_load_state()
     await browser_manager.take_screenshots(f"{function_name}_end", page)

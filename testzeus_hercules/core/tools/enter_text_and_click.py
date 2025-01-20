@@ -11,6 +11,7 @@ from testzeus_hercules.core.tools.press_key_combination import do_press_key_comb
 # Add imports
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.logger import logger
+from testzeus_hercules.config import CONF  # Add this import
 
 page_data_store = {}
 
@@ -156,7 +157,7 @@ async def enter_text_and_click(
         do_click_result = await do_click(page, click_selector, wait_before_click_execution)
         result["detailed_message"] += f' {do_click_result["detailed_message"]}'
 
-    await asyncio.sleep(0.1)  # sleep for 100ms to allow the mutation observer to detect changes
+    await asyncio.sleep(CONF.get_delay_time())  # sleep to allow the mutation observer to detect changes
 
     await browser_manager.take_screenshots(f"{function_name}_end", page)
 

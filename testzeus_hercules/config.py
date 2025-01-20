@@ -247,6 +247,7 @@ class BaseConfigManager:
         self._config.setdefault("DONT_CLOSE_BROWSER", "false")
         self._config.setdefault("GEO_PROVIDER", None)
         self._config.setdefault("GEO_API_KEY", None)
+        self._config.setdefault("REACTION_DELAY_TIME", "0.1")  # Default 2 seconds delay
 
     # -------------------------------------------------------------------------
     # Public Getters & Setters
@@ -301,6 +302,10 @@ class BaseConfigManager:
 
     def get_hf_home(self) -> str:
         return self._config["HF_HOME"]
+
+    def get_delay_time(self) -> float:
+        """Return the reaction delay time in seconds."""
+        return float(self._config["REACTION_DELAY_TIME"])
 
     # -------------------------------------------------------------------------
     # Directory creation logic (mirroring your original code)
@@ -409,6 +414,7 @@ class BaseConfigManager:
             "TAKE_SCREENSHOTS": self.should_take_screenshots(),
             "BROWSER_TYPE": self.get_browser_type(),
             "CAPTURE_NETWORK": self.should_capture_network(),
+            "REACTION_DELAY_TIME": self.get_delay_time(),  # Changed key name in telemetry
         }
         add_event(
             EventType.CONFIG,

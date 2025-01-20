@@ -8,6 +8,7 @@ from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.dom_mutation_observer import subscribe  # type: ignore
 from testzeus_hercules.utils.dom_mutation_observer import unsubscribe  # type: ignore
 from testzeus_hercules.utils.logger import logger
+from testzeus_hercules.config import CONF
 
 
 @tool(agent_names=["browser_nav_agent"], description="""Executes key press on page (Enter, PageDown, ArrowDown, etc.).""", name="press_key_combination")
@@ -57,7 +58,7 @@ async def press_key_combination(key_combination: Annotated[str, "key to press, e
     # Release the modifier keys
     for key in keys[:-1]:
         await page.keyboard.up(key)
-    await asyncio.sleep(0.1)  # sleep for 100ms to allow the mutation observer to detect changes
+    await asyncio.sleep(CONF.get_delay_time())  # sleep for 100ms to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
     await page.wait_for_load_state()
     if dom_changes_detected:

@@ -146,7 +146,7 @@ async def setslider(
     subscribe(detect_dom_changes)
 
     result = await do_setslider(page, query_selector, value_to_set)
-    await asyncio.sleep(0.1)  # sleep for 100ms to allow the mutation observer to detect changes
+    await asyncio.sleep(CONF.get_delay_time())  # sleep to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
     await page.wait_for_load_state()
     await browser_manager.take_screenshots(f"{function_name}_end", page)
