@@ -1,19 +1,16 @@
 import asyncio
-from typing import Annotated
 from dataclasses import dataclass
+from typing import Annotated
+
+from testzeus_hercules.config import CONF
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
+from testzeus_hercules.core.tools.click_using_selector import SelectorEntry
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.logger import logger
-from testzeus_hercules.config import CONF
-from testzeus_hercules.core.tools.click_using_selector import SelectorEntry
 
 
-@tool(
-    agent_names=["browser_nav_agent"],
-    description="Performs drag and drop operation between source (using md) and target (using any valid selector).",
-    name="drag_and_drop"
-)
+@tool(agent_names=["browser_nav_agent"], description="Performs drag and drop operation between source (using md) and target (using any valid selector).", name="drag_and_drop")
 async def drag_and_drop(
     source_selector: Annotated[SelectorEntry, "Source element selector using md attribute, eg: [md='114']"],
     target_selector: Annotated[str, "Target element selector using any valid Playwright selector (CSS, XPath, etc.)"],
@@ -57,17 +54,17 @@ async def drag_and_drop(
         # Find target using multiple selector strategies
         target_element = None
         selectors_to_try = []
-        
+
         # Build list of selectors to try
-        if target_selector.startswith('#'):
+        if target_selector.startswith("#"):
             # If it's an ID selector, try text-based alternatives
-            base_text = target_selector.replace('#', '')
+            base_text = target_selector.replace("#", "")
             selectors_to_try = [
                 target_selector,  # Original ID selector
                 f":text('{base_text}')",  # Any element with exact text
                 f"*:has-text('{base_text}')",  # Any element containing text
                 f"[aria-label='{base_text}']",  # Aria label match
-                f"[title='{base_text}']"  # Title attribute match
+                f"[title='{base_text}']",  # Title attribute match
             ]
         elif "has-text" in target_selector:
             # If it's a text selector, try ID and other text-based selectors
@@ -77,7 +74,7 @@ async def drag_and_drop(
                 f"#{base_text}",  # ID selector
                 f":text('{base_text}')",  # Any element with exact text
                 f"[aria-label='{base_text}']",  # Aria label match
-                f"[title='{base_text}']"  # Title attribute match
+                f"[title='{base_text}']",  # Title attribute match
             ]
         else:
             # For any other selector, try as is
@@ -102,7 +99,7 @@ async def drag_and_drop(
             await source_element.scroll_into_view_if_needed()
             await target_element.scroll_into_view_if_needed()
             await asyncio.sleep(0.2)  # Wait for scroll to complete
-            
+
             source_box = await source_element.bounding_box()
             target_box = await target_element.bounding_box()
 
@@ -136,7 +133,7 @@ async def drag_and_drop(
 
             # 4. Release drop
             await page.mouse.up()
-            
+
             # Wait for animations and DOM updates
             await asyncio.sleep(CONF.get_delay_time())
 

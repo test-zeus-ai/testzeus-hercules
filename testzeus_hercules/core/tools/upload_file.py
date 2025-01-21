@@ -6,6 +6,7 @@ from typing import List  # noqa: UP035
 from typing import Annotated
 
 from playwright.async_api import ElementHandle, Page
+from testzeus_hercules.config import CONF
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
@@ -13,7 +14,6 @@ from testzeus_hercules.utils.dom_helper import get_element_outer_html
 from testzeus_hercules.utils.dom_mutation_observer import subscribe, unsubscribe
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
-from testzeus_hercules.config import CONF
 
 
 @dataclass

@@ -2,10 +2,11 @@ import asyncio
 import inspect
 import json
 import traceback
-from typing import Annotated, Any, Optional
 from dataclasses import dataclass
+from typing import Annotated, Any, Optional
 
 from playwright.async_api import ElementHandle, Page
+from testzeus_hercules.config import CONF  # Add this import
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
@@ -15,7 +16,6 @@ from testzeus_hercules.utils.dom_mutation_observer import unsubscribe  # type: i
 from testzeus_hercules.utils.js_helper import block_ads, get_js_with_element_finder
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
-from testzeus_hercules.config import CONF  # Add this import
 
 page_data_store = {}
 

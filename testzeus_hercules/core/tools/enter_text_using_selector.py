@@ -6,6 +6,7 @@ from typing import List  # noqa: UP035
 from typing import Annotated
 
 from playwright.async_api import Page
+from testzeus_hercules.config import CONF  # Add this import
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.prompts import LLM_PROMPTS
 from testzeus_hercules.core.tools.press_key_combination import press_key_combination
@@ -16,7 +17,6 @@ from testzeus_hercules.utils.dom_mutation_observer import subscribe, unsubscribe
 from testzeus_hercules.utils.js_helper import block_ads, get_js_with_element_finder
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
-from testzeus_hercules.config import CONF  # Add this import
 
 
 @dataclass
@@ -177,7 +177,7 @@ async def entertext(
     )
 
     result = await do_entertext(page, query_selector, text_to_enter)
-    await asyncio.sleep(CONF.get_delay_time())  # sleep to allow the mutation observer to detect changes 
+    await asyncio.sleep(CONF.get_delay_time())  # sleep to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
     await page.wait_for_load_state()
     await browser_manager.take_screenshots(f"{function_name}_end", page)

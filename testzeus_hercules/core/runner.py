@@ -161,6 +161,7 @@ class BaseRunner:
         logger.info("Shutting down...")
         if self.browser_manager:
             await self.browser_manager.stop_playwright()
+        PlaywrightManager.close_all_instances()
         self.shutdown_event.set()
 
     async def wait_for_exit(self) -> None:

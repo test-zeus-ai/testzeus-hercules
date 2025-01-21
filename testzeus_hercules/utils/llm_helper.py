@@ -1,20 +1,23 @@
 import json
 import tempfile
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, List, Optional
 
 import autogen
 from autogen.agentchat.agent import Agent
-from autogen.agentchat.contrib.multimodal_conversable_agent import MultimodalConversableAgent
+from autogen.agentchat.contrib.multimodal_conversable_agent import (
+    MultimodalConversableAgent,
+)
 from testzeus_hercules.core.agents_llm_config import AgentsLLMConfig
-from testzeus_hercules.utils.response_parser import parse_response
 from testzeus_hercules.utils.logger import logger
+from testzeus_hercules.utils.response_parser import parse_response
+
 
 def convert_model_config_to_autogen_format(model_config: dict[str, str]) -> list[dict[str, Any]]:
     """Convert model configuration to Autogen format.
-    
+
     Args:
         model_config: Raw model configuration dictionary
-        
+
     Returns:
         List of configuration dictionaries in Autogen format
     """
@@ -25,13 +28,14 @@ def convert_model_config_to_autogen_format(model_config: dict[str, str]) -> list
 
     return autogen.config_list_from_json(env_or_file=temp_file_path)
 
+
 def is_agent_planner_termination_message(x: dict[str, str], final_response_callback: callable = None) -> bool:
     """Check if a message should terminate the planner agent conversation.
-    
+
     Args:
         x: Message dictionary
         final_response_callback: Optional callback for final response
-        
+
     Returns:
         bool: True if conversation should terminate
     """
@@ -58,18 +62,19 @@ def is_agent_planner_termination_message(x: dict[str, str], final_response_callb
 
     return should_terminate
 
+
 def create_multimodal_agent(
     name: str,
     system_message: str = "You are a multimodal conversable agent.",
     llm_config: Optional[List[Dict[str, Any]]] = None,
 ) -> MultimodalConversableAgent:
     """Create a multimodal conversable agent.
-    
+
     Args:
         name: Agent name
         llm_config: LLM configuration
         system_message: System prompt message
-        
+
     Returns:
         MultimodalConversableAgent instance
     """
@@ -79,47 +84,31 @@ def create_multimodal_agent(
     _llm_config = llm_config or convert_model_config_to_autogen_format(_mca_agent_config["model_config_params"])
     if _llm_config:
         _llm_config = _llm_config[0]
-    return MultimodalConversableAgent(
-        name=name,
-        max_consecutive_auto_reply=1,
-        human_input_mode="NEVER",
-        llm_config=_llm_config,
-        system_message=system_message
-    )
+    return MultimodalConversableAgent(name=name, max_consecutive_auto_reply=1, human_input_mode="NEVER", llm_config=_llm_config, system_message=system_message)
 
-def create_user_proxy(
-    name: str, 
-    is_termination_msg: callable,
-    max_consecutive_replies: int,
-    human_input_mode: str = "NEVER",
-    **kwargs: Any
-) -> Agent:
+
+def create_user_proxy(name: str, is_termination_msg: callable, max_consecutive_replies: int, human_input_mode: str = "NEVER", **kwargs: Any) -> Agent:
     """Create a user proxy agent with common configurations.
-    
+
     Args:
         name: Agent name
         is_termination_msg: Termination check function
         max_consecutive_replies: Max consecutive auto-replies
         human_input_mode: Human input mode
         **kwargs: Additional arguments for UserProxyAgent
-        
+
     Returns:
         UserProxyAgent instance
     """
-    return autogen.UserProxyAgent(
-        name=name,
-        is_termination_msg=is_termination_msg,
-        human_input_mode=human_input_mode,
-        max_consecutive_auto_reply=max_consecutive_replies,
-        **kwargs
-    )
+    return autogen.UserProxyAgent(name=name, is_termination_msg=is_termination_msg, human_input_mode=human_input_mode, max_consecutive_auto_reply=max_consecutive_replies, **kwargs)
+
 
 def process_chat_message_content(content: Any) -> Any:
     """Process and parse chat message content.
-    
+
     Args:
         content: Raw message content
-        
+
     Returns:
         Processed content (dict, str, or original content)
     """
@@ -134,12 +123,13 @@ def process_chat_message_content(content: Any) -> Any:
         return content
     return content
 
+
 def extract_target_helper(message: str) -> Optional[str]:
     """Extract target helper from message.
-    
+
     Args:
         message: Message containing target helper tag
-        
+
     Returns:
         Extracted target helper or None
     """
@@ -149,12 +139,13 @@ def extract_target_helper(message: str) -> Optional[str]:
     except:
         return None
 
+
 def parse_agent_response(content: str) -> Dict[str, Any]:
     """Parse agent response and extract key fields.
-    
+
     Args:
         content: Raw response content
-        
+
     Returns:
         Dict containing parsed fields like next_step, plan etc.
     """
@@ -165,18 +156,19 @@ def parse_agent_response(content: str) -> Dict[str, Any]:
             "plan": content_json.get("plan"),
             "target_helper": content_json.get("target_helper", "Not_Applicable"),
             "terminate": content_json.get("terminate", "no"),
-            "final_response": content_json.get("final_response")
+            "final_response": content_json.get("final_response"),
         }
     except:
         logger.error(f"Failed to parse agent response: {content}")
         return {}
 
+
 def format_plan_steps(plan: list[str]) -> str:
     """Format plan steps with numbering.
-    
+
     Args:
         plan: List of plan steps
-        
+
     Returns:
         Formatted plan string with numbered steps
     """

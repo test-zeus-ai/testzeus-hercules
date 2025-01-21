@@ -5,6 +5,7 @@ from typing import Annotated
 
 import playwright.async_api
 from playwright.async_api import ElementHandle, Page
+from testzeus_hercules.config import CONF  # Add this import
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
@@ -12,7 +13,6 @@ from testzeus_hercules.utils.dom_helper import get_element_outer_html
 from testzeus_hercules.utils.dom_mutation_observer import subscribe  # type: ignore
 from testzeus_hercules.utils.dom_mutation_observer import unsubscribe  # type: ignore
 from testzeus_hercules.utils.logger import logger
-from testzeus_hercules.config import CONF  # Add this import
 
 
 @tool(agent_names=["browser_nav_agent"], description="""Hovers over element by md. Returns tooltip details.""", name="hover")

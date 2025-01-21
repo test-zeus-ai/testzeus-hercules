@@ -2,6 +2,7 @@ import asyncio
 import inspect
 from typing import Annotated, Any, Optional
 
+from testzeus_hercules.config import CONF  # Add this import
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.prompts import LLM_PROMPTS
 from testzeus_hercules.core.tools.click_using_selector import do_click
@@ -11,7 +12,6 @@ from testzeus_hercules.core.tools.press_key_combination import do_press_key_comb
 # Add imports
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.logger import logger
-from testzeus_hercules.config import CONF  # Add this import
 
 page_data_store = {}
 

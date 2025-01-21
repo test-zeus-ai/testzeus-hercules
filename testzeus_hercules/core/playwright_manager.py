@@ -239,7 +239,6 @@ class PlaywrightManager:
             default_proof_path = CONF.get_proof_path(self.stake_id) or "."
             self.console_log_file = os.path.join(default_proof_path, "console_logs.json")
 
-
         logger.debug(
             f"PlaywrightManager init - "
             f"browser_type={self.browser_type}, headless={self.isheadless}, "
@@ -779,11 +778,10 @@ class PlaywrightManager:
             self._browser_context = None
 
     async def update_processing_state(self, processing_state: str) -> None:
-        page = await self.get_current_page()
+        pass
 
     async def command_completed(self, command: str, elapsed_time: Optional[float] = None) -> None:
         logger.debug(f'Command "{command}" completed.')
-        page = await self.get_current_page()
 
     # -------------------------------------------------------------------------
     # Additional helpers for stable network wait
@@ -1241,13 +1239,13 @@ class PlaywrightManager:
 
         # Attach the listener
         page.on("console", self.log_console_message)
-        
+
     def log_console_message(self, msg: Any) -> None:
         """Callback to handle console messages and write them to a file as JSON lines."""
         # Collect desired info
         log_entry = {
             "type": "console",
-            "level": msg.type,       # 'log', 'warning', 'error', etc.
+            "level": msg.type,  # 'log', 'warning', 'error', etc.
             "timestamp": time.time(),
             "text": msg.text,
             "location": msg.location,  # has 'url', 'lineNumber', 'columnNumber'

@@ -18,29 +18,29 @@ from testzeus_hercules.core.agents.high_level_planner_agent import PlannerAgent
 from testzeus_hercules.core.agents.sec_nav_agent import SecNavAgent
 from testzeus_hercules.core.agents.sql_nav_agent import SqlNavAgent
 from testzeus_hercules.core.agents.static_waiter_nav_agent import StaticWaiterNavAgent
+from testzeus_hercules.core.extra_tools import *
 from testzeus_hercules.core.memory.state_handler import store_run_data
 from testzeus_hercules.core.post_process_responses import (
     final_reply_callback_planner_agent as notify_planner_messages,  # type: ignore
 )
 from testzeus_hercules.core.prompts import LLM_PROMPTS
 from testzeus_hercules.core.tools import *
-from testzeus_hercules.core.extra_tools import *
 from testzeus_hercules.core.tools.get_url import geturl
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.detect_llm_loops import is_agent_stuck_in_loop
+from testzeus_hercules.utils.llm_helper import (
+    convert_model_config_to_autogen_format,
+    extract_target_helper,
+    format_plan_steps,
+    parse_agent_response,
+    process_chat_message_content,
+)
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.response_parser import parse_response
 from testzeus_hercules.utils.sequential_function_call import (
     UserProxyAgent_SequentialFunctionExecution,
 )
 from testzeus_hercules.utils.ui_messagetype import MessageType
-from testzeus_hercules.utils.llm_helper import (
-    convert_model_config_to_autogen_format,
-    process_chat_message_content,
-    extract_target_helper,
-    parse_agent_response,
-    format_plan_steps
-)
 
 nest_asyncio.apply()  # type: ignore
 from autogen import oai
@@ -149,14 +149,12 @@ class SimpleHercules:
         self.agents_map = await self.__initialize_agents()
 
         def trigger_nested_chat(manager: autogen.ConversableAgent) -> bool:  # type: ignore
-            content: str = (manager.last_message(manager.last_speaker)["content"] 
-                          if isinstance(manager, autogen.GroupChatManager)
-                          else manager.last_message()["content"])
-            
+            content: str = manager.last_message(manager.last_speaker)["content"] if isinstance(manager, autogen.GroupChatManager) else manager.last_message()["content"]
+
             parsed = parse_agent_response(content)
             next_step = parsed.get("next_step")
             plan = parsed.get("plan")
-            
+
             if plan is not None and isinstance(plan, list):
                 plan = format_plan_steps(plan)
                 notify_planner_messages(plan, message_type=MessageType.PLAN)
@@ -226,16 +224,17 @@ class SimpleHercules:
                     return "skip this step and return only JSON"  # type: ignore
 
         # Updated logic to handle agent names with underscores
-        nav_agents_names = list(set([
-            '_'.join(agent_name.split('_')[:-2])  # Take all parts except 'nav_agent' or 'nav_executor'
-            for agent_name in self.agents_map.keys() 
-            if agent_name.endswith('_nav_agent') or agent_name.endswith('_nav_executor')
-        ]))
-        
-        group_participants_names = (
-            [f"{agent_name}_nav_agent" for agent_name in nav_agents_names]
-            + [f"{agent_name}_nav_executor" for agent_name in nav_agents_names]
+        nav_agents_names = list(
+            set(
+                [
+                    "_".join(agent_name.split("_")[:-2])  # Take all parts except 'nav_agent' or 'nav_executor'
+                    for agent_name in self.agents_map.keys()
+                    if agent_name.endswith("_nav_agent") or agent_name.endswith("_nav_executor")
+                ]
+            )
         )
+
+        group_participants_names = [f"{agent_name}_nav_agent" for agent_name in nav_agents_names] + [f"{agent_name}_nav_executor" for agent_name in nav_agents_names]
 
         def state_transition(last_speaker, groupchat) -> autogen.ConversableAgent | None:  # type: ignore
             last_message = groupchat.messages[-1]["content"]
@@ -250,11 +249,11 @@ class SimpleHercules:
                 return None
             elif last_speaker in [self.agents_map[f"{agent_name}_nav_agent"] for agent_name in nav_agents_names]:
                 # Get the base name by removing '_nav_agent' suffix
-                base_name = last_speaker.name.rsplit('_nav_agent', 1)[0]
+                base_name = last_speaker.name.rsplit("_nav_agent", 1)[0]
                 return self.agents_map[f"{base_name}_nav_executor"]
             else:
                 # Get the base name by removing '_nav_executor' suffix
-                base_name = last_speaker.name.rsplit('_nav_executor', 1)[0]
+                base_name = last_speaker.name.rsplit("_nav_executor", 1)[0]
                 return self.agents_map[f"{base_name}_nav_agent"]
 
         gm_llm_config = {
@@ -675,6 +674,7 @@ class SimpleHercules:
         Returns:
             autogen.UserProxyAgent: An instance of UserProxyAgent.
         """
+
         def is_static_waiter_executor_termination_message(x: dict[str, str]) -> bool:  # type: ignore
             tools_call: Any = x.get("tool_calls", "")
             if tools_call:

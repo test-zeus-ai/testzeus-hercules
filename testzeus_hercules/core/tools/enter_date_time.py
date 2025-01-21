@@ -6,6 +6,7 @@ from typing import List  # noqa: UP035
 from typing import Annotated
 
 from playwright.async_api import ElementHandle, Page
+from testzeus_hercules.config import CONF  # Add this import
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
@@ -14,7 +15,6 @@ from testzeus_hercules.utils.dom_mutation_observer import subscribe, unsubscribe
 from testzeus_hercules.utils.js_helper import get_js_with_element_finder
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
-from testzeus_hercules.config import CONF  # Add this import
 
 
 @dataclass
@@ -157,8 +157,8 @@ async def do_set_date_time_value(page: Page, selector: str, input_value: str) ->
 )
 async def bulk_set_date_time_value(
     entries: Annotated[
-        List[dict[str, str]],
-        "List of objects, each containing 'query_selector' and 'value'.",
+        List[SetInputValueEntry],
+        "List of SetInputValueEntry objects, each containing query_selector and value.",
     ]  # noqa: UP006
 ) -> Annotated[
     List[dict[str, str]],
@@ -168,19 +168,19 @@ async def bulk_set_date_time_value(
     Sets values in multiple input elements using a bulk operation.
 
     This function sets values in multiple input elements using a bulk operation.
-    It takes a list of dictionaries, where each dictionary contains a 'query_selector' and 'value' pair.
+    It takes a list of SetInputValueEntry objects, where each object contains a 'query_selector' and 'value' pair.
     The function internally calls the 'set_date_time_value' function to perform the operation for each entry.
 
     Args:
-        entries: List of objects, each containing 'query_selector' and 'value'.
+        entries: List of SetInputValueEntry objects, each containing 'query_selector' and 'value'.
 
     Returns:
         List of dictionaries, each containing 'query_selector' and the result of the operation.
 
     Example:
         entries = [
-            {"query_selector": "#dateInput", "value": "2023-10-10"},
-            {"query_selector": "#timeInput", "value": "12:30"}
+            SetInputValueEntry(query_selector="#dateInput", value="2023-10-10"),
+            SetInputValueEntry(query_selector="#timeInput", value="12:30")
         ]
         results = await bulk_set_date_time_value(entries)
     """
@@ -188,11 +188,10 @@ async def bulk_set_date_time_value(
     results: List[dict[str, str]] = []  # noqa: UP006
     logger.info("Executing bulk set input value command")
     for entry in entries:
-        query_selector = entry["query_selector"]
-        input_value = entry["value"]
+        query_selector = entry.query_selector
+        input_value = entry.value
         logger.info(f"Setting input value: '{input_value}' in element with selector: '{query_selector}'")
-        result = await set_date_time_value(SetInputValueEntry(query_selector=query_selector, value=input_value))
-
+        result = await set_date_time_value(entry)
         results.append({"query_selector": query_selector, "result": result})
 
     return results

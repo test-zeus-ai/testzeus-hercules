@@ -64,7 +64,7 @@ async def get_dom_with_content_type(
                 # Get current node's name and title for passing to children
                 current_name = node.get("name", parent_name)
                 current_title = node.get("title", parent_title)
-                
+
                 for child in node["children"]:
                     # If child doesn't have name/title, it will use parent's values
                     if "name" not in child and current_name:

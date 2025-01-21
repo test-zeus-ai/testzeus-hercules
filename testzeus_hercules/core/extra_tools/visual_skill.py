@@ -1,21 +1,21 @@
 import asyncio
-import os
 import json
+import os
 import time
 from typing import Annotated, Dict, Union
-from PIL import Image
 
 from autogen import UserProxyAgent
-from testzeus_hercules.utils.llm_helper import create_multimodal_agent
-
+from PIL import Image
 from testzeus_hercules.config import CONF
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.tool_registry import tool
+from testzeus_hercules.utils.llm_helper import create_multimodal_agent
 from testzeus_hercules.utils.logger import logger
 
 # Initialize the image comparison agent
 image_agent = create_multimodal_agent(
-    name="image-comparer", system_message="You are a visual comparison agent. You can compare images and provide feedback. Your only purpose is to do visual comparison of images",
+    name="image-comparer",
+    system_message="You are a visual comparison agent. You can compare images and provide feedback. Your only purpose is to do visual comparison of images",
 )
 
 # Create a UserProxyAgent for the image comparison agent
@@ -28,6 +28,7 @@ image_ex_user_proxy = UserProxyAgent(
 )
 
 if CONF.get_load_extra_tools().lower().strip() != "false":
+
     @tool(
         agent_names=["browser_nav_agent"],
         name="compare_visual_screenshot",
@@ -38,11 +39,11 @@ if CONF.get_load_extra_tools().lower().strip() != "false":
         comparison_title: Annotated[str, "Title/description for this comparison"],
     ) -> Union[str, Dict[str, str]]:
         """
-        
+
         Args:
             reference_image_path: Path to the reference image file
             comparison_title: Title or description for this comparison
-            
+
         Returns:
             str: Comparison results
             dict: Error message if something fails
@@ -58,7 +59,7 @@ if CONF.get_load_extra_tools().lower().strip() != "false":
                 page = await browser_manager.get_current_page()
                 await browser_manager.take_screenshots("comparison_screenshot", page)
                 screenshot_stream = await browser_manager.get_latest_screenshot_stream()
-                
+
             if not screenshot_stream:
                 return {"error": "Failed to capture current browser view"}
 
@@ -71,7 +72,7 @@ if CONF.get_load_extra_tools().lower().strip() != "false":
             timestamp = int(time.time())
             base_filename = comparison_title.replace(" ", "_").replace("/", "_").replace(":", "_").lower() + f"_{timestamp}"
             # base_filename = f"comparison_{timestamp}"
-            
+
             # Define paths for all files
             comparison_file = os.path.join(comparisons_dir, f"{base_filename}.json")
             screenshot_file = os.path.join(comparisons_dir, f"{base_filename}_current.png")
@@ -79,8 +80,6 @@ if CONF.get_load_extra_tools().lower().strip() != "false":
             # Save the current screenshot
             screenshot = Image.open(screenshot_stream)
             screenshot.save(screenshot_file)
-
-            
 
             # Update comparison metadata to include screenshot path
             comparison_data = {
@@ -108,18 +107,15 @@ if CONF.get_load_extra_tools().lower().strip() != "false":
             Be specific and detailed in your comparison.
             If images are not similar with minimal differences then return that comparioson failed with results.
             """
-            
+
             # Format the prompt with actual image URIs
             # in comparison prompt pass the path instead base64 encoded string
-            message = comparison_prompt.format(
-                reference=reference_image_path,
-                screenshot=screenshot_file
-            )
-            
+            message = comparison_prompt.format(reference=reference_image_path, screenshot=screenshot_file)
+
             logger.debug(f"Comparison prompt: {message}")
-            
+
             chat_response = await asyncio.to_thread(image_ex_user_proxy.initiate_chat, image_agent, message=message)
-            
+
             last_message = None
             for msg in reversed(chat_response.chat_history):
                 if msg.get("role") == "user":
@@ -143,11 +139,9 @@ if CONF.get_load_extra_tools().lower().strip() != "false":
 
             # log cost of the comparison
             logger.info(f"Cost of comparison: {chat_response.cost}")
-            
+
             # Return the comparison results
-            return (f"Comparison saved to {comparison_file}\n"
-                   f"Current screenshot saved to {screenshot_file}\n\n"
-                   f"Results:\n{last_message}")
+            return f"Comparison saved to {comparison_file}\n" f"Current screenshot saved to {screenshot_file}\n\n" f"Results:\n{last_message}"
 
         except Exception as e:
             logger.exception(f"Error in compare_visual: {e}")
@@ -156,10 +150,11 @@ if CONF.get_load_extra_tools().lower().strip() != "false":
     async def _write_comparison_to_file(comparison_data: Dict, filepath: str) -> None:
         """Write comparison data to a JSON file asynchronously."""
         try:
+
             def write_json(path: str, data: Dict) -> None:
-                with open(path, 'w', encoding='utf-8') as f:
+                with open(path, "w", encoding="utf-8") as f:
                     json.dump(data, f, ensure_ascii=False, indent=2)
-            
+
             await asyncio.to_thread(write_json, filepath, comparison_data)
             logger.info(f"Comparison data saved to: {filepath}")
         except Exception as e:
@@ -176,11 +171,11 @@ if CONF.get_load_extra_tools().lower().strip() != "false":
     ) -> Union[str, Dict[str, str]]:
         """
         Analyze the current browser view to validate presence of specific features.
-        
+
         Args:
             feature_description: Description of what to look for in the current view
             search_title: Title or description for this feature search
-            
+
         Returns:
             str: Validation results
             dict: Error message if something fails
@@ -193,7 +188,7 @@ if CONF.get_load_extra_tools().lower().strip() != "false":
                 page = await browser_manager.get_current_page()
                 await browser_manager.take_screenshots("feature_validation", page)
                 screenshot_stream = await browser_manager.get_latest_screenshot_stream()
-                
+
             if not screenshot_stream:
                 return {"error": "Failed to capture current browser view"}
 
@@ -228,13 +223,9 @@ if CONF.get_load_extra_tools().lower().strip() != "false":
             Be specific and detailed in your analysis."""
 
             logger.debug(f"Validation prompt: {validation_prompt}")
-            
-            chat_response = await asyncio.to_thread(
-                image_ex_user_proxy.initiate_chat, 
-                image_agent, 
-                message=validation_prompt
-            )
-            
+
+            chat_response = await asyncio.to_thread(image_ex_user_proxy.initiate_chat, image_agent, message=validation_prompt)
+
             last_message = None
             for msg in reversed(chat_response.chat_history):
                 if msg.get("role") == "user":
@@ -243,13 +234,7 @@ if CONF.get_load_extra_tools().lower().strip() != "false":
 
             if not last_message:
                 error_msg = "No response received from image analysis agent"
-                validation_data = {
-                    "timestamp": timestamp,
-                    "feature_description": feature_description,
-                    "screenshot": screenshot_file,
-                    "status": "error",
-                    "error": error_msg
-                }
+                validation_data = {"timestamp": timestamp, "feature_description": feature_description, "screenshot": screenshot_file, "status": "error", "error": error_msg}
                 await _write_comparison_to_file(validation_data, validation_file)
                 return {"error": error_msg}
 
@@ -260,16 +245,14 @@ if CONF.get_load_extra_tools().lower().strip() != "false":
                 "feature_description": feature_description,
                 "screenshot": screenshot_file,
                 "status": "success",
-                "validation_results": last_message
+                "validation_results": last_message,
             }
             await _write_comparison_to_file(validation_data, validation_file)
-            
+
             # log cost of the validation
             logger.info(f"Cost of validation: {chat_response.cost}")
 
-            return (f"Feature validation saved to {validation_file}\n"
-                   f"Screenshot saved to {screenshot_file}\n\n"
-                   f"Results:\n{last_message}")
+            return f"Feature validation saved to {validation_file}\n" f"Screenshot saved to {screenshot_file}\n\n" f"Results:\n{last_message}"
 
         except Exception as e:
             logger.exception(f"Error in validate_visual_feature: {e}")

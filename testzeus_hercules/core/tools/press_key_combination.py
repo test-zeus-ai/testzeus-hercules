@@ -3,12 +3,12 @@ import inspect
 from typing import Annotated
 
 from playwright.async_api import Page  # type: ignore
+from testzeus_hercules.config import CONF
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.dom_mutation_observer import subscribe  # type: ignore
 from testzeus_hercules.utils.dom_mutation_observer import unsubscribe  # type: ignore
 from testzeus_hercules.utils.logger import logger
-from testzeus_hercules.config import CONF
 
 
 @tool(agent_names=["browser_nav_agent"], description="""Executes key press on page (Enter, PageDown, ArrowDown, etc.).""", name="press_key_combination")

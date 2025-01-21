@@ -6,15 +6,16 @@ from typing import List  # noqa: UP035
 from typing import Annotated
 
 from playwright.async_api import ElementHandle, Page
+from testzeus_hercules.config import CONF  # Add this import
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.click_using_selector import do_click
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.dom_helper import get_element_outer_html
 from testzeus_hercules.utils.dom_mutation_observer import subscribe, unsubscribe
+from testzeus_hercules.utils.js_helper import get_js_with_element_finder
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
-from testzeus_hercules.config import CONF  # Add this import
 
 
 @dataclass
@@ -177,7 +178,7 @@ async def do_select_option(page: Page, selector: str, option_value: str) -> dict
         logger.debug(f"Looking for selector {selector} to select option: {option_value}")
 
         browser_manager = PlaywrightManager()
-        element = browser_manager.find_element(selector, page)
+        element = await browser_manager.find_element(selector, page)
         if not element:
             error = f"Error: Selector '{selector}' not found. Unable to continue."
             return {"summary_message": error, "detailed_message": error}
@@ -254,8 +255,8 @@ async def do_select_option(page: Page, selector: str, option_value: str) -> dict
 )
 async def bulk_select_option(
     entries: Annotated[
-        List[dict[str, str]],
-        "List of objects, each containing 'query_selector' and 'value'.",
+        List[SelectOptionEntry],
+        "List of SelectOptionEntry objects, each containing query_selector and value.",
     ]  # noqa: UP006
 ) -> Annotated[
     List[dict[str, str]],
@@ -265,19 +266,19 @@ async def bulk_select_option(
     Selects options in multiple dropdowns or spinners using a bulk operation.
 
     This function selects options in multiple elements using a bulk operation.
-    It takes a list of dictionaries, where each dictionary contains a 'query_selector' and 'value' pair.
+    It takes a list of SelectOptionEntry objects, where each object contains a 'query_selector' and 'value' pair.
     The function internally calls the 'select_option' function to perform the selection operation for each entry.
 
     Args:
-        entries: List of objects, each containing 'query_selector' and 'value'.
+        entries: List of SelectOptionEntry objects, each containing 'query_selector' and 'value'.
 
     Returns:
         List of dictionaries, each containing 'query_selector' and the result of the operation.
 
     Example:
         entries = [
-            {"query_selector": "#country", "value": "United States"},
-            {"query_selector": "#language", "value": "English"}
+            SelectOptionEntry(query_selector="#country", value="United States"),
+            SelectOptionEntry(query_selector="#language", value="English")
         ]
         results = await bulk_select_option(entries)
     """
@@ -285,11 +286,10 @@ async def bulk_select_option(
     results: List[dict[str, str]] = []  # noqa: UP006
     logger.info("Executing bulk select option command")
     for entry in entries:
-        query_selector = entry["query_selector"]
-        option_value = entry["value"]
+        query_selector = entry.query_selector
+        option_value = entry.value
         logger.info(f"Selecting option: '{option_value}' in element with selector: '{query_selector}'")
-        result = await select_option(SelectOptionEntry(query_selector=query_selector, value=option_value))
-
+        result = await select_option(entry)
         results.append({"query_selector": query_selector, "result": result})
 
     return results

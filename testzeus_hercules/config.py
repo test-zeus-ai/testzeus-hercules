@@ -499,9 +499,5 @@ from testzeus_hercules.telemetry import EventData, EventType, add_event
 logger.info("[Singleton] MODE: %s", CONF.get_mode())
 logger.info("[Singleton] Project Source Root: %s", CONF.get_project_source_root())
 
-# Another call to the same Singleton - merges if we pass a new dict
-SingletonConfigManager.instance({"DONT_CLOSE_BROWSER": "true"})
-logger.info("[Singleton] DONT_CLOSE_BROWSER: %s", CONF.get_dont_close_browser())
-
 # Send final telemetry
 CONF.send_config_telemetry()

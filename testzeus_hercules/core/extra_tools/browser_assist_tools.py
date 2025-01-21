@@ -1,14 +1,15 @@
 import os
 import time
 from typing import Annotated, Dict, Union
-from PIL import Image
 
+from PIL import Image
 from testzeus_hercules.config import CONF
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
 
 if CONF.get_load_extra_tools().lower().strip() != "false":
+
     @tool(
         agent_names=["browser_nav_agent"],
         name="take_browser_screenshot",
@@ -19,10 +20,10 @@ if CONF.get_load_extra_tools().lower().strip() != "false":
     ) -> Union[str, Dict[str, str]]:
         """
         Take and save a screenshot of the current browser view.
-        
+
         Args:
             screenshot_title: Title or description for this screenshot
-            
+
         Returns:
             str: Path to saved screenshot
             dict: Error message if something fails
@@ -35,7 +36,7 @@ if CONF.get_load_extra_tools().lower().strip() != "false":
                 page = await browser_manager.get_current_page()
                 await browser_manager.take_screenshots("browser_screenshot", page)
                 screenshot_stream = await browser_manager.get_latest_screenshot_stream()
-                
+
             if not screenshot_stream:
                 return {"error": "Failed to capture current browser view"}
 
@@ -52,7 +53,7 @@ if CONF.get_load_extra_tools().lower().strip() != "false":
             # Save the screenshot
             screenshot = Image.open(screenshot_stream)
             screenshot.save(screenshot_file)
-            
+
             logger.info(f"Screenshot saved to: {screenshot_file}")
             return f"Screenshot saved successfully to: {screenshot_file}"
 

@@ -44,11 +44,11 @@ async def wait_for_duration(
         # Validate input
         if not isinstance(duration, (int, float)):
             return {"status": "error", "message": "Duration must be a number"}
-        
+
         duration = float(duration)
         if duration < 0:
             return {"status": "error", "message": "Duration cannot be negative"}
-        
+
         if duration > 3600:
             return {"status": "error", "message": "Duration cannot exceed 3600 seconds"}
 
@@ -56,15 +56,9 @@ async def wait_for_duration(
         logger.info(f"Starting wait for {duration} seconds")
         await asyncio.sleep(duration)
         logger.info(f"Completed wait for {duration} seconds")
-        
-        return {
-            "status": "success",
-            "message": f"Waited for {duration} seconds"
-        }
+
+        return {"status": "success", "message": f"Waited for {duration} seconds"}
 
     except Exception as e:
         logger.error(f"Error during wait: {str(e)}")
-        return {
-            "status": "error",
-            "message": f"Wait operation failed: {str(e)}"
-        }
+        return {"status": "error", "message": f"Wait operation failed: {str(e)}"}
