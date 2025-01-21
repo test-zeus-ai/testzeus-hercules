@@ -740,7 +740,9 @@ class SimpleHercules:
         Clean up the plan after each command is processed.
 
         """
-        await self.__initialize_agents()
+        # await self.__initialize_agents()
+        self.agents_map['planner_agent'].clear_history()
+        self.agents_map['user'].clear_history()
         logger.info("Plan cleaned up.")
 
     async def process_command(self, command: str, *args: Any, current_url: str | None = None, **kwargs: Any) -> autogen.ChatResult | None:
