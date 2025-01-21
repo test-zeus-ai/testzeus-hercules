@@ -247,7 +247,7 @@ class BaseConfigManager:
         self._config.setdefault("DONT_CLOSE_BROWSER", "false")
         self._config.setdefault("GEO_PROVIDER", None)
         self._config.setdefault("GEO_API_KEY", None)
-        self._config.setdefault("REACTION_DELAY_TIME", "0.1")  # Default 2 seconds delay
+        self._config.setdefault("REACTION_DELAY_TIME", "0.1")
 
     # -------------------------------------------------------------------------
     # Public Getters & Setters

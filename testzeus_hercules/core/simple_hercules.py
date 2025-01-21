@@ -17,6 +17,7 @@ from testzeus_hercules.core.agents.browser_nav_agent import BrowserNavAgent
 from testzeus_hercules.core.agents.high_level_planner_agent import PlannerAgent
 from testzeus_hercules.core.agents.sec_nav_agent import SecNavAgent
 from testzeus_hercules.core.agents.sql_nav_agent import SqlNavAgent
+from testzeus_hercules.core.agents.static_waiter_nav_agent import StaticWaiterNavAgent
 from testzeus_hercules.core.memory.state_handler import store_run_data
 from testzeus_hercules.core.post_process_responses import (
     final_reply_callback_planner_agent as notify_planner_messages,  # type: ignore
@@ -82,6 +83,7 @@ class SimpleHercules:
         self.api_nav_agent_model_config: list[dict[str, str]] | None = None
         self.sec_nav_agent_model_config: list[dict[str, str]] | None = None
         self.sql_nav_agent_model_config: list[dict[str, str]] | None = None
+        self.static_waiter_nav_agent_model_config: list[dict[str, str]] | None = None
 
         self.planner_agent_config: dict[str, Any] | None = None
         self.nav_agent_config: dict[str, Any] | None = None
@@ -143,6 +145,7 @@ class SimpleHercules:
         self.api_nav_agent_model_config = convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
         self.sec_nav_agent_model_config = convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
         self.sql_nav_agent_model_config = convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
+        self.static_waiter_nav_agent_model_config = convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
         self.agents_map = await self.__initialize_agents()
 
         def trigger_nested_chat(manager: autogen.ConversableAgent) -> bool:  # type: ignore
@@ -222,11 +225,15 @@ class SimpleHercules:
                     # this is some crazy trick, might backfire in long run, only time will tell.
                     return "skip this step and return only JSON"  # type: ignore
 
-        nav_agents_names = ["browser", "api", "sql", "sec"]
+        # Updated logic to handle agent names with underscores
+        nav_agents_names = list(set([
+            '_'.join(agent_name.split('_')[:-2])  # Take all parts except 'nav_agent' or 'nav_executor'
+            for agent_name in self.agents_map.keys() 
+            if agent_name.endswith('_nav_agent') or agent_name.endswith('_nav_executor')
+        ]))
+        
         group_participants_names = (
             [f"{agent_name}_nav_agent" for agent_name in nav_agents_names]
-            # + ["user"]
-            # + ["planner_agent"]
             + [f"{agent_name}_nav_executor" for agent_name in nav_agents_names]
         )
 
@@ -242,9 +249,13 @@ class SimpleHercules:
                     return self.agents_map[f"{target_helper}_nav_agent"]
                 return None
             elif last_speaker in [self.agents_map[f"{agent_name}_nav_agent"] for agent_name in nav_agents_names]:
-                return self.agents_map[f"{last_speaker.name.split('_')[0]}_nav_executor"]
+                # Get the base name by removing '_nav_agent' suffix
+                base_name = last_speaker.name.rsplit('_nav_agent', 1)[0]
+                return self.agents_map[f"{base_name}_nav_executor"]
             else:
-                return self.agents_map[f"{last_speaker.name.split('_')[0]}_nav_agent"]
+                # Get the base name by removing '_nav_executor' suffix
+                base_name = last_speaker.name.rsplit('_nav_executor', 1)[0]
+                return self.agents_map[f"{base_name}_nav_agent"]
 
         gm_llm_config = {
             "config_list": self.planner_agent_model_config,
@@ -380,6 +391,8 @@ class SimpleHercules:
         agents_map["sec_nav_agent"] = self.__create_sec_nav_agent(agents_map["sec_nav_executor"])
         agents_map["sql_nav_executor"] = self.__create_sql_nav_executor_agent()
         agents_map["sql_nav_agent"] = self.__create_sql_nav_agent(agents_map["sql_nav_executor"])
+        agents_map["static_waiter_nav_executor"] = self.__create_static_waiter_nav_executor_agent()
+        agents_map["static_waiter_nav_agent"] = self.__create_static_waiter_nav_agent(agents_map["static_waiter_nav_executor"])
         agents_map["planner_agent"] = self.__create_planner_agent(agents_map["user"])
         return agents_map
 
@@ -654,6 +667,57 @@ class SimpleHercules:
         )
         logger.info(">>> Created sql_nav_executor_agent: %s", sql_nav_executor_agent)
         return sql_nav_executor_agent
+
+    def __create_static_waiter_nav_executor_agent(self) -> autogen.UserProxyAgent:
+        """
+        Create a UserProxyAgent instance for executing static wait operations.
+
+        Returns:
+            autogen.UserProxyAgent: An instance of UserProxyAgent.
+        """
+        def is_static_waiter_executor_termination_message(x: dict[str, str]) -> bool:  # type: ignore
+            tools_call: Any = x.get("tool_calls", "")
+            if tools_call:
+                chat_messages = self.agents_map["static_waiter_nav_executor"].chat_messages  # type: ignore
+                agent_key = next(iter(chat_messages))  # type: ignore
+                messages = chat_messages[agent_key]  # type: ignore
+                return is_agent_stuck_in_loop(messages)  # type: ignore
+            else:
+                logger.info("Terminating static waiter executor")
+                return True
+
+        static_waiter_nav_executor_agent = UserProxyAgent_SequentialFunctionExecution(
+            name="static_waiter_nav_executor",
+            is_termination_msg=is_static_waiter_executor_termination_message,
+            human_input_mode="NEVER",
+            llm_config=None,
+            max_consecutive_auto_reply=self.nav_agent_number_of_rounds,
+            code_execution_config={
+                "last_n_messages": 1,
+                "work_dir": "tasks",
+                "use_docker": False,
+            },
+        )
+        logger.info(">>> Created static_waiter_nav_executor_agent: %s", static_waiter_nav_executor_agent)
+        return static_waiter_nav_executor_agent
+
+    def __create_static_waiter_nav_agent(self, user_proxy_agent: UserProxyAgent_SequentialFunctionExecution) -> autogen.ConversableAgent:
+        """
+        Create a StaticWaiterNavAgent instance.
+
+        Args:
+            user_proxy_agent (autogen.UserProxyAgent): The instance of UserProxyAgent that was created.
+
+        Returns:
+            autogen.AssistantAgent: An instance of StaticWaiterNavAgent.
+        """
+        static_waiter_nav_agent = StaticWaiterNavAgent(
+            self.static_waiter_nav_agent_model_config,
+            self.nav_agent_config["llm_config_params"],  # type: ignore
+            self.nav_agent_config["other_settings"].get("system_prompt", None),
+            user_proxy_agent,
+        )  # type: ignore
+        return static_waiter_nav_agent.agent
 
     def __create_planner_agent(self, assistant_agent: autogen.ConversableAgent) -> autogen.ConversableAgent:
         """

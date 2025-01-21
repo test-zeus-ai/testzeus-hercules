@@ -101,7 +101,10 @@ async def __inject_attributes(page: Page) -> None:
                 const computedStyle = window.getComputedStyle(element);
                 if (
                     computedStyle.cursor === 'pointer' || 
-                    computedStyle.cursor === 'hand'
+                    computedStyle.cursor === 'hand' ||
+                    computedStyle.cursor === 'move' ||
+                    computedStyle.cursor === 'grab' ||
+                    computedStyle.cursor === 'grabbing'
                 ) {
                     return true;
                 }

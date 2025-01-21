@@ -35,7 +35,7 @@ Must return well-formatted JSON with:
 "is_assert": "boolean - if current step is assertion",
 "assert_summary": "EXPECTED RESULT: x\\nACTUAL RESULT: y (required if is_assert=true)",
 "is_passed": "boolean - assertion success status",
-"target_helper": "'browser'|'api'|'sec'|'sql'|'Not_Applicable'"
+"target_helper": "'browser'|'api'|'sec'|'sql'|'static_waiter'|'Not_Applicable'"
 }
 
 ## Helper Capabilities
@@ -43,6 +43,7 @@ Must return well-formatted JSON with:
 - API: Endpoint interactions, response handling
 - Security: Security testing constructs
 - SQL: Intent-based database operations
+- Static Waiter: Pauses execution for specified duration in seconds
 - All helpers are stateless and handle one operation at a time
 
 ## Key Guidelines

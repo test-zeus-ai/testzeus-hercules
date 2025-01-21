@@ -3,6 +3,7 @@ import inspect
 import json
 import traceback
 from typing import Annotated, Any, Optional
+from dataclasses import dataclass
 
 from playwright.async_api import ElementHandle, Page
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
@@ -19,6 +20,28 @@ from testzeus_hercules.config import CONF  # Add this import
 page_data_store = {}
 
 
+@dataclass
+class SelectorEntry:
+    """
+    Represents an entry for selecting an element using a selector.
+
+    Attributes:
+        query_selector (str): A valid selector query. Use the md attribute.
+        value (str): Optional value associated with the selector, useful for key-value operations.
+    """
+
+    query_selector: str
+    value: str = ""  # Default empty string for backward compatibility
+
+    def __getitem__(self, key: str) -> str:
+        if key == "query_selector":
+            return self.query_selector
+        elif key == "value":
+            return self.value
+        else:
+            raise KeyError(f"{key} is not a valid key")
+
+
 # Function to set data
 def set_page_data(page: Any, data: Any) -> None:
     page_data_store[page] = data
@@ -31,7 +54,7 @@ def get_page_data(page: Any) -> dict:
 
 @tool(agent_names=["browser_nav_agent"], description="""Clicks element by md attribute. Returns success/failure status.""", name="click")
 async def click(
-    selector: Annotated[str, "selector using md attribute, eg: [md='114'] md is ID"],
+    selector: Annotated[SelectorEntry, "selector using md attribute with optional value, eg: [md='114']"],
     user_input_dialog_response: Annotated[str | None, "Dialog input value"],
     expected_message_of_dialog: Annotated[str | None, "Expected dialog message"],
     action_on_dialog: Annotated[str | None, "Dialog action: 'DISMISS' or 'ACCEPT'"] = None,
@@ -53,11 +76,12 @@ async def click(
     Returns:
     - Success if the click was successful, appropriate error message otherwise.
     """
+    query_selector = selector.query_selector
+    value = selector.value  # Now we can use the value if needed
+    if "md=" not in query_selector:
+        query_selector = f"[md='{query_selector}']"
 
-    if "md=" not in selector:
-        selector = f"[md='{selector}']"
-
-    logger.info(f'Executing ClickElement with "{selector}" as the selector')
+    logger.info(f'Executing ClickElement with "{query_selector}" as the selector')
     add_event(EventType.INTERACTION, EventData(detail="click"))
     # Initialize PlaywrightManager and get the active browser page
     browser_manager = PlaywrightManager()
@@ -105,7 +129,7 @@ async def click(
 
     await browser_manager.take_screenshots(f"{function_name}_start", page)
 
-    await browser_manager.highlight_element(selector)
+    await browser_manager.highlight_element(query_selector)
 
     dom_changes_detected = None
 
@@ -126,7 +150,7 @@ async def click(
 
     page = await browser_manager.get_current_page()
     page.on("dialog", handle_dialog)
-    result = await do_click(page, selector, wait_before_execution, type_of_click)
+    result = await do_click(page, query_selector, wait_before_execution, type_of_click)
 
     await asyncio.sleep(CONF.get_delay_time())  # sleep to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
@@ -135,7 +159,7 @@ async def click(
     await browser_manager.take_screenshots(f"{function_name}_end", page)
 
     if dom_changes_detected:
-        return f"Success: {result['summary_message']}.\n As a consequence of this action, new elements have appeared in view: {dom_changes_detected}. This means that the action to click {selector} is not yet executed and needs further interaction. Get all_fields DOM to complete the interaction."
+        return f"Success: {result['summary_message']}.\n As a consequence of this action, new elements have appeared in view: {dom_changes_detected}. This means that the action to click {query_selector} is not yet executed and needs further interaction. Get all_fields DOM to complete the interaction."
     return result["detailed_message"]
 
 
