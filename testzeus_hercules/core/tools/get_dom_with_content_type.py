@@ -30,7 +30,7 @@ Notes:
 )
 async def get_dom_with_content_type(
     content_type: Annotated[str, "Type: text_only/input_fields/all_fields"],
-) -> Annotated[dict[str, Any] | str | None, "DOM content based on type to analyse and decide"]:
+) -> Annotated[dict[str, Any] | str | list | None, "DOM content based on type to analyse and decide"]:
     """
     [previous docstring remains the same]
     """
@@ -58,11 +58,20 @@ async def get_dom_with_content_type(
             return "Could not fetch input fields. Please consider trying with content_type all_fields."
 
         # Flatten the hierarchy into a list of elements
-        def flatten_elements(node: dict) -> list[dict]:
+        def flatten_elements(node: dict, parent_name: str = "", parent_title: str = "") -> list[dict]:
             elements = []
             if "children" in node:
+                # Get current node's name and title for passing to children
+                current_name = node.get("name", parent_name)
+                current_title = node.get("title", parent_title)
+                
                 for child in node["children"]:
-                    elements.extend(flatten_elements(child))
+                    # If child doesn't have name/title, it will use parent's values
+                    if "name" not in child and current_name:
+                        child["name"] = current_name
+                    if "title" not in child and current_title:
+                        child["title"] = current_title
+                    elements.extend(flatten_elements(child, current_name, current_title))
             if "md" in node:
                 new_node = node.copy()
                 new_node.pop("children", None)
