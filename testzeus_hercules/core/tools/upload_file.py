@@ -6,7 +6,7 @@ from typing import List  # noqa: UP035
 from typing import Annotated
 
 from playwright.async_api import ElementHandle, Page
-from testzeus_hercules.config import CONF
+from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
@@ -92,7 +92,7 @@ async def upload_file(
     subscribe(detect_dom_changes)
 
     result = await do_upload_file(page, query_selector, file_path)
-    await asyncio.sleep(CONF.get_delay_time())  # sleep for 100ms to allow the mutation observer to detect changes
+    await asyncio.sleep(get_global_conf().get_delay_time())  # sleep for 100ms to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
 
     await browser_manager.take_screenshots(f"{function_name}_end", page)

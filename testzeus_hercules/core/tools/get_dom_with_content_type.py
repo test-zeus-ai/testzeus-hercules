@@ -4,7 +4,7 @@ import time
 from typing import Annotated, Any
 
 from playwright.async_api import Page
-from testzeus_hercules.config import CONF
+from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
@@ -29,7 +29,7 @@ Notes:
     name="get_dom_with_content_type",
 )
 async def get_dom_with_content_type(
-    content_type: Annotated[str, "Type: text_only/input_fields/all_fields"],
+    content_type: Annotated[str, "Type: text_only/input_fields/all_fields, input_fields for list of inputable fields, text_only for all plain read text, all_fields for all types of fields"],
 ) -> Annotated[dict[str, Any] | str | list | None, "DOM content based on type to analyse and decide"]:
     """
     [previous docstring remains the same]
@@ -84,7 +84,7 @@ async def get_dom_with_content_type(
         logger.debug("Fetching DOM for text_only")
         text_content = await get_filtered_text_content(page)
         with open(
-            os.path.join(CONF.get_source_log_folder_path(), "text_only_dom.txt"),
+            os.path.join(get_global_conf().get_source_log_folder_path(), "text_only_dom.txt"),
             "w",
             encoding="utf-8",
         ) as f:

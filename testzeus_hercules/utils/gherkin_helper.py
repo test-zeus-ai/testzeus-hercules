@@ -3,10 +3,7 @@ import re
 from collections import defaultdict
 from typing import Dict, List
 
-from testzeus_hercules.config import CONF
-
-tmp_gherkin_path = CONF.get_tmp_gherkin_path()
-input_gherkin_file_path = CONF.get_input_gherkin_file_path()
+from testzeus_hercules.config import get_global_conf
 
 
 def split_feature_file(input_file: str, output_dir: str, dont_append_header: bool = False) -> List[Dict[str, str]]:
@@ -118,6 +115,9 @@ def process_feature_file(pass_background_to_all: bool = True) -> List[Dict[str, 
     Returns:
         List[Dict[str, str]]: A list of dictionaries containing the split parts of the feature file.
     """
+    tmp_gherkin_path = get_global_conf().get_tmp_gherkin_path()
+    input_gherkin_file_path = get_global_conf().get_input_gherkin_file_path()
+
     return split_feature_file(
         input_gherkin_file_path,
         tmp_gherkin_path,

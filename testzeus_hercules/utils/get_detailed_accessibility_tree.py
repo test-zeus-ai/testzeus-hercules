@@ -5,7 +5,7 @@ import traceback
 from typing import Annotated, Any
 
 from playwright.async_api import Page
-from testzeus_hercules.config import CONF
+from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.utils.logger import logger
 
@@ -1135,7 +1135,7 @@ async def do_get_accessibility_info(page: Page, only_input_fields: bool = False)
     # accessibility_tree2: dict[str, Any] = await page.accessibility.snapshot(interesting_only=True)  # type: ignore
 
     with open(
-        os.path.join(CONF.get_source_log_folder_path(), "json_accessibility_dom.json"),
+        os.path.join(get_global_conf().get_source_log_folder_path(), "json_accessibility_dom.json"),
         "w",
         encoding="utf-8",
     ) as f:
@@ -1150,7 +1150,7 @@ async def do_get_accessibility_info(page: Page, only_input_fields: bool = False)
 
         with open(
             os.path.join(
-                CONF.get_source_log_folder_path(),
+                get_global_conf().get_source_log_folder_path(),
                 "json_accessibility_dom_enriched.json",
             ),
             "w",

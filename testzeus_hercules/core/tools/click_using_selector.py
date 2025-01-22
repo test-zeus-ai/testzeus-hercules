@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Annotated, Any, Optional
 
 from playwright.async_api import ElementHandle, Page
-from testzeus_hercules.config import CONF  # Add this import
+from testzeus_hercules.config import get_global_conf  # Add this import
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
@@ -152,7 +152,7 @@ async def click(
     page.on("dialog", handle_dialog)
     result = await do_click(page, query_selector, wait_before_execution, type_of_click)
 
-    await asyncio.sleep(CONF.get_delay_time())  # sleep to allow the mutation observer to detect changes
+    await asyncio.sleep(get_global_conf().get_delay_time())  # sleep to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
 
     await page.wait_for_load_state()

@@ -4,10 +4,8 @@ from typing import Any, Dict, List
 
 from junitparser import Failure, JUnitXml, Property, TestCase, TestSuite
 from junitparser.junitparser import Properties, SystemOut
-from testzeus_hercules.config import CONF
+from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.telemetry import EventData, EventType, add_event
-
-junit_xml_base_path = CONF.get_junit_xml_base_path()
 
 
 def flatten_dict(d: Dict[str, Any], parent_key: str = "", sep: str = ".") -> Dict[str, Any]:
@@ -213,7 +211,7 @@ class JUnitXMLGenerator:
                     suite_dict[suite_name] = suite
 
             # delete the files of individual test cases
-            if os.path.exists(file) and CONF.get_mode() not in ["debug"]:
+            if os.path.exists(file) and get_global_conf().get_mode() not in ["debug"]:
                 os.remove(file)
 
         for suite in suite_dict.values():
@@ -252,7 +250,7 @@ def build_junit_xml(
     """
     feature_r = feature.replace(" ", "_").replace(":", "")
     scenario_r = scenario.replace(" ", "_").replace(":", "")
-    file_path = f"{junit_xml_base_path}/{feature_r}_{scenario_r}_results.xml"
+    file_path = f"{get_global_conf().get_junit_xml_base_path()}/{feature_r}_{scenario_r}_results.xml"
 
     generator = JUnitXMLGenerator(
         feature,
@@ -328,7 +326,7 @@ def run_test() -> None:
 
     f2_path = build_junit_xml(json_data_fail, execution_time, cost_metric, feature + "1", scenario + "1")
 
-    JUnitXMLGenerator.merge_junit_xml([f1_path, f2_path], f"{junit_xml_base_path}/final_results.xml")
+    JUnitXMLGenerator.merge_junit_xml([f1_path, f2_path], f"{get_global_conf().get_junit_xml_base_path()}/final_results.xml")
 
 
 # # Example usage

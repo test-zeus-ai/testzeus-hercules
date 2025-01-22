@@ -11,7 +11,7 @@ import autogen  # type: ignore
 import nest_asyncio  # type: ignore
 import openai
 from autogen import Cache
-from testzeus_hercules.config import CONF
+from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.agents.api_nav_agent import ApiNavAgent
 from testzeus_hercules.core.agents.browser_nav_agent import BrowserNavAgent
 from testzeus_hercules.core.agents.high_level_planner_agent import PlannerAgent
@@ -40,6 +40,7 @@ from testzeus_hercules.utils.response_parser import parse_response
 from testzeus_hercules.utils.sequential_function_call import (
     UserProxyAgent_SequentialFunctionExecution,
 )
+from testzeus_hercules.utils.timestamp_helper import get_timestamp_str
 from testzeus_hercules.utils.ui_messagetype import MessageType
 
 nest_asyncio.apply()  # type: ignore
@@ -61,11 +62,12 @@ class SimpleHercules:
 
     def __init__(
         self,
+        stake_id: str,
         save_chat_logs_to_files: bool = True,
         planner_max_chat_round: int = 500,
         browser_nav_max_chat_round: int = 10,
-        stake_id: str | None = None,
     ):
+        self.timestamp = get_timestamp_str()  # Add this line to store timestamp
         oai.Completion.set_cache(5, cache_path_root=".cache")
         self.planner_number_of_rounds = planner_max_chat_round
         self.nav_agent_number_of_rounds = browser_nav_max_chat_round
@@ -88,12 +90,13 @@ class SimpleHercules:
         self.planner_agent_config: dict[str, Any] | None = None
         self.nav_agent_config: dict[str, Any] | None = None
         self.stake_id = stake_id
-        self.chat_logs_dir: str = CONF.get_source_log_folder_path(self.stake_id)
+        self.chat_logs_dir: str = get_global_conf().get_source_log_folder_path(self.stake_id)
         self.save_chat_logs_to_files = save_chat_logs_to_files
 
     @classmethod
     async def create(
         cls,
+        stake_id: str,
         planner_agent_config: dict[str, Any],
         nav_agent_config: dict[str, Any],
         save_chat_logs_to_files: bool = True,
@@ -130,6 +133,7 @@ class SimpleHercules:
         )
         # Create an instance of cls
         self = cls(
+            stake_id,
             save_chat_logs_to_files=save_chat_logs_to_files,
             planner_max_chat_round=planner_max_chat_round,
             browser_nav_max_chat_round=browser_nav_max_chat_round,
@@ -301,13 +305,13 @@ class SimpleHercules:
 
     def get_chat_logs_dir(self) -> str | None:
         """
-        Get the directory for saving chat logs.
+        Get the directory for saving chat logs with timestamp.
 
         Returns:
             str|None: The directory path or None if there is not one
-
         """
-        return self.chat_logs_dir
+        # Get paths from config with timestamp
+        return get_global_conf().get_source_log_folder_path(self.stake_id)
 
     def set_chat_logs_dir(self, chat_logs_dir: str) -> None:
         """
@@ -741,8 +745,8 @@ class SimpleHercules:
 
         """
         # await self.__initialize_agents()
-        self.agents_map['planner_agent'].clear_history()
-        self.agents_map['user'].clear_history()
+        self.agents_map["planner_agent"].clear_history()
+        self.agents_map["user"].clear_history()
         logger.info("Plan cleaned up.")
 
     async def process_command(self, command: str, *args: Any, current_url: str | None = None, **kwargs: Any) -> autogen.ChatResult | None:

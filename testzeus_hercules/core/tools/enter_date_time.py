@@ -6,7 +6,7 @@ from typing import List  # noqa: UP035
 from typing import Annotated
 
 from playwright.async_api import ElementHandle, Page
-from testzeus_hercules.config import CONF  # Add this import
+from testzeus_hercules.config import get_global_conf  # Add this import
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
@@ -90,7 +90,7 @@ async def set_date_time_value(
     subscribe(detect_dom_changes)
 
     result = await do_set_date_time_value(page, query_selector, input_value)
-    await asyncio.sleep(CONF.get_delay_time())  # sleep to allow the mutation observer to detect changes
+    await asyncio.sleep(get_global_conf().get_delay_time())  # sleep to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
     await page.wait_for_load_state()
     await browser_manager.take_screenshots(f"{function_name}_end", page)

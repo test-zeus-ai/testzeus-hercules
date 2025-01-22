@@ -5,6 +5,7 @@ import os
 import shutil
 import tempfile
 import time
+import traceback  # Add this import
 import zipfile
 from io import BytesIO
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -14,7 +15,7 @@ from playwright.async_api import BrowserContext, BrowserType, ElementHandle
 from playwright.async_api import Error as PlaywrightError  # for exception handling
 from playwright.async_api import Page, Playwright
 from playwright.async_api import async_playwright as playwright
-from testzeus_hercules.config import CONF
+from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.notification_manager import NotificationManager
 from testzeus_hercules.utils.dom_mutation_observer import (
     dom_mutation_change_detected,
@@ -161,38 +162,40 @@ class PlaywrightManager:
         # Store stake_id
         self.stake_id = stake_id or "0"
 
+        # Video recording settings
+        self._record_video = record_video if record_video is not None else get_global_conf().should_record_video()
+        self._latest_video_path = None
+        self._video_dir = None
+
+        proof_path = get_global_conf().get_proof_path(test_id=self.stake_id)
+
         # ----------------------
         # 1) BROWSER / HEADLESS
         # ----------------------
-        self.browser_type = browser_type or CONF.get_browser_type() or "chromium"
-        self.isheadless = headless if headless is not None else CONF.should_run_headless()
-        self.cdp_config = cdp_config or CONF.get_cdp_config()
+        self.browser_type = browser_type or get_global_conf().get_browser_type() or "chromium"
+        self.isheadless = headless if headless is not None else get_global_conf().should_run_headless()
+        self.cdp_config = cdp_config or get_global_conf().get_cdp_config()
 
         # ----------------------
         # 2) BASIC FLAGS
         # ----------------------
         self.notification_manager = NotificationManager()
         self.user_response_future: Optional[asyncio.Future[str]] = None
-        self._take_screenshots = take_screenshots if take_screenshots is not None else CONF.should_take_screenshots()
+        self._take_screenshots = take_screenshots if take_screenshots is not None else get_global_conf().should_take_screenshots()
         self.stake_id = stake_id
 
         # ----------------------
         # 3) PATHS
         # ----------------------
-        default_proof_path = CONF.get_proof_path(self.stake_id) or "."
-        self._screenshots_dir = screenshots_dir or os.path.join(default_proof_path, "screenshots")
-        self._record_video = record_video if record_video is not None else CONF.should_record_video()
-        self._video_dir = video_dir or os.path.join(default_proof_path, "videos")
+        self._screenshots_dir = proof_path + "/screenshots"
+        self._video_dir = proof_path + "/videos"
+        self.request_response_log_file = proof_path + "/network_logs.json"
+        self.console_log_file = proof_path + "/console_logs.json"
 
         # ----------------------
         # 4) LOGS
         # ----------------------
-        self.log_requests_responses = log_requests_responses if log_requests_responses is not None else CONF.should_capture_network()
-        if request_response_log_file:
-            self.request_response_log_file = request_response_log_file
-        else:
-            # default to "network_logs.json" in proof path
-            self.request_response_log_file = os.path.join(default_proof_path, "network_logs.json")
+        self.log_requests_responses = log_requests_responses if log_requests_responses is not None else get_global_conf().should_capture_network()
         self.request_response_logs: List[Dict] = []
 
         # ----------------------
@@ -212,18 +215,18 @@ class PlaywrightManager:
         # 6) EMULATION: DEVICE & OVERRIDES
         # ----------------------
         # If device_name is None, try from CONF
-        device_name = device_name or CONF.get_run_device()
+        device_name = device_name or get_global_conf().get_run_device()
         self.device_name = device_name
         # If no device or device doesn't override viewport, fallback to conf
-        conf_res_str = CONF.get_resolution() or "1280,720"
+        conf_res_str = get_global_conf().get_resolution() or "1280,720"
         cw, ch = conf_res_str.split(",")
         conf_viewport = (int(cw), int(ch))
         self.user_viewport = viewport or conf_viewport
 
-        self.user_locale = locale or CONF.get_locale()  # or None
-        self.user_timezone = timezone or CONF.get_timezone()  # or None
-        self.user_geolocation = geolocation or CONF.get_geolocation()  # or None
-        self.user_color_scheme = color_scheme or CONF.get_color_scheme() or "light"
+        self.user_locale = locale or get_global_conf().get_locale()  # or None
+        self.user_timezone = timezone or get_global_conf().get_timezone()  # or None
+        self.user_geolocation = geolocation or get_global_conf().get_geolocation()  # or None
+        self.user_color_scheme = color_scheme or get_global_conf().get_color_scheme() or "light"
 
         # If iPhone, override browser
         if self.device_name and "iphone" in self.device_name.lower():
@@ -232,12 +235,6 @@ class PlaywrightManager:
 
         # logging console messages
         self.log_console = log_console if log_console is not None else True
-        if console_log_file:
-            self.console_log_file = console_log_file
-        else:
-            # default to "console_logs.json" in proof path (just like network_logs.json)
-            default_proof_path = CONF.get_proof_path(self.stake_id) or "."
-            self.console_log_file = os.path.join(default_proof_path, "console_logs.json")
 
         logger.debug(
             f"PlaywrightManager init - "
@@ -250,6 +247,12 @@ class PlaywrightManager:
     async def async_initialize(self) -> None:
         if self.__async_initialize_done:
             return
+
+        # Create required directories
+        os.makedirs(self._screenshots_dir, exist_ok=True)
+        os.makedirs(self._video_dir, exist_ok=True)
+        os.makedirs(os.path.dirname(self.request_response_log_file), exist_ok=True)
+        os.makedirs(os.path.dirname(self.console_log_file), exist_ok=True)
 
         await self.start_playwright()
         await self.ensure_browser_context()
@@ -762,7 +765,7 @@ class PlaywrightManager:
                             else:
                                 video_name = os.path.basename(video_path)
                             video_dir = os.path.dirname(video_path)
-                            safe_url = page.url.replace("://", "_").replace("/", "_") if page.url else "video_of"
+                            safe_url = page.url.replace("://", "_").replace("/", "_").replace(".", "_") if not page.url else "video_of"
                             new_video_path = os.path.join(video_dir, f"{safe_url}_{video_name}")
 
                             # rename asynchronously

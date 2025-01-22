@@ -58,13 +58,13 @@ class AgentsLLMConfig:
                         logger.info(f"Loading configuration from: {config_file} with key: {config_file_ref_key}")
                         raw_config = file_config[config_file_ref_key]
 
-                        # Process configurations for both planner_agent and browser_nav_agent
+                        # Process configurations for both planner_agent and nav_agent
                         planner_config = self._normalize_config(raw_config.get("planner_agent", {}))
-                        browser_nav_config = self._normalize_config(raw_config.get("browser_nav_agent", {}))
+                        browser_nav_config = self._normalize_config(raw_config.get("nav_agent", {}))
                         config = {
                             "planner_agent": planner_config,
-                            "browser_nav_agent": browser_nav_config,
-                            "other_settings": {k: v for k, v in raw_config.items() if k not in ["planner_agent", "browser_nav_agent"]},
+                            "nav_agent": browser_nav_config,
+                            "other_settings": {k: v for k, v in raw_config.items() if k not in ["planner_agent", "nav_agent"]},
                         }
                         logger.info(f"Using configuration key '{config_file_ref_key}' from the config file.")
                     else:
@@ -84,7 +84,7 @@ class AgentsLLMConfig:
 
             config = {
                 "planner_agent": normalized_config,
-                "browser_nav_agent": normalized_config,
+                "nav_agent": normalized_config,
             }
 
         return config
@@ -107,14 +107,14 @@ class AgentsLLMConfig:
 
             logger.info("Loading LLM configuration provided via API.")
 
-            # Process configurations for both planner_agent and browser_nav_agent
+            # Process configurations for both planner_agent and nav_agent
             planner_config = self._normalize_config(llm_config.get("planner_agent", {}))
-            browser_nav_config = self._normalize_config(llm_config.get("browser_nav_agent", {}))
+            browser_nav_config = self._normalize_config(llm_config.get("nav_agent", {}))
 
             config = {
                 "planner_agent": planner_config,
-                "browser_nav_agent": browser_nav_config,
-                "other_settings": {k: v for k, v in llm_config.items() if k not in ["planner_agent", "browser_nav_agent"]},
+                "nav_agent": browser_nav_config,
+                "other_settings": {k: v for k, v in llm_config.items() if k not in ["planner_agent", "nav_agent"]},
             }
 
             return config
@@ -187,7 +187,7 @@ class AgentsLLMConfig:
         return self.config["planner_agent"]
 
     def get_nav_agent_config(self) -> dict[str, Any]:
-        return self.config["browser_nav_agent"]
+        return self.config["nav_agent"]
 
     def get_full_config(self) -> dict[str, Any]:
         return self.config

@@ -2,7 +2,7 @@ import asyncio
 import inspect
 from typing import Annotated, Any, Optional
 
-from testzeus_hercules.config import CONF  # Add this import
+from testzeus_hercules.config import get_global_conf  # Add this import
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.prompts import LLM_PROMPTS
 from testzeus_hercules.core.tools.click_using_selector import do_click
@@ -157,7 +157,7 @@ async def enter_text_and_click(
         do_click_result = await do_click(page, click_selector, wait_before_click_execution)
         result["detailed_message"] += f' {do_click_result["detailed_message"]}'
 
-    await asyncio.sleep(CONF.get_delay_time())  # sleep to allow the mutation observer to detect changes
+    await asyncio.sleep(get_global_conf().get_delay_time())  # sleep to allow the mutation observer to detect changes
 
     await browser_manager.take_screenshots(f"{function_name}_end", page)
 

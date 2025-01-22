@@ -44,7 +44,7 @@ test: lint        ## Run tests and generate coverage report.
 
 .PHONY: test-case  ## Run selective test case.
 test-case: lint     ## Run a specific test case.
-	@read -p "Enter the test case (e.g., multilingual): " TEST_CASE && \
+	@read -p "Enter the test case (e.g., productSearch): " TEST_CASE && \
 	poetry run pytest -v tests/test_feature_execution.py::test_feature_execution[$$TEST_CASE]
 
 .PHONY: watch
@@ -66,6 +66,11 @@ clean:            ## Clean unused files.
 	@rm -rf htmlcov
 	@rm -rf .tox/
 	@rm -rf docs/_build
+
+.PHONY: cleanup
+cleanup:            ## Delete output and log folders.
+	@rm -rf opt/output opt/log_files opt/proofs opt/gherkin_files
+	@echo "Cleaned up output folders"
 
 .PHONY: virtualenv
 virtualenv:       ## Create a virtual environment.

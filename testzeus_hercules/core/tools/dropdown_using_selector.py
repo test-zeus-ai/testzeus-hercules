@@ -6,7 +6,7 @@ from typing import List  # noqa: UP035
 from typing import Annotated
 
 from playwright.async_api import ElementHandle, Page
-from testzeus_hercules.config import CONF  # Add this import
+from testzeus_hercules.config import get_global_conf  # Add this import
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.click_using_selector import do_click
 from testzeus_hercules.core.tools.tool_registry import tool
@@ -94,7 +94,7 @@ async def select_option(
     subscribe(detect_dom_changes)
 
     result = await do_select_option(page, query_selector, option_value)
-    await asyncio.sleep(CONF.get_delay_time())  # sleep to allow the mutation observer to detect changes
+    await asyncio.sleep(get_global_conf().get_delay_time())  # sleep to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
 
     await page.wait_for_load_state()

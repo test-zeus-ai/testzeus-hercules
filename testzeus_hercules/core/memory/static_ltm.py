@@ -3,7 +3,7 @@ import os
 from typing import Optional
 
 import yaml  # Requires PyYAML installed: pip install pyyaml
-from testzeus_hercules.config import CONF
+from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.memory.state_handler import get_run_data, get_stored_data
 from testzeus_hercules.utils.logger import logger
 
@@ -28,7 +28,7 @@ class StaticLTM:
         Returns:
             str: Consolidated data from all test data files.
         """
-        test_data_path = CONF.get_test_data_path()
+        test_data_path = get_global_conf().get_test_data_path()
         selected_files = []
         consolidated_data = ""
 

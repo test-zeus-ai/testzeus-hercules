@@ -2,7 +2,7 @@ import asyncio
 from dataclasses import dataclass
 from typing import Annotated
 
-from testzeus_hercules.config import CONF
+from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.click_using_selector import SelectorEntry
 from testzeus_hercules.core.tools.tool_registry import tool
@@ -135,7 +135,7 @@ async def drag_and_drop(
             await page.mouse.up()
 
             # Wait for animations and DOM updates
-            await asyncio.sleep(CONF.get_delay_time())
+            await asyncio.sleep(get_global_conf().get_delay_time())
 
             return f"Successfully performed drag and drop from '{query_selector}' to '{target_selector}'"
 

@@ -7,6 +7,9 @@ from typing import Optional
 
 from dotenv import load_dotenv
 from testzeus_hercules.utils.logger import logger
+from testzeus_hercules.utils.timestamp_helper import get_timestamp_str
+
+TS = get_timestamp_str()
 
 
 class BaseConfigManager:
@@ -27,6 +30,10 @@ class BaseConfigManager:
             config_dict (dict): The base configuration dictionary.
             ignore_env (bool): If True, environment variables will be ignored.
         """
+        # Add timestamp at the very beginning
+        self.timestamp = TS
+        self.paths = None
+
         self._config = config_dict.copy()
         self._ignore_env = ignore_env
 
@@ -51,9 +58,6 @@ class BaseConfigManager:
         # 5) Provide or finalize certain defaults
         #    (some might have been overridden by env/arguments)
         self._finalize_defaults()
-
-        # A dynamic default test ID in this instance
-        self._default_test_id = self._config.get("DEFAULT_TEST_ID", "default")
 
     # -------------------------------------------------------------------------
     # Class methods to instantiate from dict or JSON
@@ -110,6 +114,12 @@ class BaseConfigManager:
             help="API key for the LLM model.",
             required=False,
         )
+        parser.add_argument(
+            "--bulk",
+            action="store_true",
+            help="Execute tests in bulk from tests directory",
+            required=False,
+        )
 
         # Parse known args; ignore unknown if you have other custom arguments
         args, _ = parser.parse_known_args()
@@ -126,6 +136,8 @@ class BaseConfigManager:
             os.environ["LLM_MODEL_NAME"] = args.llm_model
         if args.llm_model_api_key:
             os.environ["LLM_MODEL_API_KEY"] = args.llm_model_api_key
+        if args.bulk:
+            os.environ["EXECUTE_BULK"] = "true"
 
     def _merge_from_env(self) -> None:
         """
@@ -166,6 +178,7 @@ class BaseConfigManager:
             "LOAD_EXTRA_TOOLS",
             "GEO_PROVIDER",
             "GEO_API_KEY",
+            "EXECUTE_BULK",
         ]
 
         for key in relevant_keys:
@@ -248,6 +261,10 @@ class BaseConfigManager:
         self._config.setdefault("GEO_PROVIDER", None)
         self._config.setdefault("GEO_API_KEY", None)
         self._config.setdefault("REACTION_DELAY_TIME", "0.1")
+        self._config.setdefault("EXECUTE_BULK", "false")
+
+        if self._config["MODE"] == "debug":
+            self.timestamp = "0"
 
     # -------------------------------------------------------------------------
     # Public Getters & Setters
@@ -307,6 +324,10 @@ class BaseConfigManager:
         """Return the reaction delay time in seconds."""
         return float(self._config["REACTION_DELAY_TIME"])
 
+    def should_execute_bulk(self) -> bool:
+        """Return whether tests should be executed in bulk mode"""
+        return self._config["EXECUTE_BULK"].lower().strip() == "true"
+
     # -------------------------------------------------------------------------
     # Directory creation logic (mirroring your original code)
     # -------------------------------------------------------------------------
@@ -328,36 +349,14 @@ class BaseConfigManager:
         return path
 
     def get_junit_xml_base_path(self) -> str:
-        path = self._config["JUNIT_XML_BASE_PATH"]
-        if not os.path.exists(path):
-            os.makedirs(path)
-            logger.info(f"Created JUNIT_XML_BASE_PATH folder at: {path}")
-        return path
-
-    def get_source_log_folder_path(self, test_id: Optional[str] = None) -> str:
-        test_id = test_id or self._default_test_id
-        path = os.path.join(self._config["SOURCE_LOG_FOLDER_PATH"], test_id)
-        if not os.path.exists(path):
-            os.makedirs(path)
-            logger.info(f"Created source_log_folder_path folder at: {path}")
-        return path
+        """Get path to junit XML output folder"""
+        return self.paths["junit_xml"]
 
     def get_test_data_path(self) -> str:
         path = self._config["TEST_DATA_PATH"]
         if not os.path.exists(path):
             os.makedirs(path)
             logger.info(f"Created test data folder at: {path}")
-        return path
-
-    def get_proof_path(self, test_id: Optional[str] = None) -> str:
-        test_id = test_id or self._default_test_id
-        base_path = self._config["SCREEN_SHOT_PATH"]
-        path = os.path.join(base_path, test_id)
-
-        if not os.path.exists(path):
-            os.makedirs(os.path.join(path, "screenshots"))
-            os.makedirs(os.path.join(path, "videos"))
-            logger.info(f"Created screen_shot_path folder at: {path}")
         return path
 
     def get_project_temp_path(self, test_id: Optional[str] = None) -> str:
@@ -399,6 +398,52 @@ class BaseConfigManager:
     def get_geo_api_key(self) -> str:
         return self._config["GEO_API_KEY"]
 
+    def get_trace_path(self, stake_id: Optional[str] = None) -> dict[str, str]:
+        """Get all trace related paths for a test run. Now uses internal timestamp."""
+
+        base_path = self.get_project_source_root()
+        test_id = stake_id if stake_id else self._default_test_id
+
+        # Use self.timestamp instead of taking it as parameter
+        paths = {
+            # Proofs directory - Evidence files
+            "proofs": os.path.join(base_path, "proofs", test_id, self.timestamp),
+            # "screenshots": os.path.join(base_path, "proofs", test_id, self.timestamp, "screenshots"),
+            # "videos": os.path.join(base_path, "proofs", test_id, self.timestamp, "videos"),
+            # "console_logs": os.path.join(base_path, "proofs", test_id, self.timestamp, "console_logs.json"),
+            # "network_logs": os.path.join(base_path, "proofs", test_id, self.timestamp, "network_logs.json"),
+            # "security_logs": os.path.join(base_path, "proofs", test_id, self.timestamp, "security_logs.json"),
+            # "api_logs": os.path.join(base_path, "proofs", test_id, self.timestamp, "api_logs.json"),
+            # "access_logs": os.path.join(base_path, "proofs", test_id, self.timestamp, "access_logs.json"),
+            # Output directory - Test results
+            "junit_xml": os.path.join(base_path, "output", self.timestamp),
+            # Log files directory - Analysis and debug files
+            "log_files": os.path.join(base_path, "log_files", test_id, self.timestamp),
+        }
+
+        # Create directories
+        for path in paths.values():
+            os.makedirs(path, exist_ok=True)
+
+        self.paths = paths
+
+        return paths
+
+    def ensure_trace_dirs(self, paths: dict[str, str]) -> None:
+        """Ensure all trace directories exist"""
+        for path in paths.values():
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+
+    def get_proof_path(self, test_id: Optional[str] = None) -> str:
+        """Get path to proof folder, optionally including test_id"""
+        paths = self.get_trace_path(stake_id=test_id)
+        return paths["proofs"]
+
+    def get_source_log_folder_path(self, test_id: Optional[str] = None) -> str:
+        """Get path to log folder, optionally including test_id"""
+        paths = self.get_trace_path(stake_id=test_id)
+        return paths["log_files"]
+
     # -------------------------------------------------------------------------
     # Telemetry
     # -------------------------------------------------------------------------
@@ -438,66 +483,50 @@ class NonSingletonConfigManager(BaseConfigManager):
 
 
 class SingletonConfigManager(BaseConfigManager):
-    """
-    A singleton config manager that ensures only one instance
-    is created. Use `SingletonConfigManager.instance(...)` instead of
-    directly calling `__init__`.
-    """
+    """Singleton configuration manager for the entire application."""
 
     _instance = None
 
     def __init__(self, config_dict: dict, ignore_env: bool = False):
+        if SingletonConfigManager._instance is not None:
+            raise RuntimeError("Use SingletonConfigManager.instance() instead")
         super().__init__(config_dict=config_dict, ignore_env=ignore_env)
 
     @classmethod
-    def instance(cls, config_dict: Optional[dict] = None, ignore_env: bool = False) -> "SingletonConfigManager":
-        """
-        Return the shared instance. If an instance does not already exist,
-        create one using config_dict (or empty dict if None is supplied).
-        Subsequent calls return the same instance.
-
-        If you supply a different `ignore_env` on subsequent calls, note
-        it only affects the very first creation (since the instance won't be replaced).
-        """
-        if cls._instance is None:
+    def instance(cls, config_dict: Optional[dict] = None, ignore_env: bool = False, override: bool = False) -> "SingletonConfigManager":
+        if override and config_dict is not None:
+            cls.reset_instance()
             cls._instance = cls(config_dict or {}, ignore_env=ignore_env)
-        else:
-            # If there's an existing instance and a new config_dict, decide if/how to merge:
-            if config_dict is not None:
-                cls._instance._config.update(config_dict)
+            logger.info("SingletonConfigManager instance reset with new config")
+        elif cls._instance is None:
+            cls._instance = cls(config_dict or {}, ignore_env=ignore_env)
+        elif config_dict is not None:
+            cls._instance._config.update(config_dict)
         return cls._instance
 
     @classmethod
     def reset_instance(cls) -> None:
-        """
-        Reset the singleton instance, allowing a fresh re-initialization.
-        """
         cls._instance = None
 
 
-# ------------------------------------------------------------------------------
-# USAGE EXAMPLES (comment these out or remove in production):
-# ------------------------------------------------------------------------------
+def get_global_conf() -> SingletonConfigManager:
+    return SingletonConfigManager.instance()
 
-# if __name__ == "__main__":
-#     # Example: Non-singleton usage with ignoring env variables
-#     # ns_config = NonSingletonConfigManager.from_dict(
-#     #     {"MODE": "dev", "PROJECT_SOURCE_ROOT": "/tmp/myproject"}, ignore_env=True
-#     # )
-#     # logger.info("[NonSingleton] MODE:", ns_config.get_mode())
-#     # logger.info("[NonSingleton] Project Source Root:", ns_config.get_project_source_root())
 
-#     # Example: Singleton usage (if you want to unify config across entire app)
-CONF = SingletonConfigManager.instance(
-    {"MODE": "prod", "PROJECT_SOURCE_ROOT": "./opt"},
-    ignore_env=False,
+def set_global_conf(config_dict: Optional[dict] = None, ignore_env: bool = False, override: bool = False) -> SingletonConfigManager:
+    return SingletonConfigManager.instance(config_dict, ignore_env=ignore_env, override=override)
+
+
+set_global_conf(
+    {
+        "MODE": "prod",
+        "PROJECT_SOURCE_ROOT": "./opt",
+    }
 )
 
-# hack to make sure telemetry status loads
+# Load telemetry after CONF is initialized
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 
-logger.info("[Singleton] MODE: %s", CONF.get_mode())
-logger.info("[Singleton] Project Source Root: %s", CONF.get_project_source_root())
-
-# Send final telemetry
-CONF.send_config_telemetry()
+logger.info("[Singleton] MODE: %s", get_global_conf().get_mode())
+logger.info("[Singleton] Project Source Root: %s", get_global_conf().get_project_source_root())
+# Send final telemetryCONF.send_config_telemetry()

@@ -56,7 +56,7 @@ def test_feature_execution(feature_folder: str) -> None:
 
     # Compare results
     expected_file = os.path.join(feature_path, "expected_results.txt")
-    output_folder = os.path.join(current_test_data_path, "output")
+    output_folder = os.path.join(current_test_data_path, "output/0")
     os.makedirs(output_folder, exist_ok=True)
 
     comparison_result = compare_results(expected_file, output_folder)

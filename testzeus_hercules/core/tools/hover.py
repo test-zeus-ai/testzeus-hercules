@@ -5,7 +5,7 @@ from typing import Annotated
 
 import playwright.async_api
 from playwright.async_api import ElementHandle, Page
-from testzeus_hercules.config import CONF  # Add this import
+from testzeus_hercules.config import get_global_conf  # Add this import
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
@@ -54,7 +54,7 @@ async def hover(
 
     subscribe(detect_dom_changes)
     result = await do_hover(page, selector, wait_before_execution)
-    await asyncio.sleep(CONF.get_delay_time())  # sleep to allow the mutation observer to detect changes
+    await asyncio.sleep(get_global_conf().get_delay_time())  # sleep to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
     await page.wait_for_load_state()
     await browser_manager.take_screenshots(f"{function_name}_end", page)
