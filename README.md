@@ -252,6 +252,36 @@ docker run --env-file=.env \
 - If you want Hercules to connect to a visible web browser, try the CDP URL option in the environment file. This option can help you connect Hercules running in your infrastructure to a remote browser like BrowserBase or your self-hosted grid.
 - Use `CDP_ENDPOINT_URL` to set the CDP URL of the Chrome instance that has to be connected to the agent.
 
+### Docker and Remote Browser Support
+
+When running Hercules in Docker, you can connect to remote browser instances using various platforms:
+
+1. **BrowserStack Integration**:
+```bash
+export BROWSERSTACK_USERNAME=your_username
+export BROWSERSTACK_ACCESS_KEY=your_access_key
+export CDP_ENDPOINT_URL=$(python helper_scripts/browser_stack_generate_cdp_url.py)
+```
+
+2. **LambdaTest Integration**:
+```bash
+export LAMBDATEST_USERNAME=your_username
+export LAMBDATEST_ACCESS_KEY=your_access_key
+export CDP_ENDPOINT_URL=$(python helper_scripts/lambda_test_generate_cdp_url.py)
+```
+
+3. **BrowserBase Integration**:
+```bash
+export CDP_ENDPOINT_URL=wss://connect.browserbase.com?apiKey=your_api_key
+```
+
+4. **AnchorBrowser Integration**:
+```bash
+export CDP_ENDPOINT_URL=wss://connect.anchorbrowser.io?apiKey=your_api_key
+```
+
+Note: Video recording is only supported on platforms that use connect_over_cdp (BrowserBase, AnchorBrowser). Platforms using the connect API (BrowserStack, LambdaTest) do not support video recording.
+
 #### Output and Logs
 
 After the command completion:

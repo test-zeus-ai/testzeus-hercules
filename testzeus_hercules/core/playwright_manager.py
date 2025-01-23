@@ -368,18 +368,27 @@ class PlaywrightManager:
                 raise ValueError("CDP config must include 'endpoint_url'.")
 
             browser_type = getattr(self._playwright, self.browser_type)
-            _browser = await browser_type.connect_over_cdp(endpoint_url)
-
-            if self._record_video:
-                context_options = {"record_video_dir": self._video_dir}
-                context_options.update(self._build_emulation_context_options())
-                self._browser_context = await _browser.new_context(**context_options)
-                page = await self._browser_context.new_page()
-                await page.goto("https://www.google.com")
-                logger.info("Recording video in CDP mode.")
+            recording_supported = True
+            
+            # have to skip the recording for browserstack and LT as they don't support connect_over_cdp
+            if "browserstack" in endpoint_url or "LT%3AOptions" in endpoint_url:
+                _browser = await browser_type.connect(endpoint_url, timeout=120000)
+                recording_supported = False
             else:
-                # Reuse existing context
-                self._browser_context = _browser.contexts[0]
+                _browser = await browser_type.connect_over_cdp(endpoint_url, timeout=120000)
+            
+            context_options = {}
+            if recording_supported:
+                if self._record_video :
+                    context_options = {"record_video_dir": self._video_dir}
+                    context_options.update(self._build_emulation_context_options())
+                    logger.info("Recording video in CDP mode.")
+            else:
+                logger.info("Recording video not supported in given CDP URL.")
+            self._browser_context = await _browser.new_context(**context_options)
+            page = await _browser.new_page()
+            # page = await self._browser_context.new_page()
+            await page.goto("https://www.testzeus.com", timeout=120000)
 
         else:
             if self.browser_type != "chromium":

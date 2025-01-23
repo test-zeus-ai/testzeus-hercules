@@ -220,6 +220,67 @@ CDP_ENDPOINT_URL=ws://your-chrome-host:9222
 
 This allows Hercules running in Docker to connect to an external browser instance, enabling visible test execution even when running in a container.
 
+## Remote Browser Testing Platforms
+
+Hercules supports running tests on various remote browser platforms using the CDP (Chrome DevTools Protocol) endpoint URL. Here's how to configure different providers:
+
+### BrowserStack
+
+1. Set up your credentials:
+```bash
+export BROWSERSTACK_USERNAME=your_username
+export BROWSERSTACK_ACCESS_KEY=your_access_key
+```
+
+2. Generate CDP URL:
+```bash
+export CDP_ENDPOINT_URL=$(python helper_scripts/browser_stack_generate_cdp_url.py)
+```
+
+Note: Video recording is not supported with BrowserStack as it uses the connect API.
+
+### LambdaTest
+
+1. Set up your credentials:
+```bash
+export LAMBDATEST_USERNAME=your_username
+export LAMBDATEST_ACCESS_KEY=your_access_key
+```
+
+2. Generate CDP URL:
+```bash
+export CDP_ENDPOINT_URL=$(python helper_scripts/lambda_test_generate_cdp_url.py)
+```
+
+Note: Video recording is not supported with LambdaTest as it uses the connect API.
+
+### BrowserBase
+
+1. Set the CDP URL directly:
+```bash
+export CDP_ENDPOINT_URL=wss://connect.browserbase.com?apiKey=your_api_key
+```
+
+BrowserBase supports connect_over_cdp, so video recording will work on the test execution host.
+
+### AnchorBrowser
+
+1. Set the CDP URL directly:
+```bash
+export CDP_ENDPOINT_URL=wss://connect.anchorbrowser.io?apiKey=your_api_key
+```
+
+AnchorBrowser supports connect_over_cdp, so video recording will work on the test execution host.
+
+### Important Notes About Remote Browser Testing
+
+- When using CDP_ENDPOINT_URL, Hercules will connect to the remote browser instance instead of launching a local browser.
+- Video recording capabilities depend on the platform:
+  - Platforms using Playwright's connect API (BrowserStack, LambdaTest) do not support video recording
+  - Platforms using connect_over_cdp (BrowserBase, AnchorBrowser) support video recording on the test execution host
+- Each platform may have different capabilities and configurations available through their respective helper scripts
+- Remote browser testing is particularly useful when running tests in Docker containers or CI/CD pipelines
+
 ## Viewing Results
 
 After test execution, results can be found in several locations:
