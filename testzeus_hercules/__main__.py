@@ -162,6 +162,7 @@ def main() -> None:
     """
     Main function that checks for bulk execution flag and runs tests accordingly
     """
+
     def is_width_gt_120() -> bool:
         try:
             columns = os.get_terminal_size().columns

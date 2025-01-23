@@ -86,6 +86,8 @@ Hercules uses Playwright to interact with web pages, so you need to install Play
 playwright install --with-deps
 ```
 
+For detailed information about project structure and running tests, please refer to our [Run Guide](docs/run_guide.md).
+
 #### Basic Parameters
 
 Once installed, you will need to provide some basic parameters to run Hercules:
