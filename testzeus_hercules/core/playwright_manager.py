@@ -340,6 +340,21 @@ class PlaywrightManager:
         elif self.browser_type == "firefox":
             self._extension_path = extension_file_path
 
+    async def _start_tracing(self, context_type: str = "browser") -> None:
+        """Helper method to start tracing for a browser context."""
+        if not self._enable_tracing:
+            return
+            
+        try:
+            await self._browser_context.tracing.start(
+                screenshots=True,
+                snapshots=True,
+                sources=True,
+            )
+            logger.info(f"Tracing started for {context_type} context")
+        except Exception as e:
+            logger.error(f"Failed to start tracing for {context_type} context: {e}")
+
     async def create_browser_context(self) -> None:
         """
         Creates the browser context with device descriptor if any,
@@ -394,29 +409,11 @@ class PlaywrightManager:
                     logger.info("Recording video in CDP mode.")
                 # Start tracing if enabled
                 self._browser_context = await _browser.new_context(**context_options)
-                if self._enable_tracing:
-                    try:
-                        await self._browser_context.tracing.start(
-                            screenshots=True,
-                            snapshots=True,
-                            sources=True,
-                        )
-                        logger.info("Tracing started for CDP browser context")
-                    except Exception as e:
-                        logger.error(f"Failed to start tracing for CDP context: {e}")
+                await self._start_tracing("CDP")
             else:
                 logger.info("Recording video not supported in given CDP URL.")
                 self._browser_context = _browser.contexts[0]
-                if self._enable_tracing:
-                    try:
-                        await self._browser_context.tracing.start(
-                            screenshots=True,
-                            snapshots=True,
-                            sources=True,
-                        )
-                        logger.info("Tracing started for CDP browser context")
-                    except Exception as e:
-                        logger.error(f"Failed to start tracing for CDP context: {e}")
+                await self._start_tracing("CDP")
 
             page = await _browser.new_page()
             # page = await self._browser_context.new_page()
@@ -433,19 +430,7 @@ class PlaywrightManager:
                 await self._launch_browser_with_video(browser_type, user_dir, disable_args)
             else:
                 await self._launch_persistent_browser(browser_type, user_dir, disable_args)
-
-            # Start tracing after context is created
-            if self._enable_tracing and self._browser_context:
-                try:
-                    os.makedirs(self._trace_dir, exist_ok=True)
-                    await self._browser_context.tracing.start(
-                        screenshots=True,
-                        snapshots=True,
-                        sources=True,
-                    )
-                    logger.info("Tracing started for browser context")
-                except Exception as e:
-                    logger.error(f"Failed to start tracing: {e}")
+            await self._start_tracing()
 
     def _build_emulation_context_options(self) -> Dict[str, Any]:
         """
