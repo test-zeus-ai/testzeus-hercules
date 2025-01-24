@@ -191,6 +191,13 @@ class PlaywrightManager:
         self._video_dir = proof_path + "/videos"
         self.request_response_log_file = proof_path + "/network_logs.json"
         self.console_log_file = proof_path + "/console_logs.json"
+        # Add trace directory path
+        self._enable_tracing = get_global_conf().should_enable_tracing()
+        self._trace_dir = None
+        if self._enable_tracing:
+            proof_path = get_global_conf().get_proof_path(test_id=self.stake_id)
+            self._trace_dir = os.path.join(proof_path, "traces")
+            logger.info(f"Tracing enabled. Traces will be saved to: {self._trace_dir}")
 
         # ----------------------
         # 4) LOGS
@@ -251,6 +258,8 @@ class PlaywrightManager:
         # Create required directories
         os.makedirs(self._screenshots_dir, exist_ok=True)
         os.makedirs(self._video_dir, exist_ok=True)
+        if self._enable_tracing:
+            os.makedirs(self._trace_dir, exist_ok=True)
         os.makedirs(os.path.dirname(self.request_response_log_file), exist_ok=True)
         os.makedirs(os.path.dirname(self.console_log_file), exist_ok=True)
 
@@ -383,9 +392,32 @@ class PlaywrightManager:
                     context_options = {"record_video_dir": self._video_dir}
                     context_options.update(self._build_emulation_context_options())
                     logger.info("Recording video in CDP mode.")
+                # Start tracing if enabled
+                self._browser_context = await _browser.new_context(**context_options)
+                if self._enable_tracing:
+                    try:
+                        await self._browser_context.tracing.start(
+                            screenshots=True,
+                            snapshots=True,
+                            sources=True,
+                        )
+                        logger.info("Tracing started for CDP browser context")
+                    except Exception as e:
+                        logger.error(f"Failed to start tracing for CDP context: {e}")
             else:
                 logger.info("Recording video not supported in given CDP URL.")
-            self._browser_context = await _browser.new_context(**context_options)
+                self._browser_context = _browser.contexts[0]
+                if self._enable_tracing:
+                    try:
+                        await self._browser_context.tracing.start(
+                            screenshots=True,
+                            snapshots=True,
+                            sources=True,
+                        )
+                        logger.info("Tracing started for CDP browser context")
+                    except Exception as e:
+                        logger.error(f"Failed to start tracing for CDP context: {e}")
+
             page = await _browser.new_page()
             # page = await self._browser_context.new_page()
             await page.goto("https://www.testzeus.com", timeout=120000)
@@ -401,6 +433,19 @@ class PlaywrightManager:
                 await self._launch_browser_with_video(browser_type, user_dir, disable_args)
             else:
                 await self._launch_persistent_browser(browser_type, user_dir, disable_args)
+
+            # Start tracing after context is created
+            if self._enable_tracing and self._browser_context:
+                try:
+                    os.makedirs(self._trace_dir, exist_ok=True)
+                    await self._browser_context.tracing.start(
+                        screenshots=True,
+                        snapshots=True,
+                        sources=True,
+                    )
+                    logger.info("Tracing started for browser context")
+                except Exception as e:
+                    logger.error(f"Failed to start tracing: {e}")
 
     def _build_emulation_context_options(self) -> Dict[str, Any]:
         """
@@ -763,6 +808,23 @@ class PlaywrightManager:
 
     async def close_browser_context(self) -> None:
         if self._browser_context:
+            # Stop and save tracing before closing context
+            if self._enable_tracing:
+                try:
+                    timestamp = int(time.time())
+                    trace_file = os.path.join(self._trace_dir, f"trace_{timestamp}.zip")
+                    os.makedirs(self._trace_dir, exist_ok=True)
+                    
+                    await self._browser_context.tracing.stop(path=trace_file)
+                    
+                    if os.path.exists(trace_file):
+                        logger.info(f"Trace saved successfully at: {trace_file}")
+                    else:
+                        logger.error(f"Trace file was not created at: {trace_file}")
+                except Exception as e:
+                    logger.error(f"Error stopping trace: {e}")
+                    traceback.print_exc()
+
             if self._record_video:
                 pages = self._browser_context.pages
                 for page in pages:
