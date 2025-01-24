@@ -503,6 +503,20 @@ To configure Hercules in detail:
  
 For example: If you would like to run with a "Headful" browser, you can set the environment variable with ```export HEADLESS=false``` before triggering Hercules.
 
+- **How to Use Tracing in Playwright**
+
+  Tracing in Playwright allows you to analyze test executions and debug issues effectively. To enable tracing in your Playwright tests, follow these steps:
+
+  1. Ensure that tracing is enabled in the configuration.
+  2. Traces will be saved to the specified path: `{proof_path}/traces/trace.zip`.
+
+  #### Enabling Tracing
+
+  To enable tracing, set the following environment variable:
+
+  ```bash
+  export ENABLE_PLAYWRIGHT_TRACING=true
+  ```
 
 ### Understanding `agents_llm_config-example.json`
 

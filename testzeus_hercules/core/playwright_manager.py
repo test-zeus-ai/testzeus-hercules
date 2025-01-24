@@ -191,6 +191,13 @@ class PlaywrightManager:
         self._video_dir = proof_path + "/videos"
         self.request_response_log_file = proof_path + "/network_logs.json"
         self.console_log_file = proof_path + "/console_logs.json"
+        # Add trace directory path
+        self._enable_tracing = get_global_conf().should_enable_tracing()
+        self._trace_dir = None
+        if self._enable_tracing:
+            proof_path = get_global_conf().get_proof_path(test_id=self.stake_id)
+            self._trace_dir = os.path.join(proof_path, "traces")
+            logger.info(f"Tracing enabled. Traces will be saved to: {self._trace_dir}")
 
         # ----------------------
         # 4) LOGS
@@ -251,6 +258,8 @@ class PlaywrightManager:
         # Create required directories
         os.makedirs(self._screenshots_dir, exist_ok=True)
         os.makedirs(self._video_dir, exist_ok=True)
+        if self._enable_tracing:
+            os.makedirs(self._trace_dir, exist_ok=True)
         os.makedirs(os.path.dirname(self.request_response_log_file), exist_ok=True)
         os.makedirs(os.path.dirname(self.console_log_file), exist_ok=True)
 
@@ -331,6 +340,21 @@ class PlaywrightManager:
         elif self.browser_type == "firefox":
             self._extension_path = extension_file_path
 
+    async def _start_tracing(self, context_type: str = "browser") -> None:
+        """Helper method to start tracing for a browser context."""
+        if not self._enable_tracing:
+            return
+            
+        try:
+            await self._browser_context.tracing.start(
+                screenshots=True,
+                snapshots=True,
+                sources=True,
+            )
+            logger.info(f"Tracing started for {context_type} context")
+        except Exception as e:
+            logger.error(f"Failed to start tracing for {context_type} context: {e}")
+
     async def create_browser_context(self) -> None:
         """
         Creates the browser context with device descriptor if any,
@@ -401,6 +425,9 @@ class PlaywrightManager:
                 await self._launch_browser_with_video(browser_type, user_dir, disable_args)
             else:
                 await self._launch_persistent_browser(browser_type, user_dir, disable_args)
+
+        # Start tracing only once after browser context is created
+        await self._start_tracing()
 
     def _build_emulation_context_options(self) -> Dict[str, Any]:
         """
@@ -786,6 +813,24 @@ class PlaywrightManager:
                             logger.info(f"Video recorded at {new_video_path}")
                     except Exception as e:
                         logger.error(f"Could not finalize video: {e}")
+                        
+            # Stop and save tracing before closing context
+            if self._enable_tracing:
+                try:
+                    timestamp = int(time.time())
+                    trace_file = os.path.join(self._trace_dir, f"trace_{timestamp}.zip")
+                    os.makedirs(self._trace_dir, exist_ok=True)
+                    
+                    await self._browser_context.tracing.stop(path=trace_file)
+                    
+                    if os.path.exists(trace_file):
+                        logger.info(f"Trace saved successfully at: {trace_file}")
+                    else:
+                        logger.error(f"Trace file was not created at: {trace_file}")
+                except Exception as e:
+                    logger.error(f"Error stopping trace: {e}")
+                    traceback.print_exc()
+                    
             await self._browser_context.close()
             self._browser_context = None
 

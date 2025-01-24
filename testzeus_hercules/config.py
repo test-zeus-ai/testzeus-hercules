@@ -181,6 +181,8 @@ class BaseConfigManager:
             "EXECUTE_BULK",
         ]
 
+        relevant_keys.append("ENABLE_PLAYWRIGHT_TRACING")
+
         for key in relevant_keys:
             if key in os.environ:
                 self._config[key] = os.environ[key]
@@ -262,6 +264,7 @@ class BaseConfigManager:
         self._config.setdefault("GEO_API_KEY", None)
         self._config.setdefault("REACTION_DELAY_TIME", "0.1")
         self._config.setdefault("EXECUTE_BULK", "false")
+        self._config.setdefault("ENABLE_PLAYWRIGHT_TRACING", "false")
 
         if self._config["MODE"] == "debug":
             self.timestamp = "0"
@@ -327,6 +330,10 @@ class BaseConfigManager:
     def should_execute_bulk(self) -> bool:
         """Return whether tests should be executed in bulk mode"""
         return self._config["EXECUTE_BULK"].lower().strip() == "true"
+
+    def should_enable_tracing(self) -> bool:
+        """Check if Playwright tracing should be enabled"""
+        return self._config.get("ENABLE_PLAYWRIGHT_TRACING", "false").lower() == "true"
 
     # -------------------------------------------------------------------------
     # Directory creation logic (mirroring your original code)
