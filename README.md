@@ -59,6 +59,11 @@ Our mission? To **democratize and disrupt test automation**, making top-tier tes
 - **Security Testing done end to end**  
   _[Watch now](https://youtu.be/o6MmfTakIh4?si=JL8iu4e3i85SWrxU)_
 
+#### 🛠️ **Visual validations and assertions**
+- **Using vision capabilities to check snapshots and components on the application**  
+  _[Watch now](https://youtu.be/EKzllLEguhw)_
+
+
 ---
 
 ## ⚙️ Installation and Usage
