@@ -59,7 +59,7 @@ class PlaywrightManager:
 
     _instances: Dict[str, "PlaywrightManager"] = {}
     _default_instance: Optional["PlaywrightManager"] = None
-    _homepage = "about:blank"
+    _homepage = "https://testzeus.com/"
 
     def __new__(cls, *args, stake_id: Optional[str] = None, **kwargs) -> "PlaywrightManager":
         # If no stake_id provided and we have a default instance, return it
