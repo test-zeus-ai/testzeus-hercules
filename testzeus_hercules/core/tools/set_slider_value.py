@@ -2,7 +2,7 @@ import asyncio
 import inspect
 import traceback
 from dataclasses import dataclass
-from typing import Annotated, Any, List  # noqa: UP035
+from typing import Annotated, Any, List
 
 from playwright.async_api import Page
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
@@ -12,28 +12,6 @@ from testzeus_hercules.utils.dom_mutation_observer import subscribe, unsubscribe
 from testzeus_hercules.utils.js_helper import get_js_with_element_finder
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
-
-
-@dataclass
-class SetSliderEntry:
-    """
-    Represents an entry for setting a slider value.
-
-    Attributes:
-        query_selector (str): A valid selector query. Use the md attribute.
-        value (float): The numeric value to set for the slider.
-    """
-
-    query_selector: str
-    value: float
-
-    def __getitem__(self, key: str) -> Any:
-        if key == "query_selector":
-            return self.query_selector
-        elif key == "value":
-            return self.value
-        else:
-            raise KeyError(f"{key} is not a valid key")
 
 
 async def custom_set_slider_value(page: Page, selector: str, value_to_set: float) -> None:
@@ -100,7 +78,7 @@ async def custom_set_slider_value(page: Page, selector: str, value_to_set: float
 # )
 async def setslider(
     entry: Annotated[
-        SetSliderEntry,
+        dict,
         "An object containing 'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'value' (numeric value to set on the slider).",
     ]
 ) -> Annotated[str, "Explanation of the outcome of this operation."]:
@@ -213,11 +191,11 @@ async def do_setslider(page: Page, selector: str, value_to_set: float) -> dict[s
 )
 async def bulk_set_slider(
     entries: Annotated[
-        List[dict[str, float]],
+        List[dict],
         "List of objects, each containing 'query_selector' and 'value'.",
     ]  # noqa: UP006
 ) -> Annotated[
-    List[dict[str, str]],
+    List[dict],
     "List of dictionaries, each containing 'query_selector' and the result of the operation.",
 ]:  # noqa: UP006
     """
@@ -246,7 +224,7 @@ async def bulk_set_slider(
         query_selector = entry["query_selector"]
         value_to_set = entry["value"]
         logger.info(f"Setting slider value: {value_to_set} in element with selector: {query_selector}")
-        result = await setslider(SetSliderEntry(query_selector=query_selector, value=value_to_set))
+        result = await setslider(entry)
 
         results.append({"query_selector": query_selector, "result": result})
 

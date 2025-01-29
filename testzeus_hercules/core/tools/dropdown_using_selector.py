@@ -2,8 +2,7 @@ import asyncio
 import inspect
 import traceback
 from dataclasses import dataclass
-from typing import List  # noqa: UP035
-from typing import Annotated
+from typing import Annotated, List
 
 from playwright.async_api import ElementHandle, Page
 from testzeus_hercules.config import get_global_conf  # Add this import
@@ -18,39 +17,12 @@ from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
 
 
-@dataclass
-class SelectOptionEntry:
-    """
-    Represents an entry for selecting an option in a dropdown or spinner.
-
-    Attributes:
-        query_selector (str): A valid selector query. Use the md attribute.
-        value (str): The value or text of the option to select.
-    """
-
-    query_selector: str
-    value: str
-
-    def __getitem__(self, key: str) -> str:
-        if key == "query_selector":
-            return self.query_selector
-        elif key == "value":
-            return self.value
-        else:
-            raise KeyError(f"{key} is not a valid key")
-
-
-# @tool(
-#     agent_names=["browser_nav_agent"],
-#     name="select_option",
-#     description="used to Selects an option from a dropdown or spinner.",
-# )
 async def select_option(
     entry: Annotated[
-        SelectOptionEntry,
+        dict,
         "Object containing 'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'value' (the value or text of the option to select).",
     ]
-) -> Annotated[str, "Explanation of the outcome of of dropdown/spinner selection."]:
+) -> Annotated[str, "Explanation of the outcome of dropdown/spinner selection."]:
     """
     Selects an option from a dropdown or spinner identified by a CSS selector.
 
@@ -255,13 +227,13 @@ async def do_select_option(page: Page, selector: str, option_value: str) -> dict
 )
 async def bulk_select_option(
     entries: Annotated[
-        List[SelectOptionEntry],
-        "List of SelectOptionEntry objects, each containing query_selector and value.",
-    ]  # noqa: UP006
+        List[dict],
+        "List of objects containing 'query_selector' and 'value' key-value pairs",
+    ]
 ) -> Annotated[
-    List[dict[str, str]],
+    List[dict],
     "List of dictionaries, each containing 'query_selector' and the result of the operation.",
-]:  # noqa: UP006
+]:
     """
     Selects options in multiple dropdowns or spinners using a bulk operation.
 
@@ -286,8 +258,8 @@ async def bulk_select_option(
     results: List[dict[str, str]] = []  # noqa: UP006
     logger.info("Executing bulk select option command")
     for entry in entries:
-        query_selector = entry.query_selector
-        option_value = entry.value
+        query_selector = entry["query_selector"]
+        option_value = entry["value"]
         logger.info(f"Selecting option: '{option_value}' in element with selector: '{query_selector}'")
         result = await select_option(entry)
         results.append({"query_selector": query_selector, "result": result})

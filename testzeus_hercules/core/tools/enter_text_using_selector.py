@@ -1,9 +1,7 @@
 import asyncio
 import inspect
 import traceback
-from dataclasses import dataclass
-from typing import List  # noqa: UP035
-from typing import Annotated
+from typing import Annotated, List
 
 from playwright.async_api import Page
 from testzeus_hercules.config import get_global_conf  # Add this import
@@ -17,28 +15,6 @@ from testzeus_hercules.utils.dom_mutation_observer import subscribe, unsubscribe
 from testzeus_hercules.utils.js_helper import block_ads, get_js_with_element_finder
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
-
-
-@dataclass
-class EnterTextEntry:
-    """
-    Represents an entry for text input.
-
-    Attributes:
-        query_selector (str): A valid selector query. Use the md attribute.
-        text (str): The text to enter in the element identified by the query_selector.
-    """
-
-    query_selector: str
-    text: str
-
-    def __getitem__(self, key: str) -> str:
-        if key == "query_selector":
-            return self.query_selector
-        elif key == "text":
-            return self.text
-        else:
-            raise KeyError(f"{key} is not a valid key")
 
 
 async def custom_fill_element(page: Page, selector: str, text_to_enter: str) -> None:
@@ -102,7 +78,10 @@ async def custom_fill_element(page: Page, selector: str, text_to_enter: str) -> 
 #     name="entertext"
 # )
 async def entertext(
-    entry: Annotated[EnterTextEntry, "Text entry with selector and text to enter"],
+    entry: Annotated[
+        dict,
+        "An object containing 'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'text' (text to enter on the element).",
+    ]
 ) -> Annotated[str, "Text entry result"]:
     """
     Enters text into a DOM element identified by a CSS selector.
@@ -259,30 +238,30 @@ async def do_entertext(page: Page, selector: str, text_to_enter: str, use_keyboa
 )
 async def bulk_enter_text(
     entries: Annotated[
-        List[EnterTextEntry],
-        "List of EnterTextEntry objects. An object containing 'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'text' (text to enter on the element).",
-    ]  # noqa: UP006
+        List[dict],
+        "List of objects containing 'query_selector' and 'text' key-value pairs",
+    ]
 ) -> Annotated[
     List[str],
-    "List of results from the entertext operation for each entry.",
-]:  # noqa: UP006
+    "List of results from the entertext operation for each entry",
+]:
     """
     Enters text into multiple DOM elements using a bulk operation.
 
     This function enters text into multiple DOM elements using a bulk operation.
-    It takes a list of EnterTextEntry objects, where each contains 'query_selector' and 'text' attributes.
+    It takes a list of dictionaries, where each contains 'query_selector' and 'text' keys.
     The function internally calls the 'entertext' function to perform the text entry operation for each entry.
 
     Args:
-        entries: List of EnterTextEntry objects.
+        entries: List of objects containing 'query_selector' and 'text'.
 
     Returns:
         List of results from the entertext operation for each entry.
 
     Example:
         entries = [
-            EnterTextEntry(query_selector="#username", text="test_user"),
-            EnterTextEntry(query_selector="#password", text="test_password")
+            {"query_selector": "#username", "text": "test_user"},
+            {"query_selector": "#password", "text": "test_password"}
         ]
         results = await bulk_enter_text(entries)
 

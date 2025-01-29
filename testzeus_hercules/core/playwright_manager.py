@@ -344,7 +344,7 @@ class PlaywrightManager:
         """Helper method to start tracing for a browser context."""
         if not self._enable_tracing:
             return
-            
+
         try:
             await self._browser_context.tracing.start(
                 screenshots=True,
@@ -393,17 +393,17 @@ class PlaywrightManager:
 
             browser_type = getattr(self._playwright, self.browser_type)
             recording_supported = True
-            
+
             # have to skip the recording for browserstack and LT as they don't support connect_over_cdp
             if "browserstack" in endpoint_url or "LT%3AOptions" in endpoint_url:
                 _browser = await browser_type.connect(endpoint_url, timeout=120000)
                 recording_supported = False
             else:
                 _browser = await browser_type.connect_over_cdp(endpoint_url, timeout=120000)
-            
+
             context_options = {}
             if recording_supported:
-                if self._record_video :
+                if self._record_video:
                     context_options = {"record_video_dir": self._video_dir}
                     context_options.update(self._build_emulation_context_options())
                     logger.info("Recording video in CDP mode.")
@@ -813,16 +813,16 @@ class PlaywrightManager:
                             logger.info(f"Video recorded at {new_video_path}")
                     except Exception as e:
                         logger.error(f"Could not finalize video: {e}")
-                        
+
             # Stop and save tracing before closing context
             if self._enable_tracing:
                 try:
                     timestamp = int(time.time())
                     trace_file = os.path.join(self._trace_dir, f"trace_{timestamp}.zip")
                     os.makedirs(self._trace_dir, exist_ok=True)
-                    
+
                     await self._browser_context.tracing.stop(path=trace_file)
-                    
+
                     if os.path.exists(trace_file):
                         logger.info(f"Trace saved successfully at: {trace_file}")
                     else:
@@ -830,7 +830,7 @@ class PlaywrightManager:
                 except Exception as e:
                     logger.error(f"Error stopping trace: {e}")
                     traceback.print_exc()
-                    
+
             await self._browser_context.close()
             self._browser_context = None
 

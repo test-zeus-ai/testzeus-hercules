@@ -231,21 +231,21 @@ for tag, explanation in security_terms_explanation.items():
                 "Is the input an OpenAPI spec (True) or a target URL (False)? If true, open_api_spec_path is required with the path of the file.",
             ],
             target_url: Annotated[
-                Optional[str],
+                str,
                 "Target URL to test (required if is_open_api_spec is False).",
-            ] = None,
+            ] = "",
             open_api_spec_path: Annotated[
-                Optional[str],
+                str,
                 "Path to the OpenAPI spec file (required if is_open_api_spec is True).",
-            ] = None,
-            bearer_token: Annotated[Optional[str], "Optional Bearer token for authentication."] = None,
+            ] = "",
+            bearer_token: Annotated[str, "Optional Bearer token for authentication."] = "",
             header_tokens: Annotated[
-                Optional[List[str]],
+                List[str],
                 "Optional list of header tokens in 'Key=Value' format.",
-            ] = None,
-            jwt_token: Annotated[Optional[str], "Optional JWT token for authentication."] = None,
+            ] = [],
+            jwt_token: Annotated[str, "Optional JWT token for authentication."] = "",
             # output_dir: Annotated[
-            #     Optional[str], "Optional output directory for results."
+            #     str, "Optional output directory for results."
             # ] = "nuclei_results",
         ) -> Annotated[
             Tuple[dict, float],

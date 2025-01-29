@@ -49,9 +49,9 @@ async def enter_text_and_click(
     text_selector: Annotated[str, "Text input selector"],
     text_to_enter: Annotated[str, "Text to enter"],
     click_selector: Annotated[str, "Click target selector"],
-    user_input_dialog_response: Annotated[Optional[str | None], "Dialog input value"],
-    expected_message_of_dialog: Annotated[Optional[str | None], "Expected dialog message"],
-    action_on_dialog: Annotated[Optional[str | None], "Dialog action: DISMISS/ACCEPT"],
+    user_input_dialog_response: Annotated[str, "Dialog input value"] = "",
+    expected_message_of_dialog: Annotated[str, "Expected dialog message"] = "",
+    action_on_dialog: Annotated[str, "Dialog action: DISMISS/ACCEPT"] = "",
     wait_before_click_execution: Annotated[float, "Wait time before click"] = 0.0,
 ) -> Annotated[str, "Operation result"]:
     """

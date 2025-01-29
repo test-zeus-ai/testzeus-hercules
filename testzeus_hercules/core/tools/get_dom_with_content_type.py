@@ -1,7 +1,7 @@
 import json
 import os
 import time
-from typing import Annotated, Any
+from typing import Annotated, Any, Union
 
 from playwright.async_api import Page
 from testzeus_hercules.config import get_global_conf
@@ -30,7 +30,7 @@ Notes:
 )
 async def get_dom_with_content_type(
     content_type: Annotated[str, "Type: text_only/input_fields/all_fields, input_fields for list of inputable fields, text_only for all plain read text, all_fields for all types of fields"],
-) -> Annotated[dict[str, Any] | str | list | None, "DOM content based on type to analyse and decide"]:
+) -> Annotated[Union[dict[str, Any], str, list, None], "DOM content based on type to analyze and decide"]:
     """
     [previous docstring remains the same]
     """

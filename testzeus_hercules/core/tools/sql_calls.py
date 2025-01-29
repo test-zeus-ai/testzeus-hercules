@@ -18,16 +18,13 @@ async def execute_select_cte_query_sql(
         "async database connection string in SQLAlchemy format. " "E.g., 'postgresql+asyncpg://user:password@host:port/database'.",
     ],
     query: Annotated[str, "SELECT SQL query to execute. Must start with 'SELECT' or 'WITH'."],
-    schema: Annotated[
-        Optional[str | None],
-        "Optional database schema to use. If not provided, assumes schema is specified in the query.",
-    ],
+    schema: Annotated[str, "Optional database schema to use. If not provided, assumes schema is specified in the query."] = "",
     params: Annotated[
-        Optional[Dict[str, Any]],
+        dict,
         "Optional parameters to pass to the query for parameterized queries.",
-    ],
+    ] = None,
 ) -> Annotated[
-    Union[List[Dict[str, Any]], Dict[str, str]],
+    Union[List[dict], dict],
     "query results or an error message.",
 ]:
     """

@@ -15,37 +15,12 @@ from testzeus_hercules.utils.dom_mutation_observer import subscribe, unsubscribe
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
 
-
-@dataclass
-class UploadFileEntry:
-    """
-    Represents an entry for uploading a file to a file input element.
-
-    Attributes:
-        query_selector (str): A valid selector query. Use the md attribute.
-        file_path (str): The file path to upload.
-    """
-
-    query_selector: str
-    file_path: str
-
-    def __getitem__(self, key: str) -> str:
-        if key == "query_selector":
-            return self.query_selector
-        elif key == "file_path":
-            return self.file_path
-        else:
-            raise KeyError(f"{key} is not a valid key")
+# Remove UploadFileEntry TypedDict class
 
 
-# @tool(
-#     agent_names=["browser_nav_agent"],
-#     name="upload_file",
-#     description="Uploads a file to a file input element identified by a selector",
-# )
 async def upload_file(
     entry: Annotated[
-        UploadFileEntry,
+        dict,
         "object containing 'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'file_path' (the path to the file to upload).",
     ]
 ) -> Annotated[str, "Explanation of the outcome of this operation."]:
@@ -56,14 +31,14 @@ async def upload_file(
     It uses the Playwright library to interact with the browser.
 
     Args:
-        entry (UploadFileEntry): An object containing 'query_selector' (selector query using md attribute)
+        entry (dict[str, str]): An object containing 'query_selector' (selector query using md attribute)
                                  and 'file_path' (the path to the file to upload).
 
     Returns:
         str: Explanation of the outcome of this operation.
 
     Example:
-        entry = UploadFileEntry(query_selector='#fileInput', file_path='/path/to/file.txt')
+        entry = {"query_selector": '#fileInput', "file_path": '/path/to/file.txt'}
         result = await upload_file(entry)
     """
     add_event(EventType.INTERACTION, EventData(detail="UploadFile"))
@@ -162,11 +137,11 @@ async def do_upload_file(page: Page, selector: str, file_path: str) -> dict[str,
 )
 async def bulk_upload_file(
     entries: Annotated[
-        List[dict[str, str]],
+        List[dict],
         "List of objects, each containing 'query_selector' and 'file_path'.",
     ]  # noqa: UP006
 ) -> Annotated[
-    List[dict[str, str]],
+    List[dict],
     "List of dictionaries, each containing 'query_selector' and the result of the operation.",
 ]:  # noqa: UP006
     """
@@ -196,7 +171,7 @@ async def bulk_upload_file(
         query_selector = entry["query_selector"]
         file_path = entry["file_path"]
         logger.info(f"Uploading file: '{file_path}' to element with selector: '{query_selector}'")
-        result = await upload_file(UploadFileEntry(query_selector=query_selector, file_path=file_path))
+        result = await upload_file(entry)  # Use dictionary directly
 
         results.append({"query_selector": query_selector, "result": result})
 

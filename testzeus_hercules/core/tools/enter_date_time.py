@@ -2,8 +2,7 @@ import asyncio
 import inspect
 import traceback
 from dataclasses import dataclass
-from typing import List  # noqa: UP035
-from typing import Annotated
+from typing import Annotated, List  # noqa: UP035
 
 from playwright.async_api import ElementHandle, Page
 from testzeus_hercules.config import get_global_conf  # Add this import
@@ -16,27 +15,7 @@ from testzeus_hercules.utils.js_helper import get_js_with_element_finder
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
 
-
-@dataclass
-class SetInputValueEntry:
-    """
-    Represents an entry for setting a value in an input element.
-
-    Attributes:
-        query_selector (str): A valid selector query. Use the md attribute.
-        value (str): The value to set in the input element.
-    """
-
-    query_selector: str
-    value: str
-
-    def __getitem__(self, key: str) -> str:
-        if key == "query_selector":
-            return self.query_selector
-        elif key == "value":
-            return self.value
-        else:
-            raise KeyError(f"{key} is not a valid key")
+# Remove SetInputValueEntry TypedDict class
 
 
 # @tool(
@@ -45,7 +24,10 @@ class SetInputValueEntry:
 #     description="Set date, time values in an input element identified by a selector, its strictly for time or date fields and should not be used for other input fields.",
 # )
 async def set_date_time_value(
-    entry: Annotated[SetInputValueEntry, "Selector and value for date/time input"],
+    entry: Annotated[
+        dict,
+        "An object containing 'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'value' (the value to set in the input element).",
+    ]
 ) -> Annotated[str, "Operation result"]:
     """
     Sets a value in an input element identified by a selector.
@@ -157,11 +139,11 @@ async def do_set_date_time_value(page: Page, selector: str, input_value: str) ->
 )
 async def bulk_set_date_time_value(
     entries: Annotated[
-        List[SetInputValueEntry],
-        "List of SetInputValueEntry objects, each containing query_selector and value.",
+        List[dict],
+        "List of objects containing 'query_selector' and 'value' key-value pairs",
     ]  # noqa: UP006
 ) -> Annotated[
-    List[dict[str, str]],
+    List[dict],
     "List of dictionaries, each containing 'query_selector' and the result of the operation.",
 ]:  # noqa: UP006
     """
@@ -188,10 +170,7 @@ async def bulk_set_date_time_value(
     results: List[dict[str, str]] = []  # noqa: UP006
     logger.info("Executing bulk set input value command")
     for entry in entries:
-        query_selector = entry.query_selector
-        input_value = entry.value
-        logger.info(f"Setting input value: '{input_value}' in element with selector: '{query_selector}'")
-        result = await set_date_time_value(entry)
-        results.append({"query_selector": query_selector, "result": result})
+        result = await set_date_time_value(entry)  # Use dictionary directly
+        results.append({"query_selector": entry["query_selector"], "result": result})
 
     return results

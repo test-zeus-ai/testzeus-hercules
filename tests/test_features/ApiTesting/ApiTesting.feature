@@ -56,5 +56,5 @@ Feature: End-to-End Pet Store Flow Validation
     Given I add a new pet using the "Add a New Pet" scenario
     And I update the pet details using the "Update an Existing Pet" scenario, for the pet 9223372016900018000
     And I sell the pet by placing an order using the "Place an Order for a Pet" scenario
-    When I retrieve the pet by ID using the "Retrieve a Single Pet by ID" scenario for id 9223372016900018000
-    Then I delete the pet using the "Delete a Pet" scenario for id 9223372016900018000
+    When I retrieve the pet by ID using the "Retrieve a Single Pet by ID" scenario for for id 9223372036854775807
+    Then I delete the pet using the "Delete a Pet" scenario for id 9223372036854775807

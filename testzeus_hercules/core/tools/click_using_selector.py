@@ -20,28 +20,6 @@ from testzeus_hercules.utils.ui_messagetype import MessageType
 page_data_store = {}
 
 
-@dataclass
-class SelectorEntry:
-    """
-    Represents an entry for selecting an element using a selector.
-
-    Attributes:
-        query_selector (str): A valid selector query. Use the md attribute.
-        value (str): Optional value associated with the selector, useful for key-value operations.
-    """
-
-    query_selector: str
-    value: str = ""  # Default empty string for backward compatibility
-
-    def __getitem__(self, key: str) -> str:
-        if key == "query_selector":
-            return self.query_selector
-        elif key == "value":
-            return self.value
-        else:
-            raise KeyError(f"{key} is not a valid key")
-
-
 # Function to set data
 def set_page_data(page: Any, data: Any) -> None:
     page_data_store[page] = data
@@ -54,12 +32,12 @@ def get_page_data(page: Any) -> dict:
 
 @tool(agent_names=["browser_nav_agent"], description="""Clicks element by md attribute. Returns success/failure status.""", name="click")
 async def click(
-    selector: Annotated[SelectorEntry, "selector using md attribute with optional value, eg: [md='114']"],
-    user_input_dialog_response: Annotated[str | None, "Dialog input value"],
-    expected_message_of_dialog: Annotated[str | None, "Expected dialog message"],
-    action_on_dialog: Annotated[str | None, "Dialog action: 'DISMISS' or 'ACCEPT'"] = None,
-    type_of_click: Annotated[Optional[str], "Click type: click/right_click/double_click/middle_click"] = "click",
-    wait_before_execution: Annotated[Optional[float], "Wait time before click"] = 0.0,
+    selector: Annotated[dict, """selector using md attribute with optional value, eg: {"query_selector": "[md='114']", "value": ""}"""],
+    user_input_dialog_response: Annotated[str, "Dialog input value"] = "",
+    expected_message_of_dialog: Annotated[str, "Expected dialog message"] = "",
+    action_on_dialog: Annotated[str, "Dialog action: 'DISMISS' or 'ACCEPT'"] = "",
+    type_of_click: Annotated[str, "Click type: click/right_click/double_click/middle_click"] = "click",
+    wait_before_execution: Annotated[float, "Wait time before click"] = 0.0,
 ) -> Annotated[str, "Click action result"]:
     """
     Executes a click action on the element matching the given query selector string within the currently open web page.
@@ -76,8 +54,8 @@ async def click(
     Returns:
     - Success if the click was successful, appropriate error message otherwise.
     """
-    query_selector = selector.query_selector
-    value = selector.value  # Now we can use the value if needed
+    query_selector = selector["query_selector"]
+    value = selector.get("value", "")  # Now we can use the value if needed
     if "md=" not in query_selector:
         query_selector = f"[md='{query_selector}']"
 

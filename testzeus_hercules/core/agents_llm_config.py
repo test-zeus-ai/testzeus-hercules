@@ -35,6 +35,12 @@ class AgentsLLMConfig:
         "model_project_id": "gcp_project_id",
         "model_region": "gcp_region",
         "model_api_version": "api_version",
+        "model_aws_region": "aws_region",
+        "model_aws_access_key": "aws_access_key",
+        "model_aws_secret_key": "aws_secret_key",
+        "model_aws_profile_name": "aws_profile_name",
+        "model_aws_session_token": "aws_session_token",
+        "model_pricing": "price",
     }
 
     def __init__(self, llm_config: dict[str, Any] | None = None) -> None:
