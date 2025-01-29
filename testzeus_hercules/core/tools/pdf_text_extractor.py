@@ -9,7 +9,7 @@ from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
 
 
-@tool(agent_names=["browser_nav_agent"], description="""Extracts text from PDF at given URL.""", name="extract_text_from_pdf")
+@tool(agent_names=["browser_nav_agent"], description="""Extracts text from PDF at given URL. ALL TOOL ARGUMENTS ARE MANDATORY""", name="extract_text_from_pdf")
 async def extract_text_from_pdf(pdf_url: Annotated[str, "URL of the PDF file to extract text from."]) -> Annotated[str, "All the text found in the PDF file."]:
     """
     Extract text from a PDF file.

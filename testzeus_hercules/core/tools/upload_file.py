@@ -133,12 +133,12 @@ async def do_upload_file(page: Page, selector: str, file_path: str) -> dict[str,
 @tool(
     agent_names=["browser_nav_agent"],
     name="bulk_upload_file",
-    description="Uploads files to multiple file input elements using a bulk operation.",
+    description="Uploads files to multiple file input elements using a bulk operation. ALL TOOL ARGUMENTS ARE MANDATORY.",
 )
 async def bulk_upload_file(
     entries: Annotated[
         List[dict],
-        "List of objects, each containing 'query_selector' and 'file_path'.",
+        "List of objects, each containing 'query_selector' and 'file_path'. Object containing 'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'value' (the value or text of the option to select). MANDATORY FIELD",
     ]  # noqa: UP006
 ) -> Annotated[
     List[dict],

@@ -25,7 +25,7 @@ Fetches DOM based on content type:
 Notes:
 - Elements ordered as displayed
 - Try different content types if information missing
-- Consider ordinal/numbered item positions""",
+- Consider ordinal/numbered item positions ALL TOOL ARGUMENTS ARE MANDATORY""",
     name="get_dom_with_content_type",
 )
 async def get_dom_with_content_type(

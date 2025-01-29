@@ -234,12 +234,12 @@ async def do_entertext(page: Page, selector: str, text_to_enter: str, use_keyboa
 @tool(
     agent_names=["browser_nav_agent"],
     name="bulk_enter_text",
-    description="Enters text into multiple DOM elements using a bulk operation. An object containing 'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'text' (text to enter on the element).",
+    description="Enters text into multiple DOM elements using a bulk operation. An object containing 'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'text' (text to enter on the element). ALL TOOL ARGUMENTS ARE MANDATORY",
 )
 async def bulk_enter_text(
     entries: Annotated[
         List[dict],
-        "List of objects containing 'query_selector' and 'text' key-value pairs",
+        "List of objects containing 'query_selector' and 'text' key-value pairs, Object containing 'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'value' (the value or text of the option to select). MANDATORY FIELD",
     ]
 ) -> Annotated[
     List[str],

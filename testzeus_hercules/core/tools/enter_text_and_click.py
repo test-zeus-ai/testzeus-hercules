@@ -41,7 +41,7 @@ def get_page_data(page: Any) -> dict:
 #    Operation:
 #    - Enters text in specified element
 #    - Clicks target element
-#    - Returns success/failure status
+#    - Returns success/failure status ALL TOOL ARGUMENTS ARE MANDATORY
 # """,
 #     name="enter_text_and_click"
 # )

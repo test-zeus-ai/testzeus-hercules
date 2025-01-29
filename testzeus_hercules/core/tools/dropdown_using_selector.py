@@ -223,12 +223,12 @@ async def do_select_option(page: Page, selector: str, option_value: str) -> dict
 @tool(
     agent_names=["browser_nav_agent"],
     name="bulk_select_option",
-    description="used to Select an option of multiple dropdowns or spinners in one shot",
+    description="used to Select an option of multiple dropdowns or spinners in one shot. ALL TOOL ARGUMENTS ARE MANDATORY",
 )
 async def bulk_select_option(
     entries: Annotated[
         List[dict],
-        "List of objects containing 'query_selector' and 'value' key-value pairs",
+        "List of objects containing 'query_selector' and 'value' key-value pairs, Object containing 'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'value' (the value or text of the option to select).",
     ]
 ) -> Annotated[
     List[dict],

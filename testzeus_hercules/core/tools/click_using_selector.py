@@ -30,9 +30,9 @@ def get_page_data(page: Any) -> dict:
     return page_data_store.get(page)
 
 
-@tool(agent_names=["browser_nav_agent"], description="""Clicks element by md attribute. Returns success/failure status.""", name="click")
+@tool(agent_names=["browser_nav_agent"], description="""Clicks element by md attribute. Returns success/failure status. ALL TOOL ARGUMENTS ARE MANDATORY""", name="click")
 async def click(
-    selector: Annotated[dict, """selector using md attribute with optional value, eg: {"query_selector": "[md='114']", "value": ""}"""],
+    selector: Annotated[str, """selector using md attribute, eg: "[md='114']" md is ID"""],
     user_input_dialog_response: Annotated[str, "Dialog input value"] = "",
     expected_message_of_dialog: Annotated[str, "Expected dialog message"] = "",
     action_on_dialog: Annotated[str, "Dialog action: 'DISMISS' or 'ACCEPT'"] = "",
@@ -54,8 +54,8 @@ async def click(
     Returns:
     - Success if the click was successful, appropriate error message otherwise.
     """
-    query_selector = selector["query_selector"]
-    value = selector.get("value", "")  # Now we can use the value if needed
+    query_selector = selector
+
     if "md=" not in query_selector:
         query_selector = f"[md='{query_selector}']"
 

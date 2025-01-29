@@ -186,13 +186,13 @@ async def do_setslider(page: Page, selector: str, value_to_set: float) -> dict[s
 
 @tool(
     agent_names=["browser_nav_agent"],
-    description="Bulk set values in multiple range slider DOM fields. To be used when there are multiple sliders to be set on the same page. Sets values in the DOM elements matching the given md attribute value. The input will receive a list of objects containing the DOM query selector and the value to set. This will only set the values and not perform any additional actions. Returns each selector and the result for attempting to set the slider values.",
+    description="Bulk set values in multiple range slider DOM fields. To be used when there are multiple sliders to be set on the same page. Sets values in the DOM elements matching the given md attribute value. The input will receive a list of objects containing the DOM query selector and the value to set. This will only set the values and not perform any additional actions. Returns each selector and the result for attempting to set the slider values. ALL TOOL ARGUMENTS ARE MANDATORY",
     name="bulk_set_slider",
 )
 async def bulk_set_slider(
     entries: Annotated[
         List[dict],
-        "List of objects, each containing 'query_selector' and 'value'.",
+        "List of objects, each containing 'query_selector' and 'value'. Object containing 'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'value' (the value or text of the option to select). MANDATORY FIELD",
     ]  # noqa: UP006
 ) -> Annotated[
     List[dict],
