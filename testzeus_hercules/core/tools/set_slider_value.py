@@ -191,7 +191,7 @@ async def do_setslider(page: Page, selector: str, value_to_set: float) -> dict[s
 )
 async def bulk_set_slider(
     entries: Annotated[
-        List,
+        List[dict],
         "List of dictionaries, each containing 'query_selector' and 'value'. dict containing 'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'value' (the value or text of the option to select). MANDATORY FIELD",
     ]  # noqa: UP006
 ) -> Annotated[

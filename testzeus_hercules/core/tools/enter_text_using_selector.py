@@ -238,7 +238,7 @@ async def do_entertext(page: Page, selector: str, text_to_enter: str, use_keyboa
 )
 async def bulk_enter_text(
     entries: Annotated[
-        List,
+        List[dict],
         "List of dictionaries containing 'query_selector' and 'text' key-value pairs, dict containing 'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'value' (the value or text of the option to select). MANDATORY FIELD",
     ]
 ) -> Annotated[

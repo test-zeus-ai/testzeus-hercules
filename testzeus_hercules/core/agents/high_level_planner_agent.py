@@ -117,6 +117,7 @@ Database Operations:
 9. Return single JSON response
 10. No duplicate JSON keys
 11. Termination scenario should always be an assert.
+12. Never provide explination or notes only JSON response.
 
 Available Test Data: $basic_test_information
 """

@@ -137,7 +137,7 @@ async def do_upload_file(page: Page, selector: str, file_path: str) -> dict[str,
 )
 async def bulk_upload_file(
     entries: Annotated[
-        List,
+        List[dict],
         "List of dictionaries, each containing 'query_selector' and 'file_path'. dict containing 'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'value' (the value or text of the option to select). MANDATORY FIELD",
     ]  # noqa: UP006
 ) -> Annotated[

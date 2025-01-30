@@ -227,7 +227,7 @@ async def do_select_option(page: Page, selector: str, option_value: str) -> dict
 )
 async def bulk_select_option(
     entries: Annotated[
-        List,
+        List[dict],
         "List of dictionaries containing 'query_selector' and 'value' key-value pairs, dict containing 'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'value' (the value or text of the option to select).",
     ]
 ) -> Annotated[
