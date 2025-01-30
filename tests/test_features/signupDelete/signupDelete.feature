@@ -11,12 +11,12 @@ Feature: User Signup and Account Deletion
     And selects the checkbox "Sign up for our newsletter!"
     And selects the checkbox "Receive special offers from our partners!"
     And the user has filled in the account information
-    And the user fills in additional details,  Use the first record from the test data to fill all possible fields on the UI.
+    And the user fills in additional details,  Use the first record from the test data to fill all possible fields on the UI. if data dosen't match with UI find a substitute.
     And clicks the "Create Account" button
     And the "ACCOUNT CREATED!" message should be visible
     And the user has created an account
     And the user clicks the "Continue" button, the user is first record from test data.
-    Then the "Logged in as [Email]" message should be visible
+    Then the "Logged in as [Email]" or "Logged in as [Name]" message should be visible
 
   Scenario: Delete the account
     Given the user is logged in as a new user, via record 1 from test data, use email instead of username

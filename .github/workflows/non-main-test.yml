@@ -9,6 +9,9 @@ on:
       LLM_MODEL_API_KEY:
         description: "LLM Model API Key (required)"
         required: true
+      GEO_API_KEY:
+        description: "GEO_API_KEY for geo test (optional)"
+        required: false
 
 env:
   POETRY_VERSION: "1.8.3"
@@ -26,6 +29,7 @@ jobs:
     env:
       LLM_MODEL_NAME: ${{ github.event.inputs.LLM_MODEL_NAME }}
       LLM_MODEL_API_KEY: ${{ github.event.inputs.LLM_MODEL_API_KEY }}
+      GEO_API_KEY: ${{ github.event.inputs.GEO_API_KEY }}
       ENABLE_TELEMETRY: 0
       AUTO_MODE: 1
     steps:

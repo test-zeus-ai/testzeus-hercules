@@ -1,7 +1,7 @@
 import asyncio
 import inspect
 import traceback
-from typing import Annotated, List
+from typing import Annotated, Dict, List
 
 from playwright.async_api import Page
 from testzeus_hercules.config import get_global_conf  # Add this import
@@ -80,7 +80,7 @@ async def custom_fill_element(page: Page, selector: str, text_to_enter: str) -> 
 async def entertext(
     entry: Annotated[
         dict,
-        "An object containing 'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'text' (text to enter on the element).",
+        "An dict containing'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'text' (text to enter on the element).",
     ]
 ) -> Annotated[str, "Text entry result"]:
     """
@@ -91,7 +91,7 @@ async def entertext(
     The function supports both direct setting of the 'value' property and simulating keyboard typing.
 
     Args:
-        entry (EnterTextEntry): An object containing 'query_selector' (selector query using md attribute)
+        entry (EnterTextEntry): An dict containing'query_selector' (selector query using md attribute)
                                 and 'text' (text to enter on the element).
 
     Returns:
@@ -234,12 +234,12 @@ async def do_entertext(page: Page, selector: str, text_to_enter: str, use_keyboa
 @tool(
     agent_names=["browser_nav_agent"],
     name="bulk_enter_text",
-    description="Enters text into multiple DOM elements using a bulk operation. An object containing 'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'text' (text to enter on the element). ALL TOOL ARGUMENTS ARE MANDATORY",
+    description="Enters text into multiple DOM elements using a bulk operation. An dict containing'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'text' (text to enter on the element). ALL TOOL ARGUMENTS ARE MANDATORY",
 )
 async def bulk_enter_text(
     entries: Annotated[
-        List[dict],
-        "List of objects containing 'query_selector' and 'text' key-value pairs, Object containing 'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'value' (the value or text of the option to select). MANDATORY FIELD",
+        List,
+        "List of dictionaries containing 'query_selector' and 'text' key-value pairs, dict containing 'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'value' (the value or text of the option to select). MANDATORY FIELD",
     ]
 ) -> Annotated[
     List[str],
@@ -253,7 +253,7 @@ async def bulk_enter_text(
     The function internally calls the 'entertext' function to perform the text entry operation for each entry.
 
     Args:
-        entries: List of objects containing 'query_selector' and 'text'.
+        entries: List of dictionaries containing 'query_selector' and 'text'.
 
     Returns:
         List of results from the entertext operation for each entry.

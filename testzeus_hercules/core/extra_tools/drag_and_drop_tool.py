@@ -1,10 +1,8 @@
 import asyncio
-from dataclasses import dataclass
 from typing import Annotated
 
 from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
-from testzeus_hercules.core.tools.click_using_selector import SelectorEntry
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.logger import logger
@@ -12,7 +10,7 @@ from testzeus_hercules.utils.logger import logger
 
 @tool(agent_names=["browser_nav_agent"], description="Performs drag and drop operation between source (using md) and target (using any valid selector).", name="drag_and_drop")
 async def drag_and_drop(
-    source_selector: Annotated[SelectorEntry, "Source element selector using md attribute, eg: [md='114']"],
+    source_selector: Annotated[str, "Source element selector using md attribute, eg: [md='114']"],
     target_selector: Annotated[str, "Target element selector using any valid Playwright selector (CSS, XPath, etc.)"],
     wait_before_execution: Annotated[float, "Wait time before drag and drop"] = 0.0,
 ) -> Annotated[str, "Drag and drop operation result"]:
@@ -27,7 +25,7 @@ async def drag_and_drop(
     Returns:
     - Success message if the operation was successful, error message otherwise
     """
-    query_selector = source_selector.query_selector
+    query_selector = source_selector
     if "md=" not in query_selector:
         query_selector = f"[md='{query_selector}']"
 

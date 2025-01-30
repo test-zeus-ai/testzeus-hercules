@@ -20,7 +20,7 @@ from testzeus_hercules.utils.ui_messagetype import MessageType
 async def select_option(
     entry: Annotated[
         dict,
-        "Object containing 'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'value' (the value or text of the option to select).",
+        "dict containing'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'value' (the value or text of the option to select).",
     ]
 ) -> Annotated[str, "Explanation of the outcome of dropdown/spinner selection."]:
     """
@@ -30,7 +30,7 @@ async def select_option(
     It uses the Playwright library to interact with the browser and perform the selection operation.
 
     Args:
-        entry (SelectOptionEntry): An object containing 'query_selector' (selector query using md attribute)
+        entry (SelectOptionEntry): An dict containing'query_selector' (selector query using md attribute)
                                    and 'value' (the value or text of the option to select).
 
     Returns:
@@ -227,8 +227,8 @@ async def do_select_option(page: Page, selector: str, option_value: str) -> dict
 )
 async def bulk_select_option(
     entries: Annotated[
-        List[dict],
-        "List of objects containing 'query_selector' and 'value' key-value pairs, Object containing 'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'value' (the value or text of the option to select).",
+        List,
+        "List of dictionaries containing 'query_selector' and 'value' key-value pairs, dict containing 'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'value' (the value or text of the option to select).",
     ]
 ) -> Annotated[
     List[dict],

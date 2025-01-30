@@ -21,7 +21,7 @@ from testzeus_hercules.utils.ui_messagetype import MessageType
 async def upload_file(
     entry: Annotated[
         dict,
-        "object containing 'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'file_path' (the path to the file to upload).",
+        "dict containing 'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'file_path' (the path to the file to upload).",
     ]
 ) -> Annotated[str, "Explanation of the outcome of this operation."]:
     """
@@ -31,7 +31,7 @@ async def upload_file(
     It uses the Playwright library to interact with the browser.
 
     Args:
-        entry (dict[str, str]): An object containing 'query_selector' (selector query using md attribute)
+        entry (dict[str, str]): An dict containing'query_selector' (selector query using md attribute)
                                  and 'file_path' (the path to the file to upload).
 
     Returns:
@@ -137,8 +137,8 @@ async def do_upload_file(page: Page, selector: str, file_path: str) -> dict[str,
 )
 async def bulk_upload_file(
     entries: Annotated[
-        List[dict],
-        "List of objects, each containing 'query_selector' and 'file_path'. Object containing 'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'value' (the value or text of the option to select). MANDATORY FIELD",
+        List,
+        "List of dictionaries, each containing 'query_selector' and 'file_path'. dict containing 'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'value' (the value or text of the option to select). MANDATORY FIELD",
     ]  # noqa: UP006
 ) -> Annotated[
     List[dict],
@@ -152,7 +152,7 @@ async def bulk_upload_file(
     The function internally calls the 'upload_file' function to perform the operation for each entry.
 
     Args:
-        entries: List of objects, each containing 'query_selector' and 'file_path'.
+        entries: List of dictionaries, each containing 'query_selector' and 'file_path'.
 
     Returns:
         List of dictionaries, each containing 'query_selector' and the result of the operation.

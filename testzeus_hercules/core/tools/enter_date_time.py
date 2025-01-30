@@ -26,7 +26,7 @@ from testzeus_hercules.utils.ui_messagetype import MessageType
 async def set_date_time_value(
     entry: Annotated[
         dict,
-        "An object containing 'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'value' (the value to set in the input element).",
+        "An dict containing'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'value' (the value to set in the input element).",
     ]
 ) -> Annotated[str, "Operation result"]:
     """
@@ -36,7 +36,7 @@ async def set_date_time_value(
     identified by the given selector. It uses the Playwright library to interact with the browser.
 
     Args:
-        entry (SetInputValueEntry): An object containing 'query_selector' (selector query using md attribute)
+        entry (SetInputValueEntry): An dict containing'query_selector' (selector query using md attribute)
                                     and 'value' (the value to set in the input element).
 
     Returns:
@@ -139,8 +139,8 @@ async def do_set_date_time_value(page: Page, selector: str, input_value: str) ->
 )
 async def bulk_set_date_time_value(
     entries: Annotated[
-        List[dict],
-        "List of objects containing 'query_selector' and 'value' key-value pairs, Object containing 'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'value' (the value or text of the option to select).",
+        List,
+        "List of dictionaries containing 'query_selector' and 'value' key-value pairs, dict containing 'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'value' (the value or text of the option to select).",
     ]  # noqa: UP006
 ) -> Annotated[
     List[dict],
