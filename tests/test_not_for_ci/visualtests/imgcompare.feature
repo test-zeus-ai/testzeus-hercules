@@ -6,7 +6,6 @@ Feature: Check the appearance of the website with the help of image comparison
     When the user checks if the application state is similar with the base_image
     Then the visual comparison should be successful
 
-Feature: Check the presence of Github button
 
   # This feature displays the image validation capabilities of the agent
 
