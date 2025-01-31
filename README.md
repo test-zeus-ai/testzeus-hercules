@@ -887,3 +887,14 @@ With Hercules, testing is no longer just a step in the process—it's a powerful
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=test-zeus-ai/testzeus-hercules&type=Date)](https://star-history.com/#test-zeus-ai/testzeus-hercules&Date)
+
+## ✅ Citation
+If you use Hercules in your research or project, please cite:
+
+``` @software{testzeus_hercules2024,
+  author = {Agnihotri, Shriyansh and Gupta, Robin},
+  title = {Hercules: World's first open source testing agent},
+  year = {2024},
+  publisher = {GitHub},
+  url = {https://github.com/test-zeus-ai/testzeus-hercules/}
+} ```
