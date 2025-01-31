@@ -36,7 +36,7 @@ def sequential_process() -> None:
     7. Logs the location of the final result file.
     """
     dont_close_browser = get_global_conf().get_dont_close_browser()
-    list_of_feats = process_feature_file(pass_background_to_all=dont_close_browser)
+    list_of_feats = process_feature_file(dont_append_header=dont_close_browser)
     input_gherkin_file_path = get_global_conf().get_input_gherkin_file_path()
     # get name of the feature file using os package
     feature_file_name = os.path.basename(input_gherkin_file_path)

@@ -108,7 +108,7 @@ def serialize_feature_file(file_path: str) -> str:
     return feature_content
 
 
-def process_feature_file(pass_background_to_all: bool = True) -> List[Dict[str, str]]:
+def process_feature_file(dont_append_header: bool = False) -> List[Dict[str, str]]:
     """
     Processes a Gherkin feature file by splitting it into smaller parts.
 
@@ -121,7 +121,7 @@ def process_feature_file(pass_background_to_all: bool = True) -> List[Dict[str, 
     return split_feature_file(
         input_gherkin_file_path,
         tmp_gherkin_path,
-        dont_append_header=not pass_background_to_all,
+        dont_append_header=dont_append_header,
     )
 
 
