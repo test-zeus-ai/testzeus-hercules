@@ -18,22 +18,25 @@ from testzeus_hercules.utils.logger import logger
 @tool(
     agent_names=["browser_nav_agent"],
     description="""# DOM Retrieval Tool, output helps you to read the page content
-Fetches DOM based on content type:
-1. text_only: Plain text for information retrieval
-2. input_fields: JSON list of text input elements with md
-3. all_fields: JSON list of all interactive elements with md
+Fetches DOM based on content type.
 Notes:
 - Elements ordered as displayed
+- Pick the best content type to use as per the requirement
 - Try different content types if information missing
-- Consider ordinal/numbered item positions ALL TOOL ARGUMENTS ARE MANDATORY""",
+- Consider ordinal/numbered item positions""",
     name="get_dom_with_content_type",
 )
 async def get_dom_with_content_type(
-    content_type: Annotated[str, "Type: text_only/input_fields/all_fields, input_fields for list of inputable fields, text_only for all plain read text, all_fields for all types of fields"],
+    content_type: Annotated[
+        str, 
+        """Type: text_only/input_fields/all_fields,
+Definition of each type:
+text_only: Plain text for information retrieval
+input_fields: JSON list of text input elements with md attribute
+all_fields: JSON list of all elements with possible md attribute (expensive operation)"""
+],
 ) -> Annotated[Union[dict[str, Any], str, list, None], "DOM content based on type to analyze and decide"]:
-    """
-    [previous docstring remains the same]
-    """
+
     add_event(EventType.INTERACTION, EventData(detail="get_dom_with_content_type"))
     logger.info(f"Executing Get DOM Command based on content_type: {content_type}")
     start_time = time.time()
@@ -47,9 +50,8 @@ async def get_dom_with_content_type(
 
     extracted_data = None
     await wait_for_non_loading_dom_state(page, 1)
-    user_success_message = ""
+
     if content_type == "all_fields":
-        user_success_message = "Fetched all the fields in the DOM"
         extracted_data = await do_get_accessibility_info(page, only_input_fields=False)
     elif content_type == "input_fields":
         logger.debug("Fetching DOM for input_fields")
@@ -109,11 +111,11 @@ async def get_dom_with_content_type(
         EventData(detail=f"DETECTED {rr} components"),
     )
 
-    def rename_children(d: dict) -> dict:
+    async def rename_children(d: dict) -> dict:
         if "children" in d:
             d["c"] = d.pop("children")
             for child in d["c"]:
-                rename_children(child)
+                await rename_children(child)
         if "tag" in d:
             d["t"] = d.pop("tag")
         if "role" in d:
@@ -124,14 +126,16 @@ async def get_dom_with_content_type(
             d["tl"] = d.pop("title")
         if "md" in d:
             d["md"] = int(d.pop("md"))
+            # based on md selector, we highlight the element
+            await browser_manager.highlight_element(f"[md='{d['md']}']")
         return d
 
     if not (isinstance(extracted_data, str)):
         if isinstance(extracted_data, list):
             for i, item in enumerate(extracted_data):
-                extracted_data[i] = rename_children(item)
+                extracted_data[i] = await rename_children(item)
         elif isinstance(extracted_data, dict):
-            extracted_data = rename_children(extracted_data)
+            extracted_data = await rename_children(extracted_data)
 
         extracted_data = json.dumps(extracted_data, separators=(",", ":"))
         extracted_data_legend = """Given is the JSON object representing Accessibility Tree DOM of current web page, they keys have following meanings, rest keys have normal meaning:

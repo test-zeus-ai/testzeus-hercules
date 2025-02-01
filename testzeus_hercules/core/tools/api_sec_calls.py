@@ -323,5 +323,5 @@ for tag, explanation in security_terms_explanation.items():
     globals()[tool_name] = tool(
         agent_names=["sec_nav_agent"],
         name=tool_name,
-        description=f"Test for {explanation}. ALL TOOL ARGUMENTS ARE MANDATORY",
+        description=f"Test for {explanation}.",
     )(func)

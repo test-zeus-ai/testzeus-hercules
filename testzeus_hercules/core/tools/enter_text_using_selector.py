@@ -1,7 +1,7 @@
 import asyncio
 import inspect
 import traceback
-from typing import Annotated, Dict, List
+from typing import Annotated, Dict, List, Tuple
 
 from playwright.async_api import Page
 from testzeus_hercules.config import get_global_conf  # Add this import
@@ -18,27 +18,6 @@ from testzeus_hercules.utils.ui_messagetype import MessageType
 
 
 async def custom_fill_element(page: Page, selector: str, text_to_enter: str) -> None:
-    """
-    Sets the value of a DOM element to a specified text without triggering keyboard input events.
-
-    This function directly sets the 'value' property of a DOM element identified by the given CSS selector,
-    effectively changing its current value to the specified text. This approach bypasses the need for
-    simulating keyboard typing, providing a more efficient and reliable way to fill in text fields,
-    especially in automated testing scenarios where speed and accuracy are paramount.
-
-    Args:
-        page (Page): The Playwright Page object representing the browser tab in which the operation will be performed.
-        selector (str): The CSS selector string used to locate the target DOM element. The function will apply the
-                        text change to the first element that matches this selector.
-        text_to_enter (str): The text value to be set in the target element. Existing content will be overwritten.
-
-    Example:
-        await custom_fill_element(page, '#username', 'test_user')
-
-    Note:
-        This function does not trigger input-related events (like 'input' or 'change'). If application logic
-        relies on these events being fired, additional steps may be needed to simulate them.
-    """
     selector = f"{selector}"  # Ensures the selector is treated as a string
     try:
         js_code = """(inputParams) => {
@@ -72,51 +51,21 @@ async def custom_fill_element(page: Page, selector: str, text_to_enter: str) -> 
         raise
 
 
-# @tool(
-#     agent_names=["browser_nav_agent"],
-#     description="""Enters text in element by md. Text-only operation without Enter press.""",
-#     name="entertext"
-# )
 async def entertext(
     entry: Annotated[
-        dict,
-        "An dict containing'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'text' (text to enter on the element).",
+        tuple,
+        "tuple containing 'selector' and 'value_to_fill' in ('selector', 'value_to_fill') format, selector is md attribute value of the dom element to interact, md is an ID and 'value_to_fill' is the value or text of the option to select",
     ]
 ) -> Annotated[str, "Text entry result"]:
-    """
-    Enters text into a DOM element identified by a CSS selector.
-
-    This function enters the specified text into a DOM element identified by the given CSS selector.
-    It uses the Playwright library to interact with the browser and perform the text entry operation.
-    The function supports both direct setting of the 'value' property and simulating keyboard typing.
-
-    Args:
-        entry (EnterTextEntry): An dict containing'query_selector' (selector query using md attribute)
-                                and 'text' (text to enter on the element).
-
-    Returns:
-        str: Explanation of the outcome of this operation.
-
-    Example:
-        entry = EnterTextEntry(query_selector='#username', text='test_user')
-        result = await entertext(entry)
-
-    Note:
-        - The 'query_selector' should be a valid CSS selector that uniquely identifies the target element.
-        - The 'text' parameter specifies the text to be entered into the element.
-        - The function uses the PlaywrightManager to manage the browser instance.
-        - If no active page is found, an error message is returned.
-        - The function internally calls the 'do_entertext' function to perform the text entry operation.
-        - The 'do_entertext' function applies a pulsating border effect to the target element during the operation.
-        - The 'use_keyboard_fill' parameter in 'do_entertext' determines whether to simulate keyboard typing or not.
-        - If 'use_keyboard_fill' is set to True, the function uses the 'page.keyboard.type' method to enter the text.
-        - If 'use_keyboard_fill' is set to False, the function uses the 'custom_fill_element' method to enter the text.
-    """
     add_event(EventType.INTERACTION, EventData(detail="EnterText"))
     logger.info(f"Entering text: {entry}")
-    query_selector: str = entry["query_selector"]
-    text_to_enter: str = entry["text"]
 
+    selector: str = entry[0]
+    text_to_enter: str = entry[1]
+    
+    if "md=" not in selector:
+        selector = f"[md='{selector}']"
+        
     # Create and use the PlaywrightManager
     browser_manager = PlaywrightManager()
     page = await browser_manager.get_current_page()
@@ -128,7 +77,7 @@ async def entertext(
 
     await browser_manager.take_screenshots(f"{function_name}_start", page)
 
-    await browser_manager.highlight_element(query_selector)
+    await browser_manager.highlight_element(selector)
 
     dom_changes_detected = None
 
@@ -152,10 +101,10 @@ async def entertext(
         }
         """
         ),
-        query_selector,
+        selector,
     )
 
-    result = await do_entertext(page, query_selector, text_to_enter)
+    result = await do_entertext(page, selector, text_to_enter)
     await asyncio.sleep(get_global_conf().get_delay_time())  # sleep to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
     await page.wait_for_load_state()
@@ -234,46 +183,22 @@ async def do_entertext(page: Page, selector: str, text_to_enter: str, use_keyboa
 @tool(
     agent_names=["browser_nav_agent"],
     name="bulk_enter_text",
-    description="Enters text into multiple DOM elements using a bulk operation. An dict containing'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'text' (text to enter on the element). ALL TOOL ARGUMENTS ARE MANDATORY",
+    description="Enters text into multiple DOM elements using a bulk operation. An dict containing'selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'text' (text to enter on the element)",
 )
 async def bulk_enter_text(
     entries: Annotated[
-        List[dict],
-        "List of dictionaries containing 'query_selector' and 'text' key-value pairs, dict containing 'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'value' (the value or text of the option to select). MANDATORY FIELD",
+        List[List[str]],
+        "List of tuple containing 'selector' and 'value_to_fill' in [('selector', 'value_to_fill'), ..] format, selector is md attribute value of the dom element to interact, md is an ID and 'value_to_fill' is the value or text",
     ]
 ) -> Annotated[
-    List[str],
-    "List of results from the entertext operation for each entry",
-]:
-    """
-    Enters text into multiple DOM elements using a bulk operation.
-
-    This function enters text into multiple DOM elements using a bulk operation.
-    It takes a list of dictionaries, where each contains 'query_selector' and 'text' keys.
-    The function internally calls the 'entertext' function to perform the text entry operation for each entry.
-
-    Args:
-        entries: List of dictionaries containing 'query_selector' and 'text'.
-
-    Returns:
-        List of results from the entertext operation for each entry.
-
-    Example:
-        entries = [
-            {"query_selector": "#username", "text": "test_user"},
-            {"query_selector": "#password", "text": "test_password"}
-        ]
-        results = await bulk_enter_text(entries)
-
-    Note:
-        - Each entry in the 'entries' list should be an instance of EnterTextEntry.
-        - The result is a list of strings returned by the 'entertext' function for each entry.
-    """
-    add_event(EventType.INTERACTION, EventData(detail="bulk_enter_text"))
-    results: List[str] = []  # noqa: UP006
-    logger.info("Executing bulk Enter Text Command")
+    List[dict],
+    "List of dictionaries, each containing 'selector' and the result of the operation.",
+]:  # noqa: UP006
+    add_event(EventType.INTERACTION, EventData(detail="BulkSetInputValue"))
+    results: List[dict[str, str]] = []  # noqa: UP006
+    logger.info("Executing bulk set input value command")
     for entry in entries:
-        logger.info(f"Entering text: {entry['text']} in element with selector: {entry['query_selector']}")
-        result = await entertext(entry)
-        results.append(result)
+        result = await entertext(entry)  # Use dictionary directly
+        results.append({"selector": entry[0], "result": result})
+
     return results

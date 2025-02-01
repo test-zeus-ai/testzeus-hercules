@@ -10,7 +10,7 @@ from testzeus_hercules.utils.logger import logger
 @tool(
     agent_names=["browser_nav_agent"],
     name="captcha_solver",
-    description="solves captcha on the page, should be only used when you are sure that there is a captcha on the page and has to be solved. ALL TOOL ARGUMENTS ARE MANDATORY",
+    description="solves captcha on the page, should be only used when you are sure that there is a captcha on the page and has to be solved.",
 )
 async def captcha_solver(
     captcha_type: Annotated[str, "Captcha type: recaptchav2/recaptchav3"],

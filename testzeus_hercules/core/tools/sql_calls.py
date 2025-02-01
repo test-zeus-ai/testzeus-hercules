@@ -9,7 +9,7 @@ from testzeus_hercules.utils.logger import logger
 
 @tool(
     agent_names=["sql_nav_agent"],
-    description="Execute a SELECT SQL query on remote db, it should be only used when the instruction request to fetch data from database. ALL TOOL ARGUMENTS ARE MANDATORY",
+    description="Execute a SELECT SQL query on remote db, it should be only used when the instruction request to fetch data from database.",
     name="execute_select_query_sql_async",
 )
 async def execute_select_cte_query_sql(

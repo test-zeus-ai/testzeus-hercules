@@ -11,25 +11,8 @@ from testzeus_hercules.utils.dom_mutation_observer import unsubscribe  # type: i
 from testzeus_hercules.utils.logger import logger
 
 
-@tool(agent_names=["browser_nav_agent"], description="""Executes key press on page (Enter, PageDown, ArrowDown, etc.). ALL TOOL ARGUMENTS ARE MANDATORY""", name="press_key_combination")
+@tool(agent_names=["browser_nav_agent"], description="""Executes key press on page (Enter, PageDown, ArrowDown, etc.).""", name="press_key_combination")
 async def press_key_combination(key_combination: Annotated[str, "key to press, e.g., Enter, PageDown etc"]) -> str:
-    """
-    Presses a key combination on the current active page managed by PlaywrightManager.
-
-    This function simulates the pressing of a key or a combination of keys on the current active web page.
-    The `key_combination` should be a string that represents the keys to be pressed, separated by '+' if it's a combination.
-    For example, 'Control+C' to copy or 'Alt+F4' to close a window on Windows.
-
-    Parameters:
-    - key_combination (Annotated[str, "key combination to press, e.g., 'Control+C'."]): The key combination to press, represented as a string. For combinations, use '+' as a separator.
-
-    Raises:
-    - ValueError: If no active page is found.
-
-    Returns:
-    str: status of the operation expressed as a string
-    """
-
     logger.info(f"Executing press_key_combination with key combo: {key_combination}")
     # Create and use the PlaywrightManager
     browser_manager = PlaywrightManager()

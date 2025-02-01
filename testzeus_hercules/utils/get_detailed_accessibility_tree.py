@@ -962,6 +962,20 @@ async def do_get_accessibility_info(page: Page, only_input_fields: bool = False)
                     }
 
                     function getAccessibleName(element) {
+                        try {
+                            // Chromium-based accessibility API
+                            if (window.getComputedAccessibleNode) {
+                                const accessibilityInfo = window.getComputedAccessibleNode(element);
+                                console.log('accessibilityInfo:', accessibilityInfo);
+                                if (accessibilityInfo?.name) {
+                                    return cleanName(accessibilityInfo.name);
+                                }
+                            }
+                        } catch (error) {
+                            console.warn("Chromium accessibility API failed, falling back to manual method:", error);
+                        }
+
+                        // Existing manual accessibility extraction
                         let name = element.getAttribute('aria-label');
                         if (name) return cleanName(name);
 

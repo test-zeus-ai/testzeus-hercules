@@ -15,23 +15,14 @@ from testzeus_hercules.utils.dom_mutation_observer import unsubscribe  # type: i
 from testzeus_hercules.utils.logger import logger
 
 
-@tool(agent_names=["browser_nav_agent"], description="""Hovers over element by md. Returns tooltip details. ALL TOOL ARGUMENTS ARE MANDATORY""", name="hover")
+@tool(agent_names=["browser_nav_agent"], description="""Hovers over element. Returns tooltip details.""", name="hover")
 async def hover(
-    selector: Annotated[str, "selector using md attribute, eg:[md='114'] md is ID"],
+    selector: Annotated[str, "selector using md attribute, just give the md ID value"],
     wait_before_execution: Annotated[float, "Wait time in seconds before hover"] = 0.0,
 ) -> Annotated[str, "Result of hover action with tooltip text"]:
-    """
-    Executes a hover action on the element matching the given query selector string within the currently open web page.
-    If there is no page open, it will raise a ValueError. An optional wait time can be specified before executing the hover logic. Use this to wait for the page to load especially when the last action caused the DOM/Page to load.
-
-    Parameters:
-    - selector: The query selector string to identify the element for the hover action.
-    - wait_before_execution: Optional wait time in seconds before executing the hover event logic. Defaults to 0.0 seconds.
-
-    Returns:
-    - Success message if the hover was successful, appropriate error message otherwise.
-    """
     logger.info(f'Executing HoverElement with "{selector}" as the selector')
+    if "md=" not in selector:
+        selector = f"[md='{selector}']"
     add_event(EventType.INTERACTION, EventData(detail="hover"))
     # Initialize PlaywrightManager and get the active browser page
     browser_manager = PlaywrightManager()

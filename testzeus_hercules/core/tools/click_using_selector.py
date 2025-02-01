@@ -30,30 +30,15 @@ def get_page_data(page: Any) -> dict:
     return page_data_store.get(page)
 
 
-@tool(agent_names=["browser_nav_agent"], description="""Clicks element by md attribute. Returns success/failure status. ALL TOOL ARGUMENTS ARE MANDATORY""", name="click")
+@tool(agent_names=["browser_nav_agent"], description="""Clicks element by md attribute. Returns success/failure status.""", name="click")
 async def click(
-    selector: Annotated[str, """selector using md attribute, eg: "[md='114']" md is ID"""],
+    selector: Annotated[str, """selector using md attribute, just give the md ID value"""],
     user_input_dialog_response: Annotated[str, "Dialog input value"] = "",
     expected_message_of_dialog: Annotated[str, "Expected dialog message"] = "",
     action_on_dialog: Annotated[str, "Dialog action: 'DISMISS' or 'ACCEPT'"] = "",
     type_of_click: Annotated[str, "Click type: click/right_click/double_click/middle_click"] = "click",
     wait_before_execution: Annotated[float, "Wait time before click"] = 0.0,
 ) -> Annotated[str, "Click action result"]:
-    """
-    Executes a click action on the element matching the given query selector string within the currently open web page.
-    If there is no page open, it will raise a ValueError. An optional wait time can be specified before executing the click logic. Use this to wait for the page to load especially when the last action caused the DOM/Page to load.
-
-    Parameters:
-    - selector: The query selector string to identify the element for the click action.
-    - user_input_dialog_response: The input response to a dialog box.
-    - expected_message_of_dialog: The expected message of the dialog box when it opens.
-    - action_on_dialog: The action to be performed on the dialog box. Only 'accept' or 'dismiss' are allowed.
-    - type_of_click: The type of click to perform. Possible values are 'click' (default), 'right_click', 'double_click', 'middle_click'.
-    - wait_before_execution: Optional wait time in seconds before executing the click event logic. Defaults to 0.0 seconds.
-
-    Returns:
-    - Success if the click was successful, appropriate error message otherwise.
-    """
     query_selector = selector
 
     if "md=" not in query_selector:

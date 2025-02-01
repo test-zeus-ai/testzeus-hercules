@@ -60,7 +60,7 @@ def determine_status_type(status_code: int) -> str:
 @tool(
     agent_names=["api_nav_agent"],
     name="create_resource_http_api",
-    description="Only when instruction says call an API to create an entity in the remote system, then use this tool. Should be used for POST requests. ALL TOOL ARGUMENTS ARE MANDATORY",
+    description="Only when instruction says call an API to create an entity in the remote system, then use this tool. Should be used for POST requests.",
 )
 async def create_resource_http_api(
     url: Annotated[str, "The API endpoint URL for creating the resource."],
@@ -153,7 +153,7 @@ async def create_resource_http_api(
 @tool(
     agent_names=["api_nav_agent"],
     name="read_resource_http_api",
-    description="Only when instruction says call an API to read entities from the remote system, then use this tool, Should be used for GET requests. ALL TOOL ARGUMENTS ARE MANDATORY",
+    description="Only when instruction says call an API to read entities from the remote system, then use this tool, Should be used for GET requests.",
 )
 async def read_resource_http_api(
     url: Annotated[str, "The API endpoint URL for reading the resource."],
@@ -241,7 +241,7 @@ async def read_resource_http_api(
 @tool(
     agent_names=["api_nav_agent"],
     name="update_resource_http_api",
-    description="Only when instruction says call an API to update an entity in the remote system, then use this tool. Should be used for PUT requests. ALL TOOL ARGUMENTS ARE MANDATORY",
+    description="Only when instruction says call an API to update an entity in the remote system, then use this tool. Should be used for PUT requests.",
 )
 async def update_resource_http_api(
     url: Annotated[str, "The API endpoint URL for updating the resource."],
@@ -331,7 +331,7 @@ async def update_resource_http_api(
 @tool(
     agent_names=["api_nav_agent"],
     name="patch_resource_http_api",
-    description="Only when instruction says call an API to patch an entity in the remote system, then use this tool. Should be used for PATCH requests. ALL TOOL ARGUMENTS ARE MANDATORY",
+    description="Only when instruction says call an API to patch an entity in the remote system, then use this tool. Should be used for PATCH requests.",
 )
 async def patch_resource_http_api(
     url: Annotated[str, "The API endpoint URL for patching the resource."],
@@ -421,7 +421,7 @@ async def patch_resource_http_api(
 @tool(
     agent_names=["api_nav_agent"],
     name="delete_resource_http_api",
-    description="Only when instruction says call an API to delete an entity in the remote system, then use this tool. Should be used for DELETE requests. ALL TOOL ARGUMENTS ARE MANDATORY",
+    description="Only when instruction says call an API to delete an entity in the remote system, then use this tool. Should be used for DELETE requests.",
 )
 async def delete_resource_http_api(
     url: Annotated[str, "The API endpoint URL for deleting the resource."],

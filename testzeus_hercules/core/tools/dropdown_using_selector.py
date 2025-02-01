@@ -2,7 +2,7 @@ import asyncio
 import inspect
 import traceback
 from dataclasses import dataclass
-from typing import Annotated, List
+from typing import Annotated, List, Tuple
 
 from playwright.async_api import ElementHandle, Page
 from testzeus_hercules.config import get_global_conf  # Add this import
@@ -16,35 +16,20 @@ from testzeus_hercules.utils.js_helper import get_js_with_element_finder
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
 
-
 async def select_option(
     entry: Annotated[
-        dict,
-        "dict containing'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'value' (the value or text of the option to select).",
+        tuple,
+        "tuple containing 'selector' and 'value_to_fill' in ('selector', 'value_to_fill') format, selector is md attribute value of the dom element to interact, md is an ID and 'value_to_fill' is the value or text of the option to select",
     ]
 ) -> Annotated[str, "Explanation of the outcome of dropdown/spinner selection."]:
-    """
-    Selects an option from a dropdown or spinner identified by a CSS selector.
-
-    This function selects the specified option in a dropdown or spinner element identified by the given CSS selector.
-    It uses the Playwright library to interact with the browser and perform the selection operation.
-
-    Args:
-        entry (SelectOptionEntry): An dict containing'query_selector' (selector query using md attribute)
-                                   and 'value' (the value or text of the option to select).
-
-    Returns:
-        str: Explanation of the outcome of of dropdown/spinner selection.
-
-    Example:
-        entry = SelectOptionEntry(query_selector='#country', value='United States')
-        result = await select_option(entry)
-    """
     add_event(EventType.INTERACTION, EventData(detail="SelectOption"))
     logger.info(f"Selecting option: {entry}")
-    query_selector: str = entry["query_selector"]
-    option_value: str = entry["value"]
+    selector: str = entry[0]
+    option_value: str = entry[1]
 
+    if "md=" not in selector:
+        selector = f"[md='{selector}']"
+        
     # Create and use the PlaywrightManager
     browser_manager = PlaywrightManager()
     page = await browser_manager.get_current_page()
@@ -55,7 +40,7 @@ async def select_option(
 
     await browser_manager.take_screenshots(f"{function_name}_start", page)
 
-    await browser_manager.highlight_element(query_selector)
+    await browser_manager.highlight_element(selector)
 
     dom_changes_detected = None
 
@@ -65,7 +50,7 @@ async def select_option(
 
     subscribe(detect_dom_changes)
 
-    result = await do_select_option(page, query_selector, option_value)
+    result = await do_select_option(page, selector, option_value)
     await asyncio.sleep(get_global_conf().get_delay_time())  # sleep to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
 
@@ -194,7 +179,7 @@ async def do_select_option(page: Page, selector: str, option_value: str) -> dict
             option_selector = f"{selector} option"
 
             # Find the option elements
-            options = await page.query_selector_all(option_selector)
+            options = await page.selector_all(option_selector)
             option_found = False
             for option in options:
                 option_text = await option.inner_text()
@@ -223,45 +208,23 @@ async def do_select_option(page: Page, selector: str, option_value: str) -> dict
 @tool(
     agent_names=["browser_nav_agent"],
     name="bulk_select_option",
-    description="used to Select an option of multiple dropdowns or spinners in one shot. ALL TOOL ARGUMENTS ARE MANDATORY",
+    description="used to Select an option in multiple dropdowns or spinners in single attempt.",
 )
 async def bulk_select_option(
     entries: Annotated[
-        List[dict],
-        "List of dictionaries containing 'query_selector' and 'value' key-value pairs, dict containing 'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'value' (the value or text of the option to select).",
+        List[List[str]],
+        "List of tuple containing 'selector' and 'value_to_fill' in [('selector', 'value_to_fill'), ..] format, selector is md attribute value of the dom element to interact, md is an ID and 'value_to_fill' is the value or text of the option to select",
     ]
 ) -> Annotated[
     List[dict],
-    "List of dictionaries, each containing 'query_selector' and the result of the operation.",
+    "List of dictionaries, each containing 'selector' and the result of the operation.",
 ]:
-    """
-    Selects options in multiple dropdowns or spinners using a bulk operation.
-
-    This function selects options in multiple elements using a bulk operation.
-    It takes a list of SelectOptionEntry objects, where each object contains a 'query_selector' and 'value' pair.
-    The function internally calls the 'select_option' function to perform the selection operation for each entry.
-
-    Args:
-        entries: List of SelectOptionEntry objects, each containing 'query_selector' and 'value'.
-
-    Returns:
-        List of dictionaries, each containing 'query_selector' and the result of the operation.
-
-    Example:
-        entries = [
-            SelectOptionEntry(query_selector="#country", value="United States"),
-            SelectOptionEntry(query_selector="#language", value="English")
-        ]
-        results = await bulk_select_option(entries)
-    """
     add_event(EventType.INTERACTION, EventData(detail="BulkSelectOption"))
     results: List[dict[str, str]] = []  # noqa: UP006
     logger.info("Executing bulk select option command")
     for entry in entries:
-        query_selector = entry["query_selector"]
-        option_value = entry["value"]
-        logger.info(f"Selecting option: '{option_value}' in element with selector: '{query_selector}'")
+        selector = entry[0]
         result = await select_option(entry)
-        results.append({"query_selector": query_selector, "result": result})
+        results.append({"selector": selector, "result": result})
 
     return results

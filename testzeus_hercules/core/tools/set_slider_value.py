@@ -2,7 +2,7 @@ import asyncio
 import inspect
 import traceback
 from dataclasses import dataclass
-from typing import Annotated, Any, List
+from typing import Annotated, Any, List, Tuple
 
 from playwright.async_api import Page
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
@@ -71,38 +71,19 @@ async def custom_set_slider_value(page: Page, selector: str, value_to_set: float
         raise
 
 
-# @tool(
-#     agent_names=["browser_nav_agent"],
-#     description="Sets the specified value in the range slider DOM element matching the given md attribute value. This will only set the slider's value and not perform any additional actions.",
-#     name="setslider",
-# )
 async def setslider(
     entry: Annotated[
-        dict,
-        "An dict containing'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'value' (numeric value to set on the slider).",
+        tuple,
+        "tuple containing 'selector' and 'value_to_fill' in ('selector', 'value_to_fill') format, selector is md attribute value of the dom element to interact, md is an ID and 'value_to_fill' is the value or text of the option to select",
     ]
 ) -> Annotated[str, "Explanation of the outcome of this operation."]:
-    """
-    Sets the value of a range slider identified by a CSS selector.
-
-    This function sets the specified value to a range slider identified by the given CSS selector.
-    It uses the Playwright library to interact with the browser and perform the operation.
-
-    Args:
-        entry (SetSliderEntry): An dict containing'query_selector' (selector query using md attribute)
-                                and 'value' (numeric value to set on the slider).
-
-    Returns:
-        str: Explanation of the outcome of this operation.
-
-    Example:
-        entry = SetSliderEntry(query_selector='#volume', value=75)
-        result = await setslider(entry)
-    """
     logger.info(f"Setting slider value: {entry}")
-    query_selector: str = entry["query_selector"]
-    value_to_set: float = entry["value"]
 
+    selector: str = entry[0]
+    value_to_set: str = entry[1]
+    
+    if "md=" not in selector:
+        selector = f"[md='{selector}']"
     # Create and use the PlaywrightManager
     browser_manager = PlaywrightManager()
     page = await browser_manager.get_current_page()
@@ -113,7 +94,7 @@ async def setslider(
 
     await browser_manager.take_screenshots(f"{function_name}_start", page)
 
-    await browser_manager.highlight_element(query_selector)
+    await browser_manager.highlight_element(selector)
 
     dom_changes_detected = None
 
@@ -123,7 +104,7 @@ async def setslider(
 
     subscribe(detect_dom_changes)
 
-    result = await do_setslider(page, query_selector, value_to_set)
+    result = await do_setslider(page, selector, value_to_set)
     await asyncio.sleep(get_global_conf().get_delay_time())  # sleep to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
     await page.wait_for_load_state()
@@ -186,46 +167,24 @@ async def do_setslider(page: Page, selector: str, value_to_set: float) -> dict[s
 
 @tool(
     agent_names=["browser_nav_agent"],
-    description="Bulk set values in multiple range slider DOM fields. To be used when there are multiple sliders to be set on the same page. Sets values in the DOM elements matching the given md attribute value. The input will receive a List of dictionaries containing the DOM query selector and the value to set. This will only set the values and not perform any additional actions. Returns each selector and the result for attempting to set the slider values. ALL TOOL ARGUMENTS ARE MANDATORY",
+    description="used to set slider values in multiple sliders in single attempt.",
     name="bulk_set_slider",
 )
 async def bulk_set_slider(
     entries: Annotated[
-        List[dict],
-        "List of dictionaries, each containing 'query_selector' and 'value'. dict containing 'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'value' (the value or text of the option to select). MANDATORY FIELD",
+        List[List[str]],
+        "List of tuple containing 'selector' and 'value_to_fill' in [('selector', 'value_to_fill'), ..] format, selector is md attribute value of the dom element to interact, md is an ID and 'value_to_fill' is the value or text of the option to select",
     ]  # noqa: UP006
 ) -> Annotated[
     List[dict],
-    "List of dictionaries, each containing 'query_selector' and the result of the operation.",
+    "List of dictionaries, each containing 'selector' and the result of the operation.",
 ]:  # noqa: UP006
-    """
-    Sets values to multiple sliders using a bulk operation.
-
-    This function sets values to multiple sliders using a bulk operation.
-    It takes a list of dictionaries, where each dictionary contains a 'query_selector' and 'value' pair.
-    The function internally calls the 'setslider' function to perform the operation for each entry.
-
-    Args:
-        entries: List of dictionaries, each containing 'query_selector' and 'value'.
-
-    Returns:
-        List of dictionaries, each containing 'query_selector' and the result of the operation.
-
-    Example:
-        entries = [
-            {"query_selector": "#volume", "value": 75},
-            {"query_selector": "#brightness", "value": 50}
-        ]
-        results = await bulk_set_slider(entries)
-    """
     results: List[dict[str, str]] = []  # noqa: UP006
     logger.info("Executing bulk Set Slider Command")
     for entry in entries:
-        query_selector = entry["query_selector"]
-        value_to_set = entry["value"]
-        logger.info(f"Setting slider value: {value_to_set} in element with selector: {query_selector}")
+        selector = entry[0]
         result = await setslider(entry)
 
-        results.append({"query_selector": query_selector, "result": result})
+        results.append({"selector": selector, "result": result})
 
     return results

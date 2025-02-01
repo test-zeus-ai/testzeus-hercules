@@ -13,7 +13,7 @@ AXE_SCRIPT_URL = "https://cdnjs.cloudflare.com/ajax/libs/axe-core/4.10.2/axe.min
 
 @tool(
     agent_names=["browser_nav_agent"],
-    description="Test the current page accessibility using Axe-core. This tool is used to check the accessibility of the page. ALL TOOL ARGUMENTS ARE MANDATORY",
+    description="Test the current page accessibility using Axe-core. This tool is used to check the accessibility of the page.",
     name="test_page_accessibility",
 )
 async def test_page_accessibility(

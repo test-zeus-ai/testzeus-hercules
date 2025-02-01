@@ -8,28 +8,18 @@ from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.logger import logger
 
 
-@tool(agent_names=["browser_nav_agent"], description="Performs drag and drop operation between source (using md) and target (using any valid selector).", name="drag_and_drop")
+@tool(agent_names=["browser_nav_agent"], description="Performs drag and drop operation from source to target.", name="drag_and_drop")
 async def drag_and_drop(
-    source_selector: Annotated[str, "Source element selector using md attribute, eg: [md='114']"],
-    target_selector: Annotated[str, "Target element selector using any valid Playwright selector (CSS, XPath, etc.)"],
+    source_selector: Annotated[str, "Source element selector is md attribute value of the dom element to interact, md is an ID"],
+    target_selector: Annotated[str, "Target element selector using any valid Playwright selector only (ARIA, CSS, XPath, etc.)"],
     wait_before_execution: Annotated[float, "Wait time before drag and drop"] = 0.0,
 ) -> Annotated[str, "Drag and drop operation result"]:
-    """
-    Executes a drag and drop operation from source element to target element.
 
-    Parameters:
-    - source_selector: The selector for the element to be dragged (must use md attribute)
-    - target_selector: The selector for the drop target element (any valid Playwright selector)
-    - wait_before_execution: Optional wait time in seconds before executing the operation
+    selector = source_selector
+    if "md=" not in selector:
+        selector = f"[md='{selector}']"
 
-    Returns:
-    - Success message if the operation was successful, error message otherwise
-    """
-    query_selector = source_selector
-    if "md=" not in query_selector:
-        query_selector = f"[md='{query_selector}']"
-
-    logger.info(f"Executing drag and drop from '{query_selector}' to '{target_selector}'")
+    logger.info(f"Executing drag and drop from '{selector}' to '{target_selector}'")
     add_event(EventType.INTERACTION, EventData(detail="drag_and_drop"))
 
     # Initialize PlaywrightManager and get the active browser page
@@ -45,9 +35,9 @@ async def drag_and_drop(
             await asyncio.sleep(wait_before_execution)
 
         # Find source using md selector
-        source_element = await browser_manager.find_element(query_selector, page)
+        source_element = await browser_manager.find_element(selector, page)
         if source_element is None:
-            raise ValueError(f"Source element with selector: '{query_selector}' not found")
+            raise ValueError(f"Source element with selector: '{selector}' not found")
 
         # Find target using multiple selector strategies
         target_element = None
@@ -135,7 +125,7 @@ async def drag_and_drop(
             # Wait for animations and DOM updates
             await asyncio.sleep(get_global_conf().get_delay_time())
 
-            return f"Successfully performed drag and drop from '{query_selector}' to '{target_selector}'"
+            return f"Successfully performed drag and drop from '{selector}' to '{target_selector}'"
 
         except Exception as e:
             error_msg = f"Failed to perform drag and drop: {str(e)}"

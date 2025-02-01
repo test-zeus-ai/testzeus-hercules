@@ -7,7 +7,7 @@ from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
 
 
-@tool(agent_names=["browser_nav_agent"], description="""Opens specified URL in browser. Returns new page URL or error message. ALL TOOL ARGUMENTS ARE MANDATORY""", name="openurl")
+@tool(agent_names=["browser_nav_agent"], description="""Opens specified URL in browser. Returns new page URL or error message.""", name="openurl")
 async def openurl(
     url: Annotated[
         str,
@@ -15,17 +15,6 @@ async def openurl(
     ],
     timeout: Annotated[int, "Additional wait time in seconds after initial load."] = 3,
 ) -> Annotated[str, "Returns the result of this request in text form"]:
-    """
-    Opens a specified URL in the active browser instance. Waits for an initial load event, then waits for either
-    the 'domcontentloaded' event or a configurable timeout, whichever comes first.
-
-    Parameters:
-    - url: The URL to navigate to.
-    - timeout: Additional time in seconds to wait after the initial load before considering the navigation successful.
-
-    Returns:
-    - URL of the new page.
-    """
     logger.info(f"Opening URL: {url}")
     browser_manager = PlaywrightManager()
     await browser_manager.get_browser_context()

@@ -2,7 +2,7 @@ import asyncio
 import inspect
 import traceback
 from dataclasses import dataclass
-from typing import List  # noqa: UP035
+from typing import List, Tuple  # noqa: UP035
 from typing import Annotated
 
 from playwright.async_api import ElementHandle, Page
@@ -20,32 +20,19 @@ from testzeus_hercules.utils.ui_messagetype import MessageType
 
 async def upload_file(
     entry: Annotated[
-        dict,
-        "dict containing 'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'file_path' (the path to the file to upload).",
+        tuple,
+        "tuple containing 'selector' and 'file_path' in ('selector', 'file_path') format, selector is md attribute value of the dom element to interact, md is an ID and 'file_path' is the file_path to upload",
     ]
 ) -> Annotated[str, "Explanation of the outcome of this operation."]:
-    """
-    Uploads a file to a file input element identified by a selector.
-
-    This function uploads the specified file to a file input element identified by the given selector.
-    It uses the Playwright library to interact with the browser.
-
-    Args:
-        entry (dict[str, str]): An dict containing'query_selector' (selector query using md attribute)
-                                 and 'file_path' (the path to the file to upload).
-
-    Returns:
-        str: Explanation of the outcome of this operation.
-
-    Example:
-        entry = {"query_selector": '#fileInput', "file_path": '/path/to/file.txt'}
-        result = await upload_file(entry)
-    """
     add_event(EventType.INTERACTION, EventData(detail="UploadFile"))
     logger.info(f"Uploading file: {entry}")
-    query_selector: str = entry["query_selector"]
-    file_path: str = entry["file_path"]
 
+    selector: str = entry[0]
+    file_path: str = entry[1]
+    
+    if "md=" not in selector:
+        selector = f"[md='{selector}']"
+        
     # Create and use the PlaywrightManager
     browser_manager = PlaywrightManager()
     page = await browser_manager.get_current_page()
@@ -56,7 +43,7 @@ async def upload_file(
 
     await browser_manager.take_screenshots(f"{function_name}_start", page)
 
-    await browser_manager.highlight_element(query_selector)
+    await browser_manager.highlight_element(selector)
 
     dom_changes_detected = None
 
@@ -66,7 +53,7 @@ async def upload_file(
 
     subscribe(detect_dom_changes)
 
-    result = await do_upload_file(page, query_selector, file_path)
+    result = await do_upload_file(page, selector, file_path)
     await asyncio.sleep(get_global_conf().get_delay_time())  # sleep for 100ms to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
 
@@ -133,46 +120,24 @@ async def do_upload_file(page: Page, selector: str, file_path: str) -> dict[str,
 @tool(
     agent_names=["browser_nav_agent"],
     name="bulk_upload_file",
-    description="Uploads files to multiple file input elements using a bulk operation. ALL TOOL ARGUMENTS ARE MANDATORY.",
+    description="Uploads files to multiple file input elements on the page.",
 )
 async def bulk_upload_file(
     entries: Annotated[
-        List[dict],
-        "List of dictionaries, each containing 'query_selector' and 'file_path'. dict containing 'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'value' (the value or text of the option to select). MANDATORY FIELD",
+        List[List[str]],
+        "List of tuple containing 'selector' and 'file_path' in [('selector', 'file_path'), ..] format, selector is md attribute value of the dom element to interact, md is an ID and 'file_path' is the file_path to upload",
     ]  # noqa: UP006
 ) -> Annotated[
     List[dict],
-    "List of dictionaries, each containing 'query_selector' and the result of the operation.",
+    "List of dictionaries, each containing 'selector' and the result of the operation.",
 ]:  # noqa: UP006
-    """
-    Uploads files to multiple file input elements using a bulk operation.
-
-    This function uploads files to multiple file input elements using a bulk operation.
-    It takes a list of dictionaries, where each dictionary contains a 'query_selector' and 'file_path' pair.
-    The function internally calls the 'upload_file' function to perform the operation for each entry.
-
-    Args:
-        entries: List of dictionaries, each containing 'query_selector' and 'file_path'.
-
-    Returns:
-        List of dictionaries, each containing 'query_selector' and the result of the operation.
-
-    Example:
-        entries = [
-            {"query_selector": "#fileInput1", "file_path": "/path/to/file1.txt"},
-            {"query_selector": "#fileInput2", "file_path": "/path/to/file2.jpg"}
-        ]
-        results = await bulk_upload_file(entries)
-    """
     add_event(EventType.INTERACTION, EventData(detail="BulkUploadFile"))
     results: List[dict[str, str]] = []  # noqa: UP006
     logger.info("Executing bulk upload file command")
     for entry in entries:
-        query_selector = entry["query_selector"]
-        file_path = entry["file_path"]
-        logger.info(f"Uploading file: '{file_path}' to element with selector: '{query_selector}'")
+        selector = entry[0]
         result = await upload_file(entry)  # Use dictionary directly
 
-        results.append({"query_selector": query_selector, "result": result})
+        results.append({"selector": selector, "result": result})
 
     return results

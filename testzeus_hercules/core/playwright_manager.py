@@ -692,26 +692,8 @@ class PlaywrightManager:
         )
 
     async def highlight_element(self, selector: str) -> None:
-        # try:
-        #     element = await self.find_element(selector)
-        #     if isinstance(element, ElementHandle):
-        #         box = await element.bounding_box()
-        #     else:
-        #         await element.highlight()
-        # except Exception as e:
-        #     logger.warning(f"Error in highlight_element({selector}): {e}")
         pass
 
-    async def highlight_element(self, selector: str) -> None:
-        # try:
-        #     element = await self.find_element(selector)
-        #     if isinstance(element, ElementHandle):
-        #         box = await element.bounding_box()
-        #     else:
-        #         await element.highlight()
-        # except Exception as e:
-        #     logger.warning(f"Error in highlight_element({selector}): {e}")
-        pass
 
     async def receive_user_response(self, response: str) -> None:
         logger.debug(f"Received user response: {response}")
