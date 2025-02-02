@@ -21,7 +21,6 @@ from testzeus_hercules.utils.logger import logger
 Fetches DOM based on content type.
 Notes:
 - Elements ordered as displayed
-- Pick the best content type to use as per the requirement
 - Try different content types if information missing
 - Consider ordinal/numbered item positions""",
     name="get_dom_with_content_type",
@@ -29,13 +28,12 @@ Notes:
 async def get_dom_with_content_type(
     content_type: Annotated[
         str, 
-        """Type: text_only/input_fields/all_fields,
+        """Type: input_fields/all_fields,
 Definition of each type:
-text_only: Plain text for information retrieval
 input_fields: JSON list of text input elements with md attribute
 all_fields: JSON list of all elements with possible md attribute (expensive operation)"""
 ],
-) -> Annotated[Union[dict[str, Any], str, list, None], "DOM content based on type to analyze and decide"]:
+) -> Annotated[str, "DOM content based on type to analyze and decide"]:
 
     add_event(EventType.INTERACTION, EventData(detail="get_dom_with_content_type"))
     logger.info(f"Executing Get DOM Command based on content_type: {content_type}")
@@ -48,7 +46,7 @@ all_fields: JSON list of all elements with possible md attribute (expensive oper
     if page is None:  # type: ignore
         raise ValueError("No active page found. OpenURL command opens a new page.")
 
-    extracted_data = None
+    extracted_data = ""
     await wait_for_non_loading_dom_state(page, 1)
 
     if content_type == "all_fields":
@@ -82,17 +80,6 @@ all_fields: JSON list of all elements with possible md attribute (expensive oper
 
         extracted_data = flatten_elements(extracted_data)
         user_success_message = "Fetched only input fields in the DOM"
-    elif content_type == "text_only":
-        logger.debug("Fetching DOM for text_only")
-        text_content = await get_filtered_text_content(page)
-        with open(
-            os.path.join(get_global_conf().get_source_log_folder_path(), "text_only_dom.txt"),
-            "w",
-            encoding="utf-8",
-        ) as f:
-            f.write(text_content)
-        extracted_data = text_content
-        user_success_message = "Fetched the text content of the DOM"
     else:
         raise ValueError(f"Unsupported content_type: {content_type}")
 
@@ -148,239 +135,3 @@ JSON >>
 """
         extracted_data = extracted_data_legend + extracted_data
     return extracted_data or "Its Empty, try something else"  # type: ignore
-
-
-def clean_text(text_content: str) -> str:
-    # Split the text into lines
-    lines = text_content.splitlines()
-
-    # Create a set to track unique lines
-    seen_lines = set()
-    cleaned_lines = []
-
-    for line in lines:
-        # Strip leading/trailing spaces, replace tabs with spaces, and collapse multiple spaces
-        cleaned_line = " ".join(line.strip().replace("\t", " ").split())
-        cleaned_line = cleaned_line.strip()
-
-        # Remove repeated words within the line
-        # words = cleaned_line.split()
-        # unique_words = []
-        # seen_words = set()
-        # for word in words:
-        #     if word not in seen_words:
-        #         unique_words.append(word)
-        #         seen_words.add(word)
-        # cleaned_line = " ".join(unique_words)
-
-        # Skip empty or duplicate lines
-        if cleaned_line and cleaned_line not in seen_lines:
-            cleaned_lines.append(cleaned_line)
-            # seen_lines.add(cleaned_line)
-
-    # Join the cleaned and unique lines with a single newline
-    return "\n".join(cleaned_lines)
-
-
-async def get_filtered_text_content(page: Page) -> str:
-    text_content = await page.evaluate(
-        """
-        () => {
-        const selectorsToFilter = ['#hercules-overlay'];
-        const originalStyles = [];
-
-        /**
-        * Hide elements by setting their visibility to "hidden".
-        */
-        function hideElements(root, selector) {
-            if (!root) return;
-            const elements = root.querySelectorAll(selector);
-            elements.forEach(element => {
-            originalStyles.push({
-                element,
-                originalStyle: element.style.visibility
-            });
-            element.style.visibility = 'hidden';
-            });
-        }
-
-        /**
-        * Recursively hide elements in shadow DOM.
-        */
-        function processElementsInShadowDOM(root, selector) {
-            if (!root) return;
-            hideElements(root, selector);
-
-            const allNodes = root.querySelectorAll('*');
-            allNodes.forEach(node => {
-            if (node.shadowRoot) {
-                processElementsInShadowDOM(node.shadowRoot, selector);
-            }
-            });
-        }
-
-        /**
-        * Recursively hide elements in iframes.
-        */
-        function processElementsInIframes(root, selector) {
-            if (!root) return;
-            const iframes = root.querySelectorAll('iframe');
-            iframes.forEach(iframe => {
-            try {
-                const iframeDoc = iframe.contentDocument;
-                if (iframeDoc) {
-                processElementsInShadowDOM(iframeDoc, selector);
-                processElementsInIframes(iframeDoc, selector);
-                }
-            } catch (err) {
-                console.log('Error accessing iframe content:', err);
-            }
-            });
-        }
-
-        /**
-        * Create a TreeWalker that:
-        * - Visits text nodes and element nodes
-        * - Skips (<script> and <style>) elements entirely
-        */
-        function createSkippingTreeWalker(root) {
-            return document.createTreeWalker(
-            root,
-            NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT,
-            {
-                acceptNode(node) {
-                if (node.nodeType === Node.ELEMENT_NODE) {
-                    const tag = node.tagName.toLowerCase();
-                    if (tag === 'script' || tag === 'style') {
-                    return NodeFilter.FILTER_REJECT; // skip <script> / <style>
-                    }
-                }
-                return NodeFilter.FILTER_ACCEPT;
-                }
-            }
-            );
-        }
-
-        /**
-        * Gets text by walking the DOM, but skipping <script> and <style>.
-        * Also recursively checks for shadow roots and iframes.
-        */
-        function getTextSkippingScriptsStyles(root) {
-            if (!root) return '';
-
-            let textContent = '';
-            const walker = createSkippingTreeWalker(root);
-
-            while (walker.nextNode()) {
-            const node = walker.currentNode;
-            
-            // If it’s a text node, accumulate text
-            if (node.nodeType === Node.TEXT_NODE) {
-                textContent += node.nodeValue;
-            }
-            // If it has a shadowRoot, recurse
-            else if (node.shadowRoot) {
-                textContent += getTextSkippingScriptsStyles(node.shadowRoot);
-            }
-            }
-
-            return textContent;
-        }
-
-        /**
-        * Recursively gather text from iframes, also skipping <script> & <style>.
-        */
-        function getTextFromIframes(root) {
-            if (!root) return '';
-            let iframeText = '';
-
-            const iframes = root.querySelectorAll('iframe');
-            iframes.forEach(iframe => {
-            try {
-                const iframeDoc = iframe.contentDocument;
-                if (iframeDoc) {
-                // Grab text from iframe body, docElement, plus nested iframes
-                iframeText += getTextSkippingScriptsStyles(iframeDoc.body);
-                iframeText += getTextSkippingScriptsStyles(iframeDoc.documentElement);
-                iframeText += getTextFromIframes(iframeDoc);
-                }
-            } catch (err) {
-                console.log('Error accessing iframe content:', err);
-            }
-            });
-
-            return iframeText;
-        }
-
-        /**
-        * Collect alt texts for images (this part can remain simpler, as alt text
-        * won't appear in <script> or <style> tags anyway).
-        */
-        function getAltTextsFromShadowDOM(root) {
-            if (!root) return [];
-            let altTexts = Array.from(root.querySelectorAll('img')).map(img => img.alt);
-
-            const allNodes = root.querySelectorAll('*');
-            allNodes.forEach(node => {
-            if (node.shadowRoot) {
-                altTexts = altTexts.concat(getAltTextsFromShadowDOM(node.shadowRoot));
-            }
-            });
-            return altTexts;
-        }
-
-        function getAltTextsFromIframes(root) {
-            if (!root) return [];
-            let iframeAltTexts = [];
-
-            const iframes = root.querySelectorAll('iframe');
-            iframes.forEach(iframe => {
-            try {
-                const iframeDoc = iframe.contentDocument;
-                if (iframeDoc) {
-                iframeAltTexts = iframeAltTexts.concat(getAltTextsFromShadowDOM(iframeDoc));
-                iframeAltTexts = iframeAltTexts.concat(getAltTextsFromIframes(iframeDoc));
-                }
-            } catch (err) {
-                console.log('Error accessing iframe content:', err);
-            }
-            });
-
-            return iframeAltTexts;
-        }
-
-        // 1) Hide overlays
-        selectorsToFilter.forEach(selector => {
-            processElementsInShadowDOM(document, selector);
-            processElementsInIframes(document, selector);
-        });
-
-        // 2) Collect text from the main document
-        let textContent = getTextSkippingScriptsStyles(document.body);
-        textContent += getTextSkippingScriptsStyles(document.documentElement);
-
-        // 3) Collect text from iframes
-        textContent += getTextFromIframes(document);
-
-        // 4) Collect alt texts
-        let altTexts = getAltTextsFromShadowDOM(document);
-        altTexts = altTexts.concat(getAltTextsFromIframes(document));
-        const altTextsString = 'Other Alt Texts in the page: ' + altTexts.join(' ');
-
-        // 5) Restore hidden overlays
-        originalStyles.forEach(entry => {
-            entry.element.style.visibility = entry.originalStyle;
-        });
-
-        // 6) Return final text
-        textContent = textContent + ' ' + altTextsString;
-
-        // Optional: sanitize whitespace, if needed
-        // const sanitizeString = (input) => input.replace(/\s+/g, ' ');
-        // textContent = sanitizeString(textContent);
-
-        return textContent;
-        }
-    """
-    )
-    return clean_text(text_content)
