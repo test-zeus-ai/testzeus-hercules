@@ -4,6 +4,7 @@ import os
 import time
 from typing import Any
 
+import aiofiles
 from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.agents_llm_config import AgentsLLMConfig
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
@@ -140,7 +141,7 @@ class BaseRunner:
                 res_output_thoughts_logs_di[key][idx]["content"] = res_content
 
         if self.save_chat_logs_to_files:
-            with open(
+            async with aiofiles.open(
                 os.path.join(
                     get_global_conf().get_source_log_folder_path(self.stake_id),
                     "agent_inner_thoughts.json",
@@ -148,7 +149,7 @@ class BaseRunner:
                 "w",
                 encoding="utf-8",
             ) as f:
-                json.dump(res_output_thoughts_logs_di, f, ensure_ascii=False, indent=4)
+                await f.write(json.dumps(res_output_thoughts_logs_di, ensure_ascii=False, indent=4))
             logger.debug("Chat messages saved")
         else:
             logger.info(

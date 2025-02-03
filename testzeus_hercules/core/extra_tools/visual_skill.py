@@ -112,8 +112,9 @@ async def compare_visual_screenshot(
         message = comparison_prompt.format(reference=reference_image_path, screenshot=screenshot_file)
 
         logger.debug(f"Comparison prompt: {message}")
+        chat_response = await image_ex_user_proxy.a_initiate_chat(image_agent, message=message)
 
-        chat_response = await asyncio.to_thread(image_ex_user_proxy.initiate_chat, image_agent, message=message)
+        # chat_response = await asyncio.to_thread(image_ex_user_proxy.initiate_chat, image_agent, message=message)
 
         last_message = None
         for msg in reversed(chat_response.chat_history):

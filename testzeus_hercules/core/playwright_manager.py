@@ -28,8 +28,8 @@ from testzeus_hercules.utils.logger import logger
 # Reference: https://github.com/microsoft/playwright/issues/28995
 os.environ["PW_TEST_SCREENSHOT_NO_FONTS_READY"] = "1"
 
-MAX_WAIT_PAGE_LOAD_TIME = 1
-WAIT_FOR_NETWORK_IDLE = 5
+MAX_WAIT_PAGE_LOAD_TIME = 0.6
+WAIT_FOR_NETWORK_IDLE = 2
 MIN_WAIT_PAGE_LOAD_TIME = 0.05
 
 ALL_POSSIBLE_PERMISSIONS = [

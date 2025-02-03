@@ -1,15 +1,148 @@
 import json
 import tempfile
-from typing import Any, Dict, List, Optional
+import copy
+from typing import Any, Dict, List, Optional, Union
 
 import autogen
+from autogen import OpenAIWrapper
+from autogen._pydantic import model_dump
+from autogen.code_utils import content_str
 from autogen.agentchat.agent import Agent
-from autogen.agentchat.contrib.multimodal_conversable_agent import (
-    MultimodalConversableAgent,
+from autogen import ConversableAgent
+from autogen.agentchat.contrib.img_utils import (
+    gpt4v_formatter,
+    message_formatter_pil_to_b64,
 )
+# from autogen.agentchat.contrib.multimodal_conversable_agent import (
+#     MultimodalConversableAgent,
+# )
 from testzeus_hercules.core.agents_llm_config import AgentsLLMConfig
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.response_parser import parse_response
+
+DEFAULT_LMM_SYS_MSG = """You are a helpful AI assistant."""
+DEFAULT_MODEL = "gpt-4o"
+
+
+class MultimodalConversableAgent(ConversableAgent):
+    DEFAULT_CONFIG = {
+        "model": DEFAULT_MODEL,
+    }
+
+    def __init__(
+        self,
+        name: str,
+        system_message: Optional[Union[str, list]] = DEFAULT_LMM_SYS_MSG,
+        is_termination_msg: str = None,
+        *args,
+        **kwargs
+    ):
+        super().__init__(
+            name,
+            system_message,
+            is_termination_msg=is_termination_msg,
+            *args,
+            **kwargs
+        )
+        # call the setter to handle special format.
+        self.update_system_message(system_message)
+        self._is_termination_msg = (
+            is_termination_msg
+            if is_termination_msg is not None
+            else (lambda x: content_str(x.get("content")) == "TERMINATE")
+        )
+
+        # Override the `generate_oai_reply`
+        self.replace_reply_func(ConversableAgent.generate_oai_reply, MultimodalConversableAgent.generate_oai_reply)
+        self.replace_reply_func(
+            ConversableAgent.a_generate_oai_reply,
+            MultimodalConversableAgent.a_generate_oai_reply,
+        )
+
+    def update_system_message(self, system_message: Union[dict, list, str]) -> None:
+        self._oai_system_message[0]["content"] = self._message_to_dict(system_message)["content"]
+        self._oai_system_message[0]["role"] = "system"
+
+    @staticmethod
+    def _message_to_dict(message: Union[dict, list, str]) -> dict:
+        """Convert a message to a dictionary. This implementation
+        handles the GPT-4V formatting for easier prompts.
+
+        The message can be a string, a dictionary, or a list of dictionaries:
+            - If it's a string, it will be cast into a list and placed in the 'content' field.
+            - If it's a list, it will be directly placed in the 'content' field.
+            - If it's a dictionary, it is already in message dict format. The 'content' field of this dictionary
+            will be processed using the gpt4v_formatter.
+        """
+        if isinstance(message, str):
+            return {"content": gpt4v_formatter(message, img_format="pil")}
+        if isinstance(message, list):
+            return {"content": message}
+        if isinstance(message, dict):
+            assert "content" in message, "The message dict must have a `content` field"
+            if isinstance(message["content"], str):
+                message = copy.deepcopy(message)
+                message["content"] = gpt4v_formatter(message["content"], img_format="pil")
+            try:
+                content_str(message["content"])
+            except (TypeError, ValueError) as e:
+                print("The `content` field should be compatible with the content_str function!")
+                raise e
+            return message
+        raise ValueError(f"Unsupported message type: {type(message)}")
+
+    def generate_oai_reply(
+        self,
+        messages: Optional[list[dict]] = None,
+        sender: Optional[Agent] = None,
+        config: Optional[OpenAIWrapper] = None,
+    ) -> tuple[bool, Union[str, dict, None]]:
+        """Generate a reply using autogen.oai.
+        Overrides ConversableAgent.generate_oai_reply to handle multimodal messages."""
+        client = self.client if config is None else config
+        if client is None:
+            return False, None
+        if messages is None:
+            messages = self._oai_messages[sender]
+
+        # Convert PIL images to base64 for all messages
+        messages_with_b64_img = message_formatter_pil_to_b64(self._oai_system_message + messages)
+
+        # Use the base class's _generate_oai_reply_from_client method since it handles tool calls properly
+        extracted_response = self._generate_oai_reply_from_client(
+            llm_client=client,
+            messages=messages_with_b64_img, 
+            cache=self.client_cache
+        )
+
+        return (False, None) if extracted_response is None else (True, extracted_response)
+
+    async def a_generate_oai_reply(
+        self,
+        messages: Optional[list[dict]] = None,
+        sender: Optional[Agent] = None,
+        config: Optional[OpenAIWrapper] = None,
+    ) -> tuple[bool, Union[str, dict, None]]:
+        """Generate a reply using autogen.oai asynchronously.
+        Overrides ConversableAgent.a_generate_oai_reply to handle multimodal messages."""
+        from autogen.io import IOStream
+        iostream = IOStream.get_default()
+
+        def _generate_oai_reply(
+            self, iostream: IOStream, *args: Any, **kwargs: Any
+        ) -> tuple[bool, Union[str, dict, None]]:
+            with IOStream.set_default(iostream):
+                return self.generate_oai_reply(*args, **kwargs)
+
+        import functools
+        import asyncio
+
+        return await asyncio.get_event_loop().run_in_executor(
+            None,
+            functools.partial(
+                _generate_oai_reply, self=self, iostream=iostream, messages=messages, sender=sender, config=config
+            ),
+        )
 
 
 def convert_model_config_to_autogen_format(model_config: dict[str, str]) -> list[dict[str, Any]]:

@@ -1,7 +1,9 @@
 import datetime
 import os
+import tempfile
 from typing import Any, Dict, List
 
+import aiofiles
 from junitparser import Failure, JUnitXml, Property, TestCase, TestSuite
 from junitparser.junitparser import Properties, SystemOut
 from testzeus_hercules.config import get_global_conf
@@ -151,9 +153,9 @@ class JUnitXMLGenerator:
         self.total_time += float(execution_time)
         self.suite.add_testcase(test_case)
 
-    def write_xml(self, output_file: str) -> None:
+    async def write_xml(self, output_file: str) -> None:
         """
-        Write the test suite to a JUnit XML file.
+        Write the test suite to a JUnit XML file asynchronously.
 
         Args:
             output_file (str): The path to the output XML file.
@@ -166,13 +168,25 @@ class JUnitXMLGenerator:
 
         xml = JUnitXml()
         xml.add_testsuite(self.suite)
-        # logger.info(f"Writing JUnit XML to: {output_file}")
-        xml.write(output_file, pretty=True)
+        
+        # Write to temp file first
+        with tempfile.NamedTemporaryFile(mode='w', delete=False) as tmp:
+            xml.write(tmp.name)
+            tmp_path = tmp.name
+        
+        # Read from temp and write to final destination asynchronously
+        async with aiofiles.open(tmp_path, 'r') as src, \
+                  aiofiles.open(output_file, 'w') as dest:
+            content = await src.read()
+            await dest.write(content)
+        
+        # Clean up temp file
+        os.unlink(tmp_path)
 
     @staticmethod
-    def merge_junit_xml(files: List[str], output_file: str) -> None:
+    async def merge_junit_xml(files: List[str], output_file: str) -> None:
         """
-        Merge multiple JUnit XML files into one based on testsuite name.
+        Merge multiple JUnit XML files into one asynchronously.
 
         Args:
             files (List[str]): List of file paths to JUnit XML files.
@@ -217,10 +231,28 @@ class JUnitXMLGenerator:
         for suite in suite_dict.values():
             merged_xml.add_testsuite(suite)
 
-        merged_xml.write(output_file)
+        # Write merged XML to temp file first
+        with tempfile.NamedTemporaryFile(mode='w', delete=False) as tmp:
+            merged_xml.write(tmp.name)
+            tmp_path = tmp.name
+            
+        # Read from temp and write to final destination asynchronously
+        async with aiofiles.open(tmp_path, 'r') as src, \
+                  aiofiles.open(output_file, 'w') as dest:
+            content = await src.read()
+            await dest.write(content)
+            
+        # Clean up temp file
+        os.unlink(tmp_path)
+
+        # Delete individual test files if not in debug mode
+        if get_global_conf().get_mode() not in ["debug"]:
+            for file in files:
+                if os.path.exists(file):
+                    os.remove(file)
 
 
-def build_junit_xml(
+async def build_junit_xml(
     json_data: Dict[str, Any],
     execution_time: float,
     cost_metric: Dict[str, Any],
@@ -264,7 +296,7 @@ def build_junit_xml(
         planner_thoughts_path,
     )
     generator.add_test_case(scenario, feature, json_data, execution_time, cost_metric)
-    generator.write_xml(file_path)
+    await generator.write_xml(file_path)
     return file_path
 
 

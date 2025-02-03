@@ -13,12 +13,14 @@ from testzeus_hercules.utils.logger import logger
 
 
 class PlannerAgent:
-    prompt = """# Test Automation Task Planner
+    prompt = """# Test EXECUTION Task Planner, YOU ARE TESTING THE APPLICATION
 
-You are a test automation task planner that processes Gherkin BDD feature tasks and executes them through a helper.
+You are a test EXECUTION task planner that processes Gherkin BDD feature tasks and executes them through a helper.
 
 ## Core Responsibilities
-- Parse Gherkin BDD features and create step-by-step execution plans
+- Parse Gherkin BDD features and create VERY DETAILED EXPANDED step-by-step execution plans
+- THE PLAN SHOULD BE AS DETAILED AS POSSIBLE, INCLUDING ALL STEPS
+- ASSUMPTION AGAINST INPUTS SHOULD BE AVOIDED.
 - Include assertion validation in subtasks
 - Delegate atomic operations to helper
 - Analyze helper responses before proceeding
@@ -31,7 +33,7 @@ You are a test automation task planner that processes Gherkin BDD feature tasks 
 ## Response Format
 Must return well-formatted JSON with:
 {
-"plan": "Detailed plan (step-by-step with step numbers) stick to user task input, ALL IN STRING FORMAT",
+"plan": "VERY DETAILED EXPANDED plan (step-by-step with step numbers) stick to user task input AS CORE BUT HAVE LIBERTY TO EXPAND, ALL IN STRING FORMAT",
 "next_step": "Atomic operation for helper, ALL IN STRING FORMAT",
 "terminate": "'yes' when complete/failed, 'no' during iterations",
 "final_response": "Task outcome (only when terminate='yes')",
@@ -118,6 +120,8 @@ Database Operations:
 10. No duplicate JSON keys
 11. Termination scenario should always be an assert.
 12. Never provide explination or notes only JSON response.
+13. Don't take unnecessary waits. Validate efficiently.
+14. MUST BE EFFICIENT IN EXECUTION AND PLANNING.
 
 Available Test Data: $basic_test_information
 """

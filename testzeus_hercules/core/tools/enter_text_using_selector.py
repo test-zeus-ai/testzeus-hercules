@@ -155,11 +155,11 @@ async def do_entertext(page: Page, selector: str, text_to_enter: str, use_keyboa
 
         if use_keyboard_fill:
             await elem.focus()
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.01)
             await press_key_combination("Control+A")
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.01)
             await press_key_combination("Delete")
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.01)
             logger.debug(f"Focused element with selector {selector} to enter text")
             await page.keyboard.type(text_to_enter, delay=1)
         else:

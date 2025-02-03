@@ -367,14 +367,6 @@ class SimpleHercules:
             with open(chat_logs_file, "w") as file:
                 json.dump(res_output_thoughts_logs_di, file, indent=4)
 
-    # def __save_chat_log(self, chat_log: list[dict[str, Any]]) -> None:
-    #     if not self.save_chat_logs_to_files:
-    #         logger.info("Nested chat logs", extra={"nested_chat_log": chat_log})
-    #     else:
-    #         chat_logs_file = os.path.join(self.get_chat_logs_dir() or "", f"nested_chat_log_{str(time_ns())}.json")
-    #         # Save the chat log to a file
-    #         with open(chat_logs_file, "w") as file:
-    #             json.dump(chat_log, file, indent=4)
 
     async def __initialize_agents(self) -> dict[str, autogen.ConversableAgent]:
         """

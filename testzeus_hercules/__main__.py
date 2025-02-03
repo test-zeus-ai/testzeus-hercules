@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import aiofiles
 
 from junit2htmlreport.runner import run as prepare_html
 from testzeus_hercules.config import get_global_conf, set_global_conf
@@ -14,7 +15,7 @@ from testzeus_hercules.utils.junit_helper import JUnitXMLGenerator, build_junit_
 from testzeus_hercules.utils.logger import logger
 
 
-def sequential_process() -> None:
+async def sequential_process() -> None:
     """
     sequential_process function to process feature files, run test cases, and generate JUnit XML results.
 
@@ -36,7 +37,7 @@ def sequential_process() -> None:
     7. Logs the location of the final result file.
     """
     dont_close_browser = get_global_conf().get_dont_close_browser()
-    list_of_feats = process_feature_file(dont_append_header=dont_close_browser)
+    list_of_feats = await process_feature_file(dont_append_header=dont_close_browser)
     input_gherkin_file_path = get_global_conf().get_input_gherkin_file_path()
     # get name of the feature file using os package
     feature_file_name = os.path.basename(input_gherkin_file_path)
@@ -54,7 +55,7 @@ def sequential_process() -> None:
         # TODO: remove the following set default hack later.
         get_global_conf().set_default_test_id(stake_id)
 
-        cmd = serialize_feature_file(file_path)
+        cmd = await serialize_feature_file(file_path)
 
         logger.info(f"Running testcase: {stake_id}")
         logger.info(f"testcase details: {cmd}")
@@ -63,7 +64,7 @@ def sequential_process() -> None:
             command=cmd,
             dont_terminate_browser_after_run=dont_close_browser,
         )
-        asyncio.run(runner.start())
+        await runner.start()
 
         runner_result = {}
         cost_metrics = {}
@@ -109,7 +110,7 @@ def sequential_process() -> None:
         if cost_metrics:
             logger.info(f"Test run cost is : {cost_metrics}")
         result_of_tests.append(
-            build_junit_xml(
+            await build_junit_xml(
                 runner_result,
                 execution_time,
                 cost_metrics,
@@ -127,7 +128,7 @@ def sequential_process() -> None:
         )
 
     final_result_file_name = f"{get_global_conf().get_junit_xml_base_path()}/{feature_file_name}_result.xml"
-    JUnitXMLGenerator.merge_junit_xml(result_of_tests, final_result_file_name)
+    await JUnitXMLGenerator.merge_junit_xml(result_of_tests, final_result_file_name)
     logger.info(f"Results published in junitxml file: {final_result_file_name}")
 
     # building html from junitxml
@@ -136,7 +137,7 @@ def sequential_process() -> None:
     logger.info(f"Results published in html file: {final_result_html_file_name}")
 
 
-def process_test_directory(test_dir: str) -> None:
+async def process_test_directory(test_dir: str) -> None:
     """
     Process a single test directory by updating config paths and running sequential_process
 
@@ -155,10 +156,10 @@ def process_test_directory(test_dir: str) -> None:
     set_global_conf(test_config, override=True)
 
     logger.info(f"Processing test directory: {test_dir}")
-    sequential_process()
+    await sequential_process()
 
 
-def main() -> None:
+async def main() -> None:
     """
     Main function that checks for bulk execution flag and runs tests accordingly
     """
@@ -194,7 +195,7 @@ def main() -> None:
            +=====================+=+==***##%     |__|_______/             |__/ |__/ |__/\____  $$
            %#++++++++***+===++==+==+==***#%%                                           /$$  | $$
             %**%%*+***************#+==+***%%                                          |  $$$$$$/
-            %#*%#% %**********###*++++=#**%%@                                          \______/
+            %#*%#% %**********###*++++=#**%%                                          \______/
             ###%%%#%**********######++*%**#%@
            %++=+###@**********####%   #+++*##
             #***##% #*********####    #+++#%#     /$$$$$$ /$$   /$$ /$$$$$$  /$$$$$$  /$$$$$$  /$$$$$$$ /$$$$$$
@@ -241,15 +242,15 @@ def main() -> None:
                 test_dir = os.path.join(tests_dir, test_folder)
                 if os.path.isdir(test_dir):
                     logger.info(f"Processing test folder: {test_folder}")
-                    process_test_directory(test_dir)
+                    await process_test_directory(test_dir)
         else:
             logger.error("Bulk execution requested but no tests directory found at: %s", tests_dir)
             exit(1)
     else:
         # Single test case execution
         logger.info("Single test execution mode")
-        sequential_process()
+        await sequential_process()
 
 
 if __name__ == "__main__":  # pragma: no cover
-    main()
+    asyncio.run(main())
