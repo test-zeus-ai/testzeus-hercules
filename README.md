@@ -421,7 +421,7 @@ For those who want a fully automated setup experience on Linux/macOS environment
   echo "The '.env' file is located at $(pwd)/.env"
   read -p "Press Enter if file is updated"
 
-  # create a input/test.feature file
+  # create an input/test.feature file
   # download https://raw.githubusercontent.com/test-zeus-ai/testzeus-hercules/refs/heads/main/opt/input/test.feature and save in opt/input/test.feature
   curl -sS https://raw.githubusercontent.com/test-zeus-ai/testzeus-hercules/main/opt/input/test.feature > opt/input/test.feature
 
@@ -891,10 +891,12 @@ With Hercules, testing is no longer just a step in the process—it's a powerful
 ## ✅ Citation
 If you use Hercules in your research or project, please cite:
 
-``` @software{testzeus_hercules2024,
+```
+@software{testzeus_hercules2024,
   author = {Agnihotri, Shriyansh and Gupta, Robin},
   title = {Hercules: World's first open source testing agent},
   year = {2024},
   publisher = {GitHub},
   url = {https://github.com/test-zeus-ai/testzeus-hercules/}
-} ```
+}
+```
