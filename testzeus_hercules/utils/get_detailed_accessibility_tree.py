@@ -847,6 +847,8 @@ def __should_prune_node(node: dict[str, Any], only_input_fields: bool) -> bool:
     Returns:
         bool: True if the node should be pruned, False otherwise.
     """
+    if not node.get("md"):
+        return False
     list_of_interactive_roles = set(
         [
             "WebArea",
@@ -894,7 +896,7 @@ def __should_prune_node(node: dict[str, Any], only_input_fields: bool) -> bool:
     if len(node) == 2 and "name" in node and "role" in node and not (node.get("role") == "text" and processed_name != ""):
         return True
 
-    if node.get("tag") == "span" and not node.get("role"):
+    if node.get("tag") == "span" and not node.get("role") and not node.get("md"):
         return True
     return False
 
@@ -1209,7 +1211,7 @@ async def do_get_accessibility_info(page: Page, only_input_fields: bool = False)
                             }
                         }
 
-                        if (!node.name && node.children.length === 0 && !node.role) {
+                        if (!node.md && !node.name && node.children.length === 0 && !node.role) {
                             return null;
                         }
 

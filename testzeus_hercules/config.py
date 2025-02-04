@@ -283,7 +283,7 @@ class BaseConfigManager:
     def get_project_source_root(self) -> str:
         return self._config["PROJECT_SOURCE_ROOT"]
 
-    def set_default_test_id(self, test_id: str) -> None:
+    def set_default_test_id(self, test_id: str = "running_interactive") -> None:
         self._default_test_id = test_id
         self._config["DEFAULT_TEST_ID"] = test_id
 
