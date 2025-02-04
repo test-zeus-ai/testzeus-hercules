@@ -159,7 +159,7 @@ async def process_test_directory(test_dir: str) -> None:
     await sequential_process()
 
 
-async def main() -> None:
+async def a_main() -> None:
     """
     Main function that checks for bulk execution flag and runs tests accordingly
     """
@@ -251,6 +251,8 @@ async def main() -> None:
         logger.info("Single test execution mode")
         await sequential_process()
 
+def main() -> None:
+    asyncio.run(a_main())
 
 if __name__ == "__main__":  # pragma: no cover
-    asyncio.run(main())
+    main()

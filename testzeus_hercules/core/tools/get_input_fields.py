@@ -18,7 +18,7 @@ from testzeus_hercules.utils.logger import logger
 
 @tool(
     agent_names=["browser_nav_agent"],
-    description="""DOM Type dict Retrieval Tool, giving all input elements on page.
+    description="""DOM Type dict Retrieval Tool, giving only html input types elements on page.
 Notes: [Elements ordered as displayed, Consider ordinal/numbered item positions]""",
     name="get_input_fields",
 )

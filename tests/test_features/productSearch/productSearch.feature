@@ -6,5 +6,5 @@ Feature: Check search and filtering on the Wrangler website
     Given a user is on the URL as https://wrangler.in
     When the user clicks on Search icon
     And on the search bar, the user enters text as "Rainbow jacket"
-    And the user selects "Turtle neck" as the filter
+    And the user filters "Turtle neck"
     Then only one product should be displayed as the result
