@@ -10,9 +10,11 @@ from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.dom_helper import wait_for_non_loading_dom_state
 from testzeus_hercules.utils.get_detailed_accessibility_tree import (
-    do_get_accessibility_info, rename_children
+    do_get_accessibility_info,
+    rename_children,
 )
 from testzeus_hercules.utils.logger import logger
+
 
 @tool(
     agent_names=["browser_nav_agent"],
@@ -33,7 +35,7 @@ async def get_interactive_elements() -> Annotated[str, "DOM type dict giving all
 
     extracted_data = ""
     await wait_for_non_loading_dom_state(page, 1)
-    
+
     extracted_data = await do_get_accessibility_info(page, only_input_fields=False)
 
     elapsed_time = time.time() - start_time
@@ -61,4 +63,4 @@ tl: title
 Dict >>
 """
     extracted_data = extracted_data_legend + extracted_data
-    return extracted_data or "Its Empty, try something else" # type: ignore
+    return extracted_data or "Its Empty, try something else"  # type: ignore

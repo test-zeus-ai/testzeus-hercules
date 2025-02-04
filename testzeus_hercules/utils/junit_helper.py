@@ -168,18 +168,17 @@ class JUnitXMLGenerator:
 
         xml = JUnitXml()
         xml.add_testsuite(self.suite)
-        
+
         # Write to temp file first
-        with tempfile.NamedTemporaryFile(mode='w', delete=False) as tmp:
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as tmp:
             xml.write(tmp.name)
             tmp_path = tmp.name
-        
+
         # Read from temp and write to final destination asynchronously
-        async with aiofiles.open(tmp_path, 'r') as src, \
-                  aiofiles.open(output_file, 'w') as dest:
+        async with aiofiles.open(tmp_path, "r") as src, aiofiles.open(output_file, "w") as dest:
             content = await src.read()
             await dest.write(content)
-        
+
         # Clean up temp file
         os.unlink(tmp_path)
 
@@ -232,16 +231,15 @@ class JUnitXMLGenerator:
             merged_xml.add_testsuite(suite)
 
         # Write merged XML to temp file first
-        with tempfile.NamedTemporaryFile(mode='w', delete=False) as tmp:
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as tmp:
             merged_xml.write(tmp.name)
             tmp_path = tmp.name
-            
+
         # Read from temp and write to final destination asynchronously
-        async with aiofiles.open(tmp_path, 'r') as src, \
-                  aiofiles.open(output_file, 'w') as dest:
+        async with aiofiles.open(tmp_path, "r") as src, aiofiles.open(output_file, "w") as dest:
             content = await src.read()
             await dest.write(content)
-            
+
         # Clean up temp file
         os.unlink(tmp_path)
 

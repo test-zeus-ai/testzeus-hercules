@@ -16,6 +16,7 @@ from testzeus_hercules.utils.js_helper import get_js_with_element_finder
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
 
+
 async def select_option(
     entry: Annotated[
         tuple,
@@ -29,7 +30,7 @@ async def select_option(
 
     if "md=" not in selector:
         selector = f"[md='{selector}']"
-        
+
     # Create and use the PlaywrightManager
     browser_manager = PlaywrightManager()
     page = await browser_manager.get_current_page()
@@ -179,7 +180,8 @@ async def do_select_option(page: Page, selector: str, option_value: str) -> dict
             option_selector = f"{selector} option"
 
             # Find the option elements
-            options = await page.selector_all(option_selector)
+            options = await page.query_selector_all(option_selector)
+
             option_found = False
             for option in options:
                 option_text = await option.inner_text()

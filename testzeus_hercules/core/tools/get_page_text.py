@@ -48,6 +48,7 @@ async def get_page_text() -> Annotated[str, "DOM content based on type to analyz
 
     return extracted_data or "Its Empty, try something else"  # type: ignore
 
+
 def clean_text(text_content: str) -> str:
     # Split the text into lines
     lines = text_content.splitlines()
@@ -65,6 +66,7 @@ def clean_text(text_content: str) -> str:
 
     # Join the cleaned and unique lines with a single newline
     return "\n".join(cleaned_lines)
+
 
 async def get_filtered_text_content(page: Page) -> str:
     text_content = await page.evaluate(

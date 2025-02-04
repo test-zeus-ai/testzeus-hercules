@@ -1,4 +1,6 @@
-from testzeus_hercules.core.agents.multimodal_base_nav_agent import MultimodalBaseNavAgent
+from testzeus_hercules.core.agents.multimodal_base_nav_agent import (
+    MultimodalBaseNavAgent,
+)
 
 
 class BrowserNavAgent(MultimodalBaseNavAgent):
@@ -30,6 +32,7 @@ You are a web navigation agent that executes webpage interactions and retrieves 
 13. IF FUNCTION CALL FAILS FOR PYDANTIC VALIDATION, SOLVE IT AND RETRIGGER.
 14. IF THERE IS AN AN ERROR ON PAGE, THEN TRY TO OVERCOME THAT ERROR WITHIN INSTRUCTION BOUNDARIES.
 15. Handle popups/cookies by accepting or closing them
+16. WHEN NOT AWARE OF THE MD ID, THEN LOOK FOR IT IN DOM.
 
 
 ## Response Format

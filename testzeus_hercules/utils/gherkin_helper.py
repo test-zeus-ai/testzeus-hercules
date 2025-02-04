@@ -1,9 +1,9 @@
 import os
 import re
-import aiofiles
 from collections import defaultdict
 from typing import Dict, List
 
+import aiofiles
 from testzeus_hercules.config import get_global_conf
 
 

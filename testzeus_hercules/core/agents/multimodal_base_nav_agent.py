@@ -2,9 +2,8 @@ from datetime import datetime
 from string import Template
 from typing import Any
 
-from testzeus_hercules.utils.llm_helper import MultimodalConversableAgent
-
 from testzeus_hercules.core.agents.base_nav_agent import BaseNavAgent
+from testzeus_hercules.utils.llm_helper import MultimodalConversableAgent
 from testzeus_hercules.utils.logger import logger
 
 
@@ -34,7 +33,7 @@ class MultimodalBaseNavAgent(BaseNavAgent):
             system_message = Template(system_message).substitute(basic_test_information=user_ltm)
 
         logger.info(f"Nav agent {agent_name} using model: {model_config_list[0]['model']}")
-        
+
         # Use MultimodalConversableAgent instead of ConversableAgent
         self.agent = MultimodalConversableAgent(
             name=agent_name,
@@ -43,7 +42,7 @@ class MultimodalBaseNavAgent(BaseNavAgent):
                 "config_list": model_config_list,
                 **llm_config_params,  # unpack all the name value pairs in llm_config_params as is
             },
-            human_input_mode="NEVER"
+            human_input_mode="NEVER",
         )
 
         self.register_tools()

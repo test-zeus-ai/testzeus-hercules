@@ -1,18 +1,18 @@
+import copy
 import json
 import tempfile
-import copy
 from typing import Any, Dict, List, Optional, Union
 
 import autogen
-from autogen import OpenAIWrapper
+from autogen import ConversableAgent, OpenAIWrapper
 from autogen._pydantic import model_dump
-from autogen.code_utils import content_str
 from autogen.agentchat.agent import Agent
-from autogen import ConversableAgent
 from autogen.agentchat.contrib.img_utils import (
     gpt4v_formatter,
     message_formatter_pil_to_b64,
 )
+from autogen.code_utils import content_str
+
 # from autogen.agentchat.contrib.multimodal_conversable_agent import (
 #     MultimodalConversableAgent,
 # )
@@ -29,28 +29,11 @@ class MultimodalConversableAgent(ConversableAgent):
         "model": DEFAULT_MODEL,
     }
 
-    def __init__(
-        self,
-        name: str,
-        system_message: Optional[Union[str, list]] = DEFAULT_LMM_SYS_MSG,
-        is_termination_msg: str = None,
-        *args,
-        **kwargs
-    ):
-        super().__init__(
-            name,
-            system_message,
-            is_termination_msg=is_termination_msg,
-            *args,
-            **kwargs
-        )
+    def __init__(self, name: str, system_message: Optional[Union[str, list]] = DEFAULT_LMM_SYS_MSG, is_termination_msg: str = None, *args, **kwargs):
+        super().__init__(name, system_message, is_termination_msg=is_termination_msg, *args, **kwargs)
         # call the setter to handle special format.
         self.update_system_message(system_message)
-        self._is_termination_msg = (
-            is_termination_msg
-            if is_termination_msg is not None
-            else (lambda x: content_str(x.get("content")) == "TERMINATE")
-        )
+        self._is_termination_msg = is_termination_msg if is_termination_msg is not None else (lambda x: content_str(x.get("content")) == "TERMINATE")
 
         # Override the `generate_oai_reply`
         self.replace_reply_func(ConversableAgent.generate_oai_reply, MultimodalConversableAgent.generate_oai_reply)
@@ -109,11 +92,7 @@ class MultimodalConversableAgent(ConversableAgent):
         messages_with_b64_img = message_formatter_pil_to_b64(self._oai_system_message + messages)
 
         # Use the base class's _generate_oai_reply_from_client method since it handles tool calls properly
-        extracted_response = self._generate_oai_reply_from_client(
-            llm_client=client,
-            messages=messages_with_b64_img, 
-            cache=self.client_cache
-        )
+        extracted_response = self._generate_oai_reply_from_client(llm_client=client, messages=messages_with_b64_img, cache=self.client_cache)
 
         return (False, None) if extracted_response is None else (True, extracted_response)
 
@@ -126,22 +105,19 @@ class MultimodalConversableAgent(ConversableAgent):
         """Generate a reply using autogen.oai asynchronously.
         Overrides ConversableAgent.a_generate_oai_reply to handle multimodal messages."""
         from autogen.io import IOStream
+
         iostream = IOStream.get_default()
 
-        def _generate_oai_reply(
-            self, iostream: IOStream, *args: Any, **kwargs: Any
-        ) -> tuple[bool, Union[str, dict, None]]:
+        def _generate_oai_reply(self, iostream: IOStream, *args: Any, **kwargs: Any) -> tuple[bool, Union[str, dict, None]]:
             with IOStream.set_default(iostream):
                 return self.generate_oai_reply(*args, **kwargs)
 
-        import functools
         import asyncio
+        import functools
 
         return await asyncio.get_event_loop().run_in_executor(
             None,
-            functools.partial(
-                _generate_oai_reply, self=self, iostream=iostream, messages=messages, sender=sender, config=config
-            ),
+            functools.partial(_generate_oai_reply, self=self, iostream=iostream, messages=messages, sender=sender, config=config),
         )
 
 

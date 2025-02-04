@@ -175,7 +175,7 @@ class AgentsLLMConfig:
         # Apply defaults for 'temperature', 'top_p', 'seed' if not present
         model_name: str = model_config.get("model", "").lower()  # type: ignore
 
-        if model_name.startswith("o"):  # 
+        if model_name.startswith("o"):  #
             pass
         elif model_name.startswith("gpt"):  # type: ignore
             llm_config_params.setdefault("temperature", 0.0)  # type: ignore

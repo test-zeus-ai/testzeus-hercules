@@ -81,7 +81,7 @@ async def setslider(
 
     selector: str = entry[0]
     value_to_set: str = entry[1]
-    
+
     if "md=" not in selector:
         selector = f"[md='{selector}']"
     # Create and use the PlaywrightManager

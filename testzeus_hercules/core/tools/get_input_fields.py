@@ -10,7 +10,8 @@ from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.dom_helper import wait_for_non_loading_dom_state
 from testzeus_hercules.utils.get_detailed_accessibility_tree import (
-    do_get_accessibility_info, rename_children
+    do_get_accessibility_info,
+    rename_children,
 )
 from testzeus_hercules.utils.logger import logger
 
@@ -43,11 +44,8 @@ async def get_input_fields() -> Annotated[str, "DOM type dict giving all input e
     # Flatten the hierarchy into a list of elements
     def flatten_elements(node: dict, parent_name: str = "", parent_title: str = "") -> list[dict]:
         elements = []
-        form_elements = {
-            'input', 'label', 'select', 'textarea', 'button',
-            'fieldset', 'legend', 'datalist', 'output', 'option', 'optgroup'
-        }
-        
+        form_elements = {"input", "label", "select", "textarea", "button", "fieldset", "legend", "datalist", "output", "option", "optgroup"}
+
         if "children" in node:
             # Get current node's name and title for passing to children
             current_name = node.get("name", parent_name)
@@ -60,7 +58,7 @@ async def get_input_fields() -> Annotated[str, "DOM type dict giving all input e
                 if "title" not in child and current_title:
                     child["title"] = current_title
                 elements.extend(flatten_elements(child, current_name, current_title))
-                
+
         if "md" in node and node.get("tag", "").lower() in form_elements:
             new_node = node.copy()
             new_node.pop("children", None)
@@ -95,4 +93,4 @@ tl: title
 Dict >>
 """
     extracted_data = extracted_data_legend + extracted_data
-    return extracted_data or "Its Empty, try something else" # type: ignore
+    return extracted_data or "Its Empty, try something else"  # type: ignore

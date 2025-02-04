@@ -367,7 +367,6 @@ class SimpleHercules:
             with open(chat_logs_file, "w") as file:
                 json.dump(res_output_thoughts_logs_di, file, indent=4)
 
-
     async def __initialize_agents(self) -> dict[str, autogen.ConversableAgent]:
         """
         Instantiate all agents with their appropriate prompts/tools.

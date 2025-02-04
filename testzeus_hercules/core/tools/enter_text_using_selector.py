@@ -62,10 +62,10 @@ async def entertext(
 
     selector: str = entry[0]
     text_to_enter: str = entry[1]
-    
+
     if "md=" not in selector:
         selector = f"[md='{selector}']"
-        
+
     # Create and use the PlaywrightManager
     browser_manager = PlaywrightManager()
     page = await browser_manager.get_current_page()

@@ -694,7 +694,6 @@ class PlaywrightManager:
     async def highlight_element(self, selector: str) -> None:
         pass
 
-
     async def receive_user_response(self, response: str) -> None:
         logger.debug(f"Received user response: {response}")
         if self.user_response_future and not self.user_response_future.done():

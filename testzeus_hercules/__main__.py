@@ -1,8 +1,8 @@
 import asyncio
 import json
 import os
-import aiofiles
 
+import aiofiles
 from junit2htmlreport.runner import run as prepare_html
 from testzeus_hercules.config import get_global_conf, set_global_conf
 from testzeus_hercules.core.runner import SingleCommandInputRunner

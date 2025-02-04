@@ -2,8 +2,7 @@ import asyncio
 import inspect
 import traceback
 from dataclasses import dataclass
-from typing import List, Tuple  # noqa: UP035
-from typing import Annotated
+from typing import Annotated, List, Tuple  # noqa: UP035
 
 from playwright.async_api import ElementHandle, Page
 from testzeus_hercules.config import get_global_conf
@@ -29,10 +28,10 @@ async def upload_file(
 
     selector: str = entry[0]
     file_path: str = entry[1]
-    
+
     if "md=" not in selector:
         selector = f"[md='{selector}']"
-        
+
     # Create and use the PlaywrightManager
     browser_manager = PlaywrightManager()
     page = await browser_manager.get_current_page()

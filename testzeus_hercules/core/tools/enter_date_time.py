@@ -26,7 +26,7 @@ async def set_date_time_value(
     logger.info(f"Setting input value: {entry}")
     selector: str = entry[0]
     input_value: str = entry[1]
-    
+
     if "md=" not in selector:
         selector = f"[md='{selector}']"
 
