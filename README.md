@@ -1,7 +1,6 @@
 # 💪 Hercules
 
 [![PyPI Total Downloads](https://static.pepy.tech/badge/testzeus-hercules)](https://pepy.tech/projects/testzeus-hercules)
-![PyPI - Downloads](https://img.shields.io/pypi/dm/testzeus-hercules)
 ![Docker Pulls](https://img.shields.io/docker/pulls/testzeus/hercules)
 [![CI Test](https://github.com/test-zeus-ai/testzeus-hercules/actions/workflows/main-test.yml/badge.svg)](https://github.com/test-zeus-ai/testzeus-hercules/actions/workflows/main-test.yml)
 
