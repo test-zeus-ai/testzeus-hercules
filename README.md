@@ -860,7 +860,7 @@ Join us at our [Slack](https://join.slack.com/t/testzeuscommunityhq/shared_invit
 
 ## ✍️ Examples
 
-- **Salesforce Examples**: [Link](tests/test_features/ebikes/ebikes.feature)
+- **Salesforce Examples**: [Link](tests/test_not_for_ci/ebikes/ebikes.feature)
 - **Wrangler Example**: [Link](tests/test_features/productSearch/productSearch.feature)
 
 ---
