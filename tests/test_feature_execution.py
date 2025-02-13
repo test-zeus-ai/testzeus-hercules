@@ -37,6 +37,9 @@ def test_feature_execution(feature_folder: str) -> None:
     load_env_in_dict["MODE"] = "debug"
     load_env_in_dict["ENABLE_TELEMETRY"] = "0"
     load_env_in_dict["AUTO_MODE"] = "1"
+    load_env_in_dict["TOKEN_VERBOSE"] = "true"
+    load_env_in_dict["GEO_PROVIDER"] = "maps_co"
+    load_env_in_dict["LOAD_EXTRA_TOOLS"] = "true"
     load_env_in_dict["LANG"] = "en_US.UTF-8"
 
     # Execute Hercules with the updated .env file
@@ -56,7 +59,7 @@ def test_feature_execution(feature_folder: str) -> None:
 
     # Compare results
     expected_file = os.path.join(feature_path, "expected_results.txt")
-    output_folder = os.path.join(current_test_data_path, "output")
+    output_folder = os.path.join(current_test_data_path, "output/0")
     os.makedirs(output_folder, exist_ok=True)
 
     comparison_result = compare_results(expected_file, output_folder)

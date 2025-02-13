@@ -1,41 +1,26 @@
 import json
 import os
 import time
-from typing import Annotated, Any
+from typing import Annotated, Any, Union
 
 from playwright.async_api import Page
-from testzeus_hercules.config import CONF
+from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.dom_helper import wait_for_non_loading_dom_state
-from testzeus_hercules.utils.get_detailed_accessibility_tree import (
-    do_get_accessibility_info,
-)
 from testzeus_hercules.utils.logger import logger
 
 
 @tool(
     agent_names=["browser_nav_agent"],
-    description="""# DOM Retrieval Tool, output helps you to read the page content
-Fetches DOM based on content type:
-1. text_only: Plain text for information retrieval
-2. input_fields: JSON list of text input elements with md
-3. all_fields: JSON list of all interactive elements with md
-Notes:
-- Elements ordered as displayed
-- Try different content types if information missing
-- Consider ordinal/numbered item positions""",
-    name="get_dom_with_content_type",
+    description="""Retrieve Text on the current page""",
+    name="get_page_text",
 )
-async def get_dom_with_content_type(
-    content_type: Annotated[str, "Type: text_only/input_fields/all_fields"],
-) -> Annotated[dict[str, Any] | str | None, "DOM content based on type to analyse and decide"]:
-    """
-    [previous docstring remains the same]
-    """
-    add_event(EventType.INTERACTION, EventData(detail="get_dom_with_content_type"))
-    logger.info(f"Executing Get DOM Command based on content_type: {content_type}")
+async def get_page_text() -> Annotated[str, "DOM content based on type to analyze and decide"]:
+
+    add_event(EventType.INTERACTION, EventData(detail="get_page_text"))
+    logger.info(f"Executing get_page_text")
     start_time = time.time()
     # Create and use the PlaywrightManager
     browser_manager = PlaywrightManager()
@@ -45,95 +30,22 @@ async def get_dom_with_content_type(
     if page is None:  # type: ignore
         raise ValueError("No active page found. OpenURL command opens a new page.")
 
-    extracted_data = None
+    extracted_data = ""
     await wait_for_non_loading_dom_state(page, 1)
-    user_success_message = ""
-    if content_type == "all_fields":
-        user_success_message = "Fetched all the fields in the DOM"
-        extracted_data = await do_get_accessibility_info(page, only_input_fields=False)
-    elif content_type == "input_fields":
-        logger.debug("Fetching DOM for input_fields")
-        extracted_data = await do_get_accessibility_info(page, only_input_fields=True)
-        if extracted_data is None:
-            return "Could not fetch input fields. Please consider trying with content_type all_fields."
 
-        # Flatten the hierarchy into a list of elements
-        def flatten_elements(node: dict) -> list[dict]:
-            elements = []
-            if "children" in node:
-                for child in node["children"]:
-                    elements.extend(flatten_elements(child))
-            if "md" in node:
-                new_node = node.copy()
-                new_node.pop("children", None)
-                elements.append(new_node)
-            return elements
-
-        extracted_data = flatten_elements(extracted_data)
-        user_success_message = "Fetched only input fields in the DOM"
-    elif content_type == "text_only":
-        logger.debug("Fetching DOM for text_only")
-        text_content = await get_filtered_text_content(page)
-        with open(
-            os.path.join(CONF.get_source_log_folder_path(), "text_only_dom.txt"),
-            "w",
-            encoding="utf-8",
-        ) as f:
-            f.write(text_content)
-        extracted_data = text_content
-        user_success_message = "Fetched the text content of the DOM"
-    else:
-        raise ValueError(f"Unsupported content_type: {content_type}")
+    logger.debug("Fetching DOM for text_only")
+    text_content = await get_filtered_text_content(page)
+    with open(
+        os.path.join(get_global_conf().get_source_log_folder_path(), "text_only_dom.txt"),
+        "w",
+        encoding="utf-8",
+    ) as f:
+        f.write(text_content)
+    extracted_data = text_content
 
     elapsed_time = time.time() - start_time
     logger.info(f"Get DOM Command executed in {elapsed_time} seconds")
 
-    # Count elements
-    rr = 0
-    if isinstance(extracted_data, (dict, list)):
-        rr = len(extracted_data)
-    elif extracted_data is not None:
-        ed_t_tele = extracted_data.split("\n")
-        rr = len([line for line in ed_t_tele if line.strip()])
-    add_event(
-        EventType.DETECTION,
-        EventData(detail=f"DETECTED {rr} components"),
-    )
-
-    def rename_children(d: dict) -> dict:
-        if "children" in d:
-            d["c"] = d.pop("children")
-            for child in d["c"]:
-                rename_children(child)
-        if "tag" in d:
-            d["t"] = d.pop("tag")
-        if "role" in d:
-            d["r"] = d.pop("role")
-        if "name" in d:
-            d["n"] = d.pop("name")
-        if "title" in d:
-            d["tl"] = d.pop("title")
-        if "md" in d:
-            d["md"] = int(d.pop("md"))
-        return d
-
-    if not (isinstance(extracted_data, str)):
-        if isinstance(extracted_data, list):
-            for i, item in enumerate(extracted_data):
-                extracted_data[i] = rename_children(item)
-        elif isinstance(extracted_data, dict):
-            extracted_data = rename_children(extracted_data)
-
-        extracted_data = json.dumps(extracted_data, separators=(",", ":"))
-        extracted_data_legend = """Given is the JSON object representing Accessibility Tree DOM of current web page, they keys have following meanings, rest keys have normal meaning:
-t: tag
-r: role
-c: children
-n: name
-tl: title
-JSON >>
-"""
-        extracted_data = extracted_data_legend + extracted_data
     return extracted_data or "Its Empty, try something else"  # type: ignore
 
 
@@ -149,21 +61,8 @@ def clean_text(text_content: str) -> str:
         # Strip leading/trailing spaces, replace tabs with spaces, and collapse multiple spaces
         cleaned_line = " ".join(line.strip().replace("\t", " ").split())
         cleaned_line = cleaned_line.strip()
-
-        # Remove repeated words within the line
-        # words = cleaned_line.split()
-        # unique_words = []
-        # seen_words = set()
-        # for word in words:
-        #     if word not in seen_words:
-        #         unique_words.append(word)
-        #         seen_words.add(word)
-        # cleaned_line = " ".join(unique_words)
-
-        # Skip empty or duplicate lines
         if cleaned_line and cleaned_line not in seen_lines:
             cleaned_lines.append(cleaned_line)
-            # seen_lines.add(cleaned_line)
 
     # Join the cleaned and unique lines with a single newline
     return "\n".join(cleaned_lines)

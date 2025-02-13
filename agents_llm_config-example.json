@@ -180,6 +180,32 @@
             }
 		}
     },
+    "anthropic_bedrock": {
+		"planner_agent": {
+			"model_name": "us.anthropic.claude-3-5-haiku-20241022-v1:0",
+            "model_aws_region": "us-east-1",
+			"model_api_type": "bedrock",
+            "model_aws_access_key": "",
+            "model_aws_secret_key": "",
+            "llm_config_params": {
+                "cache_seed": null,
+                "temperature": 0.0,
+                "top_p": 0.001
+            }
+		},
+		"nav_agent": {
+			"model_name": "us.anthropic.claude-3-5-haiku-20241022-v1:0",
+            "model_aws_region": "us-east-1",
+			"model_api_type": "bedrock",
+            "model_aws_access_key": "",
+            "model_aws_secret_key": "",
+            "llm_config_params": {
+                "cache_seed": null,
+                "temperature": 0.0,
+                "top_p": 0.001
+            }
+		}
+    },
     "gemini": {
 		"planner_agent": {
 			"model_name": "gemini-1.5-pro-002",

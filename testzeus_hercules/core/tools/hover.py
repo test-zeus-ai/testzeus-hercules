@@ -5,6 +5,7 @@ from typing import Annotated
 
 import playwright.async_api
 from playwright.async_api import ElementHandle, Page
+from testzeus_hercules.config import get_global_conf  # Add this import
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
@@ -14,23 +15,14 @@ from testzeus_hercules.utils.dom_mutation_observer import unsubscribe  # type: i
 from testzeus_hercules.utils.logger import logger
 
 
-@tool(agent_names=["browser_nav_agent"], description="""Hovers over element by md. Returns tooltip details.""", name="hover")
+@tool(agent_names=["browser_nav_agent"], description="""Hovers over element. Returns tooltip details.""", name="hover")
 async def hover(
-    selector: Annotated[str, "selector using md attribute, eg:[md='114'] md is ID"],
+    selector: Annotated[str, "selector using md attribute, just give the md ID value"],
     wait_before_execution: Annotated[float, "Wait time in seconds before hover"] = 0.0,
 ) -> Annotated[str, "Result of hover action with tooltip text"]:
-    """
-    Executes a hover action on the element matching the given query selector string within the currently open web page.
-    If there is no page open, it will raise a ValueError. An optional wait time can be specified before executing the hover logic. Use this to wait for the page to load especially when the last action caused the DOM/Page to load.
-
-    Parameters:
-    - selector: The query selector string to identify the element for the hover action.
-    - wait_before_execution: Optional wait time in seconds before executing the hover event logic. Defaults to 0.0 seconds.
-
-    Returns:
-    - Success message if the hover was successful, appropriate error message otherwise.
-    """
     logger.info(f'Executing HoverElement with "{selector}" as the selector')
+    if "md=" not in selector:
+        selector = f"[md='{selector}']"
     add_event(EventType.INTERACTION, EventData(detail="hover"))
     # Initialize PlaywrightManager and get the active browser page
     browser_manager = PlaywrightManager()
@@ -53,7 +45,7 @@ async def hover(
 
     subscribe(detect_dom_changes)
     result = await do_hover(page, selector, wait_before_execution)
-    await asyncio.sleep(0.2)  # sleep for 200ms to allow the mutation observer to detect changes
+    await asyncio.sleep(get_global_conf().get_delay_time())  # sleep to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
     await page.wait_for_load_state()
     await browser_manager.take_screenshots(f"{function_name}_end", page)

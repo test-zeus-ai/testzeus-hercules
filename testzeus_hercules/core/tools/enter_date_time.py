@@ -2,10 +2,10 @@ import asyncio
 import inspect
 import traceback
 from dataclasses import dataclass
-from typing import List  # noqa: UP035
-from typing import Annotated
+from typing import Annotated, List, Tuple  # noqa: UP035
 
 from playwright.async_api import ElementHandle, Page
+from testzeus_hercules.config import get_global_conf  # Add this import
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
@@ -16,57 +16,19 @@ from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
 
 
-@dataclass
-class SetInputValueEntry:
-    """
-    Represents an entry for setting a value in an input element.
-
-    Attributes:
-        query_selector (str): A valid selector query. Use the md attribute.
-        value (str): The value to set in the input element.
-    """
-
-    query_selector: str
-    value: str
-
-    def __getitem__(self, key: str) -> str:
-        if key == "query_selector":
-            return self.query_selector
-        elif key == "value":
-            return self.value
-        else:
-            raise KeyError(f"{key} is not a valid key")
-
-
-# @tool(
-#     agent_names=["browser_nav_agent"],
-#     name="set_date_time_value",
-#     description="Set date, time values in an input element identified by a selector, its strictly for time or date fields and should not be used for other input fields.",
-# )
 async def set_date_time_value(
-    entry: Annotated[SetInputValueEntry, "Selector and value for date/time input"],
+    entry: Annotated[
+        tuple,
+        "tuple containing 'selector' and 'value_to_fill' in ('selector', 'value_to_fill') format, selector is md attribute value of the dom element to interact, md is an ID and 'value_to_fill' is the value or text of the option to select",
+    ]
 ) -> Annotated[str, "Operation result"]:
-    """
-    Sets a value in an input element identified by a selector.
-
-    This function sets the specified value in an input element (type 'date', 'time', or other types)
-    identified by the given selector. It uses the Playwright library to interact with the browser.
-
-    Args:
-        entry (SetInputValueEntry): An object containing 'query_selector' (selector query using md attribute)
-                                    and 'value' (the value to set in the input element).
-
-    Returns:
-        str: Explanation of the outcome of this operation.
-
-    Example:
-        entry = SetInputValueEntry(query_selector='#dateInput', value='2023-10-10')
-        result = await set_date_time_value(entry)
-    """
     add_event(EventType.INTERACTION, EventData(detail="SetInputValue"))
     logger.info(f"Setting input value: {entry}")
-    query_selector: str = entry["query_selector"]
-    input_value: str = entry["value"]
+    selector: str = entry[0]
+    input_value: str = entry[1]
+
+    if "md=" not in selector:
+        selector = f"[md='{selector}']"
 
     # Create and use the PlaywrightManager
     browser_manager = PlaywrightManager()
@@ -78,7 +40,7 @@ async def set_date_time_value(
 
     await browser_manager.take_screenshots(f"{function_name}_start", page)
 
-    await browser_manager.highlight_element(query_selector)
+    await browser_manager.highlight_element(selector)
 
     dom_changes_detected = None
 
@@ -88,8 +50,8 @@ async def set_date_time_value(
 
     subscribe(detect_dom_changes)
 
-    result = await do_set_date_time_value(page, query_selector, input_value)
-    await asyncio.sleep(0.1)  # sleep for 100ms to allow the mutation observer to detect changes
+    result = await do_set_date_time_value(page, selector, input_value)
+    await asyncio.sleep(get_global_conf().get_delay_time())  # sleep to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
     await page.wait_for_load_state()
     await browser_manager.take_screenshots(f"{function_name}_end", page)
@@ -156,42 +118,18 @@ async def do_set_date_time_value(page: Page, selector: str, input_value: str) ->
 )
 async def bulk_set_date_time_value(
     entries: Annotated[
-        List[dict[str, str]],
-        "List of objects, each containing 'query_selector' and 'value'.",
+        List[List[str]],
+        "List of tuple containing 'selector' and 'value_to_fill' in [('selector', 'value_to_fill'), ..] format, selector is md attribute value of the dom element to interact, md is an ID and 'value_to_fill' is the value or text of the option to select",
     ]  # noqa: UP006
 ) -> Annotated[
-    List[dict[str, str]],
-    "List of dictionaries, each containing 'query_selector' and the result of the operation.",
+    List[dict],
+    "List of dictionaries, each containing 'selector' and the result of the operation.",
 ]:  # noqa: UP006
-    """
-    Sets values in multiple input elements using a bulk operation.
-
-    This function sets values in multiple input elements using a bulk operation.
-    It takes a list of dictionaries, where each dictionary contains a 'query_selector' and 'value' pair.
-    The function internally calls the 'set_date_time_value' function to perform the operation for each entry.
-
-    Args:
-        entries: List of objects, each containing 'query_selector' and 'value'.
-
-    Returns:
-        List of dictionaries, each containing 'query_selector' and the result of the operation.
-
-    Example:
-        entries = [
-            {"query_selector": "#dateInput", "value": "2023-10-10"},
-            {"query_selector": "#timeInput", "value": "12:30"}
-        ]
-        results = await bulk_set_date_time_value(entries)
-    """
     add_event(EventType.INTERACTION, EventData(detail="BulkSetInputValue"))
     results: List[dict[str, str]] = []  # noqa: UP006
     logger.info("Executing bulk set input value command")
     for entry in entries:
-        query_selector = entry["query_selector"]
-        input_value = entry["value"]
-        logger.info(f"Setting input value: '{input_value}' in element with selector: '{query_selector}'")
-        result = await set_date_time_value(SetInputValueEntry(query_selector=query_selector, value=input_value))
-
-        results.append({"query_selector": query_selector, "result": result})
+        result = await set_date_time_value(entry)  # Use dictionary directly
+        results.append({"selector": entry[0], "result": result})
 
     return results

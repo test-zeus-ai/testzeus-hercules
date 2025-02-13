@@ -1,6 +1,6 @@
 # 💪 Hercules
 
-![PyPI - Downloads](https://img.shields.io/pypi/dm/testzeus-hercules)
+[![PyPI Total Downloads](https://static.pepy.tech/badge/testzeus-hercules)](https://pepy.tech/projects/testzeus-hercules)
 ![Docker Pulls](https://img.shields.io/docker/pulls/testzeus/hercules)
 [![CI Test](https://github.com/test-zeus-ai/testzeus-hercules/actions/workflows/main-test.yml/badge.svg)](https://github.com/test-zeus-ai/testzeus-hercules/actions/workflows/main-test.yml)
 
@@ -59,6 +59,11 @@ Our mission? To **democratize and disrupt test automation**, making top-tier tes
 - **Security Testing done end to end**  
   _[Watch now](https://youtu.be/o6MmfTakIh4?si=JL8iu4e3i85SWrxU)_
 
+#### 🛠️ **Visual validations and assertions**
+- **Using vision capabilities to check snapshots and components on the application**  
+  _[Watch now](https://youtu.be/EKzllLEguhw)_
+
+
 ---
 
 ## ⚙️ Installation and Usage
@@ -85,6 +90,8 @@ Hercules uses Playwright to interact with web pages, so you need to install Play
 ```bash
 playwright install --with-deps
 ```
+
+For detailed information about project structure and running tests, please refer to our [Run Guide](docs/run_guide.md).
 
 #### Basic Parameters
 
@@ -159,12 +166,12 @@ To set up and run Hercules on a Windows machine:
 
 
 #### Supported AI Models for TestZeus-Hercules
-- Anthropic Haiku : Compatible with Haiku 3.5 and above.
+- Anthropic: Compatible with Haiku 3.5 and above.
 - Groq: Supports any version with function calling and coding capabilities.
 - Mistral: Supports any version with function calling and coding capabilities. Mistral-large, Mistral-medium
 - OpenAI: Fully compatible with GPT-4o and above. Note: OpenAI GPT-4o-mini is only supported for sub agents, for planner it is still recommended to use GPT-4o.
 - Ollama: Supported with medium models and function calling.
-- Gemini: not supported, as function calling keeps breaking. Open bug.
+- Gemini: 1.5 pro and above.
 - Hosting: supported on AWS bedrock, GCP VertexAI, AzureAI.
 
 #### Execution Flow
@@ -249,6 +256,36 @@ docker run --env-file=.env \
 - While running in Docker mode, understand that Hercules has access only to a headless web browser.
 - If you want Hercules to connect to a visible web browser, try the CDP URL option in the environment file. This option can help you connect Hercules running in your infrastructure to a remote browser like BrowserBase or your self-hosted grid.
 - Use `CDP_ENDPOINT_URL` to set the CDP URL of the Chrome instance that has to be connected to the agent.
+
+### Docker and Remote Browser Support
+
+When running Hercules in Docker, you can connect to remote browser instances using various platforms:
+
+1. **BrowserStack Integration**:
+```bash
+export BROWSERSTACK_USERNAME=your_username
+export BROWSERSTACK_ACCESS_KEY=your_access_key
+export CDP_ENDPOINT_URL=$(python helper_scripts/browser_stack_generate_cdp_url.py)
+```
+
+2. **LambdaTest Integration**:
+```bash
+export LAMBDATEST_USERNAME=your_username
+export LAMBDATEST_ACCESS_KEY=your_access_key
+export CDP_ENDPOINT_URL=$(python helper_scripts/lambda_test_generate_cdp_url.py)
+```
+
+3. **BrowserBase Integration**:
+```bash
+export CDP_ENDPOINT_URL=wss://connect.browserbase.com?apiKey=your_api_key
+```
+
+4. **AnchorBrowser Integration**:
+```bash
+export CDP_ENDPOINT_URL=wss://connect.anchorbrowser.io?apiKey=your_api_key
+```
+
+Note: Video recording is only supported on platforms that use connect_over_cdp (BrowserBase, AnchorBrowser). Platforms using the connect API (BrowserStack, LambdaTest) do not support video recording.
 
 #### Output and Logs
 
@@ -384,7 +421,7 @@ For those who want a fully automated setup experience on Linux/macOS environment
   echo "The '.env' file is located at $(pwd)/.env"
   read -p "Press Enter if file is updated"
 
-  # create a input/test.feature file
+  # create an input/test.feature file
   # download https://raw.githubusercontent.com/test-zeus-ai/testzeus-hercules/refs/heads/main/opt/input/test.feature and save in opt/input/test.feature
   curl -sS https://raw.githubusercontent.com/test-zeus-ai/testzeus-hercules/main/opt/input/test.feature > opt/input/test.feature
 
@@ -471,6 +508,20 @@ To configure Hercules in detail:
  
 For example: If you would like to run with a "Headful" browser, you can set the environment variable with ```export HEADLESS=false``` before triggering Hercules.
 
+- **How to Use Tracing in Playwright**
+
+  Tracing in Playwright allows you to analyze test executions and debug issues effectively. To enable tracing in your Playwright tests, follow these steps:
+
+  1. Ensure that tracing is enabled in the configuration.
+  2. Traces will be saved to the specified path: `{proof_path}/traces/trace.zip`.
+
+  #### Enabling Tracing
+
+  To enable tracing, set the following environment variable:
+
+  ```bash
+  export ENABLE_PLAYWRIGHT_TRACING=true
+  ```
 
 ### Understanding `agents_llm_config-example.json`
 
@@ -809,7 +860,7 @@ Join us at our [Slack](https://join.slack.com/t/testzeuscommunityhq/shared_invit
 
 ## ✍️ Examples
 
-- **Salesforce Examples**: [Link](tests/test_features/ebikes/ebikes.feature)
+- **Salesforce Examples**: [Link](tests/test_not_for_ci/ebikes/ebikes.feature)
 - **Wrangler Example**: [Link](tests/test_features/productSearch/productSearch.feature)
 
 ---
@@ -836,3 +887,16 @@ With Hercules, testing is no longer just a step in the process—it's a powerful
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=test-zeus-ai/testzeus-hercules&type=Date)](https://star-history.com/#test-zeus-ai/testzeus-hercules&Date)
+
+## ✅ Citation
+If you use Hercules in your research or project, please cite:
+
+```
+@software{testzeus_hercules2024,
+  author = {Agnihotri, Shriyansh and Gupta, Robin},
+  title = {Hercules: World's first open source testing agent},
+  year = {2024},
+  publisher = {GitHub},
+  url = {https://github.com/test-zeus-ai/testzeus-hercules/}
+}
+```

@@ -9,13 +9,13 @@ from typing import Annotated, Any, List, Optional, Tuple
 
 import aiohttp
 from inflection import parameterize
-from testzeus_hercules.config import CONF
+from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.tools.tool_registry import sec_logger as file_logger
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
 
 # Define cache and binary paths
-CACHE_DIR = Path(CONF.get_hf_home()) / "nuclei_tool"
+CACHE_DIR = Path(get_global_conf().get_hf_home()) / "nuclei_tool"
 NUCLEI_BINARY = CACHE_DIR / "nuclei"
 
 
@@ -231,21 +231,21 @@ for tag, explanation in security_terms_explanation.items():
                 "Is the input an OpenAPI spec (True) or a target URL (False)? If true, open_api_spec_path is required with the path of the file.",
             ],
             target_url: Annotated[
-                Optional[str],
+                str,
                 "Target URL to test (required if is_open_api_spec is False).",
-            ] = None,
+            ] = "",
             open_api_spec_path: Annotated[
-                Optional[str],
+                str,
                 "Path to the OpenAPI spec file (required if is_open_api_spec is True).",
-            ] = None,
-            bearer_token: Annotated[Optional[str], "Optional Bearer token for authentication."] = None,
+            ] = "",
+            bearer_token: Annotated[str, "Optional Bearer token for authentication."] = "",
             header_tokens: Annotated[
-                Optional[List[str]],
+                List[str],
                 "Optional list of header tokens in 'Key=Value' format.",
-            ] = None,
-            jwt_token: Annotated[Optional[str], "Optional JWT token for authentication."] = None,
+            ] = [],
+            jwt_token: Annotated[str, "Optional JWT token for authentication."] = "",
             # output_dir: Annotated[
-            #     Optional[str], "Optional output directory for results."
+            #     str, "Optional output directory for results."
             # ] = "nuclei_results",
         ) -> Annotated[
             Tuple[dict, float],
@@ -256,7 +256,7 @@ for tag, explanation in security_terms_explanation.items():
             """
             start_time = time.perf_counter()
             try:
-                OUTPUT_PATH = CONF.get_proof_path() + "/nuclei_results"
+                OUTPUT_PATH = get_global_conf().get_proof_path() + "/nuclei_results"
                 output_path = Path(OUTPUT_PATH)
                 output_path.mkdir(parents=True, exist_ok=True)
 
@@ -323,5 +323,5 @@ for tag, explanation in security_terms_explanation.items():
     globals()[tool_name] = tool(
         agent_names=["sec_nav_agent"],
         name=tool_name,
-        description=f"Test for {explanation}",
+        description=f"Test for {explanation}.",
     )(func)

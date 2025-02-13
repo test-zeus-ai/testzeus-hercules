@@ -2,74 +2,34 @@ import asyncio
 import inspect
 import traceback
 from dataclasses import dataclass
-from typing import List  # noqa: UP035
-from typing import Annotated
+from typing import Annotated, List, Tuple
 
 from playwright.async_api import ElementHandle, Page
+from testzeus_hercules.config import get_global_conf  # Add this import
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.click_using_selector import do_click
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.dom_helper import get_element_outer_html
 from testzeus_hercules.utils.dom_mutation_observer import subscribe, unsubscribe
+from testzeus_hercules.utils.js_helper import get_js_with_element_finder
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
 
 
-@dataclass
-class SelectOptionEntry:
-    """
-    Represents an entry for selecting an option in a dropdown or spinner.
-
-    Attributes:
-        query_selector (str): A valid selector query. Use the md attribute.
-        value (str): The value or text of the option to select.
-    """
-
-    query_selector: str
-    value: str
-
-    def __getitem__(self, key: str) -> str:
-        if key == "query_selector":
-            return self.query_selector
-        elif key == "value":
-            return self.value
-        else:
-            raise KeyError(f"{key} is not a valid key")
-
-
-# @tool(
-#     agent_names=["browser_nav_agent"],
-#     name="select_option",
-#     description="used to Selects an option from a dropdown or spinner.",
-# )
 async def select_option(
     entry: Annotated[
-        SelectOptionEntry,
-        "Object containing 'query_selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'value' (the value or text of the option to select).",
+        tuple,
+        "tuple containing 'selector' and 'value_to_fill' in ('selector', 'value_to_fill') format, selector is md attribute value of the dom element to interact, md is an ID and 'value_to_fill' is the value or text of the option to select",
     ]
-) -> Annotated[str, "Explanation of the outcome of of dropdown/spinner selection."]:
-    """
-    Selects an option from a dropdown or spinner identified by a CSS selector.
-
-    This function selects the specified option in a dropdown or spinner element identified by the given CSS selector.
-    It uses the Playwright library to interact with the browser and perform the selection operation.
-
-    Args:
-        entry (SelectOptionEntry): An object containing 'query_selector' (selector query using md attribute)
-                                   and 'value' (the value or text of the option to select).
-
-    Returns:
-        str: Explanation of the outcome of of dropdown/spinner selection.
-
-    Example:
-        entry = SelectOptionEntry(query_selector='#country', value='United States')
-        result = await select_option(entry)
-    """
+) -> Annotated[str, "Explanation of the outcome of dropdown/spinner selection."]:
     add_event(EventType.INTERACTION, EventData(detail="SelectOption"))
     logger.info(f"Selecting option: {entry}")
-    query_selector: str = entry["query_selector"]
-    option_value: str = entry["value"]
+    selector: str = entry[0]
+    option_value: str = entry[1]
+
+    if "md=" not in selector:
+        selector = f"[md='{selector}']"
 
     # Create and use the PlaywrightManager
     browser_manager = PlaywrightManager()
@@ -81,7 +41,7 @@ async def select_option(
 
     await browser_manager.take_screenshots(f"{function_name}_start", page)
 
-    await browser_manager.highlight_element(query_selector)
+    await browser_manager.highlight_element(selector)
 
     dom_changes_detected = None
 
@@ -91,8 +51,8 @@ async def select_option(
 
     subscribe(detect_dom_changes)
 
-    result = await do_select_option(page, query_selector, option_value)
-    await asyncio.sleep(0.1)  # sleep for 100ms to allow the mutation observer to detect changes
+    result = await do_select_option(page, selector, option_value)
+    await asyncio.sleep(get_global_conf().get_delay_time())  # sleep to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
 
     await page.wait_for_load_state()
@@ -176,7 +136,7 @@ async def do_select_option(page: Page, selector: str, option_value: str) -> dict
         logger.debug(f"Looking for selector {selector} to select option: {option_value}")
 
         browser_manager = PlaywrightManager()
-        element = browser_manager.find_element(selector, page)
+        element = await browser_manager.find_element(selector, page)
         if not element:
             error = f"Error: Selector '{selector}' not found. Unable to continue."
             return {"summary_message": error, "detailed_message": error}
@@ -221,6 +181,7 @@ async def do_select_option(page: Page, selector: str, option_value: str) -> dict
 
             # Find the option elements
             options = await page.query_selector_all(option_selector)
+
             option_found = False
             for option in options:
                 option_text = await option.inner_text()
@@ -249,46 +210,23 @@ async def do_select_option(page: Page, selector: str, option_value: str) -> dict
 @tool(
     agent_names=["browser_nav_agent"],
     name="bulk_select_option",
-    description="used to Select an option of multiple dropdowns or spinners in one shot",
+    description="used to Select an option in multiple dropdowns or spinners in single attempt.",
 )
 async def bulk_select_option(
     entries: Annotated[
-        List[dict[str, str]],
-        "List of objects, each containing 'query_selector' and 'value'.",
-    ]  # noqa: UP006
+        List[List[str]],
+        "List of tuple containing 'selector' and 'value_to_fill' in [('selector', 'value_to_fill'), ..] format, selector is md attribute value of the dom element to interact, md is an ID and 'value_to_fill' is the value or text of the option to select",
+    ]
 ) -> Annotated[
-    List[dict[str, str]],
-    "List of dictionaries, each containing 'query_selector' and the result of the operation.",
-]:  # noqa: UP006
-    """
-    Selects options in multiple dropdowns or spinners using a bulk operation.
-
-    This function selects options in multiple elements using a bulk operation.
-    It takes a list of dictionaries, where each dictionary contains a 'query_selector' and 'value' pair.
-    The function internally calls the 'select_option' function to perform the selection operation for each entry.
-
-    Args:
-        entries: List of objects, each containing 'query_selector' and 'value'.
-
-    Returns:
-        List of dictionaries, each containing 'query_selector' and the result of the operation.
-
-    Example:
-        entries = [
-            {"query_selector": "#country", "value": "United States"},
-            {"query_selector": "#language", "value": "English"}
-        ]
-        results = await bulk_select_option(entries)
-    """
+    List[dict],
+    "List of dictionaries, each containing 'selector' and the result of the operation.",
+]:
     add_event(EventType.INTERACTION, EventData(detail="BulkSelectOption"))
     results: List[dict[str, str]] = []  # noqa: UP006
     logger.info("Executing bulk select option command")
     for entry in entries:
-        query_selector = entry["query_selector"]
-        option_value = entry["value"]
-        logger.info(f"Selecting option: '{option_value}' in element with selector: '{query_selector}'")
-        result = await select_option(SelectOptionEntry(query_selector=query_selector, value=option_value))
-
-        results.append({"query_selector": query_selector, "result": result})
+        selector = entry[0]
+        result = await select_option(entry)
+        results.append({"selector": selector, "result": result})
 
     return results

@@ -11,12 +11,14 @@ import autogen  # type: ignore
 import nest_asyncio  # type: ignore
 import openai
 from autogen import Cache
-from testzeus_hercules.config import CONF
+from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.agents.api_nav_agent import ApiNavAgent
 from testzeus_hercules.core.agents.browser_nav_agent import BrowserNavAgent
 from testzeus_hercules.core.agents.high_level_planner_agent import PlannerAgent
 from testzeus_hercules.core.agents.sec_nav_agent import SecNavAgent
 from testzeus_hercules.core.agents.sql_nav_agent import SqlNavAgent
+from testzeus_hercules.core.agents.static_waiter_nav_agent import StaticWaiterNavAgent
+from testzeus_hercules.core.extra_tools import *
 from testzeus_hercules.core.memory.state_handler import store_run_data
 from testzeus_hercules.core.post_process_responses import (
     final_reply_callback_planner_agent as notify_planner_messages,  # type: ignore
@@ -26,11 +28,19 @@ from testzeus_hercules.core.tools import *
 from testzeus_hercules.core.tools.get_url import geturl
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.detect_llm_loops import is_agent_stuck_in_loop
+from testzeus_hercules.utils.llm_helper import (
+    convert_model_config_to_autogen_format,
+    extract_target_helper,
+    format_plan_steps,
+    parse_agent_response,
+    process_chat_message_content,
+)
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.response_parser import parse_response
 from testzeus_hercules.utils.sequential_function_call import (
     UserProxyAgent_SequentialFunctionExecution,
 )
+from testzeus_hercules.utils.timestamp_helper import get_timestamp_str
 from testzeus_hercules.utils.ui_messagetype import MessageType
 
 nest_asyncio.apply()  # type: ignore
@@ -52,11 +62,12 @@ class SimpleHercules:
 
     def __init__(
         self,
+        stake_id: str,
         save_chat_logs_to_files: bool = True,
         planner_max_chat_round: int = 500,
         browser_nav_max_chat_round: int = 10,
-        stake_id: str | None = None,
     ):
+        self.timestamp = get_timestamp_str()  # Add this line to store timestamp
         oai.Completion.set_cache(5, cache_path_root=".cache")
         self.planner_number_of_rounds = planner_max_chat_round
         self.nav_agent_number_of_rounds = browser_nav_max_chat_round
@@ -74,16 +85,18 @@ class SimpleHercules:
         self.api_nav_agent_model_config: list[dict[str, str]] | None = None
         self.sec_nav_agent_model_config: list[dict[str, str]] | None = None
         self.sql_nav_agent_model_config: list[dict[str, str]] | None = None
+        self.static_waiter_nav_agent_model_config: list[dict[str, str]] | None = None
 
         self.planner_agent_config: dict[str, Any] | None = None
         self.nav_agent_config: dict[str, Any] | None = None
         self.stake_id = stake_id
-        self.chat_logs_dir: str = CONF.get_source_log_folder_path(self.stake_id)
+        self.chat_logs_dir: str = get_global_conf().get_source_log_folder_path(self.stake_id)
         self.save_chat_logs_to_files = save_chat_logs_to_files
 
     @classmethod
     async def create(
         cls,
+        stake_id: str,
         planner_agent_config: dict[str, Any],
         nav_agent_config: dict[str, Any],
         save_chat_logs_to_files: bool = True,
@@ -120,6 +133,7 @@ class SimpleHercules:
         )
         # Create an instance of cls
         self = cls(
+            stake_id,
             save_chat_logs_to_files=save_chat_logs_to_files,
             planner_max_chat_round=planner_max_chat_round,
             browser_nav_max_chat_round=browser_nav_max_chat_round,
@@ -130,33 +144,30 @@ class SimpleHercules:
         self.planner_agent_config = planner_agent_config
         self.nav_agent_config = nav_agent_config
 
-        self.planner_agent_model_config = self.convert_model_config_to_autogen_format(self.planner_agent_config["model_config_params"])
-        self.browser_nav_agent_model_config = self.convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
-        self.api_nav_agent_model_config = self.convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
-        self.sec_nav_agent_model_config = self.convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
-        self.sql_nav_agent_model_config = self.convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
+        self.planner_agent_model_config = convert_model_config_to_autogen_format(self.planner_agent_config["model_config_params"])
+        self.browser_nav_agent_model_config = convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
+        self.api_nav_agent_model_config = convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
+        self.sec_nav_agent_model_config = convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
+        self.sql_nav_agent_model_config = convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
+        self.static_waiter_nav_agent_model_config = convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
         self.agents_map = await self.__initialize_agents()
 
         def trigger_nested_chat(manager: autogen.ConversableAgent) -> bool:  # type: ignore
-            if isinstance(manager, autogen.GroupChatManager):
-                content: str = manager.last_message(manager.last_speaker)["content"]  # type: ignore
-            else:
-                content: str = manager.last_message()["content"]  # type: ignore
-            content_json = parse_response(content)  # type: ignore
-            next_step = content_json.get("next_step", None)
-            plan = content_json.get("plan", None)
-            if plan is not None:
-                # if plan is list then create string with join and add index+1 as step number.
-                if isinstance(plan, list):
-                    plan = "\n".join([f"{idx+1}. {step}" for idx, step in enumerate(plan)])
+            content: str = manager.last_message(manager.last_speaker)["content"] if isinstance(manager, autogen.GroupChatManager) else manager.last_message()["content"]
+
+            parsed = parse_agent_response(content)
+            next_step = parsed.get("next_step")
+            plan = parsed.get("plan")
+
+            if plan is not None and isinstance(plan, list):
+                plan = format_plan_steps(plan)
                 notify_planner_messages(plan, message_type=MessageType.PLAN)
 
             if next_step is None:
-                notify_planner_messages("Received no response, terminating..", message_type=MessageType.INFO)  # type: ignore
+                notify_planner_messages("Received no response, terminating..", message_type=MessageType.INFO)
                 return False
-            else:
-                notify_planner_messages(next_step, message_type=MessageType.STEP)  # type: ignore
-                return True
+            notify_planner_messages(next_step, message_type=MessageType.STEP)
+            return True
 
         def get_url() -> str:
             # return geturl()
@@ -216,19 +227,22 @@ class SimpleHercules:
                     # this is some crazy trick, might backfire in long run, only time will tell.
                     return "skip this step and return only JSON"  # type: ignore
 
-        nav_agents_names = ["browser", "api", "sql", "sec"]
-        group_participants_names = (
-            [f"{agent_name}_nav_agent" for agent_name in nav_agents_names]
-            # + ["user"]
-            # + ["planner_agent"]
-            + [f"{agent_name}_nav_executor" for agent_name in nav_agents_names]
+        # Updated logic to handle agent names with underscores
+        nav_agents_names = list(
+            set(
+                [
+                    "_".join(agent_name.split("_")[:-2])  # Take all parts except 'nav_agent' or 'nav_executor'
+                    for agent_name in self.agents_map.keys()
+                    if agent_name.endswith("_nav_agent") or agent_name.endswith("_nav_executor")
+                ]
+            )
         )
 
+        group_participants_names = [f"{agent_name}_nav_agent" for agent_name in nav_agents_names] + [f"{agent_name}_nav_executor" for agent_name in nav_agents_names]
+
         def state_transition(last_speaker, groupchat) -> autogen.ConversableAgent | None:  # type: ignore
-            messages = groupchat.messages
-            last_message = messages[-1]["content"]
-            # extract "##target_helper: {target_helper}##" from last_message
-            target_helper = last_message.split("##target_helper: ")[-1].split("##")[0].strip()
+            last_message = groupchat.messages[-1]["content"]
+            target_helper = extract_target_helper(last_message)
 
             if "##TERMINATE TASK##" in last_message.strip():
                 return None
@@ -238,16 +252,13 @@ class SimpleHercules:
                     return self.agents_map[f"{target_helper}_nav_agent"]
                 return None
             elif last_speaker in [self.agents_map[f"{agent_name}_nav_agent"] for agent_name in nav_agents_names]:
-                return self.agents_map[f"{last_speaker.name.split('_')[0]}_nav_executor"]
-            # elif last_speaker in [
-            #     self.agents_map[f"{agent_name}_nav_executor"]
-            #     for agent_name in nav_agents_names
-            # ]:
-            #     return self.agents_map[f"{last_speaker.name.split('_')[0]}_nav_agent"]
-            # else:
-            #     return None
+                # Get the base name by removing '_nav_agent' suffix
+                base_name = last_speaker.name.rsplit("_nav_agent", 1)[0]
+                return self.agents_map[f"{base_name}_nav_executor"]
             else:
-                return self.agents_map[f"{last_speaker.name.split('_')[0]}_nav_agent"]
+                # Get the base name by removing '_nav_executor' suffix
+                base_name = last_speaker.name.rsplit("_nav_executor", 1)[0]
+                return self.agents_map[f"{base_name}_nav_agent"]
 
         gm_llm_config = {
             "config_list": self.planner_agent_model_config,
@@ -283,7 +294,8 @@ class SimpleHercules:
             )
         return self
 
-    def convert_model_config_to_autogen_format(self, model_config: dict[str, str]) -> list[dict[str, Any]]:
+    @classmethod
+    def convert_model_config_to_autogen_format(cls, model_config: dict[str, str]) -> list[dict[str, Any]]:
         env_var: list[dict[str, str]] = [model_config]
         with tempfile.NamedTemporaryFile(delete=False, mode="w") as temp:
             json.dump(env_var, temp)
@@ -293,13 +305,13 @@ class SimpleHercules:
 
     def get_chat_logs_dir(self) -> str | None:
         """
-        Get the directory for saving chat logs.
+        Get the directory for saving chat logs with timestamp.
 
         Returns:
             str|None: The directory path or None if there is not one
-
         """
-        return self.chat_logs_dir
+        # Get paths from config with timestamp
+        return get_global_conf().get_source_log_folder_path(self.stake_id)
 
     def set_chat_logs_dir(self, chat_logs_dir: str) -> None:
         """
@@ -340,7 +352,7 @@ class SimpleHercules:
                         res_content = content
                 else:
                     res_content = content
-                res_output_thoughts_logs_di[key][idx]["content"] = res_content
+                res_output_thoughts_logs_di[key][idx]["content"] = process_chat_message_content(val["content"])
         if not self.save_chat_logs_to_files:
             logger.info(
                 "Nested chat logs",
@@ -354,15 +366,6 @@ class SimpleHercules:
             # Save the chat log to a file
             with open(chat_logs_file, "w") as file:
                 json.dump(res_output_thoughts_logs_di, file, indent=4)
-
-    # def __save_chat_log(self, chat_log: list[dict[str, Any]]) -> None:
-    #     if not self.save_chat_logs_to_files:
-    #         logger.info("Nested chat logs", extra={"nested_chat_log": chat_log})
-    #     else:
-    #         chat_logs_file = os.path.join(self.get_chat_logs_dir() or "", f"nested_chat_log_{str(time_ns())}.json")
-    #         # Save the chat log to a file
-    #         with open(chat_logs_file, "w") as file:
-    #             json.dump(chat_log, file, indent=4)
 
     async def __initialize_agents(self) -> dict[str, autogen.ConversableAgent]:
         """
@@ -382,6 +385,8 @@ class SimpleHercules:
         agents_map["sec_nav_agent"] = self.__create_sec_nav_agent(agents_map["sec_nav_executor"])
         agents_map["sql_nav_executor"] = self.__create_sql_nav_executor_agent()
         agents_map["sql_nav_agent"] = self.__create_sql_nav_agent(agents_map["sql_nav_executor"])
+        agents_map["static_waiter_nav_executor"] = self.__create_static_waiter_nav_executor_agent()
+        agents_map["static_waiter_nav_agent"] = self.__create_static_waiter_nav_agent(agents_map["static_waiter_nav_executor"])
         agents_map["planner_agent"] = self.__create_planner_agent(agents_map["user"])
         return agents_map
 
@@ -657,6 +662,58 @@ class SimpleHercules:
         logger.info(">>> Created sql_nav_executor_agent: %s", sql_nav_executor_agent)
         return sql_nav_executor_agent
 
+    def __create_static_waiter_nav_executor_agent(self) -> autogen.UserProxyAgent:
+        """
+        Create a UserProxyAgent instance for executing static wait operations.
+
+        Returns:
+            autogen.UserProxyAgent: An instance of UserProxyAgent.
+        """
+
+        def is_static_waiter_executor_termination_message(x: dict[str, str]) -> bool:  # type: ignore
+            tools_call: Any = x.get("tool_calls", "")
+            if tools_call:
+                chat_messages = self.agents_map["static_waiter_nav_executor"].chat_messages  # type: ignore
+                agent_key = next(iter(chat_messages))  # type: ignore
+                messages = chat_messages[agent_key]  # type: ignore
+                return is_agent_stuck_in_loop(messages)  # type: ignore
+            else:
+                logger.info("Terminating static waiter executor")
+                return True
+
+        static_waiter_nav_executor_agent = UserProxyAgent_SequentialFunctionExecution(
+            name="static_waiter_nav_executor",
+            is_termination_msg=is_static_waiter_executor_termination_message,
+            human_input_mode="NEVER",
+            llm_config=None,
+            max_consecutive_auto_reply=self.nav_agent_number_of_rounds,
+            code_execution_config={
+                "last_n_messages": 1,
+                "work_dir": "tasks",
+                "use_docker": False,
+            },
+        )
+        logger.info(">>> Created static_waiter_nav_executor_agent: %s", static_waiter_nav_executor_agent)
+        return static_waiter_nav_executor_agent
+
+    def __create_static_waiter_nav_agent(self, user_proxy_agent: UserProxyAgent_SequentialFunctionExecution) -> autogen.ConversableAgent:
+        """
+        Create a StaticWaiterNavAgent instance.
+
+        Args:
+            user_proxy_agent (autogen.UserProxyAgent): The instance of UserProxyAgent that was created.
+
+        Returns:
+            autogen.AssistantAgent: An instance of StaticWaiterNavAgent.
+        """
+        static_waiter_nav_agent = StaticWaiterNavAgent(
+            self.static_waiter_nav_agent_model_config,
+            self.nav_agent_config["llm_config_params"],  # type: ignore
+            self.nav_agent_config["other_settings"].get("system_prompt", None),
+            user_proxy_agent,
+        )  # type: ignore
+        return static_waiter_nav_agent.agent
+
     def __create_planner_agent(self, assistant_agent: autogen.ConversableAgent) -> autogen.ConversableAgent:
         """
         Create a Planner Agent instance. This is mainly used for exploration at this point
@@ -678,7 +735,9 @@ class SimpleHercules:
         Clean up the plan after each command is processed.
 
         """
-        await self.__initialize_agents()
+        # await self.__initialize_agents()
+        self.agents_map["planner_agent"].clear_history()
+        self.agents_map["user"].clear_history()
         logger.info("Plan cleaned up.")
 
     async def process_command(self, command: str, *args: Any, current_url: str | None = None, **kwargs: Any) -> autogen.ChatResult | None:

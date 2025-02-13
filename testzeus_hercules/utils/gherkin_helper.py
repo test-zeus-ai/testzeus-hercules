@@ -3,15 +3,13 @@ import re
 from collections import defaultdict
 from typing import Dict, List
 
-from testzeus_hercules.config import CONF
-
-tmp_gherkin_path = CONF.get_tmp_gherkin_path()
-input_gherkin_file_path = CONF.get_input_gherkin_file_path()
+import aiofiles
+from testzeus_hercules.config import get_global_conf
 
 
-def split_feature_file(input_file: str, output_dir: str, dont_append_header: bool = False) -> List[Dict[str, str]]:
+async def split_feature_file(input_file: str, output_dir: str, dont_append_header: bool = False) -> List[Dict[str, str]]:
     """
-    Splits a single BDD feature file into multiple feature files, with each file containing a single scenario.
+    Splits a single BDD feature file into multiple feature files asynchronously.
     The script preserves the feature-level content that should be shared across all scenario files.
 
     Parameters:
@@ -26,8 +24,8 @@ def split_feature_file(input_file: str, output_dir: str, dont_append_header: boo
 
     res_opt_list = []
 
-    with open(input_file, "r") as f:
-        feature_content = f.read()
+    async with aiofiles.open(input_file, "r") as f:
+        feature_content = await f.read()
 
     scenario_pattern = re.compile(r"\bScenario\b.*:")
     all_scenarios = scenario_pattern.findall(feature_content)
@@ -78,8 +76,8 @@ def split_feature_file(input_file: str, output_dir: str, dont_append_header: boo
         else:
             file_content = f"{feature_header}\n\n{prev_comment_lines}\n{all_scenarios[i]}{scenario_title}{f_scenario}"
 
-        with open(output_file, "w") as f:
-            f.write(file_content)
+        async with aiofiles.open(output_file, "w") as f:
+            await f.write(file_content)
         prev_comment_lines = comment_lines
 
         scenario_di = {
@@ -92,7 +90,7 @@ def split_feature_file(input_file: str, output_dir: str, dont_append_header: boo
     return res_opt_list
 
 
-def serialize_feature_file(file_path: str) -> str:
+async def serialize_feature_file(file_path: str) -> str:
     """
     Converts a feature file to a single line string where new lines are replaced with "#newline#".
 
@@ -102,8 +100,8 @@ def serialize_feature_file(file_path: str) -> str:
     Returns:
     str: The serialized content of the feature file.
     """
-    with open(file_path, "r") as f:
-        feature_content = f.read()
+    async with aiofiles.open(file_path, "r") as f:
+        feature_content = await f.read()
     while "  " in feature_content:
         feature_content = feature_content.replace("  ", " ")
     feature_content = feature_content.replace("\n\n", "\n")
@@ -111,17 +109,20 @@ def serialize_feature_file(file_path: str) -> str:
     return feature_content
 
 
-def process_feature_file(pass_background_to_all: bool = True) -> List[Dict[str, str]]:
+async def process_feature_file(dont_append_header: bool = False) -> List[Dict[str, str]]:
     """
     Processes a Gherkin feature file by splitting it into smaller parts.
 
     Returns:
         List[Dict[str, str]]: A list of dictionaries containing the split parts of the feature file.
     """
-    return split_feature_file(
+    tmp_gherkin_path = get_global_conf().get_tmp_gherkin_path()
+    input_gherkin_file_path = get_global_conf().get_input_gherkin_file_path()
+
+    return await split_feature_file(
         input_gherkin_file_path,
         tmp_gherkin_path,
-        dont_append_header=not pass_background_to_all,
+        dont_append_header=dont_append_header,
     )
 
 

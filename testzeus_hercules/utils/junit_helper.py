@@ -1,13 +1,13 @@
 import datetime
 import os
+import tempfile
 from typing import Any, Dict, List
 
+import aiofiles
 from junitparser import Failure, JUnitXml, Property, TestCase, TestSuite
 from junitparser.junitparser import Properties, SystemOut
-from testzeus_hercules.config import CONF
+from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.telemetry import EventData, EventType, add_event
-
-junit_xml_base_path = CONF.get_junit_xml_base_path()
 
 
 def flatten_dict(d: Dict[str, Any], parent_key: str = "", sep: str = ".") -> Dict[str, Any]:
@@ -153,9 +153,9 @@ class JUnitXMLGenerator:
         self.total_time += float(execution_time)
         self.suite.add_testcase(test_case)
 
-    def write_xml(self, output_file: str) -> None:
+    async def write_xml(self, output_file: str) -> None:
         """
-        Write the test suite to a JUnit XML file.
+        Write the test suite to a JUnit XML file asynchronously.
 
         Args:
             output_file (str): The path to the output XML file.
@@ -168,13 +168,24 @@ class JUnitXMLGenerator:
 
         xml = JUnitXml()
         xml.add_testsuite(self.suite)
-        # logger.info(f"Writing JUnit XML to: {output_file}")
-        xml.write(output_file, pretty=True)
+
+        # Write to temp file first
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as tmp:
+            xml.write(tmp.name)
+            tmp_path = tmp.name
+
+        # Read from temp and write to final destination asynchronously
+        async with aiofiles.open(tmp_path, "r") as src, aiofiles.open(output_file, "w") as dest:
+            content = await src.read()
+            await dest.write(content)
+
+        # Clean up temp file
+        os.unlink(tmp_path)
 
     @staticmethod
-    def merge_junit_xml(files: List[str], output_file: str) -> None:
+    async def merge_junit_xml(files: List[str], output_file: str) -> None:
         """
-        Merge multiple JUnit XML files into one based on testsuite name.
+        Merge multiple JUnit XML files into one asynchronously.
 
         Args:
             files (List[str]): List of file paths to JUnit XML files.
@@ -213,16 +224,33 @@ class JUnitXMLGenerator:
                     suite_dict[suite_name] = suite
 
             # delete the files of individual test cases
-            if os.path.exists(file) and CONF.get_mode() not in ["debug"]:
+            if os.path.exists(file) and get_global_conf().get_mode() not in ["debug"]:
                 os.remove(file)
 
         for suite in suite_dict.values():
             merged_xml.add_testsuite(suite)
 
-        merged_xml.write(output_file)
+        # Write merged XML to temp file first
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as tmp:
+            merged_xml.write(tmp.name)
+            tmp_path = tmp.name
+
+        # Read from temp and write to final destination asynchronously
+        async with aiofiles.open(tmp_path, "r") as src, aiofiles.open(output_file, "w") as dest:
+            content = await src.read()
+            await dest.write(content)
+
+        # Clean up temp file
+        os.unlink(tmp_path)
+
+        # Delete individual test files if not in debug mode
+        if get_global_conf().get_mode() not in ["debug"]:
+            for file in files:
+                if os.path.exists(file):
+                    os.remove(file)
 
 
-def build_junit_xml(
+async def build_junit_xml(
     json_data: Dict[str, Any],
     execution_time: float,
     cost_metric: Dict[str, Any],
@@ -252,7 +280,7 @@ def build_junit_xml(
     """
     feature_r = feature.replace(" ", "_").replace(":", "")
     scenario_r = scenario.replace(" ", "_").replace(":", "")
-    file_path = f"{junit_xml_base_path}/{feature_r}_{scenario_r}_results.xml"
+    file_path = f"{get_global_conf().get_junit_xml_base_path()}/{feature_r}_{scenario_r}_results.xml"
 
     generator = JUnitXMLGenerator(
         feature,
@@ -266,7 +294,7 @@ def build_junit_xml(
         planner_thoughts_path,
     )
     generator.add_test_case(scenario, feature, json_data, execution_time, cost_metric)
-    generator.write_xml(file_path)
+    await generator.write_xml(file_path)
     return file_path
 
 
@@ -328,7 +356,7 @@ def run_test() -> None:
 
     f2_path = build_junit_xml(json_data_fail, execution_time, cost_metric, feature + "1", scenario + "1")
 
-    JUnitXMLGenerator.merge_junit_xml([f1_path, f2_path], f"{junit_xml_base_path}/final_results.xml")
+    JUnitXMLGenerator.merge_junit_xml([f1_path, f2_path], f"{get_global_conf().get_junit_xml_base_path()}/final_results.xml")
 
 
 # # Example usage

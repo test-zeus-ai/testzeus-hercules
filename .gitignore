@@ -160,3 +160,4 @@ testzeus-hercules/**/*.feature
 **/raw_jsons
 **/output_txt
 **/installation_id.txt
+**/additional_tools/*

@@ -4,7 +4,8 @@ import os
 import time
 from typing import Any
 
-from testzeus_hercules.config import CONF
+import aiofiles
+from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.agents_llm_config import AgentsLLMConfig
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.simple_hercules import SimpleHercules
@@ -51,6 +52,7 @@ class BaseRunner:
         self.nav_agent_config = llm_config.get_nav_agent_config()
 
         self.simple_hercules = await SimpleHercules.create(
+            self.stake_id,
             self.planner_agent_config,
             self.nav_agent_config,
             save_chat_logs_to_files=self.save_chat_logs_to_files,
@@ -100,7 +102,8 @@ class BaseRunner:
 
             await self.save_planner_chat_messages()
             if result is not None:
-                logger.info(f'Command "{command}" took: {elapsed_time} seconds.')  # type: ignore
+                logger.info(f'Command "{command}" took: {elapsed_time} seconds.')
+                # Get trace paths from config
                 chat_history = result.chat_history  # type: ignore
                 last_message = chat_history[-1] if chat_history else None  # type: ignore
                 if last_message and "terminate" in last_message and last_message["terminate"] == "yes":
@@ -138,15 +141,15 @@ class BaseRunner:
                 res_output_thoughts_logs_di[key][idx]["content"] = res_content
 
         if self.save_chat_logs_to_files:
-            with open(
+            async with aiofiles.open(
                 os.path.join(
-                    CONF.get_source_log_folder_path(self.stake_id),
+                    get_global_conf().get_source_log_folder_path(self.stake_id),
                     "agent_inner_thoughts.json",
                 ),
                 "w",
                 encoding="utf-8",
             ) as f:
-                json.dump(res_output_thoughts_logs_di, f, ensure_ascii=False, indent=4)
+                await f.write(json.dumps(res_output_thoughts_logs_di, ensure_ascii=False, indent=4))
             logger.debug("Chat messages saved")
         else:
             logger.info(
@@ -161,6 +164,7 @@ class BaseRunner:
         logger.info("Shutting down...")
         if self.browser_manager:
             await self.browser_manager.stop_playwright()
+        PlaywrightManager.close_all_instances()
         self.shutdown_event.set()
 
     async def wait_for_exit(self) -> None:

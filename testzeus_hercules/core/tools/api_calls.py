@@ -64,17 +64,17 @@ def determine_status_type(status_code: int) -> str:
 )
 async def create_resource_http_api(
     url: Annotated[str, "The API endpoint URL for creating the resource."],
-    headers: Annotated[Optional[Dict[str, str]], "Optional HTTP headers to include in the request."] = None,
+    headers: Annotated[dict, "Optional HTTP headers to include in the request."] = {},
     auth: Annotated[
-        Optional[Dict[str, str]],
+        dict,
         "Optional basic authentication credentials (e.g., {'username': 'user', 'password': 'pass'}).",
-    ] = None,
+    ] = {},
     token: Annotated[
-        Optional[str],
+        str,
         "Optional bearer or JWT token for authentication. Include the token string without the 'Bearer ' prefix.",
-    ] = None,
-    data: Annotated[Optional[Dict[str, Any]], "Form data to send in the request body."] = None,
-    json_data: Annotated[Optional[Dict[str, Any]], "JSON data to send in the request body."] = None,
+    ] = "",
+    data: Annotated[dict, "Form data to send in the request body."] = {},
+    json_data: Annotated[dict, "JSON data to send in the request body."] = {},
 ) -> Annotated[
     Tuple[str, float],
     "A tuple containing a minified JSON string and the time taken for the API call in seconds.",
@@ -157,16 +157,16 @@ async def create_resource_http_api(
 )
 async def read_resource_http_api(
     url: Annotated[str, "The API endpoint URL for reading the resource."],
-    headers: Annotated[Optional[Dict[str, str]], "Optional HTTP headers to include in the request."] = None,
+    headers: Annotated[dict, "Optional HTTP headers to include in the request."] = {},
     auth: Annotated[
-        Optional[Dict[str, str]],
+        dict,
         "Optional basic authentication credentials.",
-    ] = None,
+    ] = {},
     token: Annotated[
-        Optional[str],
+        str,
         "Optional bearer or JWT token for authentication. Include the token string without the 'Bearer ' prefix.",
-    ] = None,
-    params: Annotated[Optional[Dict[str, Any]], "Query parameters to include in the GET request."] = None,
+    ] = "",
+    params: Annotated[dict, "Query parameters to include in the GET request."] = {},
 ) -> Annotated[
     Tuple[str, float],
     "A tuple containing a minified JSON string and the time taken for the API call in seconds.",
@@ -245,17 +245,17 @@ async def read_resource_http_api(
 )
 async def update_resource_http_api(
     url: Annotated[str, "The API endpoint URL for updating the resource."],
-    headers: Annotated[Optional[Dict[str, str]], "Optional HTTP headers to include in the request."] = None,
+    headers: Annotated[dict, "Optional HTTP headers to include in the request."] = {},
     auth: Annotated[
-        Optional[Dict[str, str]],
+        dict,
         "Optional basic authentication credentials.",
-    ] = None,
+    ] = {},
     token: Annotated[
-        Optional[str],
+        str,
         "Optional bearer or JWT token for authentication. Include the token string without the 'Bearer ' prefix.",
-    ] = None,
-    data: Annotated[Optional[Dict[str, Any]], "Form data to send in the request body."] = None,
-    json_data: Annotated[Optional[Dict[str, Any]], "JSON data to send in the request body."] = None,
+    ] = "",
+    data: Annotated[dict, "Form data to send in the request body."] = {},
+    json_data: Annotated[dict, "JSON data to send in the request body."] = {},
 ) -> Annotated[
     Tuple[str, float],
     "A tuple containing a minified JSON string and the time taken for the API call in seconds.",
@@ -335,17 +335,17 @@ async def update_resource_http_api(
 )
 async def patch_resource_http_api(
     url: Annotated[str, "The API endpoint URL for patching the resource."],
-    headers: Annotated[Optional[Dict[str, str]], "Optional HTTP headers to include in the request."] = None,
+    headers: Annotated[dict, "Optional HTTP headers to include in the request."] = {},
     auth: Annotated[
-        Optional[Dict[str, str]],
+        dict,
         "Optional basic authentication credentials.",
-    ] = None,
+    ] = {},
     token: Annotated[
-        Optional[str],
+        str,
         "Optional bearer or JWT token for authentication. Include the token string without the 'Bearer ' prefix.",
-    ] = None,
-    data: Annotated[Optional[Dict[str, Any]], "Form data to send in the request body."] = None,
-    json_data: Annotated[Optional[Dict[str, Any]], "JSON data to send in the request body."] = None,
+    ] = "",
+    data: Annotated[dict, "Form data to send in the request body."] = {},
+    json_data: Annotated[dict, "JSON data to send in the request body."] = {},
 ) -> Annotated[
     Tuple[str, float],
     "A tuple containing a minified JSON string and the time taken for the API call in seconds.",
@@ -425,15 +425,15 @@ async def patch_resource_http_api(
 )
 async def delete_resource_http_api(
     url: Annotated[str, "The API endpoint URL for deleting the resource."],
-    headers: Annotated[Optional[Dict[str, str]], "Optional HTTP headers to include in the request."] = None,
+    headers: Annotated[dict, "Optional HTTP headers to include in the request."] = {},
     auth: Annotated[
-        Optional[Dict[str, str]],
+        dict,
         "Optional basic authentication credentials.",
-    ] = None,
+    ] = {},
     token: Annotated[
-        Optional[str],
+        str,
         "Optional bearer or JWT token for authentication. Include the token string without the 'Bearer ' prefix.",
-    ] = None,
+    ] = "",
 ) -> Annotated[
     Tuple[str, float],
     "A tuple containing a minified JSON string and the time taken for the API call in seconds.",
