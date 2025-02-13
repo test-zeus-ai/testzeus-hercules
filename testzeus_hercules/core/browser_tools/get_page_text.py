@@ -13,7 +13,7 @@ from testzeus_hercules.utils.logger import logger
 
 
 @tool(
-    agent_names=["browser_nav_agent"],
+    agent_names=["navigation_nav_agent"],
     description="""Retrieve Text on the current page""",
     name="get_page_text",
 )

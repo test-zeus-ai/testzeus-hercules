@@ -8,7 +8,7 @@ from testzeus_hercules.utils.logger import logger
 
 
 @tool(
-    agent_names=["browser_nav_agent"],
+    agent_names=["navigation_nav_agent"],
     name="captcha_solver",
     description="solves captcha on the page, should be only used when you are sure that there is a captcha on the page and has to be solved.",
 )

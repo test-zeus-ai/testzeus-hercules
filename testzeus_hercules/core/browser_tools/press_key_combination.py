@@ -11,7 +11,7 @@ from testzeus_hercules.utils.dom_mutation_observer import unsubscribe  # type: i
 from testzeus_hercules.utils.logger import logger
 
 
-@tool(agent_names=["browser_nav_agent"], description="""Executes key press on page (Enter, PageDown, ArrowDown, etc.).""", name="press_key_combination")
+@tool(agent_names=["navigation_nav_agent"], description="""Executes key press on page (Enter, PageDown, ArrowDown, etc.).""", name="press_key_combination")
 async def press_key_combination(key_combination: Annotated[str, "key to press, e.g., Enter, PageDown etc"]) -> str:
     logger.info(f"Executing press_key_combination with key combo: {key_combination}")
     # Create and use the PlaywrightManager

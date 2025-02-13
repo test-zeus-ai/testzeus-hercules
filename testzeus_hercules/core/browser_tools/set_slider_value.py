@@ -166,7 +166,7 @@ async def do_setslider(page: Page, selector: str, value_to_set: float) -> dict[s
 
 
 @tool(
-    agent_names=["browser_nav_agent"],
+    agent_names=["navigation_nav_agent"],
     description="used to set slider values in multiple sliders in single attempt.",
     name="bulk_set_slider",
 )

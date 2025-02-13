@@ -12,7 +12,7 @@ _state_dict: Dict[str, Any] = defaultdict(deque)
 
 
 @tool(
-    agent_names=["browser_nav_agent", "api_nav_agent", "sql_nav_agent"],
+    agent_names=["api_nav_agent", "sql_nav_agent", "navigation_nav_agent"],
     description="Tool to store information.",
     name="store_data",
 )
@@ -59,7 +59,7 @@ def store_run_data(
 
 
 # @tool(
-#     agent_names=["browser_nav_agent", "api_nav_agent", "sql_nav_agent"],
+#     agent_names=["api_nav_agent", "sql_nav_agent", "navigation_nav_agent"],
 #     description="Tool to retrieve the stored information.",
 #     name="get_stored_data",
 # )

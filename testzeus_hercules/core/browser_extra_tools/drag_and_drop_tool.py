@@ -8,7 +8,7 @@ from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.logger import logger
 
 
-@tool(agent_names=["browser_nav_agent"], description="Performs drag and drop operation from source to target.", name="drag_and_drop")
+@tool(agent_names=["navigation_nav_agent"], description="Performs drag and drop operation from source to target.", name="drag_and_drop")
 async def drag_and_drop(
     source_selector: Annotated[str, "Source element selector is md attribute value of the dom element to interact, md is an ID"],
     target_selector: Annotated[str, "Target element selector using any valid Playwright selector only (ARIA, CSS, XPath, etc.)"],

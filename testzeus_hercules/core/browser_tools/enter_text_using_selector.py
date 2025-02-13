@@ -181,7 +181,7 @@ async def do_entertext(page: Page, selector: str, text_to_enter: str, use_keyboa
 
 
 @tool(
-    agent_names=["browser_nav_agent"],
+    agent_names=["navigation_nav_agent"],
     name="bulk_enter_text",
     description="Enters text into multiple DOM elements using a bulk operation. An dict containing'selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'text' (text to enter on the element)",
 )

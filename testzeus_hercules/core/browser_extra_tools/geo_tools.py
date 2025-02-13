@@ -8,7 +8,7 @@ from testzeus_hercules.utils.logger import logger
 
 
 @tool(
-    agent_names=["browser_nav_agent", "api_nav_agent"],
+    agent_names=["navigation_nav_agent", "api_nav_agent"],
     name="get_current_geo_location",
     description=("Retrieve the current geolocation"),
 )
@@ -48,7 +48,7 @@ async def get_current_geo_location() -> Union[str, Dict[str, str]]:
 
 
 @tool(
-    agent_names=["browser_nav_agent", "api_nav_agent"],
+    agent_names=["navigation_nav_agent", "api_nav_agent"],
     name="set_current_geo_location",
     description="Set the browser geolocation",
 )

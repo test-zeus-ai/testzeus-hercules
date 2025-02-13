@@ -15,7 +15,7 @@ from testzeus_hercules.utils.dom_mutation_observer import unsubscribe  # type: i
 from testzeus_hercules.utils.logger import logger
 
 
-@tool(agent_names=["browser_nav_agent"], description="""Hovers over element. Returns tooltip details.""", name="hover")
+@tool(agent_names=["navigation_nav_agent"], description="""Hovers over element. Returns tooltip details.""", name="hover")
 async def hover(
     selector: Annotated[str, "selector using md attribute, just give the md ID value"],
     wait_before_execution: Annotated[float, "Wait time in seconds before hover"] = 0.0,

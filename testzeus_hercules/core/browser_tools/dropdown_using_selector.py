@@ -208,7 +208,7 @@ async def do_select_option(page: Page, selector: str, option_value: str) -> dict
 
 
 @tool(
-    agent_names=["browser_nav_agent"],
+    agent_names=["navigation_nav_agent"],
     name="bulk_select_option",
     description="used to Select an option in multiple dropdowns or spinners in single attempt.",
 )

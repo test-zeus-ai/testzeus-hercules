@@ -30,7 +30,7 @@ def get_page_data(page: Any) -> dict:
     return page_data_store.get(page)
 
 
-@tool(agent_names=["browser_nav_agent"], description="""Clicks element by md attribute. Returns success/failure status.""", name="click")
+@tool(agent_names=["navigation_nav_agent"], description="""Clicks element by md attribute. Returns success/failure status.""", name="click")
 async def click(
     selector: Annotated[str, """selector using md attribute, just give the md ID value"""],
     user_input_dialog_response: Annotated[str, "Dialog input value"] = "",

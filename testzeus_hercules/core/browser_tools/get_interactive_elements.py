@@ -17,7 +17,7 @@ from testzeus_hercules.utils.logger import logger
 
 
 @tool(
-    agent_names=["browser_nav_agent"],
+    agent_names=["navigation_nav_agent"],
     description="""DOM Type dict Retrieval Tool, giving all interactive elements on page.
 Notes: [Elements ordered as displayed, Consider ordinal/numbered item positions, List ordinal represent z-index on page]""",
     name="get_interactive_elements",

@@ -7,7 +7,7 @@ from testzeus_hercules.core.generic_tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
 
 
-@tool(agent_names=["browser_nav_agent"], description="""Opens specified URL in browser. Returns new page URL or error message.""", name="openurl")
+@tool(agent_names=["navigation_nav_agent"], description="""Opens specified URL in browser. Returns new page URL or error message.""", name="openurl")
 async def openurl(
     url: Annotated[
         str,

@@ -10,7 +10,7 @@ from testzeus_hercules.utils.logger import logger
 
 
 @tool(
-    agent_names=["browser_nav_agent"],
+    agent_names=["navigation_nav_agent"],
     name="take_browser_screenshot",
     description="Take a screenshot of the current browser view and save it",
 )
@@ -62,7 +62,7 @@ async def take_browser_screenshot(
 
 
 @tool(
-    agent_names=["browser_nav_agent"],
+    agent_names=["navigation_nav_agent"],
     name="see_the_page",
     description="give you the current screenshot of the browser view",
 )

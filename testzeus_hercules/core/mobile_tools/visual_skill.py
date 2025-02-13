@@ -7,7 +7,7 @@ from typing import Annotated, Dict, Union
 from autogen import UserProxyAgent
 from PIL import Image
 from testzeus_hercules.config import get_global_conf
-from testzeus_hercules.core.playwright_manager import PlaywrightManager
+from testzeus_hercules.core.appium_manager import AppiumManager
 from testzeus_hercules.core.generic_tools.tool_registry import tool
 from testzeus_hercules.utils.llm_helper import create_multimodal_agent
 from testzeus_hercules.utils.logger import logger
@@ -31,7 +31,7 @@ image_ex_user_proxy = UserProxyAgent(
 @tool(
     agent_names=["navigation_nav_agent"],
     name="compare_visual_screenshot",
-    description="Compare the current browser view with a reference image or screenshot and log results",
+    description="Compare the current mobile screen with a reference image/screenshot and log results",
 )
 async def compare_visual_screenshot(
     reference_image_path: Annotated[str, "Path to the reference image/screenshot to compare against"],
@@ -51,16 +51,11 @@ async def compare_visual_screenshot(
         if not os.path.exists(reference_image_path):
             return {"error": f"Reference image not found: {reference_image_path}"}
 
-        # Get current screenshot
-        browser_manager = PlaywrightManager()
-        screenshot_stream = await browser_manager.get_latest_screenshot_stream()
-        if not screenshot_stream:
-            page = await browser_manager.get_current_page()
-            await browser_manager.take_screenshots("comparison_screenshot", page)
-            screenshot_stream = await browser_manager.get_latest_screenshot_stream()
-
-        if not screenshot_stream:
-            return {"error": "Failed to capture current browser view"}
+        # Get current screenshot using AppiumManager
+        appium_manager = AppiumManager.get_instance()
+        current_screen = await appium_manager.see_screen()
+        if not current_screen:
+            return {"error": "Failed to capture current screen"}
 
         # Get the proof path from CONF for storing comparison logs
         proof_path = get_global_conf().get_proof_path() or "."
@@ -77,8 +72,7 @@ async def compare_visual_screenshot(
         screenshot_file = os.path.join(comparisons_dir, f"{base_filename}_current.png")
 
         # Save the current screenshot
-        screenshot = Image.open(screenshot_stream)
-        screenshot.save(screenshot_file)
+        current_screen.save(screenshot_file)
 
         # Update comparison metadata to include screenshot path
         comparison_data = {
@@ -165,10 +159,10 @@ async def _write_comparison_to_file(comparison_data: Dict, filepath: str) -> Non
 @tool(
     agent_names=["navigation_nav_agent"],
     name="validate_visual_feature",
-    description="Validate if specific features or items are present in the current browser view",
+    description="Validate if specific features or items are present in the current mobile screen",
 )
 async def validate_visual_feature(
-    feature_description: Annotated[str, "Description of features/items to look for in the current view"],
+    feature_description: Annotated[str, "Description of features/items to look for in the current screen"],
     search_title: Annotated[str, "Title for this feature search"],
 ) -> Union[str, Dict[str, str]]:
     """
@@ -183,16 +177,11 @@ async def validate_visual_feature(
         dict: Error message if something fails
     """
     try:
-        # Get current screenshot
-        browser_manager = PlaywrightManager()
-        screenshot_stream = await browser_manager.get_latest_screenshot_stream()
-        if not screenshot_stream:
-            page = await browser_manager.get_current_page()
-            await browser_manager.take_screenshots("feature_validation", page)
-            screenshot_stream = await browser_manager.get_latest_screenshot_stream()
-
-        if not screenshot_stream:
-            return {"error": "Failed to capture current browser view"}
+        # Get current screenshot using AppiumManager
+        appium_manager = AppiumManager.get_instance()
+        current_screen = await appium_manager.see_screen()
+        if not current_screen:
+            return {"error": "Failed to capture current screen"}
 
         # Get the proof path for storing validation logs
         proof_path = get_global_conf().get_proof_path() or "."
@@ -206,8 +195,7 @@ async def validate_visual_feature(
         screenshot_file = os.path.join(validation_dir, f"{base_filename}.png")
 
         # Save the current screenshot
-        screenshot = Image.open(screenshot_stream)
-        screenshot.save(screenshot_file)
+        current_screen.save(screenshot_file)
 
         # Prepare the validation prompt
         validation_prompt = f"""Analyze this image and validate the following features/items:

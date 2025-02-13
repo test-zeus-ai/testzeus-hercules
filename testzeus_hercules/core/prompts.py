@@ -24,7 +24,7 @@ LLM_PROMPTS = {
    3. Identify incomplete elements
    4. Suggest next steps for completion""",
     "GO_BACK_PROMPT": """Navigates to previous page in browser history. Returns full URL after navigation.""",
-    "COMMAND_EXECUTION_PROMPT": """Execute the user task "$command" $current_url_prompt_segment""",
+    "COMMAND_EXECUTION_PROMPT": """Execute the user task "$command" $current_state_prompt_segment""",
     "GET_DOM_WITHOUT_CONTENT_TYPE_PROMPT": """Retrieves current page DOM with injected "md" attributes for interaction. Returns minified HTML.""",
     "GET_ACCESSIBILITY_TREE": """Retrieves accessibility tree with elements in display order.""",
     "CLICK_PROMPT_ACCESSIBILITY": """Clicks element by name and role. Returns success/failure status.""",

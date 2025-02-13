@@ -120,13 +120,19 @@ class DeviceManager:
                 self._device_instance = AppiumManager(
                     stake_id=self.stake_id,
                     platformName="iOS",
-                    automationName="XCUITest"
+                    automationName="XCUITest",
+                    platformVersion=conf.get_appium_platform_version(),
+                    udid=conf.get_appium_device_uuid(),
+                    app=conf.get_appium_ios_app_path()
                 )
             else:  # android
                 self._device_instance = AppiumManager(
                     stake_id=self.stake_id,
                     platformName="Android",
-                    automationName="UiAutomator2"
+                    automationName="UiAutomator2",
+                    platformVersion=conf.get_appium_platform_version(),
+                    udid=conf.get_appium_device_uuid(),
+                    app=conf.get_appium_apk_path()
                 )
         else:  # playwright
             self._device_instance = PlaywrightManager(stake_id=self.stake_id)

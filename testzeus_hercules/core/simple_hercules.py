@@ -12,19 +12,19 @@ import nest_asyncio  # type: ignore
 import openai
 from autogen import Cache
 from testzeus_hercules.config import get_global_conf
+from testzeus_hercules.core.device_manager import DeviceManager
 from testzeus_hercules.core.agents.api_nav_agent import ApiNavAgent
 from testzeus_hercules.core.agents.browser_nav_agent import BrowserNavAgent
+from testzeus_hercules.core.agents.mobile_nav_agent import MobileNavAgent
 from testzeus_hercules.core.agents.high_level_planner_agent import PlannerAgent
 from testzeus_hercules.core.agents.sec_nav_agent import SecNavAgent
 from testzeus_hercules.core.agents.sql_nav_agent import SqlNavAgent
 from testzeus_hercules.core.agents.static_waiter_nav_agent import StaticWaiterNavAgent
-from testzeus_hercules.core.browser_extra_tools import *
 from testzeus_hercules.core.memory.state_handler import store_run_data
 from testzeus_hercules.core.post_process_responses import (
     final_reply_callback_planner_agent as notify_planner_messages,  # type: ignore
 )
 from testzeus_hercules.core.prompts import LLM_PROMPTS
-from testzeus_hercules.core.browser_tools import *
 from testzeus_hercules.core.browser_tools.get_url import geturl
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.detect_llm_loops import is_agent_stuck_in_loop
@@ -65,12 +65,12 @@ class SimpleHercules:
         stake_id: str,
         save_chat_logs_to_files: bool = True,
         planner_max_chat_round: int = 500,
-        browser_nav_max_chat_round: int = 10,
+        nav_max_chat_round: int = 10,
     ):
         self.timestamp = get_timestamp_str()  # Add this line to store timestamp
         oai.Completion.set_cache(5, cache_path_root=".cache")
         self.planner_number_of_rounds = planner_max_chat_round
-        self.nav_agent_number_of_rounds = browser_nav_max_chat_round
+        self.nav_agent_number_of_rounds = nav_max_chat_round
 
         self.agents_map: (
             dict[
@@ -81,7 +81,7 @@ class SimpleHercules:
         ) = None
 
         self.planner_agent_model_config: list[dict[str, str]] | None = None
-        self.browser_nav_agent_model_config: list[dict[str, str]] | None = None
+        self.navigation_nav_agent_model_config: list[dict[str, str]] | None = None
         self.api_nav_agent_model_config: list[dict[str, str]] | None = None
         self.sec_nav_agent_model_config: list[dict[str, str]] | None = None
         self.sql_nav_agent_model_config: list[dict[str, str]] | None = None
@@ -92,6 +92,8 @@ class SimpleHercules:
         self.stake_id = stake_id
         self.chat_logs_dir: str = get_global_conf().get_source_log_folder_path(self.stake_id)
         self.save_chat_logs_to_files = save_chat_logs_to_files
+        self.device_manager_type = get_global_conf().get_device_manager()
+        self.device_manager = DeviceManager(stake_id=self.stake_id).get_device_instance()
 
     @classmethod
     async def create(
@@ -101,7 +103,7 @@ class SimpleHercules:
         nav_agent_config: dict[str, Any],
         save_chat_logs_to_files: bool = True,
         planner_max_chat_round: int = 500,
-        browser_nav_max_chat_round: int = 10,
+        nav_max_chat_round: int = 10,
     ) -> "SimpleHercules":
         """
         Create an instance of SimpleHercules.
@@ -119,24 +121,24 @@ class SimpleHercules:
                         "top_p": 0.001
                     }
                 }
-            nav_agent_config: dict[str, Any]: A dictionary containing the configuration parameters for the browser navigation agent. Same format as planner_agent_config.
+            nav_agent_config: dict[str, Any]: A dictionary containing the configuration parameters for the navigation navigation agent. Same format as planner_agent_config.
             save_chat_logs_to_files (bool, optional): Whether to save chat logs to files. Defaults to True.
             planner_max_chat_rounds (int, optional): The maximum number of chat rounds for the planner. Defaults to 50.
-            browser_nav_max_chat_round (int, optional): The maximum number of chat rounds for the browser navigation agent. Defaults to 10.
+            nav_max_chat_round (int, optional): The maximum number of chat rounds for the navigation navigation agent. Defaults to 10.
 
         Returns:
             SimpleHercules: An instance of SimpleHercules.
 
         """
         logger.info(
-            f">>> Creating SimpleHercules, Planner max chat rounds: {planner_max_chat_round}, browser nav max chat rounds: {browser_nav_max_chat_round}. Save chat logs to files: {save_chat_logs_to_files}"
+            f">>> Creating SimpleHercules, Planner max chat rounds: {planner_max_chat_round}, navigation nav max chat rounds: {nav_max_chat_round}. Save chat logs to files: {save_chat_logs_to_files}"
         )
         # Create an instance of cls
         self = cls(
             stake_id,
             save_chat_logs_to_files=save_chat_logs_to_files,
             planner_max_chat_round=planner_max_chat_round,
-            browser_nav_max_chat_round=browser_nav_max_chat_round,
+            nav_max_chat_round=nav_max_chat_round,
         )
 
         os.environ["AUTOGEN_USE_DOCKER"] = "False"
@@ -145,7 +147,8 @@ class SimpleHercules:
         self.nav_agent_config = nav_agent_config
 
         self.planner_agent_model_config = convert_model_config_to_autogen_format(self.planner_agent_config["model_config_params"])
-        self.browser_nav_agent_model_config = convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
+        self.navigation_nav_agent_model_config = convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
+        self.navigation_nav_agent_model_config = convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
         self.api_nav_agent_model_config = convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
         self.sec_nav_agent_model_config = convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
         self.sql_nav_agent_model_config = convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
@@ -169,36 +172,34 @@ class SimpleHercules:
             notify_planner_messages(next_step, message_type=MessageType.STEP)
             return True
 
-        def get_url() -> str:
-            # return geturl()
-            return asyncio.run(geturl())
+        def get_current_state() -> str:
+            if self.device_manager_type == "playwright":
+                return asyncio.run(geturl())
+            elif self.device_manager_type == "appium":
+                return "Current Device View: " + asyncio.run(self.device_manager.get_current_screen_state())
+            else:
+                return "Current state not clear, try to check"
 
         def my_custom_summary_method(sender: autogen.ConversableAgent, recipient: autogen.ConversableAgent, summary_args: dict):  # type: ignore
-            # messages_str_keys = {str(key): value for key, value in sender.chat_messages.items()}  # type: ignore
-            # self.__save_chat_log(list(messages_str_keys.values())[0])  # type: ignore
+
             self.__save_chat_log(sender, recipient)  # type: ignore
-            do_we_need_get_url = False
+            do_we_need_get_cur_state = False
             if isinstance(recipient, autogen.GroupChatManager):
 
-                if "browser" in recipient.last_speaker.name:
-                    do_we_need_get_url = True
+                if "navigation" in recipient.last_speaker.name:
+                    do_we_need_get_cur_state = True
                 last_message = recipient.last_message(recipient.last_speaker)["content"]
             else:
                 last_message = recipient.last_message(sender)["content"]  # type: ignore
             if not last_message or last_message.strip() == "":  # type: ignore
-                # logger.info(f">>> Last message from browser nav was empty. Max turns: {self.nav_agent_number_of_rounds*2}, number of messages: {len(list(sender.chat_messages.items())[0][1])}")
-                # logger.info(">>> Sender messages:", json.dumps( list(sender.chat_messages.items())[0][1], indent=2))
                 return "I received an empty message. This is not an error and is recoverable. Try to reformulate the task..."
             elif "##TERMINATE TASK##" in last_message:
                 last_message = last_message.replace("##TERMINATE TASK##", "")  # type: ignore
-                if last_message and do_we_need_get_url:
-                    last_message += " " + get_url()
+                if last_message and do_we_need_get_cur_state:
+                    last_message += " " + get_current_state()
                 else:
                     mem = "Context from previous steps: " + last_message + "\n"
                     store_run_data(mem)
-                # t_l = last_message.strip()
-                # if not t_l:
-                #     logger.info("Last message from browser nav was empty. Max turns: {self.nav_agent_number_of_rounds*2}, number of messages: {len(list(sender.chat_messages.items())[0][1])}")
                 notify_planner_messages(last_message, message_type=MessageType.ACTION)  # type: ignore
                 return last_message  #  type: ignore
             notify_planner_messages(last_message, message_type=MessageType.ACTION)  # type: ignore
@@ -217,8 +218,8 @@ class SimpleHercules:
                 return None
             else:
                 url = ""
-                if "browser" in target_helper:
-                    url = get_url()
+                if "navigation" in target_helper:
+                    url = get_current_state()
                 if target_helper.strip():
                     next_step = next_step.strip() + " " + url + f" ##target_helper: {target_helper}##"  # type: ignore
                     return next_step  # type: ignore
@@ -377,8 +378,8 @@ class SimpleHercules:
         """
         agents_map: dict[str, UserProxyAgent_SequentialFunctionExecution | autogen.ConversableAgent] = {}
         agents_map["user"] = await self.__create_user_delegate_agent()
-        agents_map["browser_nav_executor"] = self.__create_browser_nav_executor_agent()
-        agents_map["browser_nav_agent"] = self.__create_browser_nav_agent(agents_map["browser_nav_executor"])
+        agents_map["navigation_nav_executor"] = self.__create_navigation_nav_executor_agent()
+        agents_map["navigation_nav_agent"] = self.__create_navigation_nav_agent(agents_map["navigation_nav_executor"])
         agents_map["api_nav_executor"] = self.__create_api_nav_executor_agent()
         agents_map["api_nav_agent"] = self.__create_api_nav_agent(agents_map["api_nav_executor"])
         agents_map["sec_nav_executor"] = self.__create_sec_nav_executor_agent()
@@ -434,32 +435,32 @@ class SimpleHercules:
         )
         return task_delegate_agent
 
-    def __create_browser_nav_executor_agent(self) -> autogen.UserProxyAgent:
+    def __create_navigation_nav_executor_agent(self) -> autogen.UserProxyAgent:
         """
-        Create a UserProxyAgent instance for executing browser control.
+        Create a UserProxyAgent instance for executing navigation control.
 
         Returns:
             autogen.UserProxyAgent: An instance of UserProxyAgent.
 
         """
 
-        def is_browser_executor_termination_message(x: dict[str, str]) -> bool:  # type: ignore
+        def is_navigation_executor_termination_message(x: dict[str, str]) -> bool:  # type: ignore
 
             tools_call: Any = x.get("tool_calls", "")
             if tools_call:
-                chat_messages = self.agents_map["browser_nav_executor"].chat_messages  # type: ignore
+                chat_messages = self.agents_map["navigation_nav_executor"].chat_messages  # type: ignore
                 # Get the only key from the dictionary
                 agent_key = next(iter(chat_messages))  # type: ignore
                 # Get the chat messages corresponding to the only key
                 messages = chat_messages[agent_key]  # type: ignore
                 return is_agent_stuck_in_loop(messages)  # type: ignore
             else:
-                logger.info("Terminating browser executor")
+                logger.info("Terminating navigation executor")
                 return True
 
-        browser_nav_executor_agent = UserProxyAgent_SequentialFunctionExecution(
-            name="browser_nav_executor",
-            is_termination_msg=is_browser_executor_termination_message,
+        navigation_nav_executor_agent = UserProxyAgent_SequentialFunctionExecution(
+            name="navigation_nav_executor",
+            is_termination_msg=is_navigation_executor_termination_message,
             human_input_mode="NEVER",
             llm_config=None,
             max_consecutive_auto_reply=self.nav_agent_number_of_rounds,
@@ -469,31 +470,38 @@ class SimpleHercules:
                 "use_docker": False,
             },
         )
-        logger.info(">>> Created browser_nav_executor_agent: %s", browser_nav_executor_agent)
-        return browser_nav_executor_agent
+        logger.info(">>> Created navigation_nav_executor_agent: %s", navigation_nav_executor_agent)
+        return navigation_nav_executor_agent
 
-    def __create_browser_nav_agent(self, user_proxy_agent: UserProxyAgent_SequentialFunctionExecution) -> autogen.ConversableAgent:
+    def __create_navigation_nav_agent(self, user_proxy_agent: UserProxyAgent_SequentialFunctionExecution) -> autogen.ConversableAgent:
         """
-        Create a BrowserNavAgent instance.
+        Create a NavAgent instance.
 
         Args:
             user_proxy_agent (autogen.UserProxyAgent): The instance of UserProxyAgent that was created.
 
         Returns:
-            autogen.AssistantAgent: An instance of BrowserNavAgent.
+            autogen.AssistantAgent: An instance of NavAgent.
 
         """
-        browser_nav_agent = BrowserNavAgent(
-            self.browser_nav_agent_model_config,
+        if self.device_manager_type == "playwright":
+            init_cls = BrowserNavAgent
+        elif self.device_manager_type == "appium":
+            init_cls = MobileNavAgent
+        else:
+            init_cls = BrowserNavAgent
+            
+        navigation_nav_agent = init_cls(
+            self.navigation_nav_agent_model_config,
             self.nav_agent_config["llm_config_params"],  # type: ignore
             self.nav_agent_config["other_settings"].get("system_prompt", None),
             user_proxy_agent,
         )  # type: ignore
-        return browser_nav_agent.agent
+        return navigation_nav_agent.agent
 
     def __create_api_nav_executor_agent(self) -> autogen.UserProxyAgent:
         """
-        Create a UserProxyAgent instance for executing browser control.
+        Create a UserProxyAgent instance for executing navigation control.
 
         Returns:
             autogen.UserProxyAgent: An instance of UserProxyAgent.
@@ -550,7 +558,7 @@ class SimpleHercules:
 
     def __create_sec_nav_executor_agent(self) -> autogen.UserProxyAgent:
         """
-        Create a UserProxyAgent instance for executing browser control.
+        Create a UserProxyAgent instance for executing navigation control.
 
         Returns:
             autogen.UserProxyAgent: An instance of UserProxyAgent.
@@ -626,7 +634,7 @@ class SimpleHercules:
 
     def __create_sql_nav_executor_agent(self) -> autogen.UserProxyAgent:
         """
-        Create a UserProxyAgent instance for executing browser control.
+        Create a UserProxyAgent instance for executing navigation control.
 
         Returns:
             autogen.UserProxyAgent: An instance of UserProxyAgent.
@@ -740,23 +748,18 @@ class SimpleHercules:
         self.agents_map["user"].clear_history()
         logger.info("Plan cleaned up.")
 
-    async def process_command(self, command: str, *args: Any, current_url: str | None = None, **kwargs: Any) -> autogen.ChatResult | None:
-        """
-        Process a command by sending it to one or more agents.
+    async def process_command(self, command: str, *args: Any, current_state: str | None = None, **kwargs: Any) -> autogen.ChatResult | None:
+        
+        current_state_prompt_segment = ""
+        if current_state:
+            if self.device_manager_type == "playwright":
+                current_state_prompt_segment = f"Current Page: {current_state}"
+            elif self.device_manager_type == "appium":
+                current_state_prompt_segment = f"Current Device View: {current_state}"
+            else:
+                current_state_prompt_segment = f"Current State: {current_state}"
 
-        Args:
-            command (str): The command to be processed.
-            current_url (str, optional): The current URL of the browser. Defaults to None.
-
-        Returns:
-            autogen.ChatResult | None: The result of the command processing, or None if an error occurred. Contains chat log, cost(tokens/price)
-
-        """
-        current_url_prompt_segment = ""
-        if current_url:
-            current_url_prompt_segment = f"Current Page: {current_url}"
-
-        prompt = Template(LLM_PROMPTS["COMMAND_EXECUTION_PROMPT"]).substitute(command=command, current_url_prompt_segment=current_url_prompt_segment)
+        prompt = Template(LLM_PROMPTS["COMMAND_EXECUTION_PROMPT"]).substitute(command=command, current_state_prompt_segment=current_state_prompt_segment)
         logger.info("Prompt for command: %s", prompt)
         with Cache.disk(cache_seed=5) as cache:
             try:

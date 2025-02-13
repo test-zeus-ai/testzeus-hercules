@@ -4,6 +4,7 @@ from subprocess import Popen
 import time
 import os
 import base64
+import json
 import xml.etree.ElementTree as ET
 import io
 from typing import Optional, Dict, Any, List, TypeVar, Union, cast
@@ -11,14 +12,13 @@ from typing import Optional, Dict, Any, List, TypeVar, Union, cast
 from appium import webdriver
 from appium.webdriver.webdriver import WebDriver
 from appium.options.common import AppiumOptions
-from selenium.webdriver.common.by import By
+from appium.webdriver.common.appiumby import AppiumBy
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.remote.webelement import WebElement
 from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.utils.logger import logger
 
 from PIL import Image
-
 
 class AppiumManager:
     """
@@ -117,6 +117,8 @@ class AppiumManager:
         deviceName: Optional[str] = None,
         automationName: Optional[str] = None,
         app: Optional[str] = None,
+        platformVersion: Optional[str] = None,
+        udid: Optional[str] = None,
         extra_capabilities: Optional[Dict[str, Any]] = None,
     ):
         """
@@ -141,7 +143,15 @@ class AppiumManager:
         self.platformName = platformName or conf.get_platform_name() or "Android"
         self.deviceName = deviceName or conf.get_device_name() or "emulator-5554"
         self.automationName = automationName or conf.get_automation_name() or "UiAutomator2"
-        self.app = app or conf.get_app_path() or ""
+        self.platformVersion = platformVersion or conf.get_appium_platform_version()
+        self.udid = udid or conf.get_appium_device_uuid()
+        
+        # Handle app paths based on platform
+        if self.platformName.lower() == "android":
+            self.app = app or conf.get_appium_apk_path() or conf.get_app_path() or ""
+        else:  # iOS
+            self.app = app or conf.get_appium_ios_app_path() or conf.get_app_path() or ""
+            
         self.extra_capabilities = extra_capabilities or conf.get_appium_capabilities() or {}
 
         self.driver: Optional[WebDriver] = None
@@ -155,11 +165,14 @@ class AppiumManager:
         self._screenshots_dir: Optional[str] = None
         self._video_dir: Optional[str] = None
         self._logs_dir: Optional[str] = None
+        self._latest_video_path: Optional[str] = None
 
         logger.debug(
             f"AppiumManager init (stake_id={self.stake_id}) - platformName={self.platformName}, "
             f"deviceName={self.deviceName}, automationName={self.automationName}, app={self.app}"
         )
+        
+        self.request_response_log_file = None
 
     async def setup_artifacts(self) -> None:
         """
@@ -175,13 +188,95 @@ class AppiumManager:
         os.makedirs(self._logs_dir, exist_ok=True)
         logger.info(f"Artifact directories set up at {proof_path}")
 
+    async def check_emulator_running(self) -> bool:
+        """
+        Check if any Android emulator is currently running.
+        Returns True if an emulator is running, False otherwise.
+        """
+        try:
+            process = await asyncio.create_subprocess_exec(
+                'adb', 'devices',
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, _ = await process.communicate()
+            output = stdout.decode()
+            
+            # Check if any emulator is listed in adb devices
+            return 'emulator' in output
+        except Exception as e:
+            logger.error(f"Error checking emulator status: {e}")
+            return False
+
+    async def wait_for_emulator_boot(self, timeout: int = 180) -> bool:
+        """
+        Wait for the emulator to complete booting by checking boot_completed property.
+        Returns True if device booted successfully, False if timeout occurred.
+        
+        Args:
+            timeout: Maximum time to wait in seconds (default 3 minutes)
+        """
+        start_time = time.time()
+        check_interval = 2  # Check every 2 seconds
+        
+        while (time.time() - start_time) < timeout:
+            try:
+                # Check if device is responding
+                process = await asyncio.create_subprocess_exec(
+                    'adb', 'shell', 'getprop', 'sys.boot_completed',
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                stdout, _ = await process.communicate()
+                boot_completed = stdout.decode().strip()
+                
+                if boot_completed == "1":
+                    logger.info("Emulator has completed booting")
+                    # Additional check for package manager
+                    pkg_process = await asyncio.create_subprocess_exec(
+                        'adb', 'shell', 'pm', 'path', 'android',
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    )
+                    await pkg_process.communicate()
+                    if pkg_process.returncode == 0:
+                        logger.info("Package manager is ready")
+                        return True
+                
+                logger.debug(f"Waiting for emulator to boot... ({int(time.time() - start_time)}s)")
+                await asyncio.sleep(check_interval)
+                
+            except Exception as e:
+                logger.warning(f"Error checking emulator boot status: {e}")
+                await asyncio.sleep(check_interval)
+                
+        logger.error(f"Emulator boot timeout after {timeout} seconds")
+        return False
+
     async def async_initialize(self) -> None:
         """
         Asynchronously initialize the AppiumManager.
 
-        This creates artifact directories, starts the Appium server (if needed),
+        First checks if an emulator is running:
+        - If running, proceeds with normal initialization
+        - If not running, starts an emulator and waits for it to boot
+        
+        Then creates artifact directories, starts the Appium server (if needed),
         and creates a new Appium session.
         """
+        # First check if emulator is running
+        emulator_running = await self.check_emulator_running()
+        
+        if not emulator_running:
+            logger.info("No emulator running. Starting a new emulator...")
+            avd_name = get_global_conf().get_emulator_avd_name() or "Medium_Phone_API_35"
+            await self.start_emulator(avd_name)
+            
+            # Wait for emulator to boot with dynamic checking
+            logger.info("Waiting for emulator to boot completely...")
+            if not await self.wait_for_emulator_boot():
+                raise Exception("Emulator failed to boot within the timeout period")
+            
         await self.setup_artifacts()
         if self.start_server:
             await self.start_appium_server()
@@ -189,10 +284,80 @@ class AppiumManager:
 
     # ─── APPIUM SERVER & EMULATOR MANAGEMENT ─────────────────────────────
 
+    async def wait_for_appium_server(self, timeout: int = 30) -> bool:
+        """
+        Wait for Appium server to be fully responsive by checking its status endpoint.
+        Returns True if server is responding, False if timeout occurred.
+        
+        Args:
+            timeout: Maximum time to wait in seconds (default 30 seconds)
+        """
+        import aiohttp
+        start_time = time.time()
+        check_interval = 1  # Check every second
+        server_url = self.appium_server_url or f"http://127.0.0.1:{self.server_port}"
+        status_url = f"{server_url}/status"
+
+        async with aiohttp.ClientSession() as session:
+            while (time.time() - start_time) < timeout:
+                try:
+                    async with session.get(status_url) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            logger.info(f"Appium server status: {data}")
+                            if data['value']['ready'] == True:
+                                logger.info("Appium server is responsive")
+                                return True
+                except Exception as e:
+                    logger.debug(f"Waiting for Appium server... ({int(time.time() - start_time)}s)")
+                
+                await asyncio.sleep(check_interval)
+
+        logger.error(f"Appium server not responding after {timeout} seconds")
+        return False
+
+    def _setup_request_response_logging(self) -> None:
+        """
+        Set up request/response logging for the Appium server.
+        Creates a new log file for the current session.
+        """
+        if not self._logs_dir:
+            return
+
+        timestamp = int(time.time())
+        self._request_log_path = os.path.join(
+            self._logs_dir, f"appium_requests_{timestamp}.log"
+        )
+        logger.info(f"Request/response logging enabled at {self._request_log_path}")
+
+    def _log_request_response(self, request_data: Dict[str, Any], response_data: Dict[str, Any]) -> None:
+        """
+        Log request and response data to the request log file.
+        
+        Args:
+            request_data: Dictionary containing request information
+            response_data: Dictionary containing response information
+        """
+        if not hasattr(self, '_request_log_path'):
+            return
+
+        try:
+            log_entry = {
+                'timestamp': time.strftime('%Y-%m-%d %H:%M:%S'),
+                'request': request_data,
+                'response': response_data
+            }
+            with open(self._request_log_path, 'a', encoding='utf-8') as f:
+                json.dump(log_entry, f)
+                f.write('\n')
+        except Exception as e:
+            logger.error(f"Error logging request/response: {e}")
+
     async def start_appium_server(self) -> None:
         """
         Spawn a new Appium server instance using subprocess.
-        Also starts tasks to capture server stdout/stderr logs.
+        Also starts tasks to capture server stdout/stderr logs and request/response logging.
+        Includes dynamic wait for server readiness.
         """
         if self.appium_process is not None:
             logger.info("Appium server already running.")
@@ -207,7 +372,11 @@ class AppiumManager:
                 stderr=asyncio.subprocess.PIPE,
             )
             self.appium_process = cast(Popen[bytes], process)
-            # Start log capture tasks.
+            
+            # Set up request/response logging
+            self._setup_request_response_logging()
+            
+            # Start log capture tasks
             if self._logs_dir and self.appium_process and self.appium_process.stdout and self.appium_process.stderr:
                 self._log_tasks.append(
                     asyncio.create_task(self._capture_stream(self.appium_process.stdout, "appium_stdout.log"))
@@ -215,9 +384,13 @@ class AppiumManager:
                 self._log_tasks.append(
                     asyncio.create_task(self._capture_stream(self.appium_process.stderr, "appium_stderr.log"))
                 )
-            # Allow time for the server to start.
-            await asyncio.sleep(3)
-            logger.info("Appium server started successfully.")
+            
+            # Wait for server to be fully responsive
+            logger.info("Waiting for Appium server to be ready...")
+            if not await self.wait_for_appium_server():
+                raise Exception("Appium server failed to respond within the timeout period")
+                
+            logger.info("Appium server started and responding successfully.")
         except Exception as e:
             logger.error(f"Failed to start Appium server: {e}")
             raise e
@@ -291,7 +464,7 @@ class AppiumManager:
         Start an Android emulator using the provided AVD name or one from configuration.
         """
         if not avd_name:
-            avd_name = get_global_conf().get_emulator_avd_name() or "Pixel_3_API_30"
+            avd_name = get_global_conf().get_emulator_avd_name() or "Medium_Phone_API_35"
         command = ["emulator", "-avd", avd_name]
         logger.info(f"Starting emulator with AVD: {avd_name}")
         try:
@@ -314,20 +487,60 @@ class AppiumManager:
         """
         await self.start_emulator(avd_name)
         # Optionally wait additional time for the device to boot completely.
-        await asyncio.sleep(40)
+        await asyncio.sleep(120)
         await self.async_initialize()
+
+    async def wait_for_session_ready(self, timeout: int = 30) -> bool:
+        """
+        Wait for the Appium session to be fully ready by checking device responsiveness.
+        Returns True if session is ready, False if timeout occurred.
+        
+        Args:
+            timeout: Maximum time to wait in seconds (default 30 seconds)
+        """
+        if not self.driver:
+            return False
+
+        start_time = time.time()
+        check_interval = 1  # Check every second
+        
+        while (time.time() - start_time) < timeout:
+            try:
+                # Try to get device screen size as a basic check
+                loop = asyncio.get_running_loop()
+                driver = cast(WebDriver, self.driver)
+                await loop.run_in_executor(None, driver.get_window_size)
+                logger.info("Appium session is responsive")
+                return True
+            except Exception as e:
+                logger.debug(f"Waiting for session to be ready... ({int(time.time() - start_time)}s)")
+                await asyncio.sleep(check_interval)
+
+        logger.error(f"Session not responding after {timeout} seconds")
+        return False
 
     async def create_session(self) -> None:
         """
         Create an Appium session by initializing the WebDriver.
+        Includes request/response logging and session stability checks.
         """
         desired_caps = {
             "platformName": self.platformName,
             "deviceName": self.deviceName,
             "automationName": self.automationName,
         }
+        
+        # Add app path if specified
         if self.app:
             desired_caps["app"] = self.app
+            
+        # Add platform version if specified
+        if self.platformVersion:
+            desired_caps["platformVersion"] = self.platformVersion
+            
+        # Add device UUID if specified
+        if self.udid:
+            desired_caps["udid"] = self.udid
 
         # Merge any extra capabilities.
         desired_caps.update(self.extra_capabilities)
@@ -336,6 +549,12 @@ class AppiumManager:
         logger.info(f"Creating Appium session with server: {server_url} and capabilities: {desired_caps}")
         try:
             loop = asyncio.get_running_loop()
+            
+            # Log the session creation request
+            self._log_request_response(
+                {"command": "create_session", "capabilities": desired_caps},
+                {"status": "pending"}
+            )
             
             # Create AppiumOptions instance with modern W3C capabilities
             options = AppiumOptions()
@@ -350,9 +569,25 @@ class AppiumManager:
                     options=options
                 )
             )
-            logger.info("Appium session created successfully.")
-        except Exception as e:
             
+            # Wait for session to be fully ready
+            logger.info("Waiting for session to stabilize...")
+            if not await self.wait_for_session_ready():
+                raise Exception("Session failed to stabilize within the timeout period")
+            
+            # Log successful session creation
+            self._log_request_response(
+                {"command": "create_session", "capabilities": desired_caps},
+                {"status": "success", "session_id": self.driver.session_id}
+            )
+            logger.info("Appium session created and stabilized successfully.")
+            
+        except Exception as e:
+            # Log failed session creation
+            self._log_request_response(
+                {"command": "create_session", "capabilities": desired_caps},
+                {"status": "error", "error": str(e)}
+            )
             logger.error(f"Failed to create Appium session: {e}")
             raise e
 
@@ -431,6 +666,7 @@ class AppiumManager:
             video_path = os.path.join(self._video_dir, f"recording_{int(time.time())}.mp4")
             with open(video_path, "wb") as f:
                 f.write(video_bytes)
+            self._latest_video_path = video_path
             logger.info(f"Screen recording saved to {video_path}")
             return video_path
         except Exception as e:
@@ -465,88 +701,295 @@ class AppiumManager:
             logger.info(f"Device logs captured in {log_file_path}")
         except Exception as e:
             logger.error(f"Error capturing device logs: {e}")
+    # ─── ELEMENT FINDING STRATEGIES ─────────────────────────────────────────────
+
+    def _parse_bounds(self, bounds_str: str) -> Optional[Dict[str, int]]:
+        """
+        Parse bounds string in format '[x1,y1][x2,y2]' into coordinates.
+        
+        Args:
+            bounds_str: String representation of element bounds
+            
+        Returns:
+            Dictionary with x1,y1,x2,y2 coordinates or None if invalid format
+        """
+        try:
+            # Remove brackets and split into coordinates
+            coords = bounds_str.replace('[', '').replace(']', '').split(',')
+            if len(coords) != 4:
+                return None
+                
+            # Parse into integers
+            x1, y1, x2, y2 = map(int, coords)
+            return {'x1': x1, 'y1': y1, 'x2': x2, 'y2': y2}
+        except Exception as e:
+            logger.debug(f"Error parsing bounds {bounds_str}: {e}")
+            return None
+
+    async def find_element_by_bounds(
+        self,
+        bounds: str,
+        tag_name: Optional[str] = None
+    ) -> Optional[WebElement]:
+        """
+        Find element by its bounding box coordinates.
+        
+        Args:
+            bounds: Element bounds in format '[x1,y1][x2,y2]'
+            tag_name: Optional tag/class name to filter by
+            
+        Returns:
+            WebElement if found, None otherwise
+        """
+        if not self.driver:
+            return None
+            
+        try:
+            coords = self._parse_bounds(bounds)
+            if not coords:
+                return None
+                
+            loop = asyncio.get_running_loop()
+            driver = cast(WebDriver, self.driver)
+
+            # Construct XPath with bounds and optional tag
+            # Construct XPath with bounds and optional tag
+            tag_condition = ""
+            if tag_name:
+                tag_condition = f"@class='{tag_name}' and "
+            xpath = f"//*[{tag_condition}@bounds='{bounds}' and @enabled='true' and @displayed='true']"
+            
+            return await loop.run_in_executor(
+                None,
+                lambda: driver.find_element(AppiumBy.XPATH, xpath)
+            )
+        except Exception as e:
+            logger.debug(f"Element not found by bounds {bounds}: {e}")
+            return None
+
+    async def find_element_best_match(
+        self,
+        res_id: Optional[str] = None,
+        accessibility_id: Optional[str] = None,
+        bounds: Optional[str] = None,
+        tag_name: Optional[str] = None
+    ) -> WebElement:
+        """
+        Try finding element using resource ID first, then accessibility ID, then bounds.
+        
+        Args:
+            res_id: Resource ID of the element (Android: resource-id, iOS: name)
+            accessibility_id: Accessibility ID of the element (Android: content-desc, iOS: accessibilityIdentifier)
+            bounds: Element bounds in format '[x1,y1][x2,y2]'
+            tag_name: Optional tag/class name to filter by when using bounds
+
+        Returns:
+            WebElement: Found element
+
+        Raises:
+            Exception: If element cannot be found using any strategy
+        """
+        if not self.driver:
+            logger.error("No Appium session available for finding element.")
+            raise RuntimeError("No active Appium session")
+
+        try:
+            loop = asyncio.get_running_loop()
+            driver = cast(WebDriver, self.driver)
+
+            # Try resource ID first if provided
+            if res_id:
+                logger.debug(f"Trying to find element by resource ID: {res_id}")
+                try:
+                    return await loop.run_in_executor(
+                        None, lambda: driver.find_element(AppiumBy.ID, res_id)
+                    )
+                except Exception as e:
+                    logger.debug(f"Element not found by resource ID: {e}")
+
+            # Then try accessibility ID if provided
+            if accessibility_id:
+                logger.debug(f"Trying to find element by accessibility ID: {accessibility_id}")
+                try:
+                    return await loop.run_in_executor(
+                        None, lambda: driver.find_element(AppiumBy.ACCESSIBILITY_ID, accessibility_id)
+                    )
+                except Exception as e:
+                    logger.debug(f"Element not found by accessibility ID: {e}")
+
+            # Finally try bounds if provided
+            if bounds:
+                logger.debug(f"Trying to find element by bounds: {bounds}")
+                element = await self.find_element_by_bounds(bounds, tag_name)
+                if element:
+                    return element
+
+            # If no strategy succeeded, raise an error
+            error_msg = (
+                "Could not find element. Tried:\n" +
+                (f"- Resource ID: {res_id}\n" if res_id else "") +
+                (f"- Accessibility ID: {accessibility_id}\n" if accessibility_id else "") +
+                (f"- Bounds: {bounds}\n" if bounds else "")
+            )
+            raise Exception(error_msg)
+
+        except Exception as e:
+            logger.error(str(e))
+            raise e
 
     # ─── BASIC INTERACTION METHODS WITH PRE/POST SCREENSHOTS ───────────────────
 
-    async def click_by_accessibility(self, accessibility_name: str) -> None:
+    async def click_by_id(self, res_id: Optional[str] = None, accessibility_id: Optional[str] = None) -> None:
         """
-        Click on an element identified by its accessibility name.
+        Click on an element identified by resource ID and/or accessibility ID.
+        Will try resource ID first if provided, then accessibility ID if provided.
         Captures a screenshot before and after the click.
+
+        Args:
+            res_id: Resource ID of the element (Android: resource-id, iOS: name)
+            accessibility_id: Accessibility ID of the element (Android: content-desc, iOS: accessibilityIdentifier)
+
+        Raises:
+            RuntimeError: If neither res_id nor accessibility_id is provided
+            RuntimeError: If no active Appium session
+            Exception: If element cannot be found or clicked
         """
-        await self.take_screenshot(f"before_click_{accessibility_name}")
+        if not res_id and not accessibility_id:
+            raise RuntimeError("At least one of res_id or accessibility_id must be provided")
+
+        screenshot_name = f"click_{res_id or ''}_{accessibility_id or ''}"
+        await self.take_screenshot(f"before_{screenshot_name}")
+        
         if not self.driver:
             logger.error("No Appium session available for click action.")
-            return
-        try:
-            loop = asyncio.get_running_loop()
-            driver = cast(WebDriver, self.driver)
-            element = await loop.run_in_executor(
-                None, lambda: driver.find_element(By.ACCESSIBILITY_ID, accessibility_name)
-            )
-            await loop.run_in_executor(None, element.click)
-            logger.info(f"Clicked on element with accessibility: {accessibility_name}")
-        except Exception as e:
-            logger.error(f"Error clicking element with accessibility '{accessibility_name}': {e}")
-        await self.take_screenshot(f"after_click_{accessibility_name}")
+            raise RuntimeError("No active Appium session")
 
-    async def enter_text_by_accessibility(self, accessibility_name: str, text: str) -> None:
+        try:
+            element = await self.find_element_best_match(res_id, accessibility_id)
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, element.click)
+            logger.info(f"Clicked on element. Resource ID: {res_id}, Accessibility ID: {accessibility_id}")
+        except Exception as e:
+            logger.error(f"Error clicking element. Resource ID: {res_id}, Accessibility ID: {accessibility_id}. Error: {e}")
+            raise e
+        await self.take_screenshot(f"after_{screenshot_name}")
+
+    async def enter_text_by_id(
+        self,
+        text: str,
+        res_id: Optional[str] = None,
+        accessibility_id: Optional[str] = None
+    ) -> None:
         """
-        Enter text into an element identified by its accessibility name.
+        Enter text into an element identified by resource ID and/or accessibility ID.
+        Will try resource ID first if provided, then accessibility ID if provided.
         Captures a screenshot before and after entering text.
+
+        Args:
+            text: The text to enter into the element
+            res_id: Resource ID of the element (Android: resource-id, iOS: name)
+            accessibility_id: Accessibility ID of the element (Android: content-desc, iOS: accessibilityIdentifier)
+
+        Raises:
+            RuntimeError: If neither res_id nor accessibility_id is provided
+            RuntimeError: If no active Appium session
+            Exception: If element cannot be found or text cannot be entered
         """
-        await self.take_screenshot(f"before_enter_text_{accessibility_name}")
+        if not res_id and not accessibility_id:
+            raise RuntimeError("At least one of res_id or accessibility_id must be provided")
+
+        screenshot_name = f"enter_text_{res_id or ''}_{accessibility_id or ''}"
+        await self.take_screenshot(f"before_{screenshot_name}")
+        
         if not self.driver:
             logger.error("No Appium session available for entering text.")
-            return
-        try:
-            loop = asyncio.get_running_loop()
-            driver = cast(WebDriver, self.driver)
-            element = await loop.run_in_executor(
-                None, lambda: driver.find_element(By.ACCESSIBILITY_ID, accessibility_name)
-            )
-            await loop.run_in_executor(None, lambda: element.send_keys(text))
-            logger.info(f"Entered text into element with accessibility: {accessibility_name}")
-        except Exception as e:
-            logger.error(f"Error entering text in element with accessibility '{accessibility_name}': {e}")
-        await self.take_screenshot(f"after_enter_text_{accessibility_name}")
+            raise RuntimeError("No active Appium session")
 
-    async def clear_text_by_accessibility(self, accessibility_name: str) -> None:
+        try:
+            element = await self.find_element_best_match(res_id, accessibility_id)
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, lambda: element.send_keys(text))
+            logger.info(f"Entered text into element. Resource ID: {res_id}, Accessibility ID: {accessibility_id}")
+        except Exception as e:
+            logger.error(f"Error entering text in element. Resource ID: {res_id}, Accessibility ID: {accessibility_id}. Error: {e}")
+            raise e
+        await self.take_screenshot(f"after_{screenshot_name}")
+
+    async def clear_text_by_id(
+        self,
+        res_id: Optional[str] = None,
+        accessibility_id: Optional[str] = None
+    ) -> None:
         """
-        Clear text from an element identified by its accessibility name.
+        Clear text from an element identified by resource ID and/or accessibility ID.
+        Will try resource ID first if provided, then accessibility ID if provided.
         Captures a screenshot before and after clearing the text.
+
+        Args:
+            res_id: Resource ID of the element (Android: resource-id, iOS: name)
+            accessibility_id: Accessibility ID of the element (Android: content-desc, iOS: accessibilityIdentifier)
+
+        Raises:
+            RuntimeError: If neither res_id nor accessibility_id is provided
+            RuntimeError: If no active Appium session
+            Exception: If element cannot be found or cleared
         """
-        await self.take_screenshot(f"before_clear_text_{accessibility_name}")
+        if not res_id and not accessibility_id:
+            raise RuntimeError("At least one of res_id or accessibility_id must be provided")
+
+        screenshot_name = f"clear_text_{res_id or ''}_{accessibility_id or ''}"
+        await self.take_screenshot(f"before_{screenshot_name}")
+        
         if not self.driver:
             logger.error("No Appium session available for clearing text.")
-            return
-        try:
-            loop = asyncio.get_running_loop()
-            driver = cast(WebDriver, self.driver)
-            element = await loop.run_in_executor(
-                None, lambda: driver.find_element(By.ACCESSIBILITY_ID, accessibility_name)
-            )
-            await loop.run_in_executor(None, element.clear)
-            logger.info(f"Cleared text in element with accessibility: {accessibility_name}")
-        except Exception as e:
-            logger.error(f"Error clearing text in element with accessibility '{accessibility_name}': {e}")
-        await self.take_screenshot(f"after_clear_text_{accessibility_name}")
+            raise RuntimeError("No active Appium session")
 
-    async def long_press_by_accessibility(self, accessibility_name: str, duration: int = 1000) -> None:
+        try:
+            element = await self.find_element_best_match(res_id, accessibility_id)
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, element.clear)
+            logger.info(f"Cleared text from element. Resource ID: {res_id}, Accessibility ID: {accessibility_id}")
+        except Exception as e:
+            logger.error(f"Error clearing text from element. Resource ID: {res_id}, Accessibility ID: {accessibility_id}. Error: {e}")
+            raise e
+        await self.take_screenshot(f"after_{screenshot_name}")
+
+    async def long_press_by_id(
+        self,
+        duration: int = 1000,
+        res_id: Optional[str] = None,
+        accessibility_id: Optional[str] = None
+    ) -> None:
         """
-        Perform a long press on an element identified by its accessibility name.
+        Perform a long press on an element identified by resource ID and/or accessibility ID.
+        Will try resource ID first if provided, then accessibility ID if provided.
         Duration is in milliseconds.
         Captures a screenshot before and after the long press.
+
+        Args:
+            duration: Duration of long press in milliseconds (default: 1000ms)
+            res_id: Resource ID of the element (Android: resource-id, iOS: name)
+            accessibility_id: Accessibility ID of the element (Android: content-desc, iOS: accessibilityIdentifier)
+
+        Raises:
+            RuntimeError: If neither res_id nor accessibility_id is provided
+            RuntimeError: If no active Appium session
+            Exception: If element cannot be found or long press cannot be performed
         """
-        await self.take_screenshot(f"before_long_press_{accessibility_name}")
+        if not res_id and not accessibility_id:
+            raise RuntimeError("At least one of res_id or accessibility_id must be provided")
+
+        screenshot_name = f"long_press_{res_id or ''}_{accessibility_id or ''}"
+        await self.take_screenshot(f"before_{screenshot_name}")
+        
         if not self.driver:
             logger.error("No Appium session available for long press.")
-            return
+            raise RuntimeError("No active Appium session")
+
         try:
+            element = await self.find_element_best_match(res_id, accessibility_id)
             loop = asyncio.get_running_loop()
             driver = cast(WebDriver, self.driver)
-            element = await loop.run_in_executor(
-                None, lambda: driver.find_element(By.ACCESSIBILITY_ID, accessibility_name)
-            )
             
             def perform_w3c_long_press() -> None:
                 action = ActionChains(driver)
@@ -558,10 +1001,11 @@ class AppiumManager:
                 return action.perform()
                 
             await loop.run_in_executor(None, perform_w3c_long_press)
-            logger.info(f"Performed long press on element with accessibility: {accessibility_name}")
+            logger.info(f"Performed long press on element. Resource ID: {res_id}, Accessibility ID: {accessibility_id}")
         except Exception as e:
-            logger.error(f"Error performing long press on element with accessibility '{accessibility_name}': {e}")
-        await self.take_screenshot(f"after_long_press_{accessibility_name}")
+            logger.error(f"Error performing long press on element. Resource ID: {res_id}, Accessibility ID: {accessibility_id}. Error: {e}")
+            raise e
+        await self.take_screenshot(f"after_{screenshot_name}")
 
     async def perform_tap(self, x: int, y: int) -> None:
         """
@@ -571,7 +1015,7 @@ class AppiumManager:
         await self.take_screenshot("before_tap")
         if not self.driver:
             logger.error("No Appium session available for performing tap.")
-            return
+            raise e
         logger.info(f"Performing tap at coordinates ({x}, {y})")
         try:
             loop = asyncio.get_running_loop()
@@ -579,6 +1023,7 @@ class AppiumManager:
             await loop.run_in_executor(None, lambda: driver.tap([(x, y)]))
         except Exception as e:
             logger.error(f"Error performing tap: {e}")
+            raise e
         await self.take_screenshot("after_tap")
 
     async def perform_swipe(
@@ -602,6 +1047,7 @@ class AppiumManager:
             )
         except Exception as e:
             logger.error(f"Error performing swipe: {e}")
+            raise e
         await self.take_screenshot("after_swipe")
 
     async def scroll_up(self) -> bool:
@@ -692,37 +1138,35 @@ class AppiumManager:
 
     async def get_accessibility_tree(self) -> Dict[str, Any]:
         """
-        Retrieve a simplified accessibility tree (UI hierarchy) of the current screen.
-
-        Parses the XML returned by the Appium page source API and extracts key attributes:
-        tag, resource-id, content-desc, text, and class along with children.
+        Retrieve a detailed accessibility tree (UI hierarchy) of the current screen.
+        Handles both Android and iOS element attributes.
         """
         if not self.driver:
             logger.error("No Appium session available to get accessibility tree.")
-            return {}
+            raise e
         try:
             loop = asyncio.get_running_loop()
             driver = cast(WebDriver, self.driver)
             source = await loop.run_in_executor(None, lambda: driver.page_source)
             root = ET.fromstring(source)
 
-            def parse_element(elem: ET.Element) -> Dict[str, Any]:
+            def parse_element_all(elem: ET.Element) -> Dict[str, Any]:
                 attrib = elem.attrib
-                return {
+                element_data = {
                     "tag": elem.tag,
-                    "resource-id": attrib.get("resource-id"),
-                    "content-desc": attrib.get("content-desc"),
-                    "text": attrib.get("text"),
-                    "class": attrib.get("class"),
-                    "children": [parse_element(child) for child in list(elem)]
+                    "class": attrib.get("class", ""),
+                    "children": [parse_element_all(child) for child in list(elem)]
                 }
-
-            tree = parse_element(root)
+                for key, value in attrib.items():
+                    element_data[key] = value
+                return element_data
+            
+            tree = parse_element_all(root)
             logger.info("Accessibility tree retrieved successfully.")
             return tree
         except Exception as e:
             logger.error(f"Error retrieving accessibility tree: {e}")
-            return {}
+            raise e
 
     # ─── SEE SCREEN (RETURN PIL IMAGE) ───────────────────────────────────────────
 
@@ -732,7 +1176,6 @@ class AppiumManager:
         """
         if not self.driver:
             logger.error("No Appium session available to capture screen.")
-            return None
         try:
             loop = asyncio.get_running_loop()
             if not isinstance(self.driver, WebDriver):
@@ -745,7 +1188,7 @@ class AppiumManager:
             return image
         except Exception as e:
             logger.error(f"Error capturing screen as image: {e}")
-            return None
+            raise e
 
     # ─── GET VIEWPORT SIZE (SCREEN RESOLUTION) ───────────────────────────────────
 
@@ -756,7 +1199,7 @@ class AppiumManager:
         """
         if not self.driver:
             logger.error("No Appium session available to get viewport size.")
-            return None
+
         try:
             loop = asyncio.get_running_loop()
             driver = cast(WebDriver, self.driver)
@@ -765,4 +1208,278 @@ class AppiumManager:
             return size
         except Exception as e:
             logger.error(f"Error getting viewport size: {e}")
+            raise e
+
+    # ─── COMMAND AND STATE TRACKING ───────────────────────────────────────────
+
+    async def command_completed(self, command: str, elapsed_time: Optional[float] = None) -> None:
+        """
+        Log when a command is completed.
+        """
+        time_info = f" (took {elapsed_time:.2f}s)" if elapsed_time is not None else ""
+        logger.debug(f'Command "{command}" completed{time_info}')
+
+    async def update_processing_state(self, processing_state: str) -> None:
+        """
+        Update the current processing state. This is a no-op for mobile automation
+        but implemented for API compatibility with PlaywrightManager.
+        """
+        logger.debug(f"Processing state updated to: {processing_state}")
+
+    async def get_current_screen_state(self) -> str:
+        """
+        For mobile automation, instead of a URL we return a serialized version
+        of the current screen's accessibility tree as JSON.
+        """
+        return "Use tool to check"
+
+    async def get_viewport_size(self) -> Optional[Dict[str, int]]:
+        """
+        Get the current viewport (screen resolution) of the device.
+        Returns a dictionary with 'width' and 'height' keys.
+        """
+        if not self.driver:
+            logger.error("No Appium session available to get viewport size.")
+
+        try:
+            loop = asyncio.get_running_loop()
+            driver = cast(WebDriver, self.driver)
+            size = await loop.run_in_executor(None, driver.get_window_size)
+            logger.info(f"Viewport size: {size}")
+            return size
+        except Exception as e:
+            logger.error(f"Error getting viewport size: {e}")
+            raise e
+
+    def get_latest_video_path(self) -> Optional[str]:
+        """
+        Get the path of the latest recorded video.
+        Returns None if no video is available.
+        """
+        if self._latest_video_path and os.path.exists(self._latest_video_path):
+            return self._latest_video_path
+        else:
+            logger.warning("No video recording available.")
             return None
+        
+    async def press_key(self, key_name: str) -> None:
+        """
+        Press a keyboard key by name for both iOS and Android platforms.
+        
+        Args:
+            key_name: Name of the key to press (e.g., 'enter', 'tab', 'space')
+        """
+        await self.take_screenshot(f"before_press_key_{key_name}")
+        if not self.driver:
+            logger.error("No Appium session available for key press.")
+            raise RuntimeError("No active Appium session")
+            
+        try:
+            loop = asyncio.get_running_loop()
+            driver = cast(WebDriver, self.driver)
+            
+            # Map common key names to their corresponding codes for both platforms
+            android_key_mapping = {
+                'enter': 66,      # KEYCODE_ENTER
+                'tab': 61,        # KEYCODE_TAB
+                'space': 62,      # KEYCODE_SPACE
+                'backspace': 67,  # KEYCODE_DEL
+                'delete': 112,    # KEYCODE_FORWARD_DEL
+                'escape': 111,    # KEYCODE_ESCAPE
+                'up': 19,         # KEYCODE_DPAD_UP
+                'down': 20,       # KEYCODE_DPAD_DOWN
+                'left': 21,       # KEYCODE_DPAD_LEFT
+                'right': 22,      # KEYCODE_DPAD_RIGHT
+            }
+            
+            ios_key_mapping = {
+                'enter': '\ue007',
+                'tab': '\ue004',
+                'space': ' ',
+                'backspace': '\ue003',
+                'delete': '\ue017',
+                'escape': '\ue00c',
+                'up': '\ue013',
+                'down': '\ue015',
+                'left': '\ue012',
+                'right': '\ue014',
+            }
+            
+            key_name_lower = key_name.lower()
+            
+            if self.platformName.lower() == "android":
+                # Handle Android key press using key codes
+                key_code = android_key_mapping.get(key_name_lower)
+                if key_code is not None:
+                    await loop.run_in_executor(None, lambda: driver.press_keycode(key_code))
+                else:
+                    # For character keys not in the mapping
+                    await loop.run_in_executor(None, lambda: driver.execute_script(
+                        'mobile: shell',
+                        {
+                            'command': 'input',
+                            'args': ['text', key_name]
+                        }
+                    ))
+            else:  # iOS
+                # Handle iOS key press using Unicode characters
+                key_code = ios_key_mapping.get(key_name_lower, key_name)
+                action = ActionChains(driver)
+                await loop.run_in_executor(None, lambda: action.send_keys(key_code).perform())
+            
+            logger.info(f"Pressed key: {key_name}")
+            
+        except Exception as e:
+            logger.error(f"Error pressing key '{key_name}': {e}")
+            raise e
+            
+        await self.take_screenshot(f"after_press_key_{key_name}")
+
+    async def press_hardware_key(self, key_name: str) -> None:
+        """
+        Press a hardware key by name.
+        
+        Args:
+            key_name: Name of hardware key (e.g., 'volume_up', 'volume_down', 'power')
+        """
+        await self.take_screenshot(f"before_press_hardware_{key_name}")
+        if not self.driver:
+            logger.error("No Appium session available for hardware key press.")
+            raise RuntimeError("No active Appium session")
+            
+        try:
+            loop = asyncio.get_running_loop()
+            driver = cast(WebDriver, self.driver)
+            
+            # Map hardware key names to their corresponding key codes
+            android_key_mapping = {
+                'volume_up': 24,
+                'volume_down': 25,
+                'power': 26,
+                'camera': 27,
+                'call': 5,
+                'end_call': 6,
+                'menu': 82,
+                'back': 4,
+                'home': 3,
+                'app_switch': 187,
+            }
+            
+            if self.platformName.lower() == "android":
+                key_code = android_key_mapping.get(key_name.lower())
+                if key_code is None:
+                    raise ValueError(f"Unknown hardware key: {key_name}")
+                    
+                await loop.run_in_executor(None, lambda: driver.press_keycode(key_code))
+                
+            else:  # iOS
+                # On iOS, some hardware actions are handled differently
+                if key_name.lower() in ['volume_up', 'volume_down']:
+                    await loop.run_in_executor(
+                        None, 
+                        lambda: driver.execute_script('mobile: pressButton', {'name': key_name.lower()})
+                    )
+                elif key_name.lower() == 'home':
+                    await loop.run_in_executor(
+                        None,
+                        lambda: driver.execute_script('mobile: pressButton', {'name': 'home'})
+                    )
+                else:
+                    raise ValueError(f"Unsupported hardware key for iOS: {key_name}")
+                    
+            logger.info(f"Pressed hardware key: {key_name}")
+            
+        except Exception as e:
+            logger.error(f"Error pressing hardware key '{key_name}': {e}")
+            raise e
+            
+        await self.take_screenshot(f"after_press_hardware_{key_name}")
+
+    async def press_back(self) -> None:
+        """
+        Press the back button (Android) or perform back gesture (iOS).
+        """
+        await self.take_screenshot("before_press_back")
+        if not self.driver:
+            logger.error("No Appium session available for back action.")
+            raise RuntimeError("No active Appium session")
+            
+        try:
+            loop = asyncio.get_running_loop()
+            driver = cast(WebDriver, self.driver)
+            
+            if self.platformName.lower() == "android":
+                await loop.run_in_executor(None, lambda: driver.press_keycode(4))  # 4 is Android's back button
+            else:  # iOS
+                # For iOS, we need to use gestures or navigation commands
+                await loop.run_in_executor(
+                    None,
+                    lambda: driver.execute_script('mobile: swipe', {'direction': 'right'})
+                )
+                
+            logger.info("Pressed back button")
+            
+        except Exception as e:
+            logger.error(f"Error pressing back button: {e}")
+            raise e
+            
+        await self.take_screenshot("after_press_back")
+
+    async def press_home(self) -> None:
+        """
+        Press the home button/perform home action.
+        """
+        await self.take_screenshot("before_press_home")
+        if not self.driver:
+            logger.error("No Appium session available for home action.")
+            raise RuntimeError("No active Appium session")
+            
+        try:
+            loop = asyncio.get_running_loop()
+            driver = cast(WebDriver, self.driver)
+            
+            if self.platformName.lower() == "android":
+                await loop.run_in_executor(None, lambda: driver.press_keycode(3))  # 3 is Android's home button
+            else:  # iOS
+                await loop.run_in_executor(
+                    None,
+                    lambda: driver.execute_script('mobile: pressButton', {'name': 'home'})
+                )
+                
+            logger.info("Pressed home button")
+            
+        except Exception as e:
+            logger.error(f"Error pressing home button: {e}")
+            raise e
+            
+        await self.take_screenshot("after_press_home")
+
+    async def press_app_switch(self) -> None:
+        """
+        Press the app switcher/recent apps button.
+        """
+        await self.take_screenshot("before_press_app_switch")
+        if not self.driver:
+            logger.error("No Appium session available for app switch action.")
+            raise RuntimeError("No active Appium session")
+            
+        try:
+            loop = asyncio.get_running_loop()
+            driver = cast(WebDriver, self.driver)
+            
+            if self.platformName.lower() == "android":
+                await loop.run_in_executor(None, lambda: driver.press_keycode(187))  # 187 is Android's recent apps button
+            else:  # iOS
+                # For iOS 13+, use the app switcher gesture
+                await loop.run_in_executor(
+                    None,
+                    lambda: driver.execute_script('mobile: swipe', {'direction': 'up', 'duration': 1.0})
+                )
+                
+            logger.info("Pressed app switch button")
+            
+        except Exception as e:
+            logger.error(f"Error pressing app switch button: {e}")
+            raise e
+            
+        await self.take_screenshot("after_press_app_switch")

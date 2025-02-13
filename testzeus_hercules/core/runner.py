@@ -7,7 +7,7 @@ from typing import Any
 import aiofiles
 from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.agents_llm_config import AgentsLLMConfig
-from testzeus_hercules.core.playwright_manager import PlaywrightManager
+from testzeus_hercules.core.device_manager import DeviceManager
 from testzeus_hercules.core.simple_hercules import SimpleHercules
 from testzeus_hercules.utils.cli_helper import async_input  # type: ignore
 from testzeus_hercules.utils.logger import logger
@@ -26,13 +26,13 @@ class BaseRunner:
     def __init__(
         self,
         planner_max_chat_round: int = 500,
-        browser_nav_max_chat_round: int = 10,
+        nav_max_chat_round: int = 10,
         stake_id: str | None = None,
         dont_terminate_browser_after_run: bool = False,
     ):
         self.planner_number_of_rounds = planner_max_chat_round
-        self.nav_agent_number_of_rounds = browser_nav_max_chat_round
-        self.browser_manager = None
+        self.nav_agent_number_of_rounds = nav_max_chat_round
+        self.device_manager = None
         self.simple_hercules = None
         self.is_running = False
         self.stake_id = stake_id
@@ -57,11 +57,11 @@ class BaseRunner:
             self.nav_agent_config,
             save_chat_logs_to_files=self.save_chat_logs_to_files,
             planner_max_chat_round=self.planner_number_of_rounds,
-            browser_nav_max_chat_round=self.nav_agent_number_of_rounds,
+            nav_max_chat_round=self.nav_agent_number_of_rounds,
         )
 
-        self.browser_manager = PlaywrightManager(gui_input_mode=False, stake_id=self.stake_id)
-        await self.browser_manager.async_initialize()
+        self.device_manager = DeviceManager(stake_id=self.stake_id).get_device_instance()
+        await self.device_manager.async_initialize()
 
     async def clean_up_plan(self) -> None:
         """
@@ -90,13 +90,13 @@ class BaseRunner:
         if command:
             self.is_running = True
             start_time = time.time()
-            current_url = await self.browser_manager.get_current_url() if self.browser_manager else None
+            current_url = await self.device_manager.get_current_screen_state() if self.device_manager else None
             result = None
             logger.info(f"Processing command: {command}")
             if self.simple_hercules:
-                await self.browser_manager.update_processing_state("processing")  # type: ignore
+                await self.device_manager.update_processing_state("processing")  # type: ignore
                 result = await self.simple_hercules.process_command(command, current_url)
-                await self.browser_manager.update_processing_state("done")  # type: ignore
+                await self.device_manager.update_processing_state("done")  # type: ignore
             end_time = time.time()
             elapsed_time = round(end_time - start_time, 2)
 
@@ -109,7 +109,7 @@ class BaseRunner:
                 if last_message and "terminate" in last_message and last_message["terminate"] == "yes":
                     logger.info(f"Final message: {last_message}")
 
-            await self.browser_manager.command_completed(command, elapsed_time)  # type: ignore
+            await self.device_manager.command_completed(command, elapsed_time)  # type: ignore
             self.is_running = False
         return result, elapsed_time
 
@@ -162,9 +162,9 @@ class BaseRunner:
         Shuts down the components gracefully.
         """
         logger.info("Shutting down...")
-        if self.browser_manager:
-            await self.browser_manager.stop_playwright()
-        PlaywrightManager.close_all_instances()
+        if self.device_manager and self.stake_id:
+            self.device_manager.close_instance(self.stake_id)
+        DeviceManager.close_all_instances()
         self.shutdown_event.set()
 
     async def wait_for_exit(self) -> None:

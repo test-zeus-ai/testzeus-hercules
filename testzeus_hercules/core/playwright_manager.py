@@ -621,7 +621,7 @@ class PlaywrightManager:
         except Exception as e:
             logger.error(f"Failed to write request/response log to file: {e}")
 
-    async def get_current_url(self) -> Optional[str]:
+    async def get_current_screen_state(self) -> Optional[str]:
         try:
             current_page: Page = await self.get_current_page()
             return current_page.url

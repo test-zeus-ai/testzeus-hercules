@@ -40,11 +40,11 @@ Must return well-formatted JSON with:
 "is_assert": "boolean - if current step is assertion",
 "assert_summary": "EXPECTED RESULT: x\\nACTUAL RESULT: y (required if is_assert=true)",
 "is_passed": "boolean - assertion success status",
-"target_helper": "'browser'|'api'|'sec'|'sql'|'static_waiter'|'Not_Applicable'"
+"target_helper": "'navigation'|'api'|'sec'|'sql'|'static_waiter'|'Not_Applicable'"
 }
 
 ## Helper Capabilities
-- Browser: Page navigation, element interaction, state verification
+- navigation: App navigation, Page navigation, element interaction, state verification
 - API: Endpoint interactions, response handling
 - Security: Security testing constructs
 - SQL: Intent-based database operations
@@ -84,7 +84,7 @@ Must return well-formatted JSON with:
 - Terminate on assertion failures
 
 ## Helper-Specific Guidelines
-Browser Operations:
+navigation Operations:
 - Confirm mandatory fields
 - Handle filtering/sorting
 - Manage dynamic content

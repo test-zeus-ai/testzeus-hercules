@@ -4,7 +4,7 @@ from testzeus_hercules.core.agents.multimodal_base_nav_agent import (
 
 
 class BrowserNavAgent(MultimodalBaseNavAgent):
-    agent_name: str = "browser_nav_agent"
+    agent_name: str = "navigation_nav_agent"
     prompt = """# Web Navigation Agent
 You are a web navigation agent that executes webpage interactions and retrieves information.
 

@@ -288,8 +288,12 @@ class BaseConfigManager:
         self._config.setdefault("DEVICE_NAME", "emulator-5554")
         self._config.setdefault("AUTOMATION_NAME", "UiAutomator2")
         self._config.setdefault("APP_PATH", "")
+        self._config.setdefault("APPIUM_APK_PATH", "")       # Path to Android APK
+        self._config.setdefault("APPIUM_IOS_APP_PATH", "")   # Path to iOS app
+        self._config.setdefault("APPIUM_DEVICE_UUID", "")    # Specific device UUID
+        self._config.setdefault("APPIUM_PLATFORM_VERSION", "") # OS version to target
         self._config.setdefault("APPIUM_CAPABILITIES", "{}")
-        self._config.setdefault("EMULATOR_AVD_NAME", "Pixel_3_API_30")
+        self._config.setdefault("EMULATOR_AVD_NAME", "Medium_Phone_API_35")
 
         if self._config["MODE"] == "debug":
             self.timestamp = "0"
@@ -454,6 +458,22 @@ class BaseConfigManager:
     def get_app_path(self) -> str:
         """Get the path to the app package/bundle."""
         return self._config["APP_PATH"]
+        
+    def get_appium_apk_path(self) -> str:
+        """Get the path to the Android APK file."""
+        return self._config["APPIUM_APK_PATH"]
+
+    def get_appium_ios_app_path(self) -> str:
+        """Get the path to the iOS app file."""
+        return self._config["APPIUM_IOS_APP_PATH"]
+
+    def get_appium_device_uuid(self) -> str:
+        """Get the specific device UUID to target."""
+        return self._config["APPIUM_DEVICE_UUID"]
+
+    def get_appium_platform_version(self) -> str:
+        """Get the platform version to target."""
+        return self._config["APPIUM_PLATFORM_VERSION"]
 
     def get_appium_capabilities(self) -> Dict[str, Any]:
         """Get additional Appium capabilities as a dictionary."""
