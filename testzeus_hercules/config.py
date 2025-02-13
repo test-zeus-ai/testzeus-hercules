@@ -3,7 +3,10 @@
 import argparse
 import json
 import os
-from typing import Optional
+from typing import Any, Dict, Optional, Union, Literal
+
+DeviceManagerType = Literal["appium", "playwright"]
+DeviceOSType = Literal["android", "ios"]
 
 from dotenv import load_dotenv
 from testzeus_hercules.utils.logger import logger
@@ -179,6 +182,18 @@ class BaseConfigManager:
             "GEO_PROVIDER",
             "GEO_API_KEY",
             "EXECUTE_BULK",
+            # Appium Configuration
+            "APPIUM_SERVER_URL",
+            "APPIUM_SERVER_PORT",
+            "PLATFORM_NAME",
+            "DEVICE_NAME",
+            "AUTOMATION_NAME",
+            "APP_PATH",
+            "APPIUM_CAPABILITIES",
+            "EMULATOR_AVD_NAME",
+            # Device Manager Configuration
+            "DEVICE_MANAGER",
+            "DEVICE_OS",
         ]
 
         relevant_keys.append("ENABLE_PLAYWRIGHT_TRACING")
@@ -265,6 +280,16 @@ class BaseConfigManager:
         self._config.setdefault("REACTION_DELAY_TIME", "0.1")
         self._config.setdefault("EXECUTE_BULK", "false")
         self._config.setdefault("ENABLE_PLAYWRIGHT_TRACING", "false")
+
+        # Appium defaults
+        self._config.setdefault("APPIUM_SERVER_URL", None)
+        self._config.setdefault("APPIUM_SERVER_PORT", "4723")
+        self._config.setdefault("PLATFORM_NAME", "Android")
+        self._config.setdefault("DEVICE_NAME", "emulator-5554")
+        self._config.setdefault("AUTOMATION_NAME", "UiAutomator2")
+        self._config.setdefault("APP_PATH", "")
+        self._config.setdefault("APPIUM_CAPABILITIES", "{}")
+        self._config.setdefault("EMULATOR_AVD_NAME", "Pixel_3_API_30")
 
         if self._config["MODE"] == "debug":
             self.timestamp = "0"
@@ -404,6 +429,51 @@ class BaseConfigManager:
 
     def get_geo_api_key(self) -> str:
         return self._config["GEO_API_KEY"]
+
+    # Appium Configuration Methods
+    def get_appium_server_url(self) -> Optional[str]:
+        """Get the configured Appium server URL."""
+        return self._config["APPIUM_SERVER_URL"]
+
+    def get_appium_server_port(self) -> int:
+        """Get the configured Appium server port."""
+        return int(self._config["APPIUM_SERVER_PORT"])
+
+    def get_platform_name(self) -> str:
+        """Get the platform name for Appium capabilities."""
+        return self._config["PLATFORM_NAME"]
+
+    def get_device_name(self) -> str:
+        """Get the device name for Appium capabilities."""
+        return self._config["DEVICE_NAME"]
+
+    def get_automation_name(self) -> str:
+        """Get the automation name for Appium capabilities."""
+        return self._config["AUTOMATION_NAME"]
+
+    def get_app_path(self) -> str:
+        """Get the path to the app package/bundle."""
+        return self._config["APP_PATH"]
+
+    def get_appium_capabilities(self) -> Dict[str, Any]:
+        """Get additional Appium capabilities as a dictionary."""
+        try:
+            return json.loads(self._config["APPIUM_CAPABILITIES"])
+        except json.JSONDecodeError:
+            return {}
+
+    def get_emulator_avd_name(self) -> str:
+        """Get the AVD name for Android emulator."""
+        return self._config["EMULATOR_AVD_NAME"]
+
+    # Device Manager Configuration Methods
+    def get_device_manager(self) -> DeviceManagerType:
+        """Get the configured device automation manager type."""
+        return self._config.get("DEVICE_MANAGER", "playwright").lower()
+
+    def get_device_os(self) -> DeviceOSType:
+        """Get the configured device OS type for mobile automation."""
+        return self._config.get("DEVICE_OS", "android").lower()
 
     def get_trace_path(self, stake_id: Optional[str] = None) -> dict[str, str]:
         """Get all trace related paths for a test run. Now uses internal timestamp."""

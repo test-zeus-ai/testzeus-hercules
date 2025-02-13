@@ -2,7 +2,7 @@ from collections import defaultdict, deque
 from typing import Annotated, Any, Dict, Union
 
 from testzeus_hercules.config import get_global_conf
-from testzeus_hercules.core.tools.tool_registry import tool
+from testzeus_hercules.core.generic_tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
 
 # Module-level state string

@@ -18,14 +18,14 @@ from testzeus_hercules.core.agents.high_level_planner_agent import PlannerAgent
 from testzeus_hercules.core.agents.sec_nav_agent import SecNavAgent
 from testzeus_hercules.core.agents.sql_nav_agent import SqlNavAgent
 from testzeus_hercules.core.agents.static_waiter_nav_agent import StaticWaiterNavAgent
-from testzeus_hercules.core.extra_tools import *
+from testzeus_hercules.core.browser_extra_tools import *
 from testzeus_hercules.core.memory.state_handler import store_run_data
 from testzeus_hercules.core.post_process_responses import (
     final_reply_callback_planner_agent as notify_planner_messages,  # type: ignore
 )
 from testzeus_hercules.core.prompts import LLM_PROMPTS
-from testzeus_hercules.core.tools import *
-from testzeus_hercules.core.tools.get_url import geturl
+from testzeus_hercules.core.browser_tools import *
+from testzeus_hercules.core.browser_tools.get_url import geturl
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.detect_llm_loops import is_agent_stuck_in_loop
 from testzeus_hercules.utils.llm_helper import (

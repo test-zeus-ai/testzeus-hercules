@@ -6,7 +6,7 @@ from typing import Any
 
 import autogen  # type: ignore
 from testzeus_hercules.core.memory.static_ltm import get_user_ltm
-from testzeus_hercules.core.tools.tool_registry import tool_registry
+from testzeus_hercules.core.generic_tools.tool_registry import tool_registry
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.logger import logger
 
