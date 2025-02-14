@@ -1199,7 +1199,6 @@ class AppiumManager:
         """
         if not self.driver:
             logger.error("No Appium session available to get viewport size.")
-
         try:
             loop = asyncio.get_running_loop()
             driver = cast(WebDriver, self.driver)
@@ -1483,3 +1482,92 @@ class AppiumManager:
             raise e
             
         await self.take_screenshot("after_press_app_switch")
+
+    async def press_key_combination(self, key_combination: str) -> None:
+        """
+        Press a combination of keys simultaneously (e.g., "Control+A" for select all).
+        
+        Args:
+            key_combination: Key combination string (e.g., "Control+A", "Shift+Tab")
+        """
+        await self.take_screenshot(f"before_press_key_combo_{key_combination}")
+        if not self.driver:
+            logger.error("No Appium session available for key combination.")
+            raise RuntimeError("No active Appium session")
+            
+        try:
+            loop = asyncio.get_running_loop()
+            driver = cast(WebDriver, self.driver)
+            
+            # Split the combination into individual keys
+            keys = key_combination.split("+")
+            
+            # Map modifier keys to their codes
+            android_modifier_keys = {
+                'control': 113,  # KEYCODE_CTRL_LEFT
+                'ctrl': 113,     # KEYCODE_CTRL_LEFT
+                'shift': 59,     # KEYCODE_SHIFT_LEFT
+                'alt': 57,       # KEYCODE_ALT_LEFT
+                'meta': 117,     # KEYCODE_META_LEFT
+                'command': 117,  # KEYCODE_META_LEFT
+            }
+            
+            if self.platformName.lower() == "android":
+                # For Android, we need to handle modifier keys specially
+                modifiers = []
+                main_key = None
+                
+                for key in keys:
+                    key_lower = key.lower()
+                    if key_lower in android_modifier_keys:
+                        modifiers.append(android_modifier_keys[key_lower])
+                    else:
+                        # The last non-modifier key is the main key
+                        main_key = key
+                
+                # Press all modifier keys
+                for modifier in modifiers:
+                    await loop.run_in_executor(None, lambda m=modifier: driver.press_keycode(m))
+                
+                # Press the main key if there is one
+                if main_key:
+                    await self.press_key(main_key)
+                
+                # Release modifier keys in reverse order
+                for modifier in reversed(modifiers):
+                    await loop.run_in_executor(None, lambda m=modifier: driver.keyUp(m))
+                    
+            else:  # iOS
+                # For iOS, we can use the ActionChains
+                action = ActionChains(driver)
+                
+                # Convert keys to iOS format
+                ios_keys = []
+                for key in keys:
+                    key_lower = key.lower()
+                    if key_lower in ['control', 'ctrl']:
+                        ios_keys.append('\ue009')  # Control
+                    elif key_lower == 'shift':
+                        ios_keys.append('\ue008')  # Shift
+                    elif key_lower == 'alt':
+                        ios_keys.append('\ue00A')  # Alt
+                    elif key_lower in ['command', 'meta']:
+                        ios_keys.append('\ue03D')  # Command
+                    else:
+                        ios_keys.append(key)
+                
+                # Press all keys in sequence
+                for key in ios_keys:
+                    action.key_down(key)
+                for key in reversed(ios_keys):
+                    action.key_up(key)
+                    
+                await loop.run_in_executor(None, action.perform)
+            
+            logger.info(f"Pressed key combination: {key_combination}")
+            
+        except Exception as e:
+            logger.error(f"Error pressing key combination '{key_combination}': {e}")
+            raise e
+            
+        await self.take_screenshot(f"after_press_key_combo_{key_combination}")
