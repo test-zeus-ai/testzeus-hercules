@@ -5,7 +5,6 @@ from typing import Any, Dict, List, Optional, Union
 
 import autogen
 from autogen import ConversableAgent, OpenAIWrapper
-from autogen._pydantic import model_dump
 from autogen.agentchat.agent import Agent
 from autogen.agentchat.contrib.img_utils import (
     gpt4v_formatter,

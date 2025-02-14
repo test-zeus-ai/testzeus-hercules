@@ -284,14 +284,7 @@ class AppiumManager:
 
     # ─── APPIUM SERVER & EMULATOR MANAGEMENT ─────────────────────────────
 
-    async def wait_for_appium_server(self, timeout: int = 30) -> bool:
-        """
-        Wait for Appium server to be fully responsive by checking its status endpoint.
-        Returns True if server is responding, False if timeout occurred.
-        
-        Args:
-            timeout: Maximum time to wait in seconds (default 30 seconds)
-        """
+    async def wait_for_appium_server(self, timeout: int = 60) -> bool:
         import aiohttp
         start_time = time.time()
         check_interval = 1  # Check every second
@@ -1027,7 +1020,7 @@ class AppiumManager:
         await self.take_screenshot("after_tap")
 
     async def perform_swipe(
-        self, start_x: int, start_y: int, end_x: int, end_y: int, duration: int = 800
+        self, end_x: int, end_y: int, start_x: int, start_y: int, duration: int = 800
     ) -> None:
         """
         Perform a swipe gesture from (start_x, start_y) to (end_x, end_y).
@@ -1143,7 +1136,7 @@ class AppiumManager:
         """
         if not self.driver:
             logger.error("No Appium session available to get accessibility tree.")
-            raise e
+            return {}
         try:
             loop = asyncio.get_running_loop()
             driver = cast(WebDriver, self.driver)
@@ -1153,12 +1146,14 @@ class AppiumManager:
             def parse_element_all(elem: ET.Element) -> Dict[str, Any]:
                 attrib = elem.attrib
                 element_data = {
-                    "tag": elem.tag,
-                    "class": attrib.get("class", ""),
                     "children": [parse_element_all(child) for child in list(elem)]
                 }
                 for key, value in attrib.items():
                     element_data[key] = value
+                if len(element_data["children"]) == 0:
+                    del element_data["children"]
+                if len(element_data) > 1:
+                    element_data["tag"] = elem.tag
                 return element_data
             
             tree = parse_element_all(root)
