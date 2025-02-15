@@ -34,7 +34,7 @@ playwright-recaptcha = "^0.5.1"
 junit2html = "^31.0.2"
 aiohttp = "^3.11.7"
 inflection = "^0.5.1"
-autogen = {extras = ["ollama", "long-context", "graph", "anthropic", "groq", "gemini", "lmm", "mistral", "bedrock", "gemini"], version = "^0.7.3"}
+autogen = {extras = ["ollama", "long-context", "graph", "anthropic", "groq", "gemini", "lmm", "mistral", "bedrock", "gemini"], version = "^0.7.4"}
 aiofiles = "^24.1.0"
 appium-python-client = "^4.5.0"
 

@@ -191,6 +191,13 @@ class BaseConfigManager:
             "APP_PATH",
             "APPIUM_CAPABILITIES",
             "EMULATOR_AVD_NAME",
+            # iOS-specific Configuration
+            "IOS_SIMULATOR_DEVICE",
+            "IOS_BUNDLE_ID",
+            "XCODE_ORG_ID",
+            "XCODE_SIGNING_ID",
+            "WEBDRIVERAGENT_PATH",
+            "IOS_TEAM_ID",
             # Device Manager Configuration
             "DEVICE_MANAGER",
             "DEVICE_OS",
@@ -284,16 +291,34 @@ class BaseConfigManager:
         # Appium defaults
         self._config.setdefault("APPIUM_SERVER_URL", None)
         self._config.setdefault("APPIUM_SERVER_PORT", "4723")
-        self._config.setdefault("PLATFORM_NAME", "Android")
-        self._config.setdefault("DEVICE_NAME", "emulator-5554")
-        self._config.setdefault("AUTOMATION_NAME", "UiAutomator2")
+        
+        # Platform-specific defaults based on device OS
+        device_os = self._config.get("DEVICE_OS", "android").lower()
+        if device_os == "android":
+            self._config.setdefault("PLATFORM_NAME", "Android")
+            self._config.setdefault("DEVICE_NAME", "emulator-5554")
+            self._config.setdefault("AUTOMATION_NAME", "UiAutomator2")
+            self._config.setdefault("EMULATOR_AVD_NAME", "Medium_Phone_API_35")
+        else:  # iOS
+            self._config.setdefault("PLATFORM_NAME", "iOS")
+            self._config.setdefault("DEVICE_NAME", "iPhone Simulator")
+            self._config.setdefault("AUTOMATION_NAME", "XCUITest")
+            self._config.setdefault("IOS_SIMULATOR_DEVICE", "iPhone 14")
+        
+        # Common Appium settings
         self._config.setdefault("APP_PATH", "")
         self._config.setdefault("APPIUM_APK_PATH", "")       # Path to Android APK
         self._config.setdefault("APPIUM_IOS_APP_PATH", "")   # Path to iOS app
         self._config.setdefault("APPIUM_DEVICE_UUID", "")    # Specific device UUID
         self._config.setdefault("APPIUM_PLATFORM_VERSION", "") # OS version to target
         self._config.setdefault("APPIUM_CAPABILITIES", "{}")
-        self._config.setdefault("EMULATOR_AVD_NAME", "Medium_Phone_API_35")
+        
+        # iOS-specific defaults
+        self._config.setdefault("IOS_BUNDLE_ID", "")
+        self._config.setdefault("XCODE_ORG_ID", "")
+        self._config.setdefault("XCODE_SIGNING_ID", "iPhone Developer")
+        self._config.setdefault("WEBDRIVERAGENT_PATH", "")
+        self._config.setdefault("IOS_TEAM_ID", "")
 
         if self._config["MODE"] == "debug":
             self.timestamp = "0"
@@ -485,6 +510,31 @@ class BaseConfigManager:
     def get_emulator_avd_name(self) -> str:
         """Get the AVD name for Android emulator."""
         return self._config["EMULATOR_AVD_NAME"]
+
+    # iOS-specific Configuration Methods
+    def get_ios_simulator_device(self) -> Optional[str]:
+        """Get the iOS simulator device type (e.g., 'iPhone 14')."""
+        return self._config.get("IOS_SIMULATOR_DEVICE")
+
+    def get_ios_bundle_id(self) -> Optional[str]:
+        """Get the iOS app bundle identifier."""
+        return self._config.get("IOS_BUNDLE_ID")
+
+    def get_xcode_org_id(self) -> Optional[str]:
+        """Get the Xcode organization/team ID."""
+        return self._config.get("XCODE_ORG_ID")
+
+    def get_xcode_signing_id(self) -> Optional[str]:
+        """Get the Xcode signing identity."""
+        return self._config.get("XCODE_SIGNING_ID")
+
+    def get_webdriveragent_path(self) -> Optional[str]:
+        """Get custom WebDriverAgent path if specified."""
+        return self._config.get("WEBDRIVERAGENT_PATH")
+
+    def get_ios_team_id(self) -> Optional[str]:
+        """Get iOS development team ID."""
+        return self._config.get("IOS_TEAM_ID")
 
     # Device Manager Configuration Methods
     def get_device_manager(self) -> DeviceManagerType:
