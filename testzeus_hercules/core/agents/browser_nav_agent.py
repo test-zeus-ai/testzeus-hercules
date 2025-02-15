@@ -8,7 +8,7 @@ class BrowserNavAgent(MultimodalBaseNavAgent):
     prompt = """# Web Navigation Agent
 You are a web navigation agent that executes webpage interactions and retrieves information.
 
-## Functions
+## Capabilties
 - Navigate webpages 
 - Authenticate to websites
 - Interact with web content

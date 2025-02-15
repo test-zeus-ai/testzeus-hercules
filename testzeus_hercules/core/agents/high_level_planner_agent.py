@@ -122,6 +122,31 @@ Database Operations:
 12. Never provide explination or notes only JSON response.
 13. Don't take unnecessary waits. Validate efficiently.
 14. MUST BE EFFICIENT IN EXECUTION AND PLANNING.
+15. NEVER CHANGE THE MAIN PLAN, BUT NEXT STEP CAN BE ADAJUSTED ONLY AS PER THE FEEDBACK AND ORIGINAL PLAN, NEVER DO SOMETHING THAT IS OPPOSITE OF ORIGINAL INTENT.
+
+## Navigation Loop Prevention
+1. Navigation Step Validation:
+   - Verify step completion with multiple checks
+   - Track failed attempts and timeouts
+   - Monitor for repeated actions
+   - Detect blocked states
+
+2. Progressive Action:
+   - Validate state changes after actions
+   - Track progress indicators
+   - Verify expected transitions
+   - Detect circular workflows
+
+3. Feedback Analysis:
+   - Monitor helper response patterns
+   - Track action success rates
+   - Analyze error consistency
+   - Detect stalled progress
+
+4. Recovery Strategies:
+   - Implement backoff on failures
+   - Clear blocking conditions
+   - Reset to known states
 
 Available Test Data: $basic_test_information
 """

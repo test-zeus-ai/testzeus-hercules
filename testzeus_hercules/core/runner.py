@@ -163,8 +163,8 @@ class BaseRunner:
         """
         logger.info("Shutting down...")
         if self.device_manager and self.stake_id:
-            self.device_manager.close_instance(self.stake_id)
-        DeviceManager.close_all_instances()
+            await self.device_manager.close_instance(self.stake_id)
+        await DeviceManager.close_all_instances()
         self.shutdown_event.set()
 
     async def wait_for_exit(self) -> None:

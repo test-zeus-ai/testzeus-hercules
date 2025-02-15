@@ -92,7 +92,7 @@ async def press_hardware_key(
 
 @tool(
     agent_names=["navigation_nav_agent"],
-    description="Send a sequence of key combinations (e.g., 'Control+A,Control+C' for select all and copy)",
+    description="Send a sequence of key combinations (e.g., 'Control+A,Control+C' for select all and copy) only from keygboard, not for text fields.",
     name="send_key_sequence"
 )
 async def send_key_sequence(

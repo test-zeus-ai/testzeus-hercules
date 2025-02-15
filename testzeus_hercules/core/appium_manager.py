@@ -3,6 +3,8 @@ import subprocess
 from subprocess import Popen
 import time
 import os
+import re
+import json
 import base64
 import json
 import xml.etree.ElementTree as ET
@@ -20,6 +22,102 @@ from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.core import ios_gestures
 
 from PIL import Image
+
+
+def add_bounding_box(node: Dict[str, Any]) -> Dict[str, Any]:
+    # Check for Android node using 'bounds'
+    if "bounds" in node:
+        bounds_str = node["bounds"]
+        # Extract the coordinates using a regex pattern
+        matches = re.findall(r'\[(\d+),(\d+)\]', bounds_str)
+        if len(matches) == 2:
+            start_x, start_y = map(int, matches[0])
+            end_x, end_y = map(int, matches[1])
+            node["bounding_box"] = {
+                "start_x": start_x,
+                "start_y": start_y,
+                "end_x": end_x,
+                "end_y": end_y
+            }
+            del node["bounds"]
+
+    # Check for iOS node using x, y, width, and height
+    elif all(key in node for key in ["x", "y", "width", "height"]):
+        x = int(node["x"])
+        y = int(node["y"])
+        width = int(node["width"])
+        height = int(node["height"])
+        node["bounding_box"] = {
+            "start_x": x,
+            "start_y": y,
+            "end_x": x + width,
+            "end_y": y + height
+        }
+        del node["x"]
+        del node["y"]
+        del node["width"]
+        del node["height"]
+    return node
+
+REFERENCE_DICT = {
+    "ios": {
+        "type": "t",
+        "name": "n",
+        "label": "l",
+        "enabled": "en",
+        "visible": "vis",
+        "accessible": "acc",
+        "index": "i",
+        "tag": "tg",
+        "bounding_box": {
+          "bounding_box": "bb",  # key for the bounding_box field itself
+          "start_x": "sx",
+          "start_y": "sy",
+          "end_x": "ex",
+          "end_y": "ey"
+        },
+        "children": "c",
+    },
+    "android": {
+        "index": "i",
+        "package": "pkg",
+        "class": "cls",
+        "text": "txt",
+        "resource-id": "rid",
+        "checkable": "chk",
+        "checked": "chkd",
+        "clickable": "clck",
+        "enabled": "en",
+        "focusable": "fcs",
+        "focused": "fcd",
+        "long-clickable": "lck",
+        "password": "pwd",
+        "scrollable": "scrl",
+        "selected": "sel",
+        "displayed": "dsp",
+        "a11y-important": "a11y",
+        "screen-reader-focusable": "srf",
+        "drawing-order": "dor",
+        "showing-hint": "shh",
+        "text-entry-key": "tek",
+        "dismissable": "dsm",
+        "a11y-focused": "a11yf",
+        "heading": "hdg",
+        "live-region": "lr",
+        "context-clickable": "cc",
+        "content-invalid": "cinv",
+        "tag": "tg",
+        "bounding_box": {
+          "bounding_box": "bb",  # key for the bounding_box field itself
+          "start_x": "sx",
+          "start_y": "sy",
+          "end_x": "ex",
+          "end_y": "ey"
+        },
+        "children": "c",
+    },
+
+}
 
 class AppiumManager:
     """
@@ -83,12 +181,12 @@ class AppiumManager:
         return cls._instances[stake_id]
 
     @classmethod
-    def close_instance(cls, stake_id: Optional[str] = None) -> None:
+    async def close_instance(cls, stake_id: Optional[str] = None) -> None:
         """Close and remove a specific AppiumManager instance."""
         target_id = stake_id if stake_id is not None else "0"
         if target_id in cls._instances:
             instance = cls._instances[target_id]
-            asyncio.create_task(instance.stop_appium())
+            await instance.stop_appium()
             del cls._instances[target_id]
             if instance == cls._default_instance:
                 cls._default_instance = None
@@ -97,10 +195,10 @@ class AppiumManager:
                     cls._default_instance = next(iter(cls._instances.values()))
 
     @classmethod
-    def close_all_instances(cls) -> None:
+    async def close_all_instances(cls) -> None:
         """Close all AppiumManager instances."""
         for stake_id in list(cls._instances.keys()):
-            cls.close_instance(stake_id)
+            await cls.close_instance(stake_id)
 
     async def stop_appium(self) -> None:
         """
@@ -110,6 +208,7 @@ class AppiumManager:
         - Appium server
         - Device (Android emulator or iOS simulator)
         """
+        logger.info(f"Stopping Appium resources for stake_id '{self.stake_id}'")
         await self.quit_session()
         await self.stop_appium_server()
         await self.stop_device()
@@ -190,10 +289,17 @@ class AppiumManager:
         self._screenshots_dir = os.path.join(proof_path, "screenshots")
         self._video_dir = os.path.join(proof_path, "videos")
         self._logs_dir = os.path.join(proof_path, "logs")
+        self._network_log_path = os.path.join(proof_path, "network_logs.json")
+        self._console_log_path = os.path.join(proof_path, "console_logs.json")
+        
+        # Create required directories
         os.makedirs(self._screenshots_dir, exist_ok=True)
         os.makedirs(self._video_dir, exist_ok=True)
         os.makedirs(self._logs_dir, exist_ok=True)
-        logger.info(f"Artifact directories set up at {proof_path}")
+        os.makedirs(os.path.dirname(self._network_log_path), exist_ok=True)
+        os.makedirs(os.path.dirname(self._console_log_path), exist_ok=True)
+        
+        logger.info(f"Artifact directories and log files set up at {proof_path}")
 
     async def check_device_status(self) -> bool:
         """
@@ -553,42 +659,105 @@ class AppiumManager:
         logger.error(f"Appium server not responding after {timeout} seconds")
         return False
 
-    def _setup_request_response_logging(self) -> None:
-        """
-        Set up request/response logging for the Appium server.
-        Creates a new log file for the current session.
-        """
-        if not self._logs_dir:
+    async def setup_request_response_logging(self, driver: WebDriver) -> None:
+        """Set up request/response logging for the Appium session."""
+        if not hasattr(self, '_network_log_path'):
             return
 
-        timestamp = int(time.time())
-        self._request_log_path = os.path.join(
-            self._logs_dir, f"appium_requests_{timestamp}.log"
-        )
-        logger.info(f"Request/response logging enabled at {self._request_log_path}")
-
-    def _log_request_response(self, request_data: Dict[str, Any], response_data: Dict[str, Any]) -> None:
-        """
-        Log request and response data to the request log file.
+        original_execute = driver.execute
+        original_execute_script = driver.execute_script
         
-        Args:
-            request_data: Dictionary containing request information
-            response_data: Dictionary containing response information
-        """
-        if not hasattr(self, '_request_log_path'):
+        def sync_log_entry(command_name: str, params: Dict) -> None:
+            log_entry = {
+                "type": "request",
+                "timestamp": time.time(),
+                "command": command_name,
+                "params": params
+            }
+            with open(self._network_log_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(log_entry) + "\n")
+
+        def wrapped_execute(command: str, params: Dict = None) -> Any:
+            try:
+                sync_log_entry(command, params or {})
+                return original_execute(command, params)
+            except Exception as e:
+                sync_log_entry(command, {"error": str(e), "params": params or {}})
+                raise e
+
+        def wrapped_execute_script(script: str, *args: Any) -> Any:
+            try:
+                sync_log_entry('execute_script', {'script': script, 'args': args})
+                return original_execute_script(script, *args)
+            except Exception as e:
+                sync_log_entry('execute_script', {'error': str(e), 'script': script, 'args': args})
+                raise e
+
+        driver.execute = wrapped_execute
+        driver.execute_script = wrapped_execute_script
+
+        logger.info("Network request/response logging enabled")
+
+    async def setup_console_logging(self, driver: WebDriver) -> None:
+        """Set up console logging for the mobile app."""
+        if not hasattr(self, '_console_log_path'):
             return
 
+        def log_to_file(log_entry: Dict[str, Any]) -> None:
+            try:
+                with open(self._console_log_path, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(log_entry) + "\n")
+            except Exception as e:
+                logger.error(f"Error writing console log: {e}")
+
+        def capture_logs() -> None:
+            try:
+                log_types = driver.log_types
+                for log_type in log_types:
+                    try:
+                        logs = driver.get_log(log_type)
+                        for log in logs:
+                            log_entry = {
+                                "type": "console",
+                                "timestamp": time.time(),
+                                "level": log.get('level', 'debug'),
+                                "source": log_type,
+                                "message": log.get('message', '')
+                            }
+                            log_to_file(log_entry)
+                    except Exception as e:
+                        logger.debug(f"Error capturing {log_type} logs: {e}")
+            except Exception as e:
+                logger.debug(f"Error accessing log types: {e}")
+
+        # Schedule periodic log capture using a background thread
+        def log_capture_loop() -> None:
+            while True:
+                try:
+                    capture_logs()
+                except Exception as e:
+                    logger.error(f"Error in log capture loop: {e}")
+                time.sleep(1)  # Poll every second
+
+        import threading
+        log_thread = threading.Thread(target=log_capture_loop, daemon=True)
+        log_thread.start()
+        
+        logger.info("Console logging enabled")
+
+    async def _write_log_entry(self, log_entry: Dict[str, Any], log_file: str) -> None:
+        """Write a log entry to a log file asynchronously."""
         try:
-            log_entry = {
-                'timestamp': time.strftime('%Y-%m-%d %H:%M:%S'),
-                'request': request_data,
-                'response': response_data
-            }
-            with open(self._request_log_path, 'a', encoding='utf-8') as f:
-                json.dump(log_entry, f)
-                f.write('\n')
+            line = json.dumps(log_entry, ensure_ascii=False) + "\n"
+            
+            def write_to_file(filepath: str, text: str) -> None:
+                with open(filepath, "a", encoding="utf-8") as f:
+                    f.write(text)
+                    
+            await asyncio.to_thread(write_to_file, log_file, line)
+            
         except Exception as e:
-            logger.error(f"Error logging request/response: {e}")
+            logger.error(f"Error writing log entry: {e}")
 
     async def _cleanup_appium_processes(self) -> None:
         """Clean up any existing Appium processes and port usage."""
@@ -699,7 +868,16 @@ class AppiumManager:
             self.appium_process = cast(Popen[bytes], process)
             
             # Set up request/response logging
-            self._setup_request_response_logging()
+            timestamp = int(time.time())
+            self._request_log_path = os.path.join(
+                self._logs_dir, f"appium_requests_{timestamp}.log"
+            )
+            logger.info(f"Request/response logging enabled at {self._request_log_path}")
+            
+            # Set up logging if driver exists
+            if self.driver:
+                await self.setup_request_response_logging(self.driver)
+                await self.setup_console_logging(self.driver)
             
             # Start log capture tasks
             if self._logs_dir and self.appium_process and self.appium_process.stdout and self.appium_process.stderr:
@@ -744,15 +922,7 @@ class AppiumManager:
         if self.appium_process:
             logger.info("Stopping Appium server.")
             self.appium_process.terminate()
-            try:
-                process = cast(Popen[bytes], self.appium_process)
-                # Create a Future for the process.wait()
-                wait_future = asyncio.create_task(process.wait())
-                await asyncio.wait_for(wait_future, timeout=10.0)
-                logger.info("Appium server stopped.")
-            except asyncio.TimeoutError:
-                logger.warning("Appium server did not stop in time; killing process.")
-                self.appium_process.kill()
+            self.appium_process.kill()
             self.appium_process = None
 
         for task in self._log_tasks:
@@ -961,13 +1131,13 @@ class AppiumManager:
         await asyncio.sleep(boot_wait)
         await self.async_initialize()
 
-    async def wait_for_session_ready(self, timeout: int = 30) -> bool:
+    async def wait_for_session_ready(self, timeout: int = 120) -> bool:
         """
         Wait for the Appium session to be fully ready by checking device responsiveness.
         Returns True if session is ready, False if timeout occurred.
         
         Args:
-            timeout: Maximum time to wait in seconds (default 30 seconds)
+            timeout: Maximum time to wait in seconds (default 120 seconds)
         """
         if not self.driver:
             return False
@@ -1153,9 +1323,15 @@ iOS Environment Setup Required:
             loop = asyncio.get_running_loop()
             
             # Log the session creation request
-            self._log_request_response(
-                {"command": "create_session", "capabilities": desired_caps},
-                {"status": "pending"}
+            await self._write_log_entry(
+                {
+                    "type": "request",
+                    "command": "create_session",
+                    "capabilities": desired_caps,
+                    "status": "pending",
+                    "timestamp": time.time()
+                },
+                self._network_log_path
             )
             
             # Create AppiumOptions instance with modern W3C capabilities
@@ -1181,36 +1357,63 @@ iOS Environment Setup Required:
             logger.info("Waiting for session to stabilize...")
             if not await self.wait_for_session_ready():
                 raise Exception("Session failed to stabilize within the timeout period")
+
+            # Set up logging
+            if self.driver:
+                await self.setup_request_response_logging(self.driver)
+                await self.setup_console_logging(self.driver)
+            
+            # Start screen recording
+            await self.start_screen_recording()
             
             # Log successful session creation
-            self._log_request_response(
-                {"command": "create_session", "capabilities": desired_caps},
-                {"status": "success", "session_id": self.driver.session_id}
+            await self._write_log_entry(
+                {
+                    "command": "create_session",
+                    "status": "success",
+                    "session_id": self.driver.session_id,
+                    "capabilities": desired_caps
+                },
+                self._network_log_path
             )
-            logger.info("Appium session created and stabilized successfully.")
+            logger.info("Appium session created, stabilized, and recording started successfully.")
             
         except Exception as e:
             # Log failed session creation
-            self._log_request_response(
-                {"command": "create_session", "capabilities": desired_caps},
-                {"status": "error", "error": str(e)}
-            )
+            if hasattr(self, '_network_log_path'):
+                await self._write_log_entry(
+                    {
+                        "type": "request",
+                        "command": "create_session",
+                        "capabilities": desired_caps,
+                        "status": "error",
+                        "error": str(e),
+                        "timestamp": time.time()
+                    },
+                    self._network_log_path
+                )
             logger.error(f"Failed to create Appium session: {e}")
             raise e
 
     async def quit_session(self) -> None:
         """
         Quit the Appium session and clean up the driver.
+        Ensures screen recording is stopped and saved before quitting.
         """
         if self.driver:
             logger.info("Quitting Appium session.")
             try:
-                loop = asyncio.get_running_loop()
-                await loop.run_in_executor(None, self.driver.quit)
+                # Stop and save screen recording
+                try:
+                    _ = await self.stop_screen_recording()
+                except Exception as e:
+                    logger.error(f"Error stopping screen recording: {e}")
+
                 logger.info("Appium session quit successfully.")
             except Exception as e:
                 logger.error(f"Error while quitting Appium session: {e}")
-            self.driver = None
+            finally:
+                self.driver = None
 
     # ─── SCREENSHOT & SESSION RECORDING ─────────────────────────────────────────
 
@@ -1270,7 +1473,9 @@ iOS Environment Setup Required:
             driver = cast(WebDriver, self.driver)
             recording_data = await loop.run_in_executor(None, lambda: driver.stop_recording_screen())
             video_bytes = base64.b64decode(recording_data)
-            video_path = os.path.join(self._video_dir, f"recording_{int(time.time())}.mp4")
+            timestamp = int(time.time())
+            video_name = f"{self.stake_id}_{timestamp}.mp4" if self.stake_id else f"recording_{timestamp}.mp4"
+            video_path = os.path.join(self._video_dir, video_name)
             with open(video_path, "wb") as f:
                 f.write(video_bytes)
             self._latest_video_path = video_path
@@ -1763,12 +1968,15 @@ iOS Environment Setup Required:
                     "children": [parse_element_all(child) for child in list(elem)]
                 }
                 for key, value in attrib.items():
-                    element_data[key] = value
+                    if isinstance(value, str):
+                        value = value.strip()
+                    if value:
+                        element_data[key] = value
                 if len(element_data["children"]) == 0:
                     del element_data["children"]
                 if len(element_data) > 1:
                     element_data["tag"] = elem.tag
-                return element_data
+                return add_bounding_box(element_data)
             
             tree = parse_element_all(root)
             logger.info("Accessibility tree retrieved successfully.")
@@ -1962,10 +2170,54 @@ iOS Environment Setup Required:
 
     async def get_current_screen_state(self) -> str:
         """
-        For mobile automation, instead of a URL we return a serialized version
-        of the current screen's accessibility tree as JSON.
+        Get the current screen state (current app, home screen, etc.).
         """
-        return "Use tool to check"
+        if not self.driver:
+            return "No active Appium session"
+
+        try:
+            driver = cast(WebDriver, self.driver)
+            
+            def get_android_state() -> str:
+                try:
+                    current_package = driver.current_package
+                    current_activity = driver.current_activity
+                    
+                    if current_package == "com.android.launcher" or current_package.endswith(".launcher"):
+                        return "Home Screen"
+                    elif current_package == "com.android.systemui":
+                        return "System UI (Quick Settings/Notifications)"
+                    else:
+                        return f"App: {current_package} (Activity: {current_activity})"
+                except Exception as e:
+                    logger.error(f"Error getting Android state: {e}")
+                    return "Error getting Android state"
+
+            def get_ios_state() -> str:
+                try:
+                    try:
+                        bundle_info = driver.execute_script('mobile: activeAppInfo')
+                        if not bundle_info or bundle_info.get('bundleId') == 'com.apple.springboard':
+                            return "Home Screen"
+                        return f"App: {bundle_info.get('bundleId', 'Unknown')}"
+                    except Exception:
+                        # Fallback to checking SpringBoard
+                        source = driver.page_source
+                        return "Home Screen" if 'XCUIElementTypeSpringBoard' in source else "Unknown App"
+                except Exception as e:
+                    logger.error(f"Error getting iOS state: {e}")
+                    return "Error getting iOS state"
+
+            # Run the appropriate state check in thread executor
+            loop = asyncio.get_event_loop()
+            if self.platformName.lower() == "android":
+                return await loop.run_in_executor(None, get_android_state)
+            else:
+                return await loop.run_in_executor(None, get_ios_state)
+
+        except Exception as e:
+            logger.error(f"Error getting current screen state: {e}")
+            return "Error determining screen state"
 
     async def get_viewport_size(self) -> Optional[Dict[str, int]]:
         """

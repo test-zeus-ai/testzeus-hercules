@@ -206,7 +206,7 @@ async def validate_visual_feature(
         
         Please provide:
         1. Whether each requested feature/item is present
-        2. Location and appearance details of found items
+        2. Location and appearance details of found items, share the co-ordinates if possible, like bounding box
         3. Any missing features
         4. Confidence level in your findings
         

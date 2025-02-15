@@ -63,12 +63,12 @@ class DeviceManager:
         return cls._instances[stake_id]
 
     @classmethod
-    def close_instance(cls, stake_id: Optional[str] = None) -> None:
+    async def close_instance(cls, stake_id: Optional[str] = None) -> None:
         """Close and remove a specific DeviceManager instance."""
         target_id = stake_id if stake_id is not None else "0"
         if target_id in cls._instances:
             instance = cls._instances[target_id]
-            instance.close()  # Close device instance if any
+            await instance.close()  # Close device instance if any
             del cls._instances[target_id]
             if instance == cls._default_instance:
                 cls._default_instance = None
@@ -77,17 +77,17 @@ class DeviceManager:
                     cls._default_instance = next(iter(cls._instances.values()))
 
     @classmethod
-    def close_all_instances(cls) -> None:
+    async def close_all_instances(cls) -> None:
         """Close all DeviceManager instances."""
         for stake_id in list(cls._instances.keys()):
-            cls.close_instance(stake_id)
+            await cls.close_instance(stake_id)
     
-    def close(self) -> None:
+    async def close(self) -> None:
         """Close the current device instance if any."""
         if isinstance(self._device_instance, AppiumManager):
-            AppiumManager.close_instance(self.stake_id)
+            await AppiumManager.close_instance(self.stake_id)
         elif isinstance(self._device_instance, PlaywrightManager):
-            PlaywrightManager.close_instance(self.stake_id)
+            await PlaywrightManager.close_instance(self.stake_id)
         self._device_instance = None
 
     def get_device_instance(self) -> Union[AppiumManager, PlaywrightManager]:

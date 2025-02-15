@@ -98,12 +98,12 @@ class PlaywrightManager:
         return cls._instances[stake_id]
 
     @classmethod
-    def close_instance(cls, stake_id: Optional[str] = None) -> None:
+    async def close_instance(cls, stake_id: Optional[str] = None) -> None:
         """Close and remove a specific PlaywrightManager instance."""
         target_id = stake_id if stake_id is not None else "0"
         if target_id in cls._instances:
             instance = cls._instances[target_id]
-            asyncio.create_task(instance.stop_playwright())
+            await instance.stop_playwright()
             del cls._instances[target_id]
             if instance == cls._default_instance:
                 cls._default_instance = None
@@ -112,10 +112,10 @@ class PlaywrightManager:
                     cls._default_instance = next(iter(cls._instances.values()))
 
     @classmethod
-    def close_all_instances(cls) -> None:
+    async def close_all_instances(cls) -> None:
         """Close all PlaywrightManager instances."""
         for stake_id in list(cls._instances.keys()):
-            cls.close_instance(stake_id)
+            await cls.close_instance(stake_id)
 
     def __init__(
         self,
