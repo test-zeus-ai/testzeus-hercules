@@ -1,0 +1,46 @@
+{
+    "screens": {
+        "photo_viewer": {
+            "title": "Photo Viewer",
+            "elements": {
+                "image_view": "//XCUIElementTypeImage",
+                "zoom_control": "//XCUIElementTypeButton[@name='zoom']"
+            }
+        },
+        "main_menu": {
+            "title": "Main Menu",
+            "elements": {
+                "share_button": "//XCUIElementTypeButton[@name='Share']"
+            }
+        },
+        "article_view": {
+            "title": "Article View",
+            "elements": {
+                "article_content": "//XCUIElementTypeTextView",
+                "paragraph": "//XCUIElementTypeStaticText[contains(@name, 'paragraph')]"
+            }
+        },
+        "settings": {
+            "title": "Settings",
+            "elements": {
+                "notification_settings": "//XCUIElementTypeCell[@name='Notifications']",
+                "allow_button": "Allow"
+            }
+        },
+        "feedback_demo": {
+            "title": "Haptic Feedback Demo",
+            "elements": {
+                "light_feedback": "//XCUIElementTypeButton[@name='Light Feedback']",
+                "heavy_feedback": "//XCUIElementTypeButton[@name='Heavy Feedback']",
+                "selection_feedback": "//XCUIElementTypeButton[@name='Selection Feedback']"
+            }
+        }
+    },
+    "test_data": {
+        "zoom_in_scale": 2.0,
+        "zoom_out_scale": 0.5,
+        "force_touch_pressure": 0.8,
+        "force_touch_duration": 0.5,
+        "double_tap_duration": 0.1
+    }
+}

@@ -1,6 +1,6 @@
 from datetime import datetime
 from string import Template
-from typing import Any
+from typing import Any, List, Dict
 
 from testzeus_hercules.core.agents.base_nav_agent import BaseNavAgent
 from testzeus_hercules.utils.llm_helper import MultimodalConversableAgent
@@ -11,7 +11,7 @@ class MultimodalBaseNavAgent(BaseNavAgent):
     agent_name: str = "multimodal_base_nav_agent"
     prompt = "Base Multimodal Agent"
 
-    def __init__(self, model_config_list, llm_config_params: dict[str, Any], system_prompt: str | None, nav_executor: Any, agent_name: str = None, agent_prompt: str | None = None) -> None:
+    def __init__(self, model_config_list: List[Dict[str, Any]], llm_config_params: dict[str, Any], system_prompt: str | None, nav_executor: Any, agent_name: str = None, agent_prompt: str | None = None) -> None:
         """
         Initialize the MultimodalBaseNavAgent using MultimodalConversableAgent instead of ConversableAgent.
         """

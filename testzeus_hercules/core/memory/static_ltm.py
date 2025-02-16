@@ -113,6 +113,11 @@ class StaticLTM:
             result += f"\nhelper_spec_file_paths: {li_selected_files}"
         if run_data:
             result += f"\nprevious_context_data: {run_data}"
+            
+        if get_global_conf().get_device_manager() == "appium":
+            result += f"\nDevice Type: Mobile {get_global_conf().get_device_os()}"
+        else:
+            result += "\nDevice Type: Web Browser"
 
         return result
 

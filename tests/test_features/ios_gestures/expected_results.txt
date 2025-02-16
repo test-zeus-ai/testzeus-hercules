@@ -1,0 +1,71 @@
+{
+    "pinch_zoom": {
+        "zoomed_in": {
+            "condition": "image element size should be larger than original",
+            "validation": "element_size_comparison"
+        },
+        "zoomed_out": {
+            "condition": "image element size should be smaller than original",
+            "validation": "element_size_comparison"
+        }
+    },
+    "force_touch": {
+        "share_menu": {
+            "condition": "share menu should be visible",
+            "validation": "element_visibility",
+            "element": "//XCUIElementTypeSheet[@name='Share']"
+        },
+        "haptic_feedback": {
+            "condition": "haptic event should be triggered",
+            "validation": "event_log"
+        },
+        "content_copied": {
+            "condition": "clipboard should contain expected content",
+            "validation": "clipboard_content"
+        }
+    },
+    "double_tap": {
+        "paragraph_selected": {
+            "condition": "paragraph should have selected state",
+            "validation": "element_state",
+            "state": "selected"
+        },
+        "content_zoomed": {
+            "condition": "content scale should be increased",
+            "validation": "element_scale"
+        }
+    },
+    "alert_handling": {
+        "alert_buttons": {
+            "condition": "should return array of button names",
+            "validation": "array_content",
+            "expected": ["Allow", "Don't Allow"]
+        },
+        "permission_granted": {
+            "condition": "permission status should be authorized",
+            "validation": "permission_status"
+        },
+        "settings_visible": {
+            "condition": "notification settings page should be visible",
+            "validation": "screen_presence",
+            "identifier": "Notification Settings"
+        }
+    },
+    "haptic_feedback": {
+        "light_tap": {
+            "condition": "light haptic event should be triggered",
+            "validation": "haptic_event",
+            "type": "light"
+        },
+        "heavy_tap": {
+            "condition": "heavy haptic event should be triggered",
+            "validation": "haptic_event",
+            "type": "heavy"
+        },
+        "selection_feedback": {
+            "condition": "selection haptic event should be triggered",
+            "validation": "haptic_event",
+            "type": "selection"
+        }
+    }
+}
