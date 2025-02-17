@@ -2,7 +2,7 @@ from collections import defaultdict, deque
 from typing import Annotated, Any, Dict, Union
 
 from testzeus_hercules.config import get_global_conf
-from testzeus_hercules.core.tools.tool_registry import tool
+from testzeus_hercules.core.generic_tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
 
 # Module-level state string
@@ -12,7 +12,7 @@ _state_dict: Dict[str, Any] = defaultdict(deque)
 
 
 @tool(
-    agent_names=["browser_nav_agent", "api_nav_agent", "sql_nav_agent"],
+    agent_names=["api_nav_agent", "sql_nav_agent", "navigation_nav_agent"],
     description="Tool to store information.",
     name="store_data",
 )
@@ -59,7 +59,7 @@ def store_run_data(
 
 
 # @tool(
-#     agent_names=["browser_nav_agent", "api_nav_agent", "sql_nav_agent"],
+#     agent_names=["api_nav_agent", "sql_nav_agent", "navigation_nav_agent"],
 #     description="Tool to retrieve the stored information.",
 #     name="get_stored_data",
 # )

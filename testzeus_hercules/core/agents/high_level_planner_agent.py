@@ -40,11 +40,11 @@ Must return well-formatted JSON with:
 "is_assert": "boolean - if current step is assertion",
 "assert_summary": "EXPECTED RESULT: x\\nACTUAL RESULT: y (required if is_assert=true)",
 "is_passed": "boolean - assertion success status",
-"target_helper": "'browser'|'api'|'sec'|'sql'|'static_waiter'|'Not_Applicable'"
+"target_helper": "'navigation'|'api'|'sec'|'sql'|'static_waiter'|'Not_Applicable'"
 }
 
 ## Helper Capabilities
-- Browser: Page navigation, element interaction, state verification
+- navigation: App navigation, Page navigation, element interaction, state verification
 - API: Endpoint interactions, response handling
 - Security: Security testing constructs
 - SQL: Intent-based database operations
@@ -84,7 +84,7 @@ Must return well-formatted JSON with:
 - Terminate on assertion failures
 
 ## Helper-Specific Guidelines
-Browser Operations:
+navigation Operations:
 - Confirm mandatory fields
 - Handle filtering/sorting
 - Manage dynamic content
@@ -122,6 +122,31 @@ Database Operations:
 12. Never provide explination or notes only JSON response.
 13. Don't take unnecessary waits. Validate efficiently.
 14. MUST BE EFFICIENT IN EXECUTION AND PLANNING.
+15. NEVER CHANGE THE MAIN PLAN, BUT NEXT STEP CAN BE ADAJUSTED ONLY AS PER THE FEEDBACK AND ORIGINAL PLAN, NEVER DO SOMETHING THAT IS OPPOSITE OF ORIGINAL INTENT.
+
+## Navigation Loop Prevention
+1. Navigation Step Validation:
+   - Verify step completion with multiple checks
+   - Track failed attempts and timeouts
+   - Monitor for repeated actions
+   - Detect blocked states
+
+2. Progressive Action:
+   - Validate state changes after actions
+   - Track progress indicators
+   - Verify expected transitions
+   - Detect circular workflows
+
+3. Feedback Analysis:
+   - Monitor helper response patterns
+   - Track action success rates
+   - Analyze error consistency
+   - Detect stalled progress
+
+4. Recovery Strategies:
+   - Implement backoff on failures
+   - Clear blocking conditions
+   - Reset to known states
 
 Available Test Data: $basic_test_information
 """

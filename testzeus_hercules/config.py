@@ -3,7 +3,10 @@
 import argparse
 import json
 import os
-from typing import Optional
+from typing import Any, Dict, Optional, Union, Literal
+
+DeviceManagerType = Literal["appium", "playwright"]
+DeviceOSType = Literal["android", "ios"]
 
 from dotenv import load_dotenv
 from testzeus_hercules.utils.logger import logger
@@ -179,6 +182,25 @@ class BaseConfigManager:
             "GEO_PROVIDER",
             "GEO_API_KEY",
             "EXECUTE_BULK",
+            # Appium Configuration
+            "APPIUM_SERVER_URL",
+            "APPIUM_SERVER_PORT",
+            "PLATFORM_NAME",
+            "DEVICE_NAME",
+            "AUTOMATION_NAME",
+            "APP_PATH",
+            "APPIUM_CAPABILITIES",
+            "EMULATOR_AVD_NAME",
+            # iOS-specific Configuration
+            "IOS_SIMULATOR_DEVICE",
+            "IOS_BUNDLE_ID",
+            "XCODE_ORG_ID",
+            "XCODE_SIGNING_ID",
+            "WEBDRIVERAGENT_PATH",
+            "IOS_TEAM_ID",
+            # Device Manager Configuration
+            "DEVICE_MANAGER",
+            "DEVICE_OS",
         ]
 
         relevant_keys.append("ENABLE_PLAYWRIGHT_TRACING")
@@ -265,6 +287,38 @@ class BaseConfigManager:
         self._config.setdefault("REACTION_DELAY_TIME", "0.1")
         self._config.setdefault("EXECUTE_BULK", "false")
         self._config.setdefault("ENABLE_PLAYWRIGHT_TRACING", "false")
+
+        # Appium defaults
+        self._config.setdefault("APPIUM_SERVER_URL", None)
+        self._config.setdefault("APPIUM_SERVER_PORT", "4723")
+        
+        # Platform-specific defaults based on device OS
+        device_os = self._config.get("DEVICE_OS", "android").lower()
+        if device_os == "android":
+            self._config.setdefault("PLATFORM_NAME", "Android")
+            self._config.setdefault("DEVICE_NAME", "emulator-5554")
+            self._config.setdefault("AUTOMATION_NAME", "UiAutomator2")
+            self._config.setdefault("EMULATOR_AVD_NAME", "Medium_Phone_API_35")
+        else:  # iOS
+            self._config.setdefault("PLATFORM_NAME", "iOS")
+            self._config.setdefault("DEVICE_NAME", "iPhone Simulator")
+            self._config.setdefault("AUTOMATION_NAME", "XCUITest")
+            self._config.setdefault("IOS_SIMULATOR_DEVICE", "iPhone 14")
+        
+        # Common Appium settings
+        self._config.setdefault("APP_PATH", "")
+        self._config.setdefault("APPIUM_APK_PATH", "")       # Path to Android APK
+        self._config.setdefault("APPIUM_IOS_APP_PATH", "")   # Path to iOS app
+        self._config.setdefault("APPIUM_DEVICE_UUID", "")    # Specific device UUID
+        self._config.setdefault("APPIUM_PLATFORM_VERSION", "") # OS version to target
+        self._config.setdefault("APPIUM_CAPABILITIES", "{}")
+        
+        # iOS-specific defaults
+        self._config.setdefault("IOS_BUNDLE_ID", "")
+        self._config.setdefault("XCODE_ORG_ID", "")
+        self._config.setdefault("XCODE_SIGNING_ID", "iPhone Developer")
+        self._config.setdefault("WEBDRIVERAGENT_PATH", "")
+        self._config.setdefault("IOS_TEAM_ID", "")
 
         if self._config["MODE"] == "debug":
             self.timestamp = "0"
@@ -404,6 +458,92 @@ class BaseConfigManager:
 
     def get_geo_api_key(self) -> str:
         return self._config["GEO_API_KEY"]
+
+    # Appium Configuration Methods
+    def get_appium_server_url(self) -> Optional[str]:
+        """Get the configured Appium server URL."""
+        return self._config["APPIUM_SERVER_URL"]
+
+    def get_appium_server_port(self) -> int:
+        """Get the configured Appium server port."""
+        return int(self._config["APPIUM_SERVER_PORT"])
+
+    def get_platform_name(self) -> str:
+        """Get the platform name for Appium capabilities."""
+        return self._config["PLATFORM_NAME"]
+
+    def get_device_name(self) -> str:
+        """Get the device name for Appium capabilities."""
+        return self._config["DEVICE_NAME"]
+
+    def get_automation_name(self) -> str:
+        """Get the automation name for Appium capabilities."""
+        return self._config["AUTOMATION_NAME"]
+
+    def get_app_path(self) -> str:
+        """Get the path to the app package/bundle."""
+        return self._config["APP_PATH"]
+        
+    def get_appium_apk_path(self) -> str:
+        """Get the path to the Android APK file."""
+        return self._config["APPIUM_APK_PATH"]
+
+    def get_appium_ios_app_path(self) -> str:
+        """Get the path to the iOS app file."""
+        return self._config["APPIUM_IOS_APP_PATH"]
+
+    def get_appium_device_uuid(self) -> str:
+        """Get the specific device UUID to target."""
+        return self._config["APPIUM_DEVICE_UUID"]
+
+    def get_appium_platform_version(self) -> str:
+        """Get the platform version to target."""
+        return self._config["APPIUM_PLATFORM_VERSION"]
+
+    def get_appium_capabilities(self) -> Dict[str, Any]:
+        """Get additional Appium capabilities as a dictionary."""
+        try:
+            return json.loads(self._config["APPIUM_CAPABILITIES"])
+        except json.JSONDecodeError:
+            return {}
+
+    def get_emulator_avd_name(self) -> str:
+        """Get the AVD name for Android emulator."""
+        return self._config["EMULATOR_AVD_NAME"]
+
+    # iOS-specific Configuration Methods
+    def get_ios_simulator_device(self) -> Optional[str]:
+        """Get the iOS simulator device type (e.g., 'iPhone 14')."""
+        return self._config.get("IOS_SIMULATOR_DEVICE")
+
+    def get_ios_bundle_id(self) -> Optional[str]:
+        """Get the iOS app bundle identifier."""
+        return self._config.get("IOS_BUNDLE_ID")
+
+    def get_xcode_org_id(self) -> Optional[str]:
+        """Get the Xcode organization/team ID."""
+        return self._config.get("XCODE_ORG_ID")
+
+    def get_xcode_signing_id(self) -> Optional[str]:
+        """Get the Xcode signing identity."""
+        return self._config.get("XCODE_SIGNING_ID")
+
+    def get_webdriveragent_path(self) -> Optional[str]:
+        """Get custom WebDriverAgent path if specified."""
+        return self._config.get("WEBDRIVERAGENT_PATH")
+
+    def get_ios_team_id(self) -> Optional[str]:
+        """Get iOS development team ID."""
+        return self._config.get("IOS_TEAM_ID")
+
+    # Device Manager Configuration Methods
+    def get_device_manager(self) -> DeviceManagerType:
+        """Get the configured device automation manager type."""
+        return self._config.get("DEVICE_MANAGER", "playwright").lower()
+
+    def get_device_os(self) -> DeviceOSType:
+        """Get the configured device OS type for mobile automation."""
+        return self._config.get("DEVICE_OS", "android").lower()
 
     def get_trace_path(self, stake_id: Optional[str] = None) -> dict[str, str]:
         """Get all trace related paths for a test run. Now uses internal timestamp."""

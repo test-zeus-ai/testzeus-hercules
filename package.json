@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "appium-webdriveragent": "^9.0.3"
+  }
+}

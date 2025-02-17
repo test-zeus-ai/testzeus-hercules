@@ -6,14 +6,13 @@ from typing import Any
 
 import autogen  # type: ignore
 from testzeus_hercules.core.memory.static_ltm import get_user_ltm
-from testzeus_hercules.core.tools.tool_registry import tool_registry
+from testzeus_hercules.core.generic_tools.tool_registry import tool_registry
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.logger import logger
 
 
 class BaseNavAgent:
     agent_name: str = "base_nav_agent"
-    prompt = "Base Agent"
     prompt = "Base Agent"
 
     def __init__(self, model_config_list, llm_config_params: dict[str, Any], system_prompt: str | None, nav_executor: autogen.UserProxyAgent, agent_name: str = None, agent_prompt: str | None = None):  # type: ignore
@@ -30,9 +29,7 @@ class BaseNavAgent:
         self.nav_executor = nav_executor
         user_ltm = self.__get_ltm()
         agent_name = self.agent_name
-        agent_name = self.agent_name
 
-        system_message = agent_prompt or self.prompt
         system_message = agent_prompt or self.prompt
         if system_prompt and len(system_prompt) > 0:
             if isinstance(system_prompt, list):

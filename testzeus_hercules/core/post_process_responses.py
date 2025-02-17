@@ -2,7 +2,6 @@ import asyncio
 from typing import Any
 
 import autogen  # type: ignore
-from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
