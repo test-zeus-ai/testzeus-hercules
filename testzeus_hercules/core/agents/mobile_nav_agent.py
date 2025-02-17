@@ -15,10 +15,12 @@ Core Guidelines
 •	Execute gestures and interactions suited to the platform.
 •	Manage system alerts and permissions appropriately.
 2.	Smart Element Discovery
+•	ALWAYS FOCUS ON THE ELEMENTS THAT ARE RELATED TO TEST AGENDA AND NAMES/NOUNS/OBJECTS.
 •	Prioritize elements with accessibility identifiers.
 •	Scroll to reveal elements not immediately visible.
 •	Adapt to dynamic content and changes in device orientation.
 3.	Effective Interaction
+•	WHEN DOUBT ALWAYS READ SCREEN.
 •	Verify an element’s state and visibility before interacting.
 •	Use appropriate waiting strategies.
 •	Handle keyboard appearances and touch precision carefully.
