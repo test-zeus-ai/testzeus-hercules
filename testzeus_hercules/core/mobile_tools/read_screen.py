@@ -32,7 +32,7 @@ IOS_INPUT_CLASSES = {
 def substitute_keys(data: Dict[str, Any], platform: str) -> Dict[str, Any]:
     """
     Recursively substitute keys in the data dictionary according to reference dictionary.
-    Handles special case of bounding_box where the key itself needs to be substituted.
+    Handles special case of bounds_data where the key itself needs to be substituted.
     """
     if not isinstance(data, dict):
         return data
@@ -42,11 +42,11 @@ def substitute_keys(data: Dict[str, Any], platform: str) -> Dict[str, Any]:
     
     for key, value in data.items():
         if isinstance(value, dict):
-            if key == "bounding_box":
-                # Special handling for bounding_box key and its contents
-                bb_ref = ref_dict.get("bounding_box", {})
-                # Use the base key mapping for bounding_box itself
-                new_key = bb_ref.get("bounding_box", "bounding_box")
+            if key == "bounds_data":
+                # Special handling for bounds_data key and its contents
+                bb_ref = ref_dict.get("bounds_data", {})
+                # Use the base key mapping for bounds_data itself
+                new_key = bb_ref.get("bounds_data", "bounds_data")
                 # Process the inner bounding box values
                 new_value = {}
                 for bb_key, bb_value in value.items():

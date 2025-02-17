@@ -9,7 +9,7 @@ import base64
 import json
 import xml.etree.ElementTree as ET
 import io
-from typing import Optional, Dict, Any, List, TypeVar, Union, cast
+from typing import Optional, Dict, Any, List, Tuple, TypeVar, Union, cast
 
 from appium import webdriver
 from appium.webdriver.webdriver import WebDriver
@@ -24,40 +24,101 @@ from testzeus_hercules.core import ios_gestures
 from PIL import Image
 
 
-def add_bounding_box(node: Dict[str, Any]) -> Dict[str, Any]:
-    # Check for Android node using 'bounds'
-    if "bounds" in node:
-        bounds_str = node["bounds"]
-        # Extract the coordinates using a regex pattern
-        matches = re.findall(r'\[(\d+),(\d+)\]', bounds_str)
-        if len(matches) == 2:
-            start_x, start_y = map(int, matches[0])
-            end_x, end_y = map(int, matches[1])
-            node["bounding_box"] = {
-                "start_x": start_x,
-                "start_y": start_y,
-                "end_x": end_x,
-                "end_y": end_y
+def add_bounds_data(node: Dict[str, Any]) -> Dict[str, Any]:
+    """Extract and standardize bounding box coordinates from element data."""
+    try:
+        # For Android nodes
+        if "bounds" in node:
+            # Remove the original bounds field
+            bounds_str = node.pop("bounds")
+            matches = re.findall(r'\[(\d+),(\d+)\]', bounds_str)
+            if len(matches) == 2:
+                start_x, start_y = map(int, matches[0])
+                end_x, end_y = map(int, matches[1])
+                node["bounds_data"] = {
+                    "start_x": start_x,
+                    "start_y": start_y,
+                    "end_x": end_x,
+                    "end_y": end_y
+                }
+        # For iOS nodes
+        elif all(key in node for key in ["x", "y", "width", "height"]):
+            x = int(node.pop("x"))
+            y = int(node.pop("y"))
+            width = int(node.pop("width"))
+            height = int(node.pop("height"))
+            node["bounds_data"] = {
+                "start_x": x,
+                "start_y": y,
+                "end_x": x + width,
+                "end_y": y + height
             }
-            del node["bounds"]
-
-    # Check for iOS node using x, y, width, and height
-    elif all(key in node for key in ["x", "y", "width", "height"]):
-        x = int(node["x"])
-        y = int(node["y"])
-        width = int(node["width"])
-        height = int(node["height"])
-        node["bounding_box"] = {
-            "start_x": x,
-            "start_y": y,
-            "end_x": x + width,
-            "end_y": y + height
-        }
-        del node["x"]
-        del node["y"]
-        del node["width"]
-        del node["height"]
+    except Exception as e:
+        logger.warning(f"Error processing bounds for node: {e}")
     return node
+
+def find_best_matching_node(
+    tree: Dict[str, Any], 
+    res_id: Optional[str] = None, 
+    accessibility_id: Optional[str] = None, 
+    bounds_data: Optional[Dict[str, int]] = None,
+    tag_name: Optional[str] = None
+) -> Tuple[Optional[Dict[str, Any]], float]:
+    """
+    Find the best matching node in the accessibility tree based on given criteria.
+    Returns tuple of (best_matching_node, match_score) where score is between 0 and 1.
+    """
+    def calculate_node_score(node: Dict[str, Any]) -> float:
+        score = 0.0
+        total_criteria = 0
+
+        # Check resource ID match
+        if res_id:
+            total_criteria += 1
+            if any(node.get(k) == res_id for k in ['resource-id', 'name']):
+                score += 1.0
+
+        # Check accessibility ID match
+        if accessibility_id:
+            total_criteria += 1
+            if any(node.get(k) == accessibility_id for k in ['content-desc', 'label']):
+                score += 1.0
+
+        # Check bounds match
+        if bounds_data and "bounds_data" in node:
+            total_criteria += 1
+            node_bounds = node["bounds_data"]
+            # Allow for some pixel tolerance (e.g., ±5 pixels)
+            tolerance = 5
+            if all(
+                abs(node_bounds.get(k, 0) - bounds_data.get(k, 0)) <= tolerance
+                for k in ['start_x', 'start_y', 'end_x', 'end_y']
+            ):
+                score += 1.0
+
+        # Check tag name match
+        if tag_name:
+            total_criteria += 1
+            if node.get('tag') == tag_name:
+                score += 1.0
+
+        return score / max(total_criteria, 1)
+
+    def traverse_tree(node: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], float]:
+        best_score = calculate_node_score(node)
+        best_node = node if best_score > 0 else None
+
+        # Traverse children
+        if "children" in node:
+            for child in node["children"]:
+                child_node, child_score = traverse_tree(child)
+                if child_score > best_score:
+                    best_score = child_score
+                    best_node = child_node
+
+        return best_node, best_score
+
+    return traverse_tree(tree)
 
 REFERENCE_DICT = {
     "ios": {
@@ -69,8 +130,8 @@ REFERENCE_DICT = {
         "accessible": "acc",
         "index": "i",
         "tag": "tg",
-        "bounding_box": {
-          "bounding_box": "bb",  # key for the bounding_box field itself
+        "bounds_data": {
+          "bounds_data": "bb",  # key for the bounds_data field itself
           "start_x": "sx",
           "start_y": "sy",
           "end_x": "ex",
@@ -107,8 +168,8 @@ REFERENCE_DICT = {
         "context-clickable": "cc",
         "content-invalid": "cinv",
         "tag": "tg",
-        "bounding_box": {
-          "bounding_box": "bb",  # key for the bounding_box field itself
+        "bounds_data": {
+          "bounds_data": "bb",  # key for the bounds_data field itself
           "start_x": "sx",
           "start_y": "sy",
           "end_x": "ex",
@@ -143,6 +204,7 @@ class AppiumManager:
     _instances: Dict[str, "AppiumManager"] = {}
     _default_instance: Optional["AppiumManager"] = None
     _initialized: bool = False
+    _accessibility_tree_cache: Optional[Dict[str, Any]] = None  # Cache for storing accessibility tree
 
     def __new__(cls, *args: Any, stake_id: Optional[str] = None, **kwargs: Any) -> "AppiumManager":
         # If no stake_id provided and we have a default instance, return it
@@ -1422,6 +1484,7 @@ iOS Environment Setup Required:
         Capture a screenshot and save it in the screenshots directory.
         Returns the full path to the screenshot file.
         """
+        return "bypassed"
         if not self.driver:
             logger.error("No Appium session available for taking screenshot.")
             return None
@@ -1538,301 +1601,305 @@ iOS Environment Setup Required:
             logger.debug(f"Error parsing bounds {bounds_str}: {e}")
             return None
 
-    async def find_element_by_bounds(
-        self,
-        bounds: str,
-        tag_name: Optional[str] = None
-    ) -> Optional[WebElement]:
-        """
-        Find element by its bounding box coordinates.
-        
-        Args:
-            bounds: Element bounds in format '[x1,y1][x2,y2]'
-            tag_name: Optional tag/class name to filter by
-            
-        Returns:
-            WebElement if found, None otherwise
-        """
-        if not self.driver:
-            return None
-            
-        try:
-            coords = self._parse_bounds(bounds)
-            if not coords:
-                return None
-                
-            loop = asyncio.get_running_loop()
-            driver = cast(WebDriver, self.driver)
-
-            # Construct XPath with bounds and optional tag
-            # Construct XPath with bounds and optional tag
-            tag_condition = ""
-            if tag_name:
-                tag_condition = f"@class='{tag_name}' and "
-            xpath = f"//*[{tag_condition}@bounds='{bounds}' and @enabled='true' and @displayed='true']"
-            
-            return await loop.run_in_executor(
-                None,
-                lambda: driver.find_element(AppiumBy.XPATH, xpath)
-            )
-        except Exception as e:
-            logger.debug(f"Element not found by bounds {bounds}: {e}")
-            return None
-
     async def find_element_best_match(
         self,
         res_id: Optional[str] = None,
         accessibility_id: Optional[str] = None,
-        bounds: Optional[str] = None,
+        bounds_data: Optional[Dict[str, int]] = None,
         tag_name: Optional[str] = None
     ) -> WebElement:
-        """
-        Try finding element using resource ID first, then accessibility ID, then bounds.
-        
-        Args:
-            res_id: Resource ID of the element (Android: resource-id, iOS: name)
-            accessibility_id: Accessibility ID of the element (Android: content-desc, iOS: accessibilityIdentifier)
-            bounds: Element bounds in format '[x1,y1][x2,y2]'
-            tag_name: Optional tag/class name to filter by when using bounds
-
-        Returns:
-            WebElement: Found element
-
-        Raises:
-            Exception: If element cannot be found using any strategy
-        """
+        """Find element using multiple fallback strategies."""
         if not self.driver:
-            logger.error("No Appium session available for finding element.")
             raise RuntimeError("No active Appium session")
 
-        try:
-            loop = asyncio.get_running_loop()
-            driver = cast(WebDriver, self.driver)
+        driver = cast(WebDriver, self.driver)
+        loop = asyncio.get_running_loop()
 
-            # Try resource ID first if provided
-            if res_id:
-                logger.debug(f"Trying to find element by resource ID: {res_id}")
-                try:
-                    return await loop.run_in_executor(
-                        None, lambda: driver.find_element(AppiumBy.ID, res_id)
-                    )
-                except Exception as e:
-                    logger.debug(f"Element not found by resource ID: {e}")
-
-            # Then try accessibility ID if provided
+        async def try_direct_locators() -> Optional[WebElement]:
+            """Try direct locator strategies first."""
             if accessibility_id:
-                logger.debug(f"Trying to find element by accessibility ID: {accessibility_id}")
                 try:
                     return await loop.run_in_executor(
-                        None, lambda: driver.find_element(AppiumBy.ACCESSIBILITY_ID, accessibility_id)
+                        None,
+                        lambda: driver.find_element(AppiumBy.ACCESSIBILITY_ID, accessibility_id)
                     )
-                except Exception as e:
-                    logger.debug(f"Element not found by accessibility ID: {e}")
+                except Exception:
+                    pass
 
-            # Finally try bounds if provided
-            if bounds:
-                logger.debug(f"Trying to find element by bounds: {bounds}")
-                element = await self.find_element_by_bounds(bounds, tag_name)
-                if element:
-                    return element
+            if res_id:
+                try:
+                    return await loop.run_in_executor(
+                        None,
+                        lambda: driver.find_element(AppiumBy.ID, res_id)
+                    )
+                except Exception:
+                    pass
+            return None
 
-            # If no strategy succeeded, raise an error
-            error_msg = (
-                "Could not find element. Tried:\n" +
-                (f"- Resource ID: {res_id}\n" if res_id else "") +
-                (f"- Accessibility ID: {accessibility_id}\n" if accessibility_id else "") +
-                (f"- Bounds: {bounds}\n" if bounds else "")
+        async def find_in_tree() -> Optional[WebElement]:
+            """Find element using accessibility tree matching."""
+            if self._accessibility_tree_cache is None:
+                await self.get_accessibility_tree()
+
+            # Call find_best_matching_node with all available parameters
+            best_node, score = find_best_matching_node(
+                tree=self._accessibility_tree_cache,
+                res_id=res_id,
+                accessibility_id=accessibility_id, 
+                bounds_data=bounds_data,
+                tag_name=tag_name
             )
-            raise Exception(error_msg)
 
-        except Exception as e:
-            logger.error(str(e))
-            raise e
+            if best_node and score > 0:
+                # Try to find element using the matched node's identifiers
+                if best_node.get('content-desc') or best_node.get('accessibilityIdentifier'):
+                    try:
+                        return await loop.run_in_executor(
+                            None,
+                            lambda: driver.find_element(AppiumBy.ACCESSIBILITY_ID, 
+                                best_node.get('content-desc') or best_node.get('accessibilityIdentifier'))
+                        )
+                    except Exception:
+                        pass
 
-    # ─── BASIC INTERACTION METHODS WITH PRE/POST SCREENSHOTS ───────────────────
+                if best_node.get('resource-id') or best_node.get('name'):
+                    try:
+                        return await loop.run_in_executor(
+                            None,
+                            lambda: driver.find_element(AppiumBy.ID, 
+                                best_node.get('resource-id') or best_node.get('name'))
+                        )
+                    except Exception:
+                        pass
 
-    async def click_by_id(self, res_id: Optional[str] = None, accessibility_id: Optional[str] = None) -> None:
-        """
-        Click on an element identified by resource ID and/or accessibility ID.
-        Will try resource ID first if provided, then accessibility ID if provided.
-        Captures a screenshot before and after the click.
+                # Last resort - try by bounds if available
+                if "bounds_data" in best_node:
+                    bounds = best_node["bounds_data"]
+                    try:
+                        if self.platformName.lower() == "android":
+                            # Android format
+                            xpath = (f"//*[@bounds='[{bounds['start_x']},{bounds['start_y']}]"
+                                   f"[{bounds['end_x']},{bounds['end_y']}]']")
+                        else:
+                            # iOS format - use position and size attributes
+                            x, y = bounds['start_x'], bounds['start_y']
+                            width = bounds['end_x'] - bounds['start_x']
+                            height = bounds['end_y'] - bounds['start_y']
+                            xpath = (f"//*[@x='{x}' and @y='{y}' and "
+                                   f"@width='{width}' and @height='{height}']")
+                        
+                        return await loop.run_in_executor(
+                            None,
+                            lambda: driver.find_element(AppiumBy.XPATH, xpath)
+                        )
+                    except Exception:
+                        pass
+            return None
 
-        Args:
-            res_id: Resource ID of the element (Android: resource-id, iOS: name)
-            accessibility_id: Accessibility ID of the element (Android: content-desc, iOS: accessibilityIdentifier)
 
-        Raises:
-            RuntimeError: If neither res_id nor accessibility_id is provided
-            RuntimeError: If no active Appium session
-            Exception: If element cannot be found or clicked
-        """
-        if not res_id and not accessibility_id:
-            raise RuntimeError("At least one of res_id or accessibility_id must be provided")
+        # First try: Tree matching
+        element = await find_in_tree()
+        if not element:
+            # Second try: Direct locators
+            element = await try_direct_locators()
+            if not element:
+                # If all attempts fail, raise exception with details
+                error_msg = (
+                    f"Element not found using: "
+                    f"Resource ID: {res_id}, " if res_id else ""
+                    f"Accessibility ID: {accessibility_id}, " if accessibility_id else ""
+                    f"Bounds: {bounds_data}, " if bounds_data else ""
+                    f"Tag: {tag_name}" if tag_name else ""
+                )
+                raise Exception(error_msg)
 
-        screenshot_name = f"click_{res_id or ''}_{accessibility_id or ''}"
+        # Third try: Refresh tree and try again
+        self.clear_accessibility_tree_cache()
+        return element
+
+
+    async def click_by_id(
+        self,
+        res_id: Optional[str] = None,
+        accessibility_id: Optional[str] = None,
+        bounds_data: Optional[Dict[str, int]] = None
+    ) -> None:
+        """Click on an element using any available identifier."""
+        screenshot_name = (
+            f"click_{res_id or ''}"
+            f"_{accessibility_id or ''}"
+            f"_{bounds_data['start_x'] if bounds_data else ''}"
+        )
         await self.take_screenshot(f"before_{screenshot_name}")
-        
-        if not self.driver:
-            logger.error("No Appium session available for click action.")
-            raise RuntimeError("No active Appium session")
 
         try:
-            element = await self.find_element_best_match(res_id, accessibility_id)
+            # Use find_element_best_match with all available parameters
+            element = await self.find_element_best_match(
+                res_id=res_id,
+                accessibility_id=accessibility_id,
+                bounds_data=bounds_data
+            )
+                
             loop = asyncio.get_running_loop()
             await loop.run_in_executor(None, element.click)
-            logger.info(f"Clicked on element. Resource ID: {res_id}, Accessibility ID: {accessibility_id}")
+            self.clear_accessibility_tree_cache()
+            
+            used_identifier = (
+                f"Bounds: {bounds_data}" if bounds_data else
+                f"Resource ID: {res_id}" if res_id else
+                f"Accessibility ID: {accessibility_id}"
+            )
+            logger.info(f"Clicked element using {used_identifier}")
+            
         except Exception as e:
-            logger.error(f"Error clicking element. Resource ID: {res_id}, Accessibility ID: {accessibility_id}. Error: {e}")
+            logger.error(f"Error clicking element: {e}")
             raise e
+            
         await self.take_screenshot(f"after_{screenshot_name}")
 
     async def enter_text_by_id(
         self,
         text: str,
         res_id: Optional[str] = None,
-        accessibility_id: Optional[str] = None
+        accessibility_id: Optional[str] = None,
+        bounds_data: Optional[Dict[str, int]] = None
     ) -> None:
-        """
-        Enter text into an element identified by resource ID and/or accessibility ID.
-        Will try resource ID first if provided, then accessibility ID if provided.
-        Captures a screenshot before and after entering text.
-
-        Args:
-            text: The text to enter into the element
-            res_id: Resource ID of the element (Android: resource-id, iOS: name)
-            accessibility_id: Accessibility ID of the element (Android: content-desc, iOS: accessibilityIdentifier)
-
-        Raises:
-            RuntimeError: If neither res_id nor accessibility_id is provided
-            RuntimeError: If no active Appium session
-            Exception: If element cannot be found or text cannot be entered
-        """
-        if not res_id and not accessibility_id:
-            raise RuntimeError("At least one of res_id or accessibility_id must be provided")
-
-        screenshot_name = f"enter_text_{res_id or ''}_{accessibility_id or ''}"
+        """Enter text using any available identifier."""
+        screenshot_name = (
+            f"enter_text_{res_id or ''}"
+            f"_{accessibility_id or ''}"
+            f"_{bounds_data['start_x'] if bounds_data else ''}"
+        )
         await self.take_screenshot(f"before_{screenshot_name}")
-        
-        if not self.driver:
-            logger.error("No Appium session available for entering text.")
-            raise RuntimeError("No active Appium session")
 
         try:
-            element = await self.find_element_best_match(res_id, accessibility_id)
+            element = await self.find_element_best_match(
+                res_id=res_id,
+                accessibility_id=accessibility_id,
+                bounds_data=bounds_data
+            )
+            
             loop = asyncio.get_running_loop()
             await loop.run_in_executor(None, lambda: element.send_keys(text))
-            logger.info(f"Entered text into element. Resource ID: {res_id}, Accessibility ID: {accessibility_id}")
+            self.clear_accessibility_tree_cache()
+            
+            used_identifier = (
+                f"Bounds: {bounds_data}" if bounds_data else
+                f"Resource ID: {res_id}" if res_id else
+                f"Accessibility ID: {accessibility_id}"
+            )
+            logger.info(f"Entered text in element using {used_identifier}")
+            
         except Exception as e:
-            logger.error(f"Error entering text in element. Resource ID: {res_id}, Accessibility ID: {accessibility_id}. Error: {e}")
+            logger.error(f"Error entering text: {e}")
             raise e
+            
         await self.take_screenshot(f"after_{screenshot_name}")
 
     async def clear_text_by_id(
         self,
         res_id: Optional[str] = None,
-        accessibility_id: Optional[str] = None
+        accessibility_id: Optional[str] = None,
+        bounds_data: Optional[Dict[str, int]] = None
     ) -> None:
-        """
-        Clear text from an element identified by resource ID and/or accessibility ID.
-        Will try resource ID first if provided, then accessibility ID if provided.
-        Captures a screenshot before and after clearing the text.
-
-        Args:
-            res_id: Resource ID of the element (Android: resource-id, iOS: name)
-            accessibility_id: Accessibility ID of the element (Android: content-desc, iOS: accessibilityIdentifier)
-
-        Raises:
-            RuntimeError: If neither res_id nor accessibility_id is provided
-            RuntimeError: If no active Appium session
-            Exception: If element cannot be found or cleared
-        """
-        if not res_id and not accessibility_id:
-            raise RuntimeError("At least one of res_id or accessibility_id must be provided")
-
-        screenshot_name = f"clear_text_{res_id or ''}_{accessibility_id or ''}"
+        """Clear text using any available identifier."""
+        screenshot_name = (
+            f"clear_text_{res_id or ''}"
+            f"_{accessibility_id or ''}"
+            f"_{bounds_data['start_x'] if bounds_data else ''}"
+        )
         await self.take_screenshot(f"before_{screenshot_name}")
-        
-        if not self.driver:
-            logger.error("No Appium session available for clearing text.")
-            raise RuntimeError("No active Appium session")
 
         try:
-            element = await self.find_element_best_match(res_id, accessibility_id)
+            element = await self.find_element_best_match(
+                res_id=res_id,
+                accessibility_id=accessibility_id,
+                bounds_data=bounds_data
+            )
+            
             loop = asyncio.get_running_loop()
             await loop.run_in_executor(None, element.clear)
-            logger.info(f"Cleared text from element. Resource ID: {res_id}, Accessibility ID: {accessibility_id}")
+            self.clear_accessibility_tree_cache()
+            
+            used_identifier = (
+                f"Bounds: {bounds_data}" if bounds_data else
+                f"Resource ID: {res_id}" if res_id else
+                f"Accessibility ID: {accessibility_id}"
+            )
+            logger.info(f"Cleared text from element using {used_identifier}")
+            
         except Exception as e:
-            logger.error(f"Error clearing text from element. Resource ID: {res_id}, Accessibility ID: {accessibility_id}. Error: {e}")
+            logger.error(f"Error clearing text: {e}")
             raise e
+            
         await self.take_screenshot(f"after_{screenshot_name}")
 
     async def long_press_by_id(
         self,
         duration: int = 1000,
         res_id: Optional[str] = None,
-        accessibility_id: Optional[str] = None
+        accessibility_id: Optional[str] = None,
+        bounds_data: Optional[Dict[str, int]] = None
     ) -> None:
-        """
-        Perform a long press on an element identified by resource ID and/or accessibility ID.
-        Will try resource ID first if provided, then accessibility ID if provided.
-        Duration is in milliseconds.
-        Captures a screenshot before and after the long press.
-
-        Args:
-            duration: Duration of long press in milliseconds (default: 1000ms)
-            res_id: Resource ID of the element (Android: resource-id, iOS: name)
-            accessibility_id: Accessibility ID of the element (Android: content-desc, iOS: accessibilityIdentifier)
-
-        Raises:
-            RuntimeError: If neither res_id nor accessibility_id is provided
-            RuntimeError: If no active Appium session
-            Exception: If element cannot be found or long press cannot be performed
-        """
-        if not res_id and not accessibility_id:
-            raise RuntimeError("At least one of res_id or accessibility_id must be provided")
-
-        screenshot_name = f"long_press_{res_id or ''}_{accessibility_id or ''}"
+        """Perform long press using any available identifier."""
+        screenshot_name = (
+            f"long_press_{res_id or ''}"
+            f"_{accessibility_id or ''}"
+            f"_{bounds_data['start_x'] if bounds_data else ''}"
+        )
         await self.take_screenshot(f"before_{screenshot_name}")
-        
-        if not self.driver:
-            logger.error("No Appium session available for long press.")
-            raise RuntimeError("No active Appium session")
 
         try:
-            element = await self.find_element_best_match(res_id, accessibility_id)
+            element = await self.find_element_best_match(
+                res_id=res_id,
+                accessibility_id=accessibility_id,
+                bounds_data=bounds_data
+            )
+            
             loop = asyncio.get_running_loop()
             driver = cast(WebDriver, self.driver)
             
-            def perform_w3c_long_press() -> None:
+            def perform_long_press() -> None:
                 action = ActionChains(driver)
-                # Move to element and perform long press
                 action.move_to_element(element)
                 action.click_and_hold()
-                action.pause(duration / 1000.0)  # Convert ms to seconds
+                action.pause(duration / 1000.0)
                 action.release()
                 return action.perform()
                 
-            await loop.run_in_executor(None, perform_w3c_long_press)
-            logger.info(f"Performed long press on element. Resource ID: {res_id}, Accessibility ID: {accessibility_id}")
+            await loop.run_in_executor(None, perform_long_press)
+            self.clear_accessibility_tree_cache()
+            
+            used_identifier = (
+                f"Bounds: {bounds_data}" if bounds_data else
+                f"Resource ID: {res_id}" if res_id else
+                f"Accessibility ID: {accessibility_id}"
+            )
+            logger.info(f"Long pressed element using {used_identifier}")
+            
         except Exception as e:
-            logger.error(f"Error performing long press on element. Resource ID: {res_id}, Accessibility ID: {accessibility_id}. Error: {e}")
+            logger.error(f"Error performing long press: {e}")
             raise e
+            
         await self.take_screenshot(f"after_{screenshot_name}")
 
     async def perform_tap(self, x: int, y: int) -> None:
         """
         Perform a tap action at the given (x, y) coordinates.
         Captures a screenshot before and after the tap.
+        Clears accessibility tree cache after interaction.
         """
         await self.take_screenshot("before_tap")
         if not self.driver:
             logger.error("No Appium session available for performing tap.")
-            raise e
-        logger.info(f"Performing tap at coordinates ({x}, {y})")
+            raise RuntimeError("No active Appium session")
+        logger.info(f"Performing tap at coordinates ({x, {y}})")
         try:
             loop = asyncio.get_running_loop()
             driver = cast(WebDriver, self.driver)
             await loop.run_in_executor(None, lambda: driver.tap([(x, y)]))
+            # Clear cache after interaction
+            self.clear_accessibility_tree_cache()
         except Exception as e:
             logger.error(f"Error performing tap: {e}")
             raise e
@@ -1845,18 +1912,21 @@ iOS Environment Setup Required:
         Perform a swipe gesture from (start_x, start_y) to (end_x, end_y).
         Duration is in milliseconds.
         Captures a screenshot before and after the swipe.
+        Clears accessibility tree cache after interaction.
         """
         await self.take_screenshot("before_swipe")
         if not self.driver:
             logger.error("No Appium session available for performing swipe.")
-            return
-        logger.info(f"Performing swipe from ({start_x}, {start_y}) to ({end_x}, {end_y}) with duration {duration}")
+            raise RuntimeError("No active Appium session")
+        logger.info(f"Performing swipe from ({start_x, start_y}) to ({end_x, end_y}) with duration {duration}")
         try:
             loop = asyncio.get_running_loop()
             driver = cast(WebDriver, self.driver)
             await loop.run_in_executor(
                 None, lambda: driver.swipe(start_x, start_y, end_x, end_y, duration)
             )
+            # Clear cache after interaction
+            self.clear_accessibility_tree_cache()
         except Exception as e:
             logger.error(f"Error performing swipe: {e}")
             raise e
@@ -1866,6 +1936,7 @@ iOS Environment Setup Required:
         """
         Scroll up by one screen height.
         Returns False if end is hit (determined by comparing before/after screenshots).
+        Clears accessibility tree cache after interaction.
         """
         if not self.driver:
             logger.error("No Appium session available for scrolling.")
@@ -1890,6 +1961,9 @@ iOS Environment Setup Required:
 
         # Perform the scroll
         await self.perform_swipe(start_x, start_y, start_x, end_y, 500)
+        # Clear cache after interaction - already handled by perform_swipe
+        # but adding here for clarity
+        self.clear_accessibility_tree_cache()
 
         # Take screenshot after scrolling to check if we hit the end
         after_screen = await self.see_screen()
@@ -1908,6 +1982,7 @@ iOS Environment Setup Required:
         """
         Scroll down by one screen height.
         Returns False if end is hit (determined by comparing before/after screenshots).
+        Clears accessibility tree cache after interaction.
         """
         if not self.driver:
             logger.error("No Appium session available for scrolling.")
@@ -1932,6 +2007,9 @@ iOS Environment Setup Required:
 
         # Perform the scroll
         await self.perform_swipe(start_x, start_y, start_x, end_y, 500)
+        # Clear cache after interaction - already handled by perform_swipe
+        # but adding here for clarity
+        self.clear_accessibility_tree_cache()
 
         # Take screenshot after scrolling to check if we hit the end
         after_screen = await self.see_screen()
@@ -1951,12 +2029,20 @@ iOS Environment Setup Required:
     async def get_accessibility_tree(self) -> Dict[str, Any]:
         """
         Retrieve a detailed accessibility tree (UI hierarchy) of the current screen.
+        Uses cached tree if available, otherwise fetches fresh tree.
         Handles both Android and iOS element attributes.
         """
         if not self.driver:
             logger.error("No Appium session available to get accessibility tree.")
             return {}
+
         try:
+            # If cache exists, return it
+            if self._accessibility_tree_cache is not None:
+                logger.debug("Returning cached accessibility tree")
+                return self._accessibility_tree_cache
+
+            # Otherwise fetch fresh tree
             loop = asyncio.get_running_loop()
             driver = cast(WebDriver, self.driver)
             source = await loop.run_in_executor(None, lambda: driver.page_source)
@@ -1976,14 +2062,22 @@ iOS Environment Setup Required:
                     del element_data["children"]
                 if len(element_data) > 1:
                     element_data["tag"] = elem.tag
-                return add_bounding_box(element_data)
-            
+                return add_bounds_data(element_data)
+
             tree = parse_element_all(root)
-            logger.info("Accessibility tree retrieved successfully.")
+            logger.info("Accessibility tree retrieved and cached successfully.")
+            # Cache the tree
+            self._accessibility_tree_cache = tree
             return tree
+            
         except Exception as e:
             logger.error(f"Error retrieving accessibility tree: {e}")
             raise e
+
+    def clear_accessibility_tree_cache(self) -> None:
+        """Clear the cached accessibility tree."""
+        self._accessibility_tree_cache = None
+        logger.debug("Accessibility tree cache cleared.")
 
     # ─── SEE SCREEN (RETURN PIL IMAGE) ───────────────────────────────────────────
 
@@ -1993,6 +2087,7 @@ iOS Environment Setup Required:
         """
         if not self.driver:
             logger.error("No Appium session available to capture screen.")
+            return None
         try:
             loop = asyncio.get_running_loop()
             if not isinstance(self.driver, WebDriver):
@@ -2016,6 +2111,7 @@ iOS Environment Setup Required:
         """
         if not self.driver:
             logger.error("No Appium session available to get viewport size.")
+            return None
         try:
             loop = asyncio.get_running_loop()
             driver = cast(WebDriver, self.driver)
@@ -2025,6 +2121,7 @@ iOS Environment Setup Required:
         except Exception as e:
             logger.error(f"Error getting viewport size: {e}")
             raise e
+
     # ─── IOS SPECIFIC GESTURES ─────────────────────────────────────────────────
 
     async def perform_ios_pinch(
@@ -2036,15 +2133,17 @@ iOS Environment Setup Required:
         """
         Perform a pinch gesture (zoom in/out) on iOS.
         Scale > 1 zooms in, scale < 1 zooms out.
+        Clears accessibility tree cache after interaction.
         """
         await self.take_screenshot("before_ios_pinch")
         if not self.driver:
             logger.error("No Appium session available for iOS pinch.")
             raise RuntimeError("No active Appium session")
-
         try:
             driver = cast(WebDriver, self.driver)
             await ios_gestures.perform_pinch(driver, scale, velocity, element_id)
+            # Clear cache after interaction
+            self.clear_accessibility_tree_cache()
         except Exception as e:
             logger.error(f"Error performing iOS pinch: {e}")
             raise e
@@ -2062,6 +2161,7 @@ iOS Environment Setup Required:
         """
         Perform a force touch (3D Touch) gesture on iOS.
         Requires x,y coordinates or an element_id.
+        Clears accessibility tree cache after interaction.
         """
         await self.take_screenshot("before_force_touch")
         if not self.driver:
@@ -2073,6 +2173,8 @@ iOS Environment Setup Required:
             await ios_gestures.perform_force_touch(
                 driver, x, y, element_id, pressure, duration
             )
+            # Clear cache after interaction
+            self.clear_accessibility_tree_cache()
         except Exception as e:
             logger.error(f"Error performing force touch: {e}")
             raise e
@@ -2089,6 +2191,7 @@ iOS Environment Setup Required:
         """
         Perform an iOS-optimized double tap gesture.
         Requires x,y coordinates or an element_id.
+        Clears accessibility tree cache after interaction.
         """
         await self.take_screenshot("before_double_tap")
         if not self.driver:
@@ -2100,10 +2203,11 @@ iOS Environment Setup Required:
             await ios_gestures.perform_double_tap(
                 driver, x, y, element_id, duration
             )
+            # Clear cache after interaction
+            self.clear_accessibility_tree_cache()
         except Exception as e:
             logger.error(f"Error performing double tap: {e}")
             raise e
-
         await self.take_screenshot("after_double_tap")
 
     async def perform_ios_haptic(self, type: str = "selection") -> None:
@@ -2114,7 +2218,6 @@ iOS Environment Setup Required:
         if not self.driver:
             logger.error("No Appium session available for haptic feedback.")
             raise RuntimeError("No active Appium session")
-
         try:
             driver = cast(WebDriver, self.driver)
             await ios_gestures.perform_haptic(driver, type)
@@ -2153,7 +2256,6 @@ iOS Environment Setup Required:
 
     # ─── COMMAND AND STATE TRACKING ───────────────────────────────────────────
 
-
     async def command_completed(self, command: str, elapsed_time: Optional[float] = None) -> None:
         """
         Log when a command is completed.
@@ -2174,7 +2276,6 @@ iOS Environment Setup Required:
         """
         if not self.driver:
             return "No active Appium session"
-
         try:
             driver = cast(WebDriver, self.driver)
             
@@ -2219,24 +2320,6 @@ iOS Environment Setup Required:
             logger.error(f"Error getting current screen state: {e}")
             return "Error determining screen state"
 
-    async def get_viewport_size(self) -> Optional[Dict[str, int]]:
-        """
-        Get the current viewport (screen resolution) of the device.
-        Returns a dictionary with 'width' and 'height' keys.
-        """
-        if not self.driver:
-            logger.error("No Appium session available to get viewport size.")
-
-        try:
-            loop = asyncio.get_running_loop()
-            driver = cast(WebDriver, self.driver)
-            size = await loop.run_in_executor(None, driver.get_window_size)
-            logger.info(f"Viewport size: {size}")
-            return size
-        except Exception as e:
-            logger.error(f"Error getting viewport size: {e}")
-            raise e
-
     def get_latest_video_path(self) -> Optional[str]:
         """
         Get the path of the latest recorded video.
@@ -2247,7 +2330,7 @@ iOS Environment Setup Required:
         else:
             logger.warning("No video recording available.")
             return None
-        
+
     async def press_key(self, key_name: str) -> None:
         """
         Press a keyboard key by name for both iOS and Android platforms.
@@ -2259,11 +2342,10 @@ iOS Environment Setup Required:
         if not self.driver:
             logger.error("No Appium session available for key press.")
             raise RuntimeError("No active Appium session")
-            
         try:
             loop = asyncio.get_running_loop()
             driver = cast(WebDriver, self.driver)
-            
+
             # Map common key names to their corresponding codes for both platforms
             android_key_mapping = {
                 'enter': 66,      # KEYCODE_ENTER
@@ -2277,7 +2359,7 @@ iOS Environment Setup Required:
                 'left': 21,       # KEYCODE_DPAD_LEFT
                 'right': 22,      # KEYCODE_DPAD_RIGHT
             }
-            
+
             ios_key_mapping = {
                 'enter': '\ue007',
                 'tab': '\ue004',
@@ -2290,7 +2372,7 @@ iOS Environment Setup Required:
                 'left': '\ue012',
                 'right': '\ue014',
             }
-            
+
             key_name_lower = key_name.lower()
             
             if self.platformName.lower() == "android":
@@ -2314,7 +2396,6 @@ iOS Environment Setup Required:
                 await loop.run_in_executor(None, lambda: action.send_keys(key_code).perform())
             
             logger.info(f"Pressed key: {key_name}")
-            
         except Exception as e:
             logger.error(f"Error pressing key '{key_name}': {e}")
             raise e
@@ -2332,7 +2413,6 @@ iOS Environment Setup Required:
         if not self.driver:
             logger.error("No Appium session available for hardware key press.")
             raise RuntimeError("No active Appium session")
-            
         try:
             loop = asyncio.get_running_loop()
             driver = cast(WebDriver, self.driver)
@@ -2357,7 +2437,6 @@ iOS Environment Setup Required:
                     raise ValueError(f"Unknown hardware key: {key_name}")
                     
                 await loop.run_in_executor(None, lambda: driver.press_keycode(key_code))
-                
             else:  # iOS
                 # On iOS, some hardware actions are handled differently
                 if key_name.lower() in ['volume_up', 'volume_down']:
@@ -2402,7 +2481,6 @@ iOS Environment Setup Required:
                     None,
                     lambda: driver.execute_script('mobile: swipe', {'direction': 'right'})
                 )
-                
             logger.info("Pressed back button")
             
         except Exception as e:
@@ -2428,7 +2506,7 @@ iOS Environment Setup Required:
                 await loop.run_in_executor(None, lambda: driver.press_keycode(3))  # 3 is Android's home button
             else:  # iOS
                 await loop.run_in_executor(
-                    None,
+                    None, 
                     lambda: driver.execute_script('mobile: pressButton', {'name': 'home'})
                 )
                 
@@ -2459,7 +2537,7 @@ iOS Environment Setup Required:
                 # For iOS 13+, use the app switcher gesture
                 await loop.run_in_executor(
                     None,
-                    lambda: driver.execute_script('mobile: swipe', {'direction': 'up', 'duration': 1.0})
+                    lambda: driver.execute_script('mobile: swipe', {'direction': 'up', 'duration': 1.0})    
                 )
                 
             logger.info("Pressed app switch button")
@@ -2481,7 +2559,6 @@ iOS Environment Setup Required:
         if not self.driver:
             logger.error("No Appium session available for key combination.")
             raise RuntimeError("No active Appium session")
-            
         try:
             loop = asyncio.get_running_loop()
             driver = cast(WebDriver, self.driver)
@@ -2503,7 +2580,6 @@ iOS Environment Setup Required:
                 # For Android, we need to handle modifier keys specially
                 modifiers = []
                 main_key = None
-                
                 for key in keys:
                     key_lower = key.lower()
                     if key_lower in android_modifier_keys:
@@ -2511,7 +2587,7 @@ iOS Environment Setup Required:
                     else:
                         # The last non-modifier key is the main key
                         main_key = key
-                
+
                 # Press all modifier keys
                 for modifier in modifiers:
                     await loop.run_in_executor(None, lambda m=modifier: driver.press_keycode(m))
@@ -2548,11 +2624,10 @@ iOS Environment Setup Required:
                     action.key_down(key)
                 for key in reversed(ios_keys):
                     action.key_up(key)
-                    
+                
                 await loop.run_in_executor(None, action.perform)
             
             logger.info(f"Pressed key combination: {key_combination}")
-            
         except Exception as e:
             logger.error(f"Error pressing key combination '{key_combination}': {e}")
             raise e
