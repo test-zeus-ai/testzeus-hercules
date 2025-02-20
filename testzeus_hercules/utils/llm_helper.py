@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional, Union
 import autogen
 from autogen import ConversableAgent, OpenAIWrapper
 from autogen.agentchat.agent import Agent
+from autogen.agentchat.contrib.capabilities.teachability import Teachability
 from autogen.agentchat.contrib.img_utils import (
     gpt4v_formatter,
     message_formatter_pil_to_b64,
@@ -28,14 +29,24 @@ class MultimodalConversableAgent(ConversableAgent):
         "model": DEFAULT_MODEL,
     }
 
-    def __init__(self, name: str, system_message: Optional[Union[str, list]] = DEFAULT_LMM_SYS_MSG, is_termination_msg: str = None, *args, **kwargs):
+    def __init__(
+        self,
+        name: str,
+        system_message: Optional[Union[str, list]] = DEFAULT_LMM_SYS_MSG,
+        is_termination_msg: str = None,
+        *args: Any,
+        **kwargs: Any,
+    ):
         super().__init__(name, system_message, is_termination_msg=is_termination_msg, *args, **kwargs)
         # call the setter to handle special format.
         self.update_system_message(system_message)
         self._is_termination_msg = is_termination_msg if is_termination_msg is not None else (lambda x: content_str(x.get("content")) == "TERMINATE")
 
         # Override the `generate_oai_reply`
-        self.replace_reply_func(ConversableAgent.generate_oai_reply, MultimodalConversableAgent.generate_oai_reply)
+        self.replace_reply_func(
+            ConversableAgent.generate_oai_reply,
+            MultimodalConversableAgent.generate_oai_reply,
+        )
         self.replace_reply_func(
             ConversableAgent.a_generate_oai_reply,
             MultimodalConversableAgent.a_generate_oai_reply,
@@ -102,7 +113,8 @@ class MultimodalConversableAgent(ConversableAgent):
         config: Optional[OpenAIWrapper] = None,
     ) -> tuple[bool, Union[str, dict, None]]:
         """Generate a reply using autogen.oai asynchronously.
-        Overrides ConversableAgent.a_generate_oai_reply to handle multimodal messages."""
+        Overrides ConversableAgent.a_generate_oai_reply to handle multimodal messages.
+        """
         from autogen.io import IOStream
 
         iostream = IOStream.get_default()
@@ -116,7 +128,14 @@ class MultimodalConversableAgent(ConversableAgent):
 
         return await asyncio.get_event_loop().run_in_executor(
             None,
-            functools.partial(_generate_oai_reply, self=self, iostream=iostream, messages=messages, sender=sender, config=config),
+            functools.partial(
+                _generate_oai_reply,
+                self=self,
+                iostream=iostream,
+                messages=messages,
+                sender=sender,
+                config=config,
+            ),
         )
 
 
@@ -176,7 +195,7 @@ def create_multimodal_agent(
     system_message: str = "You are a multimodal conversable agent.",
     llm_config: Optional[List[Dict[str, Any]]] = None,
 ) -> MultimodalConversableAgent:
-    """Create a multimodal conversable agent.
+    """Create a multimodal conversable agent as a singleton.
 
     Args:
         name: Agent name
@@ -186,16 +205,30 @@ def create_multimodal_agent(
     Returns:
         MultimodalConversableAgent instance
     """
+    # Singleton instance variable
+    if not hasattr(create_multimodal_agent, "_instance"):
+        # Get the LLM config for the image comparison agent
+        _mca_agent_config = AgentsLLMConfig().get_helper_agent_config()
+        _llm_config = llm_config or convert_model_config_to_autogen_format(_mca_agent_config["model_config_params"])
+        if _llm_config:
+            _llm_config = _llm_config[0]
+        create_multimodal_agent._instance = MultimodalConversableAgent(
+            name=name,
+            max_consecutive_auto_reply=1,
+            human_input_mode="NEVER",
+            llm_config=_llm_config,
+            system_message=system_message,
+        )
+    return create_multimodal_agent._instance
 
-    # Get the LLM config for the image comparison agent
-    _mca_agent_config = AgentsLLMConfig().get_nav_agent_config()
-    _llm_config = llm_config or convert_model_config_to_autogen_format(_mca_agent_config["model_config_params"])
-    if _llm_config:
-        _llm_config = _llm_config[0]
-    return MultimodalConversableAgent(name=name, max_consecutive_auto_reply=1, human_input_mode="NEVER", llm_config=_llm_config, system_message=system_message)
 
-
-def create_user_proxy(name: str, is_termination_msg: callable, max_consecutive_replies: int, human_input_mode: str = "NEVER", **kwargs: Any) -> Agent:
+def create_user_proxy(
+    name: str,
+    is_termination_msg: callable,
+    max_consecutive_replies: int,
+    human_input_mode: str = "NEVER",
+    **kwargs: Any,
+) -> Agent:
     """Create a user proxy agent with common configurations.
 
     Args:
@@ -208,7 +241,13 @@ def create_user_proxy(name: str, is_termination_msg: callable, max_consecutive_r
     Returns:
         UserProxyAgent instance
     """
-    return autogen.UserProxyAgent(name=name, is_termination_msg=is_termination_msg, human_input_mode=human_input_mode, max_consecutive_auto_reply=max_consecutive_replies, **kwargs)
+    return autogen.UserProxyAgent(
+        name=name,
+        is_termination_msg=is_termination_msg,
+        human_input_mode=human_input_mode,
+        max_consecutive_auto_reply=max_consecutive_replies,
+        **kwargs,
+    )
 
 
 def process_chat_message_content(content: Any) -> Any:
@@ -281,3 +320,64 @@ def format_plan_steps(plan: list[str]) -> str:
         Formatted plan string with numbered steps
     """
     return "\n".join([f"{idx+1}. {step}" for idx, step in enumerate(plan)])
+
+
+class ZeusTeachability(Teachability):
+    def __init__(self, *args: Any, **kwargs: Any):
+        super().__init__(*args, **kwargs)
+
+    def process_last_received_message(self, text: Union[dict[str, Any], str]) -> str:
+        """Appends any relevant memos to the message text, and stores any apparent teachings in new memos.
+        Uses TextAnalyzerAgent to make decisions about memo storage and retrieval.
+        """
+        # Try to retrieve relevant memos from the DB.
+        expanded_text = ""
+        if self.memo_store.last_memo_id > 0:
+            expanded_text = self._consider_memo_retrieval(text)
+
+        # Return the (possibly) expanded message text.
+        return expanded_text
+
+    def _consider_memo_storage(self, comment: Union[dict[str, Any], str]) -> None:
+        """Decides whether to store something from one user comment in the DB."""
+        memo_added = False
+
+        # Yes. What question would this information answer?
+        question = self._in_analyze(
+            comment,
+            "Imagine that the user forgot this information in the TEXT. How would they ask you for this information? Include no other text in your response.",
+        )
+        # Extract the information.
+        answer = self._in_analyze(
+            comment,
+            "Copy the information from the TEXT that should be committed to memory. Add no explanation.",
+        )
+
+        self.memo_store.add_input_output_pair(question, answer)
+        memo_added = True
+
+        # Were any memos added?
+        if memo_added:
+            # Yes. Save them to disk.
+            self.memo_store._save_memos()
+
+    def _in_analyze(
+        self,
+        text_to_analyze: Union[dict[str, Any], str],
+        analysis_instructions: Union[dict[str, Any], str],
+    ) -> str:
+        """Asks TextAnalyzerAgent to analyze the given text according to specific instructions."""
+        self.analyzer.reset()  # Clear the analyzer's list of messages.
+        self.teachable_agent.send(
+            recipient=self.analyzer,
+            message=text_to_analyze,
+            request_reply=False,
+            silent=(self.verbosity < 2),
+        )  # Put the message in the analyzer's list.
+        self.teachable_agent.send(
+            recipient=self.analyzer,
+            message=analysis_instructions,
+            request_reply=False,
+            silent=(self.verbosity < 2),
+        )  # Request the reply.
+        return self.teachable_agent.last_message(self.analyzer)["content"]

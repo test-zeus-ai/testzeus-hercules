@@ -1,14 +1,22 @@
+import base64
 import json
 import time
-from typing import Annotated, Any, Dict, Optional, Tuple
+from typing import Annotated, Any, Dict, List, Optional, Tuple
 
 import httpx
 from testzeus_hercules.core.tools.tool_registry import api_logger as file_logger
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
 
+# ------------------------------------------------------------------------------
+# Logging and Utility Functions
+# ------------------------------------------------------------------------------
+
 
 async def log_request(request: httpx.Request) -> None:
+    """
+    Log details of the outgoing HTTP request.
+    """
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     log_data = {
         "timestamp": timestamp,
@@ -21,16 +29,15 @@ async def log_request(request: httpx.Request) -> None:
 
 
 async def log_response(response: httpx.Response) -> None:
+    """
+    Log details of the incoming HTTP response.
+    """
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-    if response.is_stream_consumed:
-        body = "Stream already consumed."
-    else:
-        try:
-            body = await response.aread()
-            body = body.decode("utf-8", errors="ignore")
-        except Exception as e:
-            body = f"Failed to read streaming response: {e}"
-
+    try:
+        body_bytes = await response.aread()
+        body = body_bytes.decode("utf-8", errors="ignore")
+    except Exception as e:
+        body = f"Failed to read response: {e}"
     log_data = {
         "timestamp": timestamp,
         "status_code": response.status_code,
@@ -42,8 +49,7 @@ async def log_response(response: httpx.Response) -> None:
 
 def determine_status_type(status_code: int) -> str:
     """
-    A helper function to determine the status type (success, redirect, client_error, server_error, unknown)
-    based on the status code.
+    Categorize the HTTP status code.
     """
     if 200 <= status_code < 300:
         return "success"
@@ -53,452 +59,174 @@ def determine_status_type(status_code: int) -> str:
         return "client_error"
     elif 500 <= status_code < 600:
         return "server_error"
-    else:
-        return "unknown"
+    return "unknown"
+
+
+async def handle_error_response(e: httpx.HTTPStatusError) -> dict:
+    """
+    Extract error details from an HTTPStatusError.
+    """
+    try:
+        error_detail = e.response.json()
+    except Exception:
+        error_detail = e.response.text or "No details"
+    return {
+        "error": str(e),
+        "error_detail": error_detail,
+        "status_code": e.response.status_code,
+        "status_type": determine_status_type(e.response.status_code),
+    }
+
+
+# ------------------------------------------------------------------------------
+# Core Request Helper
+# ------------------------------------------------------------------------------
+
+
+async def _send_request(
+    method: str,
+    url: str,
+    *,
+    query_params: Optional[Dict[str, Any]] = None,
+    body: Optional[Any] = None,
+    body_mode: Optional[str] = None,
+    headers: Optional[Dict[str, str]] = None,
+) -> Tuple[str, float]:
+    """
+    Send an HTTP request using the given method and parameters.
+
+    The 'body_mode' parameter specifies how to process the request body:
+      - "multipart": Encodes a dict as multipart/form-data.
+      - "urlencoded": Encodes a dict as application/x-www-form-urlencoded.
+      - "raw": Sends the body as a raw string (caller must set Content-Type).
+      - "binary": Sends the body as raw bytes (defaults to application/octet-stream).
+      - "json": Encodes the body as JSON.
+      - None: No body is sent.
+    """
+    query_params = query_params or {}
+    headers = headers.copy() if headers else {}
+    req_kwargs = {"params": query_params}
+
+    if body_mode == "multipart" and body:
+        form = httpx.FormData()
+        for key, value in body.items():
+            form.add_field(key, value)
+        req_kwargs["data"] = form
+
+    elif body_mode == "urlencoded" and body:
+        headers.setdefault("Content-Type", "application/x-www-form-urlencoded")
+        req_kwargs["data"] = body
+
+    elif body_mode == "raw" and body:
+        req_kwargs["content"] = body
+
+    elif body_mode == "binary" and body:
+        headers.setdefault("Content-Type", "application/octet-stream")
+        req_kwargs["content"] = body
+
+    elif body_mode == "json" and body:
+        headers.setdefault("Content-Type", "application/json")
+        req_kwargs["json"] = body
+
+    start_time = time.perf_counter()
+    try:
+        async with httpx.AsyncClient(
+            event_hooks={"request": [log_request], "response": [log_response]},
+            timeout=httpx.Timeout(5.0),
+        ) as client:
+            response = await client.request(method, url, headers=headers, **req_kwargs)
+            response.raise_for_status()
+            duration = time.perf_counter() - start_time
+
+            try:
+                parsed_body = response.json()
+            except Exception:
+                parsed_body = response.text or ""
+            result = {
+                "status_code": response.status_code,
+                "status_type": determine_status_type(response.status_code),
+                "body": parsed_body,
+            }
+            # Minify the JSON response and replace double quotes with single quotes.
+            result_str = json.dumps(result, separators=(",", ":")).replace('"', "'")
+            return result_str, duration
+
+    except httpx.HTTPStatusError as e:
+        duration = time.perf_counter() - start_time
+        logger.error(f"HTTP error: {e}")
+        error_data = await handle_error_response(e)
+        return json.dumps(error_data, separators=(",", ":")).replace('"', "'"), duration
+
+    except Exception as e:
+        duration = time.perf_counter() - start_time
+        logger.error(f"Unexpected error: {e}")
+        error_data = {"error": str(e), "status_code": None, "status_type": "failure"}
+        return json.dumps(error_data, separators=(",", ":")).replace('"', "'"), duration
+
+
+# ------------------------------------------------------------------------------
+# Generic HTTP API Function Covering All Combinations
+# ------------------------------------------------------------------------------
 
 
 @tool(
     agent_names=["api_nav_agent"],
-    name="create_resource_http_api",
-    description="Only when instruction says call an API to create an entity in the remote system, then use this tool. Should be used for POST requests.",
+    name="generic_http_api",
+    description=(
+        "Generic HTTP API call that supports any combination of HTTP method, "
+        "authentication, query parameters, and request body encoding. "
+        "Parameters:\n"
+        "  - method: HTTP method (GET, POST, PUT, PATCH, DELETE, etc.).\n"
+        "  - url: The API endpoint URL.\n"
+        "  - auth_type: Authentication type. Options: basic, jwt, form_login, bearer, api_key.\n"
+        "  - auth_value: For 'basic', pass [username, password]; for others, a string.\n"
+        "  - query_params: URL query parameters (dict).\n"
+        "  - body: Request payload.\n"
+        "  - body_mode: How to encode the body. Options: multipart, urlencoded, raw, binary, json.\n"
+        "  - headers: Additional HTTP headers (dict).\n"
+        "This single function can generate any combination supported by _send_request."
+    ),
 )
-async def create_resource_http_api(
-    url: Annotated[str, "The API endpoint URL for creating the resource."],
-    headers: Annotated[dict, "Optional HTTP headers to include in the request."] = {},
-    auth: Annotated[
-        dict,
-        "Optional basic authentication credentials (e.g., {'username': 'user', 'password': 'pass'}).",
-    ] = {},
-    token: Annotated[
+async def generic_http_api(
+    method: Annotated[str, "HTTP method (e.g. GET, POST, PUT, PATCH, DELETE, etc.)."],
+    url: Annotated[str, "The API endpoint URL."],
+    auth_type: Annotated[
         str,
-        "Optional bearer or JWT token for authentication. Include the token string without the 'Bearer ' prefix.",
-    ] = "",
-    data: Annotated[dict, "Form data to send in the request body."] = {},
-    json_data: Annotated[dict, "JSON data to send in the request body."] = {},
-) -> Annotated[
-    Tuple[str, float],
-    "A tuple containing a minified JSON string and the time taken for the API call in seconds.",
-]:
-    start_time = time.perf_counter()
-    try:
-        logger.info(f"Sending POST request to {url}")
-
-        # Prepare headers
-        request_headers = headers.copy() if headers else {}
-        if token:
-            request_headers["Authorization"] = f"Bearer {token}"
-
-        async with httpx.AsyncClient(event_hooks={"request": [log_request], "response": [log_response]}) as client:
-            response = await client.post(
-                url,
-                headers=request_headers,
-                auth=(httpx.BasicAuth(auth["username"], auth["password"]) if auth else None),
-                data=data,
-                json=json_data,
-            )
-            response.raise_for_status()
-
-            end_time = time.perf_counter()
-            duration = end_time - start_time
-
-            status_code = response.status_code
-            status_type = determine_status_type(status_code)
-
-            # Attempt to parse the response as JSON, else fallback to raw text
-            try:
-                parsed_body = response.json()
-            except json.JSONDecodeError:
-                parsed_body = response.text or ""
-
-            response_data = {
-                "status_code": status_code,
-                "status_type": status_type,
-                "body": parsed_body,
-            }
-
-            # Convert the response_data dict to a minified JSON string
-            response_str = json.dumps(response_data, separators=(",", ":")).replace('"', "'")
-            return (response_str, duration)
-
-    except httpx.HTTPStatusError as e:
-        end_time = time.perf_counter()
-        duration = end_time - start_time
-        logger.error(f"HTTP error occurred while creating resource: {e}")
-
-        status_code = e.response.status_code
-        status_type = determine_status_type(status_code)
-
-        response_data = {
-            "error": str(e),
-            "status_code": status_code,
-            "status_type": status_type,
-        }
-        response_str = json.dumps(response_data, separators=(",", ":")).replace('"', "'")
-        return (response_str, duration)
-
-    except Exception as e:
-        end_time = time.perf_counter()
-        duration = end_time - start_time
-        logger.error(f"An unexpected error occurred: {e}")
-
-        response_data = {
-            "error": str(e),
-            "status_code": None,
-            "status_type": "failure",
-        }
-        response_str = json.dumps(response_data, separators=(",", ":")).replace('"', "'")
-        return (response_str, duration)
-
-
-@tool(
-    agent_names=["api_nav_agent"],
-    name="read_resource_http_api",
-    description="Only when instruction says call an API to read entities from the remote system, then use this tool, Should be used for GET requests.",
-)
-async def read_resource_http_api(
-    url: Annotated[str, "The API endpoint URL for reading the resource."],
-    headers: Annotated[dict, "Optional HTTP headers to include in the request."] = {},
-    auth: Annotated[
-        dict,
-        "Optional basic authentication credentials.",
-    ] = {},
-    token: Annotated[
+        "Authentication type. Options: basic, jwt, form_login, bearer, api_key. (Optional)",
+    ] = None,
+    auth_value: Annotated[
+        Any,
+        "Authentication value: for 'basic' provide [username, password]; for others, provide a string. (Optional)",
+    ] = None,
+    query_params: Annotated[Dict[str, Any], "URL query parameters."] = {},
+    body: Annotated[Any, "Request payload."] = None,
+    body_mode: Annotated[
         str,
-        "Optional bearer or JWT token for authentication. Include the token string without the 'Bearer ' prefix.",
-    ] = "",
-    params: Annotated[dict, "Query parameters to include in the GET request."] = {},
-) -> Annotated[
-    Tuple[str, float],
-    "A tuple containing a minified JSON string and the time taken for the API call in seconds.",
-]:
-    start_time = time.perf_counter()
-    try:
-        logger.info(f"Sending GET request to {url}")
+        "Body mode: multipart, urlencoded, raw, binary, or json. (Optional)",
+    ] = None,
+    headers: Annotated[Dict[str, str], "Additional HTTP headers."] = {},
+) -> Annotated[Tuple[str, float], "Minified JSON response and call duration (in seconds)."]:
+    # Set authentication headers based on auth_type.
+    if auth_type:
+        auth_type = auth_type.lower()
+        if auth_type == "basic" and isinstance(auth_value, list) and len(auth_value) == 2:
+            creds = f"{auth_value[0]}:{auth_value[1]}"
+            token = base64.b64encode(creds.encode()).decode()
+            headers["Authorization"] = f"Basic {token}"
+        elif auth_type == "jwt":
+            headers["Authorization"] = f"JWT {auth_value}"
+        elif auth_type == "form_login":
+            headers["X-Form-Login"] = auth_value
+        elif auth_type == "bearer":
+            headers["Authorization"] = f"Bearer {auth_value}"
+        elif auth_type == "api_key":
+            headers["x-api-key"] = auth_value
 
-        request_headers = headers.copy() if headers else {}
-        if token:
-            request_headers["Authorization"] = f"Bearer {token}"
-
-        async with httpx.AsyncClient(event_hooks={"request": [log_request], "response": [log_response]}) as client:
-            response = await client.get(
-                url,
-                headers=request_headers,
-                auth=(httpx.BasicAuth(auth["username"], auth["password"]) if auth else None),
-                params=params,
-            )
-            response.raise_for_status()
-
-            end_time = time.perf_counter()
-            duration = end_time - start_time
-
-            status_code = response.status_code
-            status_type = determine_status_type(status_code)
-
-            try:
-                parsed_body = response.json()
-            except json.JSONDecodeError:
-                parsed_body = response.text or ""
-
-            response_data = {
-                "status_code": status_code,
-                "status_type": status_type,
-                "body": parsed_body,
-            }
-
-            response_str = json.dumps(response_data, separators=(",", ":")).replace('"', "'")
-            return (response_str, duration)
-
-    except httpx.HTTPStatusError as e:
-        end_time = time.perf_counter()
-        duration = end_time - start_time
-        logger.error(f"HTTP error occurred while reading resource: {e}")
-
-        status_code = e.response.status_code
-        status_type = determine_status_type(status_code)
-
-        response_data = {
-            "error": str(e),
-            "status_code": status_code,
-            "status_type": status_type,
-        }
-        response_str = json.dumps(response_data, separators=(",", ":")).replace('"', "'")
-        return (response_str, duration)
-
-    except Exception as e:
-        end_time = time.perf_counter()
-        duration = end_time - start_time
-        logger.error(f"An unexpected error occurred: {e}")
-
-        response_data = {
-            "error": str(e),
-            "status_code": None,
-            "status_type": "failure",
-        }
-        response_str = json.dumps(response_data, separators=(",", ":")).replace('"', "'")
-        return (response_str, duration)
-
-
-@tool(
-    agent_names=["api_nav_agent"],
-    name="update_resource_http_api",
-    description="Only when instruction says call an API to update an entity in the remote system, then use this tool. Should be used for PUT requests.",
-)
-async def update_resource_http_api(
-    url: Annotated[str, "The API endpoint URL for updating the resource."],
-    headers: Annotated[dict, "Optional HTTP headers to include in the request."] = {},
-    auth: Annotated[
-        dict,
-        "Optional basic authentication credentials.",
-    ] = {},
-    token: Annotated[
-        str,
-        "Optional bearer or JWT token for authentication. Include the token string without the 'Bearer ' prefix.",
-    ] = "",
-    data: Annotated[dict, "Form data to send in the request body."] = {},
-    json_data: Annotated[dict, "JSON data to send in the request body."] = {},
-) -> Annotated[
-    Tuple[str, float],
-    "A tuple containing a minified JSON string and the time taken for the API call in seconds.",
-]:
-    start_time = time.perf_counter()
-    try:
-        logger.info(f"Sending PUT request to {url}")
-
-        request_headers = headers.copy() if headers else {}
-        if token:
-            request_headers["Authorization"] = f"Bearer {token}"
-
-        async with httpx.AsyncClient(event_hooks={"request": [log_request], "response": [log_response]}) as client:
-            response = await client.put(
-                url,
-                headers=request_headers,
-                auth=(httpx.BasicAuth(auth["username"], auth["password"]) if auth else None),
-                data=data,
-                json=json_data,
-            )
-            response.raise_for_status()
-
-            end_time = time.perf_counter()
-            duration = end_time - start_time
-
-            status_code = response.status_code
-            status_type = determine_status_type(status_code)
-
-            try:
-                parsed_body = response.json()
-            except json.JSONDecodeError:
-                parsed_body = response.text or ""
-
-            response_data = {
-                "status_code": status_code,
-                "status_type": status_type,
-                "body": parsed_body,
-            }
-
-            response_str = json.dumps(response_data, separators=(",", ":")).replace('"', "'")
-            return (response_str, duration)
-
-    except httpx.HTTPStatusError as e:
-        end_time = time.perf_counter()
-        duration = end_time - start_time
-        logger.error(f"HTTP error occurred while updating resource: {e}")
-
-        status_code = e.response.status_code
-        status_type = determine_status_type(status_code)
-
-        response_data = {
-            "error": str(e),
-            "status_code": status_code,
-            "status_type": status_type,
-        }
-        response_str = json.dumps(response_data, separators=(",", ":")).replace('"', "'")
-        return (response_str, duration)
-
-    except Exception as e:
-        end_time = time.perf_counter()
-        duration = end_time - start_time
-        logger.error(f"An unexpected error occurred: {e}")
-
-        response_data = {
-            "error": str(e),
-            "status_code": None,
-            "status_type": "failure",
-        }
-        response_str = json.dumps(response_data, separators=(",", ":")).replace('"', "'")
-        return (response_str, duration)
-
-
-@tool(
-    agent_names=["api_nav_agent"],
-    name="patch_resource_http_api",
-    description="Only when instruction says call an API to patch an entity in the remote system, then use this tool. Should be used for PATCH requests.",
-)
-async def patch_resource_http_api(
-    url: Annotated[str, "The API endpoint URL for patching the resource."],
-    headers: Annotated[dict, "Optional HTTP headers to include in the request."] = {},
-    auth: Annotated[
-        dict,
-        "Optional basic authentication credentials.",
-    ] = {},
-    token: Annotated[
-        str,
-        "Optional bearer or JWT token for authentication. Include the token string without the 'Bearer ' prefix.",
-    ] = "",
-    data: Annotated[dict, "Form data to send in the request body."] = {},
-    json_data: Annotated[dict, "JSON data to send in the request body."] = {},
-) -> Annotated[
-    Tuple[str, float],
-    "A tuple containing a minified JSON string and the time taken for the API call in seconds.",
-]:
-    start_time = time.perf_counter()
-    try:
-        logger.info(f"Sending PATCH request to {url}")
-
-        request_headers = headers.copy() if headers else {}
-        if token:
-            request_headers["Authorization"] = f"Bearer {token}"
-
-        async with httpx.AsyncClient(event_hooks={"request": [log_request], "response": [log_response]}) as client:
-            response = await client.patch(
-                url,
-                headers=request_headers,
-                auth=(httpx.BasicAuth(auth["username"], auth["password"]) if auth else None),
-                data=data,
-                json=json_data,
-            )
-            response.raise_for_status()
-
-            end_time = time.perf_counter()
-            duration = end_time - start_time
-
-            status_code = response.status_code
-            status_type = determine_status_type(status_code)
-
-            try:
-                parsed_body = response.json()
-            except json.JSONDecodeError:
-                parsed_body = response.text or ""
-
-            response_data = {
-                "status_code": status_code,
-                "status_type": status_type,
-                "body": parsed_body,
-            }
-
-            response_str = json.dumps(response_data, separators=(",", ":")).replace('"', "'")
-            return (response_str, duration)
-
-    except httpx.HTTPStatusError as e:
-        end_time = time.perf_counter()
-        duration = end_time - start_time
-        logger.error(f"HTTP error occurred while patching resource: {e}")
-
-        status_code = e.response.status_code
-        status_type = determine_status_type(status_code)
-
-        response_data = {
-            "error": str(e),
-            "status_code": status_code,
-            "status_type": status_type,
-        }
-        response_str = json.dumps(response_data, separators=(",", ":")).replace('"', "'")
-        return (response_str, duration)
-
-    except Exception as e:
-        end_time = time.perf_counter()
-        duration = end_time - start_time
-        logger.error(f"An unexpected error occurred: {e}")
-
-        response_data = {
-            "error": str(e),
-            "status_code": None,
-            "status_type": "failure",
-        }
-        response_str = json.dumps(response_data, separators=(",", ":")).replace('"', "'")
-        return (response_str, duration)
-
-
-@tool(
-    agent_names=["api_nav_agent"],
-    name="delete_resource_http_api",
-    description="Only when instruction says call an API to delete an entity in the remote system, then use this tool. Should be used for DELETE requests.",
-)
-async def delete_resource_http_api(
-    url: Annotated[str, "The API endpoint URL for deleting the resource."],
-    headers: Annotated[dict, "Optional HTTP headers to include in the request."] = {},
-    auth: Annotated[
-        dict,
-        "Optional basic authentication credentials.",
-    ] = {},
-    token: Annotated[
-        str,
-        "Optional bearer or JWT token for authentication. Include the token string without the 'Bearer ' prefix.",
-    ] = "",
-) -> Annotated[
-    Tuple[str, float],
-    "A tuple containing a minified JSON string and the time taken for the API call in seconds.",
-]:
-    start_time = time.perf_counter()
-    try:
-        logger.info(f"Sending DELETE request to {url}")
-
-        request_headers = headers.copy() if headers else {}
-        if token:
-            request_headers["Authorization"] = f"Bearer {token}"
-
-        async with httpx.AsyncClient(event_hooks={"request": [log_request], "response": [log_response]}) as client:
-            response = await client.delete(
-                url,
-                headers=request_headers,
-                auth=(httpx.BasicAuth(auth["username"], auth["password"]) if auth else None),
-            )
-            response.raise_for_status()
-
-            end_time = time.perf_counter()
-            duration = end_time - start_time
-
-            status_code = response.status_code
-            status_type = determine_status_type(status_code)
-
-            try:
-                parsed_body = response.json()
-            except json.JSONDecodeError:
-                parsed_body = response.text or ""
-
-            response_data = {
-                "status_code": status_code,
-                "status_type": status_type,
-                "body": parsed_body,
-            }
-
-            response_str = json.dumps(response_data, separators=(",", ":")).replace('"', "'")
-            return (response_str, duration)
-
-    except httpx.HTTPStatusError as e:
-        end_time = time.perf_counter()
-        duration = end_time - start_time
-        logger.error(f"HTTP error occurred while deleting resource: {e}")
-
-        status_code = e.response.status_code
-        status_type = determine_status_type(status_code)
-
-        response_data = {
-            "error": str(e),
-            "status_code": status_code,
-            "status_type": status_type,
-        }
-        response_str = json.dumps(response_data, separators=(",", ":")).replace('"', "'")
-        return (response_str, duration)
-
-    except Exception as e:
-        end_time = time.perf_counter()
-        duration = end_time - start_time
-        logger.error(f"An unexpected error occurred: {e}")
-
-        response_data = {
-            "error": str(e),
-            "status_code": None,
-            "status_type": "failure",
-        }
-        response_str = json.dumps(response_data, separators=(",", ":")).replace('"', "'")
-        return (response_str, duration)
+    return await _send_request(
+        method,
+        url,
+        query_params=query_params,
+        body=body,
+        body_mode=body_mode,
+        headers=headers,
+    )

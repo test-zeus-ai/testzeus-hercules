@@ -18,8 +18,9 @@ python = "<3.13,>=3.10"
 httpx = "^0.27.0"
 nest-asyncio = "^1.6.0"
 
+
 openai = "^1.47.0"
-pdfplumber = "^0.11.1"
+ 
 pillow = "^10.3.0"
 playwright = "<=1.49.0"
 pydantic = "^2.6.2"
@@ -34,8 +35,11 @@ playwright-recaptcha = "^0.5.1"
 junit2html = "^31.0.2"
 aiohttp = "^3.11.7"
 inflection = "^0.5.1"
-autogen = {extras = ["ollama", "long-context", "graph", "anthropic", "groq", "gemini", "lmm", "mistral", "bedrock", "gemini"], version = "^0.7.3"}
+autogen = {extras = ["retrievechat", "ollama", "anthropic", "groq", "gemini", "lmm", "mistral", "bedrock", "gemini"], version = "^0.7.5"}
 aiofiles = "^24.1.0"
+chromadb = "^0.6.3"
+sentence-transformers = "^3.4.1"
+unstructured = {extras = ["all-docs"], version = "^0.16.21"}
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.3"
