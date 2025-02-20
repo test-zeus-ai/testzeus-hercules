@@ -35,7 +35,7 @@ playwright-recaptcha = "^0.5.1"
 junit2html = "^31.0.2"
 aiohttp = "^3.11.7"
 inflection = "^0.5.1"
-autogen = {extras = ["retrievechat", "ollama", "long-context", "graph", "anthropic", "groq", "gemini", "lmm", "mistral", "bedrock", "gemini", "teachable"], version = "^0.7.4"}
+autogen = {extras = ["retrievechat", "ollama", "anthropic", "groq", "gemini", "lmm", "mistral", "bedrock", "gemini"], version = "^0.7.5"}
 aiofiles = "^24.1.0"
 chromadb = "^0.6.3"
 sentence-transformers = "^3.4.1"
