@@ -55,3 +55,4 @@ opt
 .git
 **/bugreport*
 **/node_modules
+**/*.db

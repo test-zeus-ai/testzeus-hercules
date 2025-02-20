@@ -163,3 +163,4 @@ testzeus-hercules/**/*.feature
 **/additional_tools/*
 **/bugreport*
 **/node_modules
+**/*.db
