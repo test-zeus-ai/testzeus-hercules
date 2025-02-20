@@ -97,14 +97,31 @@ class DynamicLTM:
         """Initialize the DynamicLTM instance with RAG capabilities."""
         self.namespace = namespace
         self.static_data_list = get_test_data_file_paths()
+
+        if not self.static_data_list:
+            # create a empty dummy file
+            self.static_data_list = [os.path.join(tempfile.gettempdir(), "dummy.txt")]
+            with open(self.static_data_list[0], "w") as f:
+                f.write("")
+
         self.llm_config = llm_config or {}
 
         # Get configuration for vector DB persistence
         config = get_global_conf()
-        self.reuse_vector_db = config.should_reuse_vector_db()
-        self.vector_db_path = os.path.join(tempfile.gettempdir(), f"vector_db_{namespace}")
+        self.use_dynamic_ltm = config.should_use_dynamic_ltm()
 
-        # Initialize RAG agents
+        if not self.use_dynamic_ltm:
+            # Skip initialization if not using dynamic LTM
+            self.assistant = None
+            self.rag_agent = None
+            return
+
+        self.reuse_vector_db = config.should_reuse_vector_db()
+        self.vector_db_path = os.path.join(
+            tempfile.gettempdir(), f"vector_db_{namespace}"
+        )
+
+        # Initialize RAG agents only if using dynamic LTM
         self.assistant = AssistantAgent(
             name="rag_assistant",
             system_message="""Role:
@@ -129,10 +146,6 @@ I work strictly with data that has been explicitly stored in my memory.""",
             human_input_mode="NEVER",
         )
 
-        # # Create a temporary directory for storing test-specific documents
-        # docs_dir = os.path.join(tempfile.gettempdir(), f"rag_docs_{namespace}")
-        # os.makedirs(docs_dir, exist_ok=True)
-
         # Handle vector DB persistence based on configuration
         if not self.reuse_vector_db and os.path.exists(self.vector_db_path):
             logger.info(f"Cleaning up old vector DB at {self.vector_db_path}")
@@ -148,7 +161,9 @@ I work strictly with data that has been explicitly stored in my memory.""",
                 "task": "qa",
                 "docs_path": self.static_data_list,
                 "chunk_token_size": 20000,
-                "model": self.llm_config.get("config_list", [{}])[0].get("model", "gpt-4o-mini"),
+                "model": self.llm_config.get("config_list", [{}])[0].get(
+                    "model", "gpt-4o-mini"
+                ),
                 "collection_name": f"ad{namespace}",  # Use namespace in collection name
                 "get_or_create": self.reuse_vector_db,  # Use config to determine get_or_create
                 "persist_dir": self.vector_db_path,  # Set persistence directory
@@ -162,7 +177,10 @@ I work strictly with data that has been explicitly stored in my memory.""",
     def _ensure_vector_db_initialized(self) -> None:
         """Ensure vector DB is initialized with current content."""
         try:
-            if not hasattr(self.rag_agent, "_vector_db") or self.rag_agent._vector_db is None:
+            if (
+                not hasattr(self.rag_agent, "_vector_db")
+                or self.rag_agent._vector_db is None
+            ):
                 # Set these before initialization to ensure proper collection handling
                 self.rag_agent._collection = False
                 self.rag_agent._get_or_create = self.reuse_vector_db
@@ -174,14 +192,20 @@ I work strictly with data that has been explicitly stored in my memory.""",
                 self.rag_agent._collection = True
             else:
                 # If DB exists, ensure we're using the right collection
-                collection_name = self.rag_agent._retrieve_config.get("collection_name", f"ad{self.namespace}")
+                collection_name = self.rag_agent._retrieve_config.get(
+                    "collection_name", f"ad{self.namespace}"
+                )
                 if hasattr(self.rag_agent._vector_db, "get_collection"):
                     try:
                         # Get the collection object
-                        collection = self.rag_agent._vector_db.get_collection(collection_name)
+                        collection = self.rag_agent._vector_db.get_collection(
+                            collection_name
+                        )
                         # Set it as the active collection
                         self.rag_agent._vector_db.active_collection = collection
-                        logger.info(f"Successfully set active collection: {collection_name}")
+                        logger.info(
+                            f"Successfully set active collection: {collection_name}"
+                        )
                     except Exception as e:
                         logger.error(f"Error setting active collection: {str(e)}")
                         # Reset flags on error
@@ -202,7 +226,9 @@ I work strictly with data that has been explicitly stored in my memory.""",
         try:
             if is_text:
                 # For text content, create a temporary file and process it
-                temp_file = os.path.join(tempfile.gettempdir(), f"temp_{uuid.uuid4()}.txt")
+                temp_file = os.path.join(
+                    tempfile.gettempdir(), f"temp_{uuid.uuid4()}.txt"
+                )
                 with open(temp_file, "w") as f:
                     f.write(content)
 
@@ -231,30 +257,20 @@ I work strictly with data that has been explicitly stored in my memory.""",
             content (str): Content to be saved to memory.
             is_text (bool): Whether the content is text or another format.
         """
-        # if not self.static_data_list:
-        #     logger.warning("Memory docs path not initialized")
-        #     return
+        if not self.use_dynamic_ltm:
+            # Skip saving when using static LTM
+            return
 
         if not content.strip():
             logger.warning("Empty content provided, skipping save")
             return
 
         try:
-            # Process content using unstructured.io
-
             processed_content = self._process_content(content, is_text)
-
-            # Generate a unique ID for the document
             doc_id = str(uuid.uuid4())
 
-            # Save to file system for persistence
-            # with open(self.static_data_list, "a") as f:
-            #     f.write(f"\n--- Document {doc_id} ---\n{processed_content}\n")
-
-            # Ensure vector DB is initialized
             self._ensure_vector_db_initialized()
 
-            # Prepare document for insertion
             doc = {
                 "id": doc_id,
                 "content": processed_content,
@@ -266,15 +282,14 @@ I work strictly with data that has been explicitly stored in my memory.""",
 
             self.rag_agent._vector_db.insert_docs(
                 docs=[doc],
-                collection_name=self.rag_agent._retrieve_config.get("collection_name", f"ad{self.namespace}"),
+                collection_name=self.rag_agent._retrieve_config.get(
+                    "collection_name", f"ad{self.namespace}"
+                ),
             )
             logger.info(f"Successfully added document {doc_id} to vector DB")
 
         except Exception as e:
             logger.error(f"Error saving content to memory: {str(e)}")
-            # Still try to save to file even if vector DB fails
-            # with open(self.static_data_list, "a") as f:
-            #     f.write("\n" + content)
 
     async def query(self, context: str) -> str:
         """
@@ -286,22 +301,30 @@ I work strictly with data that has been explicitly stored in my memory.""",
         Returns:
             str: Retrieved memory content or empty string if no relevant information found.
         """
-        problem = "EQUIP me with all relevant INFORMATION, ENVIRONMENT DATA, TEST DATA, TEST DEPENDENCIES TO SOLVE THE TASK: " + context
-        result = self.rag_agent.initiate_chat(self.assistant, message=self.rag_agent.message_generator, problem=problem)
-        return result.chat_history[-1]["content"] if result and hasattr(result, "chat_history") else result.summary
+        if not self.use_dynamic_ltm:
+            return ""
+
+        problem = (
+            "EQUIP me with all relevant INFORMATION, ENVIRONMENT DATA, TEST DATA, TEST DEPENDENCIES TO SOLVE THE TASK: "
+            + context
+        )
+        result = self.rag_agent.initiate_chat(
+            self.assistant, message=self.rag_agent.message_generator, problem=problem
+        )
+        return (
+            result.chat_history[-1]["content"]
+            if result and hasattr(result, "chat_history")
+            else result.summary
+        )
 
     def clear(self) -> None:
         """Clear the memory while preserving static data."""
-        if not self.static_data_list:
-            logger.warning("Memory docs path not initialized")
+        if not self.use_dynamic_ltm:
             return
 
-        # with open(self.static_data_list, "w") as f:
-        #     f.write(self.static_data)
-
-        self.rag_agent._vector_db.delete_collection(f"ad{self.namespace}")
-        # Update RAG agent's docs path
-        self.rag_agent._retrieve_config["docs_path"] = self.static_data_list
+        if self.rag_agent and hasattr(self.rag_agent, "_vector_db"):
+            self.rag_agent._vector_db.delete_collection(f"ad{self.namespace}")
+            self.rag_agent._retrieve_config["docs_path"] = self.static_data_list
 
     @property
     def memory_path(self) -> Optional[List[str]]:
@@ -310,4 +333,6 @@ I work strictly with data that has been explicitly stored in my memory.""",
 
     def get_agents(self) -> tuple[AssistantAgent, RetrieveUserProxyAgent]:
         """Get the RAG agents used by this memory system."""
+        if not self.use_dynamic_ltm:
+            return None, None
         return self.assistant, self.rag_agent

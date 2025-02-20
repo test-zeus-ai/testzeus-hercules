@@ -11,6 +11,7 @@ from testzeus_hercules.core.post_process_responses import (
     final_reply_callback_planner_agent as print_message_as_planner,  # type: ignore
 )
 from testzeus_hercules.utils.logger import logger
+from testzeus_hercules.config import get_global_conf
 
 
 class PlannerAgent:
@@ -146,12 +147,23 @@ Available Test Data: $basic_test_information
                 system_message = "\n".join(system_prompt)
             else:
                 system_message = system_prompt
-            logger.info(f"Using custom system prompt for PlannerAgent: {system_message}")
+            logger.info(
+                f"Using custom system prompt for PlannerAgent: {system_message}"
+            )
 
-        if False and user_ltm:  # add the user LTM to the system prompt if it exists
+        config = get_global_conf()
+        if (
+            not config.should_use_dynamic_ltm() and user_ltm
+        ):  # Use static LTM when dynamic is disabled
             user_ltm = "\n" + user_ltm
-            system_message = Template(system_message).substitute(basic_test_information=user_ltm)
-        system_message = system_message + "\n" + f"Today's date is {datetime.now().strftime('%d %B %Y')}"
+            system_message = Template(system_message).substitute(
+                basic_test_information=user_ltm
+            )
+        system_message = (
+            system_message
+            + "\n"
+            + f"Today's date is {datetime.now().strftime('%d %B %Y')}"
+        )
         logger.info(f"Planner agent using model: {model_config_list[0]['model']}")
 
         self.agent = autogen.AssistantAgent(
