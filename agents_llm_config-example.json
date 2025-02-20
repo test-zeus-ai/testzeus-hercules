@@ -5,24 +5,28 @@
 			"model_api_key": "",
 			"model_base_url": "https://api.mistral.ai/v1",
             "model_api_type": "mistral",
-            "llm_config_params": {
-                "cache_seed": null,
-                "temperature": 0.0,
-                "top_p": 1,
-                "seed":12345
-            }
+            "llm_config_params": {}
 		},
 		"nav_agent": {
 			"model_name": "ministral-8b-latest",
 			"model_api_key": "",
 			"model_base_url": "https://api.mistral.ai/v1",
             "model_api_type": "mistral",
-            "llm_config_params": {
-                "cache_seed": null,
-                "temperature": 0.0,
-                "top_p": 1,
-                "seed":12345
-            }
+            "llm_config_params": {}
+		},
+		"mem_agent": {
+			"model_name": "ministral-8b-latest",
+			"model_api_key": "",
+			"model_base_url": "https://api.mistral.ai/v1",
+            "model_api_type": "mistral",
+            "llm_config_params": {}
+		},
+		"helper_agent": {
+			"model_name": "ministral-8b-latest",
+			"model_api_key": "",
+			"model_base_url": "https://api.mistral.ai/v1",
+            "model_api_type": "mistral",
+            "llm_config_params": {}
 		}
 	},
     "openai_gpt": {
@@ -30,23 +34,25 @@
 			"model_name": "gpt-4o",
 			"model_api_key": "",
 			"model_base_url": null,
-            "llm_config_params": {
-                "cache_seed": 1234,
-                "temperature": 0.0,
-                "top_p": 0.001,
-                "seed":12345
-            }
+            "llm_config_params": {}
 		},
 		"nav_agent": {
             "model_name": "gpt-4o",
 			"model_api_key": "",
 			"model_base_url": null,
-            "llm_config_params": {
-                "cache_seed": 1234,
-                "temperature": 0.0,
-                "top_p": 0.001,
-                "seed":12345
-            }
+            "llm_config_params": {}
+		},
+		"mem_agent": {
+            "model_name": "gpt-4o",
+			"model_api_key": "",
+			"model_base_url": null,
+            "llm_config_params": {}
+		},
+		"helper_agent": {
+			"model_name": "gpt-4o",
+			"model_api_key": "",
+			"model_base_url": null,
+            "llm_config_params": {}
 		}
 	},
     "azure": {
@@ -56,12 +62,7 @@
 			"model_base_url": "",
             "model_api_type": "azure",
             "model_api_version": "2024-05-01-preview",
-            "llm_config_params": {
-                "cache_seed": null,
-                "temperature": 0.0,
-                "top_p": 0.001,
-                "seed":12345
-            }
+            "llm_config_params": {}
 		},
 		"nav_agent": {
 			"model_name": "gpt-4o",
@@ -69,12 +70,23 @@
 			"model_base_url": "",
             "model_api_type": "azure",
             "model_api_version": "2024-05-01-preview",
-            "llm_config_params": {
-                "cache_seed": null,
-                "temperature": 0.0,
-                "top_p": 0.001,
-                "seed":12345
-            }
+            "llm_config_params": {}
+		},
+		"mem_agent": {
+			"model_name": "gpt-4o",
+			"model_api_key": "",
+			"model_base_url": "",
+            "model_api_type": "azure",
+            "model_api_version": "2024-05-01-preview",
+            "llm_config_params": {}
+		},
+		"helper_agent": {
+			"model_name": "gpt-4o",
+			"model_api_key": "",
+			"model_base_url": "",
+            "model_api_type": "azure",
+            "model_api_version": "2024-05-01-preview",
+            "llm_config_params": {}
 		}
 	},
     "groq": {
@@ -82,23 +94,25 @@
 			"model_name": "llama3-groq-8b-8192-tool-use-preview",
 			"model_api_key": "",
 			"model_api_type": "groq",
-            "llm_config_params": {
-                "cache_seed": null,
-                "temperature": 0.0,
-                "top_p": 0.001,
-                "seed":12345
-            }
+            "llm_config_params": {}
 		},
 		"nav_agent": {
 			"model_name": "llama3-groq-8b-8192-tool-use-preview",
 			"model_api_key": "",
 			"model_api_type": "groq",
-            "llm_config_params": {
-                "cache_seed": null,
-                "temperature": 0.0,
-                "top_p": 0.001,
-                "seed":12345
-            }
+            "llm_config_params": {}
+		},
+		"mem_agent": {
+			"model_name": "llama3-groq-8b-8192-tool-use-preview",
+			"model_api_key": "",
+			"model_api_type": "groq",
+            "llm_config_params": {}
+		},
+		"helper_agent": {
+			"model_name": "llama3-groq-8b-8192-tool-use-preview",
+			"model_api_key": "",
+			"model_api_type": "groq",
+            "llm_config_params": {}
 		}
     },
 
@@ -110,11 +124,7 @@
             "model_client_host": "http://localhost:11434",
             "model_native_tool_calls": true,
             "model_hide_tools": "if_any_run",
-            "llm_config_params": {
-                "cache_seed": null,
-                "temperature": 0.0,
-                "top_p": 0.001
-            }
+            "llm_config_params": {}
 		},
 		"nav_agent": {
 			"model_name": "llama3-groq-tool-use",
@@ -123,11 +133,25 @@
             "model_client_host": "http://localhost:11434",
             "model_native_tool_calls": true,
             "model_hide_tools": "if_any_run",
-            "llm_config_params": {
-                "cache_seed": null,
-                "temperature": 0.0,
-                "top_p": 0.001
-            }
+            "llm_config_params": {}
+		},
+		"mem_agent": {
+			"model_name": "llama3-groq-tool-use",
+			"model_api_key": "",
+			"model_api_type": "ollama",
+            "model_client_host": "http://localhost:11434",
+            "model_native_tool_calls": true,
+            "model_hide_tools": "if_any_run",
+            "llm_config_params": {}
+		},
+		"helper_agent": {
+			"model_name": "llama3-groq-tool-use",
+			"model_api_key": "",
+			"model_api_type": "ollama",
+            "model_client_host": "http://localhost:11434",
+            "model_native_tool_calls": true,
+            "model_hide_tools": "if_any_run",
+            "llm_config_params": {}
 		}
     },
     "anthropic": {
@@ -135,23 +159,25 @@
 			"model_name": "claude-3-5-haiku-latest",
 			"model_api_key": "",
 			"model_api_type": "anthropic",
-            "llm_config_params": {
-                "cache_seed": null,
-                "temperature": 0.0,
-                "top_p": 0.001,
-                "seed":12345
-            }
+            "llm_config_params": {}
 		},
 		"nav_agent": {
 			"model_name": "claude-3-5-haiku-latest",
 			"model_api_key": "",
 			"model_api_type": "anthropic",
-            "llm_config_params": {
-                "cache_seed": null,
-                "temperature": 0.0,
-                "top_p": 0.001,
-                "seed":12345
-            }
+            "llm_config_params": {}
+		},
+		"mem_agent": {
+			"model_name": "claude-3-5-haiku-latest",
+			"model_api_key": "",
+			"model_api_type": "anthropic",
+            "llm_config_params": {}
+		},
+		"helper_agent": {
+			"model_name": "claude-3-5-haiku-latest",
+			"model_api_key": "",
+			"model_api_type": "anthropic",
+            "llm_config_params": {}
 		}
     },
     "anthropicvert": {
@@ -160,24 +186,28 @@
             "model_project_id": "",
             "model_region": "us-east5",
 			"model_api_type": "anthropic",
-            "llm_config_params": {
-                "cache_seed": null,
-                "temperature": 0.0,
-                "top_p": 0.001,
-                "seed":12345
-            }
+            "llm_config_params": {}
 		},
 		"nav_agent": {
 			"model_name": "claude-3-5-haiku@20241022",
             "model_project_id": "",
             "model_region": "us-east5",
 			"model_api_type": "anthropic",
-            "llm_config_params": {
-                "cache_seed": null,
-                "temperature": 0.0,
-                "top_p": 0.001,
-                "seed":12345
-            }
+            "llm_config_params": {}
+		},
+		"mem_agent": {
+			"model_name": "claude-3-5-haiku@20241022",
+            "model_project_id": "",
+            "model_region": "us-east5",
+			"model_api_type": "anthropic",
+            "llm_config_params": {}
+		},
+		"helper_agent": {
+			"model_name": "claude-3-5-haiku@20241022",
+            "model_project_id": "",
+            "model_region": "us-east5",
+			"model_api_type": "anthropic",
+            "llm_config_params": {}
 		}
     },
     "anthropic_bedrock": {
@@ -187,11 +217,7 @@
 			"model_api_type": "bedrock",
             "model_aws_access_key": "",
             "model_aws_secret_key": "",
-            "llm_config_params": {
-                "cache_seed": null,
-                "temperature": 0.0,
-                "top_p": 0.001
-            }
+            "llm_config_params": {}
 		},
 		"nav_agent": {
 			"model_name": "us.anthropic.claude-3-5-haiku-20241022-v1:0",
@@ -199,35 +225,45 @@
 			"model_api_type": "bedrock",
             "model_aws_access_key": "",
             "model_aws_secret_key": "",
-            "llm_config_params": {
-                "cache_seed": null,
-                "temperature": 0.0,
-                "top_p": 0.001
-            }
+            "llm_config_params": {}
+		},
+		"mem_agent": {
+			"model_name": "us.anthropic.claude-3-5-haiku-20241022-v1:0",
+            "model_aws_region": "us-east-1",
+			"model_api_type": "bedrock",
+            "model_aws_access_key": "",
+            "model_aws_secret_key": "",
+            "llm_config_params": {}
+		},
+		"helper_agent": {
+			"model_name": "us.anthropic.claude-3-5-haiku-20241022-v1:0",
+            "model_aws_region": "us-east-1",
+			"model_api_type": "bedrock",
+            "model_aws_access_key": "",
+            "model_aws_secret_key": "",
+            "llm_config_params": {}
 		}
     },
     "gemini": {
 		"planner_agent": {
 			"model_name": "gemini-1.5-pro-002",
-			
 			"model_api_type": "google",
-            "llm_config_params": {
-                "cache_seed": null,
-                "temperature": 0.0,
-                "top_p": 0.001,
-                "seed":12345
-            }
+            "llm_config_params": {}
 		},
 		"nav_agent": {
 			"model_name": "gemini-1.5-pro-002",
-			
 			"model_api_type": "google",
-            "llm_config_params": {
-                "cache_seed": null,
-                "temperature": 0.0,
-                "top_p": 0.001,
-                "seed":12345
-            }
+            "llm_config_params": {}
+		},
+		"mem_agent": {
+			"model_name": "gemini-1.5-pro-002",
+			"model_api_type": "google",
+            "llm_config_params": {}
+		},
+		"helper_agent": {
+			"model_name": "gemini-1.5-pro-002",
+			"model_api_type": "google",
+            "llm_config_params": {}
 		}
     },
     "deepseek": {
@@ -236,24 +272,28 @@
 			"model_api_key": "",
 			"model_base_url": "https://api.deepseek.com/v1",
             "model_api_type": "deepseek",
-            "llm_config_params": {
-                "cache_seed": null,
-                "temperature": 0.0,
-                "top_p": 0.001,
-                "seed":12345
-            }
+            "llm_config_params": {}
 		},
 		"nav_agent": {
             "model_name": "deepseek-chat",
 			"model_api_key": "",
 			"model_base_url": "https://api.deepseek.com/v1",
             "model_api_type": "deepseek",
-            "llm_config_params": {
-                "cache_seed": null,
-                "temperature": 0.0,
-                "top_p": 0.001,
-                "seed":12345
-            }
+            "llm_config_params": {}
+		},
+		"mem_agent": {
+            "model_name": "deepseek-chat",
+			"model_api_key": "",
+			"model_base_url": "https://api.deepseek.com/v1",
+            "model_api_type": "deepseek",
+            "llm_config_params": {}
+		},
+		"helper_agent": {
+            "model_name": "deepseek-chat",
+			"model_api_key": "",
+			"model_base_url": "https://api.deepseek.com/v1",
+            "model_api_type": "deepseek",
+            "llm_config_params": {}
 		}
 	}
 }

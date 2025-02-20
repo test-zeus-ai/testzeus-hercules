@@ -1,10 +1,11 @@
 import os
 from datetime import datetime
 from string import Template
-from typing import Any
+from typing import Any, Optional
 
 import autogen  # type: ignore
 from autogen import ConversableAgent  # type: ignore
+from testzeus_hercules.core.memory.dynamic_ltm import DynamicLTM
 from testzeus_hercules.core.memory.static_ltm import get_user_ltm
 from testzeus_hercules.core.post_process_responses import (
     final_reply_callback_planner_agent as print_message_as_planner,  # type: ignore
@@ -137,7 +138,7 @@ Available Test Data: $basic_test_information
         - system_prompt: The system prompt to be used for this agent or the default will be used if not provided.
         - user_proxy_agent: An instance of the UserProxyAgent class.
         """
-        user_ltm = self.__get_ltm()
+        user_ltm = self.get_ltm()
         system_message = self.prompt
 
         if system_prompt and len(system_prompt) > 0:
@@ -145,12 +146,20 @@ Available Test Data: $basic_test_information
                 system_message = "\n".join(system_prompt)
             else:
                 system_message = system_prompt
-            logger.info(f"Using custom system prompt for PlannerAgent: {system_message}")
+            logger.info(
+                f"Using custom system prompt for PlannerAgent: {system_message}"
+            )
 
         if user_ltm:  # add the user LTM to the system prompt if it exists
             user_ltm = "\n" + user_ltm
-            system_message = Template(system_message).substitute(basic_test_information=user_ltm)
-        system_message = system_message + "\n" + f"Today's date is {datetime.now().strftime('%d %B %Y')}"
+            system_message = Template(system_message).substitute(
+                basic_test_information=user_ltm
+            )
+        system_message = (
+            system_message
+            + "\n"
+            + f"Today's date is {datetime.now().strftime('%d %B %Y')}"
+        )
         logger.info(f"Planner agent using model: {model_config_list[0]['model']}")
 
         self.agent = autogen.AssistantAgent(
@@ -163,14 +172,27 @@ Available Test Data: $basic_test_information
         )
         # add_text_compressor(self.agent)
 
+        def ingest_message_in_memory(
+            recipient: autogen.ConversableAgent,
+            messages: Optional[list[dict]] = None,
+            sender: Optional[autogen.Agent] = None,
+            config: Optional[dict[str, Any]] = None,
+        ) -> tuple[bool, Any]:
+            if messages:
+                for message_list in messages:
+                    for key, message in message_list.items():
+                        DynamicLTM().incoming_chat(message)
+                        print_message_as_planner(message=message)
+            return False, None
+
         self.agent.register_reply(  # type: ignore
             [autogen.AssistantAgent, None],
-            reply_func=print_message_as_planner,
+            reply_func=ingest_message_in_memory,
             config={"callback": None},
-            ignore_async_in_sync_chat=True,
+            ignore_async_in_sync_chat=False,
         )
 
-    def __get_ltm(self) -> str:
+    def get_ltm(self) -> str | None:
         """
         Get the the long term memory of the user.
         returns: str | None - The user LTM or None if not found.

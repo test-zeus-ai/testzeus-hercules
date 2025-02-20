@@ -161,3 +161,5 @@ testzeus-hercules/**/*.feature
 **/output_txt
 **/installation_id.txt
 **/additional_tools/*
+**/bugreport*
+**/node_modules

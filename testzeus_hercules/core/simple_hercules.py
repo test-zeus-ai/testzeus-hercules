@@ -5,18 +5,20 @@ import os
 import tempfile
 import traceback
 from string import Template
-from typing import Any
+from typing import Any, Dict, Optional, cast, Union
+import uuid
 
 import autogen  # type: ignore
 import nest_asyncio  # type: ignore
 import openai
-from autogen import Cache
-from testzeus_hercules.config import get_global_conf
+from autogen import Cache, AssistantAgent
+from autogen.agentchat.contrib.retrieve_user_proxy_agent import RetrieveUserProxyAgent
 from testzeus_hercules.core.agents.api_nav_agent import ApiNavAgent
 from testzeus_hercules.core.agents.browser_nav_agent import BrowserNavAgent
 from testzeus_hercules.core.agents.high_level_planner_agent import PlannerAgent
 from testzeus_hercules.core.agents.sec_nav_agent import SecNavAgent
 from testzeus_hercules.core.agents.sql_nav_agent import SqlNavAgent
+from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.agents.static_waiter_nav_agent import StaticWaiterNavAgent
 from testzeus_hercules.core.extra_tools import *
 from testzeus_hercules.core.memory.state_handler import store_run_data
@@ -30,6 +32,7 @@ from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.detect_llm_loops import is_agent_stuck_in_loop
 from testzeus_hercules.utils.llm_helper import (
     convert_model_config_to_autogen_format,
+    create_multimodal_agent,
     extract_target_helper,
     format_plan_steps,
     parse_agent_response,
@@ -42,6 +45,7 @@ from testzeus_hercules.utils.sequential_function_call import (
 )
 from testzeus_hercules.utils.timestamp_helper import get_timestamp_str
 from testzeus_hercules.utils.ui_messagetype import MessageType
+from testzeus_hercules.core.memory.dynamic_ltm import DynamicLTM
 
 nest_asyncio.apply()  # type: ignore
 from autogen import oai
@@ -67,31 +71,41 @@ class SimpleHercules:
         planner_max_chat_round: int = 500,
         browser_nav_max_chat_round: int = 10,
     ):
-        self.timestamp = get_timestamp_str()  # Add this line to store timestamp
+        self.timestamp = get_timestamp_str()
         oai.Completion.set_cache(5, cache_path_root=".cache")
         self.planner_number_of_rounds = planner_max_chat_round
         self.nav_agent_number_of_rounds = browser_nav_max_chat_round
 
-        self.agents_map: (
-            dict[
-                str,
-                UserProxyAgent_SequentialFunctionExecution | autogen.AssistantAgent | autogen.ConversableAgent,
-            ]
-            | None
-        ) = None
+        self.agents_map: Dict[
+            str,
+            Union[
+                UserProxyAgent_SequentialFunctionExecution,
+                autogen.ConversableAgent,
+                AssistantAgent,
+                RetrieveUserProxyAgent,
+            ],
+        ] = {}
+        self._memory_docs_path: Optional[str] = None
 
-        self.planner_agent_model_config: list[dict[str, str]] | None = None
-        self.browser_nav_agent_model_config: list[dict[str, str]] | None = None
-        self.api_nav_agent_model_config: list[dict[str, str]] | None = None
-        self.sec_nav_agent_model_config: list[dict[str, str]] | None = None
-        self.sql_nav_agent_model_config: list[dict[str, str]] | None = None
-        self.static_waiter_nav_agent_model_config: list[dict[str, str]] | None = None
+        self.planner_agent_model_config: Optional[list[Dict[str, Any]]] = None
+        self.browser_nav_agent_model_config: Optional[list[Dict[str, Any]]] = None
+        self.api_nav_agent_model_config: Optional[list[Dict[str, Any]]] = None
+        self.sec_nav_agent_model_config: Optional[list[Dict[str, Any]]] = None
+        self.sql_nav_agent_model_config: Optional[list[Dict[str, Any]]] = None
+        self.static_waiter_nav_agent_model_config: Optional[list[Dict[str, Any]]] = None
+        self.mem_agent_model_config: Optional[list[Dict[str, Any]]] = None
+        self.helper_agent_model_config: Optional[list[Dict[str, Any]]] = None
 
-        self.planner_agent_config: dict[str, Any] | None = None
-        self.nav_agent_config: dict[str, Any] | None = None
+        self.planner_agent_config: Optional[Dict[str, Any]] = None
+        self.nav_agent_config: Optional[Dict[str, Any]] = None
+        self.mem_agent_config: Optional[Dict[str, Any]] = None
+        self.helper_agent_config: Optional[Dict[str, Any]] = None
         self.stake_id = stake_id
-        self.chat_logs_dir: str = get_global_conf().get_source_log_folder_path(self.stake_id)
+        self.chat_logs_dir: str = get_global_conf().get_source_log_folder_path(
+            self.stake_id
+        )
         self.save_chat_logs_to_files = save_chat_logs_to_files
+        self.memory: Optional[DynamicLTM] = None
 
     @classmethod
     async def create(
@@ -99,6 +113,8 @@ class SimpleHercules:
         stake_id: str,
         planner_agent_config: dict[str, Any],
         nav_agent_config: dict[str, Any],
+        mem_agent_config: dict[str, Any],
+        helper_agent_config: dict[str, Any],
         save_chat_logs_to_files: bool = True,
         planner_max_chat_round: int = 500,
         browser_nav_max_chat_round: int = 10,
@@ -120,6 +136,8 @@ class SimpleHercules:
                     }
                 }
             nav_agent_config: dict[str, Any]: A dictionary containing the configuration parameters for the browser navigation agent. Same format as planner_agent_config.
+            mem_agent_config: dict[str, Any]: A dictionary containing the configuration parameters for the memory agent. Same format as planner_agent_config.
+            helper_agent_config: dict[str, Any]: A dictionary containing the configuration parameters for the helper agent. Same format as planner_agent_config.
             save_chat_logs_to_files (bool, optional): Whether to save chat logs to files. Defaults to True.
             planner_max_chat_rounds (int, optional): The maximum number of chat rounds for the planner. Defaults to 50.
             browser_nav_max_chat_round (int, optional): The maximum number of chat rounds for the browser navigation agent. Defaults to 10.
@@ -143,66 +161,160 @@ class SimpleHercules:
 
         self.planner_agent_config = planner_agent_config
         self.nav_agent_config = nav_agent_config
+        self.mem_agent_config = mem_agent_config
+        self.helper_agent_config = helper_agent_config
 
-        self.planner_agent_model_config = convert_model_config_to_autogen_format(self.planner_agent_config["model_config_params"])
-        self.browser_nav_agent_model_config = convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
-        self.api_nav_agent_model_config = convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
-        self.sec_nav_agent_model_config = convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
-        self.sql_nav_agent_model_config = convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
-        self.static_waiter_nav_agent_model_config = convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
+        self.planner_agent_model_config = convert_model_config_to_autogen_format(
+            self.planner_agent_config["model_config_params"]
+        )
+        self.browser_nav_agent_model_config = convert_model_config_to_autogen_format(
+            self.nav_agent_config["model_config_params"]
+        )
+        self.api_nav_agent_model_config = convert_model_config_to_autogen_format(
+            self.nav_agent_config["model_config_params"]
+        )
+        self.sec_nav_agent_model_config = convert_model_config_to_autogen_format(
+            self.nav_agent_config["model_config_params"]
+        )
+        self.sql_nav_agent_model_config = convert_model_config_to_autogen_format(
+            self.nav_agent_config["model_config_params"]
+        )
+        self.static_waiter_nav_agent_model_config = (
+            convert_model_config_to_autogen_format(
+                self.nav_agent_config["model_config_params"]
+            )
+        )
+        self.mem_agent_model_config = convert_model_config_to_autogen_format(
+            self.mem_agent_config["model_config_params"]
+        )
+        self.helper_agent_model_config = convert_model_config_to_autogen_format(
+            self.helper_agent_config["model_config_params"]
+        )
         self.agents_map = await self.__initialize_agents()
 
         def trigger_nested_chat(manager: autogen.ConversableAgent) -> bool:  # type: ignore
-            content: str = manager.last_message(manager.last_speaker)["content"] if isinstance(manager, autogen.GroupChatManager) else manager.last_message()["content"]
+            content: str = (
+                manager.last_message(manager.last_speaker)["content"]
+                if isinstance(manager, autogen.GroupChatManager)
+                else manager.last_message()["content"]
+            )
 
             parsed = parse_agent_response(content)
             next_step = parsed.get("next_step")
             plan = parsed.get("plan")
+            target_helper = parsed.get("target_helper", "")
+            is_assert = json.loads(parsed.get("is_assert", "false")) or False
+            is_passed = json.loads(parsed.get("is_passed", "false")) or False
+            assert_summary = parsed.get("assert_summary", "")
+            is_terminated = json.loads(parsed.get("is_terminated", "false")) or False
+            is_completed = json.loads(parsed.get("is_completed", "false")) or False
+            final_response = parsed.get("final_response", "")
 
             if plan is not None and isinstance(plan, list):
                 plan = format_plan_steps(plan)
-                notify_planner_messages(plan, message_type=MessageType.PLAN)
+                notify_planner_messages(
+                    plan,
+                    message_type=MessageType.PLAN,
+                    stake_id=self.stake_id,
+                    helper_name=target_helper,
+                    is_assert=is_assert,
+                    is_passed=is_passed,
+                    assert_summary=assert_summary,
+                    is_terminated=is_terminated,
+                    is_completed=is_completed,
+                    final_response=final_response,
+                )
+                return True
 
             if next_step is None:
-                notify_planner_messages("Received no response, terminating..", message_type=MessageType.INFO)
+                notify_planner_messages(
+                    "Received no response, terminating..",
+                    message_type=MessageType.INFO,
+                    stake_id=self.stake_id,
+                    helper_name=target_helper,
+                    is_assert=is_assert,
+                    is_passed=is_passed,
+                    assert_summary=assert_summary,
+                    is_terminated=is_terminated,
+                    is_completed=is_completed,
+                    final_response=final_response,
+                )
                 return False
-            notify_planner_messages(next_step, message_type=MessageType.STEP)
+
+            notify_planner_messages(
+                next_step,
+                message_type=MessageType.STEP,
+                stake_id=self.stake_id,
+                helper_name=target_helper,
+                is_assert=is_assert,
+                is_passed=is_passed,
+                assert_summary=assert_summary,
+                is_terminated=is_terminated,
+                is_completed=is_completed,
+                final_response=final_response,
+            )
             return True
 
         def get_url() -> str:
             # return geturl()
             return asyncio.run(geturl())
 
-        def my_custom_summary_method(sender: autogen.ConversableAgent, recipient: autogen.ConversableAgent, summary_args: dict):  # type: ignore
-            # messages_str_keys = {str(key): value for key, value in sender.chat_messages.items()}  # type: ignore
-            # self.__save_chat_log(list(messages_str_keys.values())[0])  # type: ignore
-            self.__save_chat_log(sender, recipient)  # type: ignore
+        def my_custom_summary_method(sender: autogen.ConversableAgent, recipient: autogen.ConversableAgent, summary_args: dict = {}):  # type: ignore
+            self.save_chat_log(sender, recipient)  # type: ignore
             do_we_need_get_url = False
             if isinstance(recipient, autogen.GroupChatManager):
-
                 if "browser" in recipient.last_speaker.name:
                     do_we_need_get_url = True
                 last_message = recipient.last_message(recipient.last_speaker)["content"]
             else:
                 last_message = recipient.last_message(sender)["content"]  # type: ignore
+
             if not last_message or last_message.strip() == "":  # type: ignore
-                # logger.info(f">>> Last message from browser nav was empty. Max turns: {self.nav_agent_number_of_rounds*2}, number of messages: {len(list(sender.chat_messages.items())[0][1])}")
-                # logger.info(">>> Sender messages:", json.dumps( list(sender.chat_messages.items())[0][1], indent=2))
                 return "I received an empty message. This is not an error and is recoverable. Try to reformulate the task..."
             elif "##TERMINATE TASK##" in last_message:
                 last_message = last_message.replace("##TERMINATE TASK##", "")  # type: ignore
                 if last_message and do_we_need_get_url:
                     last_message += " " + get_url()
-                else:
-                    mem = "Context from previous steps: " + last_message + "\n"
-                    store_run_data(mem)
-                # t_l = last_message.strip()
-                # if not t_l:
-                #     logger.info("Last message from browser nav was empty. Max turns: {self.nav_agent_number_of_rounds*2}, number of messages: {len(list(sender.chat_messages.items())[0][1])}")
-                notify_planner_messages(last_message, message_type=MessageType.ACTION)  # type: ignore
-                return last_message  #  type: ignore
-            notify_planner_messages(last_message, message_type=MessageType.ACTION)  # type: ignore
-            return last_message  # type: ignore
+                mem = "Context from previous steps: " + last_message + "\n"
+                self.save_to_memory(mem)
+                store_run_data(mem)
+
+            try:
+                planner_agent = self.agents_map.get("planner_agent")
+                if planner_agent and isinstance(
+                    planner_agent, autogen.ConversableAgent
+                ):
+                    last_msg = planner_agent.last_message()
+                    if isinstance(last_msg, dict):
+                        target_helper = last_msg.get("target_helper", "")
+                        is_assert = (
+                            json.loads(last_msg.get("is_assert", "false")) or False
+                        )
+                        is_passed = (
+                            json.loads(last_msg.get("is_passed", "false")) or False
+                        )
+                        assert_summary = last_msg.get("assert_summary", "")
+                        is_terminated = (
+                            json.loads(last_msg.get("is_terminated", "false")) or False
+                        )
+                        final_response = last_msg.get("final_response", "")
+                        notify_planner_messages(
+                            last_message,
+                            message_type=MessageType.STEP,
+                            stake_id=self.stake_id,
+                            helper_name=target_helper,
+                            is_assert=is_assert,
+                            is_passed=is_passed,
+                            assert_summary=assert_summary,
+                            is_terminated=is_terminated,
+                            is_completed=True,
+                            final_response=final_response,
+                        )
+            except Exception as e:
+                logger.error(
+                    f"Failed to send notification to planner regarding action completion with last_message: {last_message} with exception {e}"
+                )
+            return last_message
 
         def reflection_message(recipient, messages, sender, config):  # type: ignore
             last_message = messages[-1]["content"]  # type: ignore
@@ -221,24 +333,38 @@ class SimpleHercules:
                     url = get_url()
                 if target_helper.strip():
                     next_step = next_step.strip() + " " + url + f" ##target_helper: {target_helper}##"  # type: ignore
+                    # Query memory using abstract method
+                    mem_fetch = asyncio.run(self._query_memory(next_step))
+                    next_step = (
+                        "\n\nUSEFUL INFORMATION FOR FUNCTION CALL: "
+                        + mem_fetch
+                        + "\n\nTASK FOR HELPER: "
+                        + next_step
+                    )
                     return next_step  # type: ignore
                 else:
                     logger.error("Target helper not found in the response")
-                    # this is some crazy trick, might backfire in long run, only time will tell.
                     return "skip this step and return only JSON"  # type: ignore
 
         # Updated logic to handle agent names with underscores
         nav_agents_names = list(
             set(
                 [
-                    "_".join(agent_name.split("_")[:-2])  # Take all parts except 'nav_agent' or 'nav_executor'
+                    "_".join(
+                        agent_name.split("_")[:-2]
+                    )  # Take all parts except 'nav_agent' or 'nav_executor'
                     for agent_name in self.agents_map.keys()
-                    if agent_name.endswith("_nav_agent") or agent_name.endswith("_nav_executor")
+                    if agent_name.endswith("_nav_agent")
+                    or agent_name.endswith("_nav_executor")
                 ]
             )
         )
 
-        group_participants_names = [f"{agent_name}_nav_agent" for agent_name in nav_agents_names] + [f"{agent_name}_nav_executor" for agent_name in nav_agents_names]
+        group_participants_names = [
+            f"{agent_name}_nav_agent" for agent_name in nav_agents_names
+        ] + [f"{agent_name}_nav_executor" for agent_name in nav_agents_names]
+
+        logger.info(f"Group participants names: {group_participants_names}")
 
         def state_transition(last_speaker, groupchat) -> autogen.ConversableAgent | None:  # type: ignore
             last_message = groupchat.messages[-1]["content"]
@@ -251,7 +377,10 @@ class SimpleHercules:
                 if target_helper in nav_agents_names:
                     return self.agents_map[f"{target_helper}_nav_agent"]
                 return None
-            elif last_speaker in [self.agents_map[f"{agent_name}_nav_agent"] for agent_name in nav_agents_names]:
+            elif last_speaker in [
+                self.agents_map[f"{agent_name}_nav_agent"]
+                for agent_name in nav_agents_names
+            ]:
                 # Get the base name by removing '_nav_agent' suffix
                 base_name = last_speaker.name.rsplit("_nav_agent", 1)[0]
                 return self.agents_map[f"{base_name}_nav_executor"]
@@ -266,7 +395,9 @@ class SimpleHercules:
         }
 
         groupchat = autogen.GroupChat(
-            agents=[self.agents_map[agent_name] for agent_name in group_participants_names],
+            agents=[
+                self.agents_map[agent_name] for agent_name in group_participants_names
+            ],
             messages=[],
             max_round=self.planner_number_of_rounds,
             # select_speaker_auto_verbose=True,
@@ -282,6 +413,7 @@ class SimpleHercules:
             self.agents_map["user"].register_nested_chats(
                 [
                     {
+                        "chat_id": uuid.uuid4(),
                         "sender": self.agents_map["user"],
                         "recipient": manager,
                         "message": reflection_message,
@@ -295,7 +427,9 @@ class SimpleHercules:
         return self
 
     @classmethod
-    def convert_model_config_to_autogen_format(cls, model_config: dict[str, str]) -> list[dict[str, Any]]:
+    def convert_model_config_to_autogen_format(
+        cls, model_config: dict[str, str]
+    ) -> list[dict[str, Any]]:
         env_var: list[dict[str, str]] = [model_config]
         with tempfile.NamedTemporaryFile(delete=False, mode="w") as temp:
             json.dump(env_var, temp)
@@ -323,9 +457,11 @@ class SimpleHercules:
         """
         self.chat_logs_dir = chat_logs_dir
 
-    def __save_chat_log(self, sender: autogen.ConversableAgent, receiver: autogen.ConversableAgent) -> None:
+    def save_chat_log(
+        self, sender: autogen.ConversableAgent, receiver: autogen.ConversableAgent
+    ) -> None:
         messages_str_keys = {str(key): value for key, value in sender.chat_messages.items()}  # type: ignore
-        res_output_thoughts_logs_di = {}
+        res_output_thoughts_logs_di: dict[str, list[dict[str, Any]]] = {}
         for key, value in messages_str_keys.items():
             if res_output_thoughts_logs_di.get(sender.agent_name):
                 res_output_thoughts_logs_di[sender.agent_name] += value
@@ -334,29 +470,34 @@ class SimpleHercules:
 
         for key, vals in res_output_thoughts_logs_di.items():
             for idx, val in enumerate(vals):
-
                 logger.debug(f"{sender.name} chat log: {val}")
                 content = val["content"]
+                res_content: Any = content
                 if isinstance(content, str):
                     content = content.replace("```json", "").replace("```", "").strip()
-                    res_content = None
                     try:
                         res_content = json.loads(content)
                     except json.JSONDecodeError:
-                        logger.debug(f"Failed to decode JSON: {content}, keeping as multiline string")
+                        logger.debug(
+                            f"Failed to decode JSON: {content}, keeping as multiline string"
+                        )
                         res_content = content
                 elif isinstance(content, dict):
                     res_content = content
                 elif isinstance(content, list):
                     if isinstance(content[0], dict):
                         res_content = content
-                else:
-                    res_content = content
-                res_output_thoughts_logs_di[key][idx]["content"] = process_chat_message_content(val["content"])
+
+                res_output_thoughts_logs_di[key][idx]["content"] = (
+                    process_chat_message_content(val["content"])
+                )
+
         if not self.save_chat_logs_to_files:
             logger.info(
                 "Nested chat logs",
-                extra={f"log_between_sender_{sender.name}_rec_{receiver.name}": res_output_thoughts_logs_di},
+                extra={
+                    f"log_between_sender_{sender.name}_rec_{receiver.name}": res_output_thoughts_logs_di
+                },
             )
         else:
             chat_logs_file = os.path.join(
@@ -375,18 +516,34 @@ class SimpleHercules:
             dict: A dictionary of agent instances.
 
         """
-        agents_map: dict[str, UserProxyAgent_SequentialFunctionExecution | autogen.ConversableAgent] = {}
+        agents_map: dict[
+            str, UserProxyAgent_SequentialFunctionExecution | autogen.ConversableAgent
+        ] = {}
+        agents_map["mem_agent"] = self.__create_mem_agent()
+        agents_map["helper_agent"] = self.__create_helper_agent()
         agents_map["user"] = await self.__create_user_delegate_agent()
         agents_map["browser_nav_executor"] = self.__create_browser_nav_executor_agent()
-        agents_map["browser_nav_agent"] = self.__create_browser_nav_agent(agents_map["browser_nav_executor"])
+        agents_map["browser_nav_agent"] = self.__create_browser_nav_agent(
+            agents_map["browser_nav_executor"]
+        )
         agents_map["api_nav_executor"] = self.__create_api_nav_executor_agent()
-        agents_map["api_nav_agent"] = self.__create_api_nav_agent(agents_map["api_nav_executor"])
+        agents_map["api_nav_agent"] = self.__create_api_nav_agent(
+            agents_map["api_nav_executor"]
+        )
         agents_map["sec_nav_executor"] = self.__create_sec_nav_executor_agent()
-        agents_map["sec_nav_agent"] = self.__create_sec_nav_agent(agents_map["sec_nav_executor"])
+        agents_map["sec_nav_agent"] = self.__create_sec_nav_agent(
+            agents_map["sec_nav_executor"]
+        )
         agents_map["sql_nav_executor"] = self.__create_sql_nav_executor_agent()
-        agents_map["sql_nav_agent"] = self.__create_sql_nav_agent(agents_map["sql_nav_executor"])
-        agents_map["static_waiter_nav_executor"] = self.__create_static_waiter_nav_executor_agent()
-        agents_map["static_waiter_nav_agent"] = self.__create_static_waiter_nav_agent(agents_map["static_waiter_nav_executor"])
+        agents_map["sql_nav_agent"] = self.__create_sql_nav_agent(
+            agents_map["sql_nav_executor"]
+        )
+        agents_map["static_waiter_nav_executor"] = (
+            self.__create_static_waiter_nav_executor_agent()
+        )
+        agents_map["static_waiter_nav_agent"] = self.__create_static_waiter_nav_agent(
+            agents_map["static_waiter_nav_executor"]
+        )
         agents_map["planner_agent"] = self.__create_planner_agent(agents_map["user"])
         return agents_map
 
@@ -417,9 +574,13 @@ class SimpleHercules:
                     if _terminate == "yes":
                         should_terminate = True
                         if final_response:
-                            notify_planner_messages(final_response, message_type=MessageType.ANSWER)
+                            notify_planner_messages(
+                                final_response, message_type=MessageType.ANSWER
+                            )
                 except json.JSONDecodeError:
-                    logger.error("Error decoding JSON response:\n{content}.\nTerminating..")
+                    logger.error(
+                        "Error decoding JSON response:\n{content}.\nTerminating.."
+                    )
                     should_terminate = True
 
             return should_terminate  # type: ignore
@@ -469,26 +630,24 @@ class SimpleHercules:
                 "use_docker": False,
             },
         )
-        logger.info(">>> Created browser_nav_executor_agent: %s", browser_nav_executor_agent)
+        logger.info(
+            ">>> Created browser_nav_executor_agent: %s", browser_nav_executor_agent
+        )
         return browser_nav_executor_agent
 
-    def __create_browser_nav_agent(self, user_proxy_agent: UserProxyAgent_SequentialFunctionExecution) -> autogen.ConversableAgent:
-        """
-        Create a BrowserNavAgent instance.
+    def __create_browser_nav_agent(
+        self, user_proxy_agent: UserProxyAgent_SequentialFunctionExecution
+    ) -> autogen.ConversableAgent:
+        """Create a BrowserNavAgent instance."""
+        if not self.browser_nav_agent_model_config or not self.nav_agent_config:
+            raise ValueError("Browser nav agent config not initialized")
 
-        Args:
-            user_proxy_agent (autogen.UserProxyAgent): The instance of UserProxyAgent that was created.
-
-        Returns:
-            autogen.AssistantAgent: An instance of BrowserNavAgent.
-
-        """
         browser_nav_agent = BrowserNavAgent(
             self.browser_nav_agent_model_config,
-            self.nav_agent_config["llm_config_params"],  # type: ignore
-            self.nav_agent_config["other_settings"].get("system_prompt", None),
+            self.nav_agent_config["llm_config_params"],
+            self.nav_agent_config.get("other_settings", {}).get("system_prompt"),
             user_proxy_agent,
-        )  # type: ignore
+        )
         return browser_nav_agent.agent
 
     def __create_api_nav_executor_agent(self) -> autogen.UserProxyAgent:
@@ -529,23 +688,19 @@ class SimpleHercules:
         logger.info(">>> Created api_nav_executor_agent: %s", api_nav_executor_agent)
         return api_nav_executor_agent
 
-    def __create_api_nav_agent(self, user_proxy_agent: UserProxyAgent_SequentialFunctionExecution) -> autogen.ConversableAgent:
-        """
-        Create a ApiNavAgent instance.
+    def __create_api_nav_agent(
+        self, user_proxy_agent: UserProxyAgent_SequentialFunctionExecution
+    ) -> autogen.ConversableAgent:
+        """Create an ApiNavAgent instance."""
+        if not self.api_nav_agent_model_config or not self.nav_agent_config:
+            raise ValueError("API nav agent config not initialized")
 
-        Args:
-            user_proxy_agent (autogen.UserProxyAgent): The instance of UserProxyAgent that was created.
-
-        Returns:
-            autogen.AssistantAgent: An instance of ApiNavAgent.
-
-        """
         api_nav_agent = ApiNavAgent(
             self.api_nav_agent_model_config,
-            self.nav_agent_config["llm_config_params"],  # type: ignore
-            self.nav_agent_config["other_settings"].get("system_prompt", None),
+            self.nav_agent_config["llm_config_params"],
+            self.nav_agent_config.get("other_settings", {}).get("system_prompt"),
             user_proxy_agent,
-        )  # type: ignore
+        )
         return api_nav_agent.agent
 
     def __create_sec_nav_executor_agent(self) -> autogen.UserProxyAgent:
@@ -586,42 +741,34 @@ class SimpleHercules:
         logger.info(">>> Created api_nav_executor_agent: %s", api_nav_executor_agent)
         return api_nav_executor_agent
 
-    def __create_sec_nav_agent(self, user_proxy_agent: UserProxyAgent_SequentialFunctionExecution) -> autogen.ConversableAgent:
-        """
-        Create a ApiNavAgent instance.
+    def __create_sec_nav_agent(
+        self, user_proxy_agent: UserProxyAgent_SequentialFunctionExecution
+    ) -> autogen.ConversableAgent:
+        """Create a SecNavAgent instance."""
+        if not self.sec_nav_agent_model_config or not self.nav_agent_config:
+            raise ValueError("Security nav agent config not initialized")
 
-        Args:
-            user_proxy_agent (autogen.UserProxyAgent): The instance of UserProxyAgent that was created.
-
-        Returns:
-            autogen.AssistantAgent: An instance of ApiNavAgent.
-
-        """
         sec_nav_agent = SecNavAgent(
             self.sec_nav_agent_model_config,
-            self.nav_agent_config["llm_config_params"],  # type: ignore
-            self.nav_agent_config["other_settings"].get("system_prompt", None),
+            self.nav_agent_config["llm_config_params"],
+            self.nav_agent_config.get("other_settings", {}).get("system_prompt"),
             user_proxy_agent,
-        )  # type: ignore
+        )
         return sec_nav_agent.agent
 
-    def __create_sql_nav_agent(self, user_proxy_agent: UserProxyAgent_SequentialFunctionExecution) -> autogen.ConversableAgent:
-        """
-        Create a SqlNavAgent instance.
+    def __create_sql_nav_agent(
+        self, user_proxy_agent: UserProxyAgent_SequentialFunctionExecution
+    ) -> autogen.ConversableAgent:
+        """Create a SqlNavAgent instance."""
+        if not self.sql_nav_agent_model_config or not self.nav_agent_config:
+            raise ValueError("SQL nav agent config not initialized")
 
-        Args:
-            user_proxy_agent (autogen.UserProxyAgent): The instance of UserProxyAgent that was created.
-
-        Returns:
-            autogen.AssistantAgent: An instance of SqlNavAgent.
-
-        """
         sql_nav_agent = SqlNavAgent(
             self.sql_nav_agent_model_config,
-            self.nav_agent_config["llm_config_params"],  # type: ignore
-            self.nav_agent_config["other_settings"].get("system_prompt", None),
+            self.nav_agent_config["llm_config_params"],
+            self.nav_agent_config.get("other_settings", {}).get("system_prompt"),
             user_proxy_agent,
-        )  # type: ignore
+        )
         return sql_nav_agent.agent
 
     def __create_sql_nav_executor_agent(self) -> autogen.UserProxyAgent:
@@ -693,54 +840,129 @@ class SimpleHercules:
                 "use_docker": False,
             },
         )
-        logger.info(">>> Created static_waiter_nav_executor_agent: %s", static_waiter_nav_executor_agent)
+        logger.info(
+            ">>> Created static_waiter_nav_executor_agent: %s",
+            static_waiter_nav_executor_agent,
+        )
         return static_waiter_nav_executor_agent
 
-    def __create_static_waiter_nav_agent(self, user_proxy_agent: UserProxyAgent_SequentialFunctionExecution) -> autogen.ConversableAgent:
-        """
-        Create a StaticWaiterNavAgent instance.
+    def __create_static_waiter_nav_agent(
+        self, user_proxy_agent: UserProxyAgent_SequentialFunctionExecution
+    ) -> autogen.ConversableAgent:
+        """Create a StaticWaiterNavAgent instance."""
+        if not self.static_waiter_nav_agent_model_config or not self.nav_agent_config:
+            raise ValueError("Static waiter nav agent config not initialized")
 
-        Args:
-            user_proxy_agent (autogen.UserProxyAgent): The instance of UserProxyAgent that was created.
-
-        Returns:
-            autogen.AssistantAgent: An instance of StaticWaiterNavAgent.
-        """
         static_waiter_nav_agent = StaticWaiterNavAgent(
             self.static_waiter_nav_agent_model_config,
-            self.nav_agent_config["llm_config_params"],  # type: ignore
-            self.nav_agent_config["other_settings"].get("system_prompt", None),
+            self.nav_agent_config["llm_config_params"],
+            self.nav_agent_config.get("other_settings", {}).get("system_prompt"),
             user_proxy_agent,
-        )  # type: ignore
+        )
         return static_waiter_nav_agent.agent
 
-    def __create_planner_agent(self, assistant_agent: autogen.ConversableAgent) -> autogen.ConversableAgent:
-        """
-        Create a Planner Agent instance. This is mainly used for exploration at this point
+    def __create_planner_agent(
+        self, assistant_agent: autogen.ConversableAgent
+    ) -> autogen.ConversableAgent:
+        """Create a Planner Agent instance."""
+        if not self.planner_agent_model_config or not self.planner_agent_config:
+            raise ValueError("Planner agent config not initialized")
 
-        Returns:
-            autogen.AssistantAgent: An instance of PlannerAgent.
-
-        """
         planner_agent = PlannerAgent(
             self.planner_agent_model_config,
-            self.planner_agent_config["llm_config_params"],  # type: ignore
-            self.planner_agent_config["other_settings"].get("system_prompt", None),
+            self.planner_agent_config["llm_config_params"],
+            self.planner_agent_config.get("other_settings", {}).get("system_prompt"),
             assistant_agent,
-        )  # type: ignore
+        )
         return planner_agent.agent
 
-    async def clean_up_plan(self) -> None:
+    def __create_mem_agent(self) -> autogen.ConversableAgent:
         """
-        Clean up the plan after each command is processed.
+        Create a Memory Agent instance using RAG capabilities.
 
+        Returns:
+            autogen.ConversableAgent: An instance of AssistantAgent for memory management.
         """
-        # await self.__initialize_agents()
-        self.agents_map["planner_agent"].clear_history()
-        self.agents_map["user"].clear_history()
+        if not self.mem_agent_config:
+            raise ValueError("Memory agent config not initialized")
+
+        llm_config = {
+            "config_list": self.mem_agent_model_config,
+            **self.mem_agent_config["llm_config_params"],
+        }
+
+        # Initialize memory system
+        config = get_global_conf()
+        namespace = f"{self.stake_id}_{config.timestamp}"
+        self.memory = DynamicLTM(namespace=namespace, llm_config=llm_config)
+
+        # Get the agents from memory system
+        mem_agent, mem_user_proxy = self.memory.get_agents()
+
+        # Add memory agents to the agents map
+        self.agents_map["mem_agent"] = mem_agent
+        self.agents_map["mem_user_proxy"] = mem_user_proxy
+
+        return mem_agent
+
+    def save_to_memory(self, content: str) -> None:
+        """Helper method to save content to memory."""
+        if self.memory:
+            self.memory.save_content(content)
+        else:
+            logger.warning("Memory system not initialized")
+
+    def __create_helper_agent(self) -> autogen.ConversableAgent:
+        """
+        Create a Helper Agent instance.
+
+        Returns:
+            autogen.ConversableAgent: An instance of ConversableAgent for providing assistance.
+        """
+        # llm_config = {
+        #     "config_list": self.helper_agent_model_config,
+        #     **self.helper_agent_config["llm_config_params"],  # type: ignore
+        # }
+
+        # helper_agent = autogen.ConversableAgent(
+        #     name="helper_agent",
+        #     llm_config=llm_config,
+        #     system_message=self.helper_agent_config["other_settings"].get("system_prompt", "I am a helper agent that assists with various tasks and provides guidance."),  # type: ignore
+        #     human_input_mode="NEVER",
+        #     max_consecutive_auto_reply=self.nav_agent_number_of_rounds,
+        # )
+
+        helper_agent = create_multimodal_agent(
+            name="image-comparer",
+            system_message="You are a visual comparison agent. You can compare images and provide feedback. Your only purpose is to do visual comparison of images",
+        )
+
+        return helper_agent
+
+    async def clean_up_plan(self) -> None:
+        """Clean up the plan after each command is processed."""
+        if self.memory:
+            self.memory.clear()
+
+        planner_agent = self.agents_map.get("planner_agent")
+        if isinstance(planner_agent, autogen.ConversableAgent):
+            planner_agent.clear_history()
+
+        user_agent = self.agents_map.get("user")
+        if isinstance(user_agent, autogen.ConversableAgent):
+            user_agent.clear_history()
+
         logger.info("Plan cleaned up.")
 
-    async def process_command(self, command: str, *args: Any, current_url: str | None = None, **kwargs: Any) -> autogen.ChatResult | None:
+    async def _query_memory(self, context: str) -> str:
+        """Query the memory system."""
+        if self.memory:
+            return await self.memory.query(context)
+        return ""
+
+    async def process_command(
+        self, command: str, *args: Any, current_url: str | None = None, **kwargs: Any
+    ) -> autogen.ChatResult | None:
         """
         Process a command by sending it to one or more agents.
 
@@ -749,14 +971,25 @@ class SimpleHercules:
             current_url (str, optional): The current URL of the browser. Defaults to None.
 
         Returns:
-            autogen.ChatResult | None: The result of the command processing, or None if an error occurred. Contains chat log, cost(tokens/price)
-
+            autogen.ChatResult | None: The result of the command processing, or None if an error occurred.
         """
         current_url_prompt_segment = ""
         if current_url:
             current_url_prompt_segment = f"Current Page: {current_url}"
+        prompt = Template(LLM_PROMPTS["COMMAND_EXECUTION_PROMPT"]).substitute(
+            command=command, current_url_prompt_segment=current_url_prompt_segment
+        )
+        if prompt:
+            # Query memory using abstract method
+            # mem_fetch = await self._query_memory(prompt)
+            prompt = (
+                # "\n\nUSEFUL INFORMATION: "
+                # + mem_fetch
+                # + "\n\nTESTING INSTRUCTIONS: "
+                # +
+                prompt
+            )
 
-        prompt = Template(LLM_PROMPTS["COMMAND_EXECUTION_PROMPT"]).substitute(command=command, current_url_prompt_segment=current_url_prompt_segment)
         logger.info("Prompt for command: %s", prompt)
         with Cache.disk(cache_seed=5) as cache:
             try:
@@ -766,15 +999,10 @@ class SimpleHercules:
                 result = await self.agents_map["user"].a_initiate_chat(  # type: ignore
                     self.agents_map["planner_agent"],  # self.manager # type: ignore
                     max_turns=self.planner_number_of_rounds,
-                    # clear_history=True,
                     message=prompt,
                     silent=False,
                     cache=cache,
                 )
-                # reset usage summary for all agents after each command
-                # for agent in self.agents_map.values():
-                #     if hasattr(agent, "client") and agent.client is not None:
-                #         agent.client.clear_usage_summary()  # type: ignore
                 return result
             except openai.BadRequestError as bre:
                 logger.error('Unable to process command: "%s". %s', command, bre)

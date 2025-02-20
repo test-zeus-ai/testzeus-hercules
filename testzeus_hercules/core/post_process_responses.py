@@ -32,7 +32,9 @@ def final_reply_callback_user_proxy(
     last_message = messages[-1]
     logger.debug(f"Post Process Message (User Proxy):{last_message}")
     if last_message.get("content") and "##TERMINATE##" in last_message["content"]:
-        last_agent_response = last_message["content"].replace("##TERMINATE##", "").strip()
+        last_agent_response = (
+            last_message["content"].replace("##TERMINATE##", "").strip()
+        )
         if last_agent_response:
             logger.debug("*****Final Reply*****")
             logger.debug(f"Final Response: {last_agent_response}")
@@ -42,6 +44,6 @@ def final_reply_callback_user_proxy(
     return False, None
 
 
-def final_reply_callback_planner_agent(message: str, message_type: MessageType = MessageType.STEP):  # type: ignore
+def final_reply_callback_planner_agent(message: str, message_type: MessageType = MessageType.STEP, stake_id: str = "", helper_name: str = "", is_assert: bool = False, is_passed: bool = False, assert_summary: str = "", is_terminated: bool = False, is_completed: bool = False, final_response: str = ""):  # type: ignore
     add_event(EventType.STEP, EventData(detail=message_type.value))
     return False, None  # required to ensure the agent communication flow continues

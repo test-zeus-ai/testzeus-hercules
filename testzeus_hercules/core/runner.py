@@ -38,7 +38,9 @@ class BaseRunner:
         self.stake_id = stake_id
         self.dont_terminate_browser_after_run = dont_terminate_browser_after_run
 
-        self.save_chat_logs_to_files = os.getenv("SAVE_CHAT_LOGS_TO_FILE", "True").lower() in ["true", "1"]
+        self.save_chat_logs_to_files = os.getenv(
+            "SAVE_CHAT_LOGS_TO_FILE", "True"
+        ).lower() in ["true", "1"]
 
         self.planner_agent_name = "planner_agent"
         self.shutdown_event = asyncio.Event()
@@ -50,17 +52,23 @@ class BaseRunner:
         llm_config = AgentsLLMConfig()
         self.planner_agent_config = llm_config.get_planner_agent_config()
         self.nav_agent_config = llm_config.get_nav_agent_config()
+        self.mem_agent_config = llm_config.get_mem_agent_config()
+        self.helper_config = llm_config.get_helper_agent_config()
 
         self.simple_hercules = await SimpleHercules.create(
             self.stake_id,
             self.planner_agent_config,
             self.nav_agent_config,
+            self.mem_agent_config,
+            self.helper_config,
             save_chat_logs_to_files=self.save_chat_logs_to_files,
             planner_max_chat_round=self.planner_number_of_rounds,
             browser_nav_max_chat_round=self.nav_agent_number_of_rounds,
         )
 
-        self.browser_manager = PlaywrightManager(gui_input_mode=False, stake_id=self.stake_id)
+        self.browser_manager = PlaywrightManager(
+            gui_input_mode=False, stake_id=self.stake_id
+        )
         await self.browser_manager.async_initialize()
 
     async def clean_up_plan(self) -> None:
@@ -90,12 +98,18 @@ class BaseRunner:
         if command:
             self.is_running = True
             start_time = time.time()
-            current_url = await self.browser_manager.get_current_url() if self.browser_manager else None
+            current_url = (
+                await self.browser_manager.get_current_url()
+                if self.browser_manager
+                else None
+            )
             result = None
             logger.info(f"Processing command: {command}")
             if self.simple_hercules:
                 await self.browser_manager.update_processing_state("processing")  # type: ignore
-                result = await self.simple_hercules.process_command(command, current_url)
+                result = await self.simple_hercules.process_command(
+                    command, current_url
+                )
                 await self.browser_manager.update_processing_state("done")  # type: ignore
             end_time = time.time()
             elapsed_time = round(end_time - start_time, 2)
@@ -106,7 +120,11 @@ class BaseRunner:
                 # Get trace paths from config
                 chat_history = result.chat_history  # type: ignore
                 last_message = chat_history[-1] if chat_history else None  # type: ignore
-                if last_message and "terminate" in last_message and last_message["terminate"] == "yes":
+                if (
+                    last_message
+                    and "terminate" in last_message
+                    and last_message["terminate"] == "yes"
+                ):
                     logger.info(f"Final message: {last_message}")
 
             await self.browser_manager.command_completed(command, elapsed_time)  # type: ignore
@@ -117,7 +135,9 @@ class BaseRunner:
         """
         Saves chat messages to a file or logs them based on configuration.
         """
-        messages = self.simple_hercules.agents_map[self.planner_agent_name].chat_messages
+        messages = self.simple_hercules.agents_map[
+            self.planner_agent_name
+        ].chat_messages
         messages_str_keys = {str(key): value for key, value in messages.items()}
         res_output_thoughts_logs_di = {}
         for key, value in messages_str_keys.items():
@@ -136,7 +156,9 @@ class BaseRunner:
                 try:
                     res_content = json.loads(content)
                 except json.JSONDecodeError:
-                    logger.debug(f"Failed to decode JSON: {content}, keeping as multiline string")
+                    logger.debug(
+                        f"Failed to decode JSON: {content}, keeping as multiline string"
+                    )
                     res_content = content
                 res_output_thoughts_logs_di[key][idx]["content"] = res_content
 
@@ -149,7 +171,11 @@ class BaseRunner:
                 "w",
                 encoding="utf-8",
             ) as f:
-                await f.write(json.dumps(res_output_thoughts_logs_di, ensure_ascii=False, indent=4))
+                await f.write(
+                    json.dumps(
+                        res_output_thoughts_logs_di, ensure_ascii=False, indent=4
+                    )
+                )
             logger.debug("Chat messages saved")
         else:
             logger.info(
@@ -191,7 +217,9 @@ class CommandPromptRunner(BaseRunner):
         """
         await self.initialize()
         while not self.is_running:
-            command: str = await async_input("Enter your command (or type 'exit' to quit): ")
+            command: str = await async_input(
+                "Enter your command (or type 'exit' to quit): "
+            )
             await self.process_command(command)
             await self.clean_up_plan()
             if self.shutdown_event.is_set():
