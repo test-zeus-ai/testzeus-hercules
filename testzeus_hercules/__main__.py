@@ -251,8 +251,10 @@ async def a_main() -> None:
         logger.info("Single test execution mode")
         await sequential_process()
 
+
 def main() -> None:
     asyncio.run(a_main())
+
 
 if __name__ == "__main__":  # pragma: no cover
     main()

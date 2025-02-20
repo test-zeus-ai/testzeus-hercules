@@ -73,13 +73,13 @@ Use the following standardized response formats:
 
 - **Success:**
 [ORIGINAL_TASK::<original task description>]
-[Action summary]
+[DETAILED Action output]
 [FLAG::PASS]
 ##TERMINATE TASK##
 
 - **Information Request:**
 [ORIGINAL_TASK::<original task description>]
-[API result]
+[DETAILED Action output]
 [FLAG::PASS]
 ##TERMINATE TASK##
 

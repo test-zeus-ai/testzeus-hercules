@@ -135,9 +135,7 @@ class UserManager(BaseUserManager[User, uuid.UUID]):
         print(f"User {user.id} has registered.")
 
 
-async def get_user_manager(
-    user_db: SQLAlchemyUserDatabase[User, uuid.UUID] = Depends(get_user_db)
-) -> AsyncGenerator[UserManager, None]:
+async def get_user_manager(user_db: SQLAlchemyUserDatabase[User, uuid.UUID] = Depends(get_user_db)) -> AsyncGenerator[UserManager, None]:
     yield UserManager(user_db)
 
 
@@ -213,10 +211,8 @@ async def create_category(
     session: AsyncSession = Depends(get_async_session),
     current_user: User = Depends(fastapi_users.current_user(active=True)),
 ):
-    # Check if category with the same name already exists.
-    result = await session.execute(
-        select(Category).filter(Category.name == category.name)
-    )
+    # Check if a category with the same name already exists.
+    result = await session.execute(select(Category).filter(Category.name == category.name))
     existing_category = result.scalar_one_or_none()
     if existing_category:
         raise HTTPException(
@@ -229,9 +225,7 @@ async def create_category(
         await session.commit()
     except IntegrityError:
         await session.rollback()
-        raise HTTPException(
-            status_code=400, detail="Failed to create category due to integrity error."
-        )
+        raise HTTPException(status_code=400, detail="Failed to create category due to integrity error.")
     await session.refresh(new_category)
     return new_category
 
@@ -253,15 +247,11 @@ async def create_item(
     session: AsyncSession = Depends(get_async_session),
     current_user: User = Depends(fastapi_users.current_user(active=True)),
 ):
-    # Ensure the category exists.
-    result = await session.execute(
-        select(Category).filter(Category.id == item.category_id)
-    )
+    # Ensure the specified category exists.
+    result = await session.execute(select(Category).filter(Category.id == item.category_id))
     category_obj = result.scalar_one_or_none()
     if category_obj is None:
-        raise HTTPException(
-            status_code=404, detail=f"Category with id {item.category_id} not found."
-        )
+        raise HTTPException(status_code=404, detail=f"Category with id {item.category_id} not found.")
 
     new_item = Item(**item.dict(), owner_id=str(current_user.id))
     session.add(new_item)
@@ -269,9 +259,7 @@ async def create_item(
         await session.commit()
     except IntegrityError:
         await session.rollback()
-        raise HTTPException(
-            status_code=400, detail="Failed to create item due to integrity error."
-        )
+        raise HTTPException(status_code=400, detail="Failed to create item due to integrity error.")
     await session.refresh(new_item)
     return new_item
 
@@ -300,9 +288,7 @@ async def create_order(
         result = await session.execute(select(Item).filter(Item.id == item_id))
         item_obj = result.scalar_one_or_none()
         if item_obj is None:
-            raise HTTPException(
-                status_code=404, detail=f"Item with id {item_id} not found"
-            )
+            raise HTTPException(status_code=404, detail=f"Item with id {item_id} not found")
         items.append(item_obj)
     new_order = Order(user_id=order.user_id, items=items)
     session.add(new_order)
@@ -310,9 +296,7 @@ async def create_order(
         await session.commit()
     except IntegrityError:
         await session.rollback()
-        raise HTTPException(
-            status_code=400, detail="Failed to create order due to integrity error."
-        )
+        raise HTTPException(status_code=400, detail="Failed to create order due to integrity error.")
     await session.refresh(new_order)
     return new_order
 
@@ -327,10 +311,26 @@ async def list_orders(
     return orders
 
 
-# Create tables on startup.
+# ----- Startup Event: Create Tables and Default User -----
 @app.on_event("startup")
 async def on_startup():
+    # Create all tables.
     await create_db_and_tables()
+    # Create default user if not exists.
+    async with async_session_maker() as session:
+        user_db = SQLAlchemyUserDatabase(session, User)
+        user_manager = UserManager(user_db)
+        default_email = "user@example.com"
+        try:
+            existing = await user_manager.get_by_email(default_email)
+        except Exception:
+            existing = None
+        if not existing:
+            default_user_create = UserCreate(email=default_email, password="user@example.com")
+            await user_manager.create(default_user_create)
+            print("Default user created.")
+        else:
+            print("Default user already exists.")
 
 
 if __name__ == "__main__":

@@ -4,10 +4,7 @@ from typing import Optional
 
 import yaml  # Requires PyYAML installed: pip install pyyaml
 from testzeus_hercules.config import get_global_conf
-from testzeus_hercules.core.memory.state_handler import (
-    get_run_data,
-    get_stored_data,
-)
+from testzeus_hercules.core.memory.state_handler import get_run_data, get_stored_data
 from testzeus_hercules.core.memory.static_data_loader import load_data
 from testzeus_hercules.utils.logger import logger
 

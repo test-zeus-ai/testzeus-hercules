@@ -1,22 +1,71 @@
-from typing import List, Optional, Dict, Any, cast
+import datetime
+import functools
+import io
+import os
+import shutil
+import sys
+import tempfile
+import uuid
+from typing import Any, Dict, List, Optional, cast
 
 import autogen
 from autogen import AssistantAgent
 from autogen.agentchat.contrib.retrieve_user_proxy_agent import RetrieveUserProxyAgent
-from testzeus_hercules.core.memory.static_data_loader import (
-    # load_data,
-    # list_load_data,
+from testzeus_hercules.config import get_global_conf
+from testzeus_hercules.core.memory.static_data_loader import (  # load_data,; list_load_data,
     get_test_data_file_paths,
 )
-from testzeus_hercules.config import get_global_conf
-import os
-import tempfile
-import uuid
-import datetime
-import shutil
 from testzeus_hercules.utils.logger import logger
+from unstructured.documents.elements import NarrativeText, Text, Title
 from unstructured.partition.auto import partition
-from unstructured.documents.elements import Text, Title, NarrativeText
+
+
+def suppress_prints(func):
+    """Decorator to suppress print statements within a function."""
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        silent_stdout = io.StringIO()
+        original_stdout, sys.stdout = sys.stdout, silent_stdout  # Redirect stdout
+
+        try:
+            return func(*args, **kwargs)  # Execute function
+        finally:
+            sys.stdout = original_stdout  # Restore stdout
+
+    return wrapper
+
+
+class SilentRetrieveUserProxyAgent(RetrieveUserProxyAgent):
+    """Derived class to suppress print outputs from noisy methods."""
+
+    @suppress_prints
+    def initiate_chat(self, *args: Any, **kwargs: Any) -> Any:
+        return super().initiate_chat(*args, **kwargs)
+
+    @suppress_prints
+    async def a_initiate_chat(self, *args: Any, **kwargs: Any) -> Any:
+        return await super().a_initiate_chat(*args, **kwargs)
+
+    @suppress_prints
+    def _init_db(self, *args: Any, **kwargs: Any) -> Any:
+        return super()._init_db(*args, **kwargs)
+
+    @suppress_prints
+    def _get_context(self, *args: Any, **kwargs: Any) -> Any:
+        return super()._get_context(*args, **kwargs)
+
+    @suppress_prints
+    def _generate_message(self, *args: Any, **kwargs: Any) -> Any:
+        return super()._generate_message(*args, **kwargs)
+
+    @suppress_prints
+    def _generate_retrieve_user_reply(self, *args: Any, **kwargs: Any) -> Any:
+        return super()._generate_retrieve_user_reply(*args, **kwargs)
+
+    @suppress_prints
+    def retrieve_docs(self, *args: Any, **kwargs: Any) -> Any:
+        return super().retrieve_docs(*args, **kwargs)
 
 
 class DynamicLTM:
@@ -53,9 +102,7 @@ class DynamicLTM:
         # Get configuration for vector DB persistence
         config = get_global_conf()
         self.reuse_vector_db = config.should_reuse_vector_db()
-        self.vector_db_path = os.path.join(
-            tempfile.gettempdir(), f"vector_db_{namespace}"
-        )
+        self.vector_db_path = os.path.join(tempfile.gettempdir(), f"vector_db_{namespace}")
 
         # Initialize RAG agents
         self.assistant = AssistantAgent(
@@ -95,15 +142,13 @@ I work strictly with data that has been explicitly stored in my memory.""",
                 logger.error(f"Error cleaning up vector DB: {str(e)}")
 
         # Initialize RetrieveUserProxyAgent with the static data
-        self.rag_agent = RetrieveUserProxyAgent(
+        self.rag_agent = SilentRetrieveUserProxyAgent(
             name="rag_proxy",
             retrieve_config={
                 "task": "qa",
                 "docs_path": self.static_data_list,
                 "chunk_token_size": 20000,
-                "model": self.llm_config.get("config_list", [{}])[0].get(
-                    "model", "gpt-4o-mini"
-                ),
+                "model": self.llm_config.get("config_list", [{}])[0].get("model", "gpt-4o-mini"),
                 "collection_name": f"ad{namespace}",  # Use namespace in collection name
                 "get_or_create": self.reuse_vector_db,  # Use config to determine get_or_create
                 "persist_dir": self.vector_db_path,  # Set persistence directory
@@ -117,10 +162,7 @@ I work strictly with data that has been explicitly stored in my memory.""",
     def _ensure_vector_db_initialized(self) -> None:
         """Ensure vector DB is initialized with current content."""
         try:
-            if (
-                not hasattr(self.rag_agent, "_vector_db")
-                or self.rag_agent._vector_db is None
-            ):
+            if not hasattr(self.rag_agent, "_vector_db") or self.rag_agent._vector_db is None:
                 # Set these before initialization to ensure proper collection handling
                 self.rag_agent._collection = False
                 self.rag_agent._get_or_create = self.reuse_vector_db
@@ -132,20 +174,14 @@ I work strictly with data that has been explicitly stored in my memory.""",
                 self.rag_agent._collection = True
             else:
                 # If DB exists, ensure we're using the right collection
-                collection_name = self.rag_agent._retrieve_config.get(
-                    "collection_name", f"ad{self.namespace}"
-                )
+                collection_name = self.rag_agent._retrieve_config.get("collection_name", f"ad{self.namespace}")
                 if hasattr(self.rag_agent._vector_db, "get_collection"):
                     try:
                         # Get the collection object
-                        collection = self.rag_agent._vector_db.get_collection(
-                            collection_name
-                        )
+                        collection = self.rag_agent._vector_db.get_collection(collection_name)
                         # Set it as the active collection
                         self.rag_agent._vector_db.active_collection = collection
-                        logger.info(
-                            f"Successfully set active collection: {collection_name}"
-                        )
+                        logger.info(f"Successfully set active collection: {collection_name}")
                     except Exception as e:
                         logger.error(f"Error setting active collection: {str(e)}")
                         # Reset flags on error
@@ -166,9 +202,7 @@ I work strictly with data that has been explicitly stored in my memory.""",
         try:
             if is_text:
                 # For text content, create a temporary file and process it
-                temp_file = os.path.join(
-                    tempfile.gettempdir(), f"temp_{uuid.uuid4()}.txt"
-                )
+                temp_file = os.path.join(tempfile.gettempdir(), f"temp_{uuid.uuid4()}.txt")
                 with open(temp_file, "w") as f:
                     f.write(content)
 
@@ -232,9 +266,7 @@ I work strictly with data that has been explicitly stored in my memory.""",
 
             self.rag_agent._vector_db.insert_docs(
                 docs=[doc],
-                collection_name=self.rag_agent._retrieve_config.get(
-                    "collection_name", f"ad{self.namespace}"
-                ),
+                collection_name=self.rag_agent._retrieve_config.get("collection_name", f"ad{self.namespace}"),
             )
             logger.info(f"Successfully added document {doc_id} to vector DB")
 
@@ -254,18 +286,9 @@ I work strictly with data that has been explicitly stored in my memory.""",
         Returns:
             str: Retrieved memory content or empty string if no relevant information found.
         """
-        problem = (
-            "EQUIP me with all relevant INFORMATION, ENVIRONMENT DATA, TEST DATA, TEST DEPENDENCIES TO SOLVE THE TASK: "
-            + context
-        )
-        result = self.rag_agent.initiate_chat(
-            self.assistant, message=self.rag_agent.message_generator, problem=problem
-        )
-        return (
-            result.chat_history[-1]["content"]
-            if result and hasattr(result, "chat_history")
-            else result.summary
-        )
+        problem = "EQUIP me with all relevant INFORMATION, ENVIRONMENT DATA, TEST DATA, TEST DEPENDENCIES TO SOLVE THE TASK: " + context
+        result = self.rag_agent.initiate_chat(self.assistant, message=self.rag_agent.message_generator, problem=problem)
+        return result.chat_history[-1]["content"] if result and hasattr(result, "chat_history") else result.summary
 
     def clear(self) -> None:
         """Clear the memory while preserving static data."""
@@ -276,6 +299,7 @@ I work strictly with data that has been explicitly stored in my memory.""",
         # with open(self.static_data_list, "w") as f:
         #     f.write(self.static_data)
 
+        self.rag_agent._vector_db.delete_collection(f"ad{self.namespace}")
         # Update RAG agent's docs path
         self.rag_agent._retrieve_config["docs_path"] = self.static_data_list
 

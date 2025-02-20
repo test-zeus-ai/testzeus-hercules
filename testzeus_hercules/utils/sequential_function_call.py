@@ -49,7 +49,9 @@ class UserProxyAgent_SequentialFunctionExecution(UserProxyAgent):
                     _, func_return = self.execute_function(function_call)  # type: ignore
             if func_return is None:  # type: ignore
                 if skip_flag:
-                    content = "VERY IMPORTANT: This function could not be executed since previous function resulted in a Task change the state. You must get current state and repeat the function if needed."
+                    content = (
+                        "VERY IMPORTANT: This function could not be executed since previous function resulted in a Task change the state. You must get current state and repeat the function if needed."
+                    )
                 else:
                     content = ""
             else:

@@ -146,20 +146,12 @@ Available Test Data: $basic_test_information
                 system_message = "\n".join(system_prompt)
             else:
                 system_message = system_prompt
-            logger.info(
-                f"Using custom system prompt for PlannerAgent: {system_message}"
-            )
+            logger.info(f"Using custom system prompt for PlannerAgent: {system_message}")
 
-        if user_ltm:  # add the user LTM to the system prompt if it exists
+        if False and user_ltm:  # add the user LTM to the system prompt if it exists
             user_ltm = "\n" + user_ltm
-            system_message = Template(system_message).substitute(
-                basic_test_information=user_ltm
-            )
-        system_message = (
-            system_message
-            + "\n"
-            + f"Today's date is {datetime.now().strftime('%d %B %Y')}"
-        )
+            system_message = Template(system_message).substitute(basic_test_information=user_ltm)
+        system_message = system_message + "\n" + f"Today's date is {datetime.now().strftime('%d %B %Y')}"
         logger.info(f"Planner agent using model: {model_config_list[0]['model']}")
 
         self.agent = autogen.AssistantAgent(

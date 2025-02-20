@@ -22,9 +22,7 @@ def load_data() -> str:
         file_path = os.path.join(test_data_path, filename)
         if os.path.isfile(file_path):
             # Skip non-text files
-            if not filename.endswith(
-                (".txt", ".json", ".csv", ".rft", ".yaml", ".yml")
-            ):
+            if not filename.endswith((".txt", ".json", ".csv", ".rft", ".yaml", ".yml")):
                 logger.info("Skipping non-text file: %s", file_path)
                 continue
 
@@ -96,48 +94,26 @@ def read_and_process_file(file_path: str, sanitized_filename: str) -> str:
                 # Load YAML, then dump in a minimal style
                 try:
                     yaml_data = yaml.safe_load(raw_data)
-                    minified_yaml = yaml.safe_dump(
-                        yaml_data, default_flow_style=True, sort_keys=True
-                    ).strip()
-                    new_read += (
-                        f"\nfollowing is test_data from {sanitized_filename}\n"
-                        + minified_yaml
-                        + "\n"
-                    )
+                    minified_yaml = yaml.safe_dump(yaml_data, default_flow_style=True, sort_keys=True).strip()
+                    new_read += f"\nfollowing is test_data from {sanitized_filename}\n" + minified_yaml + "\n"
                 except Exception as e:
                     logger.warning("Failed to parse YAML: %s", e)
-                    new_read += (
-                        f"\nfollowing is test_data from {sanitized_filename}\n"
-                        + raw_data
-                        + "\n"
-                    )
+                    new_read += f"\nfollowing is test_data from {sanitized_filename}\n" + raw_data + "\n"
             elif file_path.endswith(".json"):
                 # Load JSON, then dump with minimal separators
                 try:
                     json_data = json.loads(raw_data)
                     minified_json = json.dumps(json_data, separators=(",", ":"))
-                    new_read += (
-                        f"\nfollowing is test_data from {sanitized_filename}\n"
-                        + minified_json
-                        + "\n"
-                    )
+                    new_read += f"\nfollowing is test_data from {sanitized_filename}\n" + minified_json + "\n"
                 except Exception as e:
                     logger.warning("Failed to parse JSON: %s", e)
-                    new_read += (
-                        f"\nfollowing is test_data from {sanitized_filename}\n"
-                        + raw_data
-                        + "\n"
-                    )
+                    new_read += f"\nfollowing is test_data from {sanitized_filename}\n" + raw_data + "\n"
             else:
                 # General file types: remove redundant empty lines
                 lines = raw_data.splitlines()
                 cleaned_lines = [ln.strip() for ln in lines if ln.strip()]
                 cleaned_data = "\n".join(cleaned_lines)
-                new_read += (
-                    f"\nfollowing is test_data from {sanitized_filename}\n"
-                    + cleaned_data
-                    + "\n"
-                )
+                new_read += f"\nfollowing is test_data from {sanitized_filename}\n" + cleaned_data + "\n"
         logger.info("Test data loaded from: %s", file_path)
     return new_read
 
@@ -155,9 +131,7 @@ def get_test_data_file_paths() -> List[str]:
     if os.path.exists(test_data_path):
         for filename in os.listdir(test_data_path):
             file_path = os.path.join(test_data_path, filename)
-            if os.path.isfile(file_path) and filename.endswith(
-                (".txt", ".json", ".csv", ".rft", ".yaml", ".yml")
-            ):
+            if os.path.isfile(file_path) and filename.endswith((".txt", ".json", ".csv", ".rft", ".yaml", ".yml")):
                 file_paths.append(file_path)
 
     return file_paths

@@ -1,10 +1,11 @@
-import time
-import json
 import base64
+import json
+import time
 from typing import Annotated, Any, Dict, List, Optional, Tuple
 
 import httpx
-from testzeus_hercules.core.tools.tool_registry import tool, api_logger as file_logger
+from testzeus_hercules.core.tools.tool_registry import api_logger as file_logger
+from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
 
 # ------------------------------------------------------------------------------
@@ -22,11 +23,7 @@ async def log_request(request: httpx.Request) -> None:
         "method": request.method,
         "url": str(request.url),
         "headers": dict(request.headers),
-        "body": (
-            request.content.decode("utf-8", errors="ignore")
-            if request.content
-            else None
-        ),
+        "body": (request.content.decode("utf-8", errors="ignore") if request.content else None),
     }
     file_logger(f"Request Data: {log_data}")
 
@@ -208,17 +205,11 @@ async def generic_http_api(
         "Body mode: multipart, urlencoded, raw, binary, or json. (Optional)",
     ] = None,
     headers: Annotated[Dict[str, str], "Additional HTTP headers."] = {},
-) -> Annotated[
-    Tuple[str, float], "Minified JSON response and call duration (in seconds)."
-]:
+) -> Annotated[Tuple[str, float], "Minified JSON response and call duration (in seconds)."]:
     # Set authentication headers based on auth_type.
     if auth_type:
         auth_type = auth_type.lower()
-        if (
-            auth_type == "basic"
-            and isinstance(auth_value, list)
-            and len(auth_value) == 2
-        ):
+        if auth_type == "basic" and isinstance(auth_value, list) and len(auth_value) == 2:
             creds = f"{auth_value[0]}:{auth_value[1]}"
             token = base64.b64encode(creds.encode()).decode()
             headers["Authorization"] = f"Basic {token}"

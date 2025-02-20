@@ -46,7 +46,7 @@ Data: [Include specific values, counts, or details returned by function]
 
 Success without Data:
 [ORIGINAL_TASK::<original task description>]
-[Action summary]
+[DETAILED Action output]
 [FLAG::PASS]
 ##TERMINATE TASK##
 

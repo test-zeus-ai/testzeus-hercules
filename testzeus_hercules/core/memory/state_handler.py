@@ -1,7 +1,8 @@
 from collections import defaultdict, deque
 from typing import Annotated, Any, Dict, Union
-from testzeus_hercules.core.memory.dynamic_ltm import DynamicLTM
+
 from testzeus_hercules.config import get_global_conf
+from testzeus_hercules.core.memory.dynamic_ltm import DynamicLTM
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
 
@@ -30,9 +31,7 @@ def store_data(
 
         DynamicLTM().incoming_chat(text)
         _state_string[get_global_conf().get_default_test_id()] += text
-        logger.info(
-            f"Appended text to state. New state length: {len(_state_string[get_global_conf().get_default_test_id()])}"
-        )
+        logger.info(f"Appended text to state. New state length: {len(_state_string[get_global_conf().get_default_test_id()])}")
         return {"message": "Text appended successfully."}
     except Exception as e:
         logger.error(f"An error occurred while appending to state: {e}")
@@ -72,9 +71,7 @@ def get_stored_data() -> Annotated[
     "The stored value.",
 ]:
     try:
-        logger.info(
-            f"Retrieving current state. State length: {len(_state_string[get_global_conf().get_default_test_id()])}"
-        )
+        logger.info(f"Retrieving current state. State length: {len(_state_string[get_global_conf().get_default_test_id()])}")
         return _state_string[get_global_conf().get_default_test_id()]
     except Exception as e:
         logger.error(f"An error occurred while retrieving state: {e}")
