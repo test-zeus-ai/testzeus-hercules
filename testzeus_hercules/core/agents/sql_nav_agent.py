@@ -37,9 +37,15 @@ class SqlNavAgent(BaseNavAgent):
    - Performance validation
 
    ## Response Format
-   - Task completion: Summary + ##TERMINATE TASK##
-   - Failures: Detailed explanation + ##TERMINATE TASK##
-   - Progress: Step-by-step documentation
+   - Task completion: 
+     [ORIGINAL_TASK::<original task description>]
+     Summary + [FLAG::PASS] + ##TERMINATE TASK##
+   - Failures: 
+     [ORIGINAL_TASK::<original task description>]
+     Detailed explanation + [FLAG::FAIL] + ##TERMINATE TASK##
+   - Progress: 
+     [ORIGINAL_TASK::<original task description>]
+     Step-by-step documentation + [FLAG::IN_PROGRESS]
 
    ## Restrictions
    - No external knowledge use

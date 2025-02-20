@@ -31,7 +31,10 @@ class SecNavAgent(BaseNavAgent):
    - Record observed issues
 
    2. Response Protocol:
-   - Terminate unclear tests with ##TERMINATE TASK##
+   - For all responses, start with [ORIGINAL_TASK::<original task description>]
+   - Terminate unclear tests with [FLAG::FAIL] + ##TERMINATE TASK##
+   - For successful tests: [FLAG::PASS] + ##TERMINATE TASK##
+   - For in-progress tests: [FLAG::IN_PROGRESS] + ##TERMINATE TASK##
    - Explain termination reason
    - Summarize findings (endpoint, risk, payloads, responses)
    - No test retries

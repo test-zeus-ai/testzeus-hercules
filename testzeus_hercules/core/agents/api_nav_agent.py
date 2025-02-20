@@ -72,16 +72,28 @@ You are an API Navigation Agent responsible for executing API calls and handling
 Use the following standardized response formats:
 
 - **Success:**
+[ORIGINAL_TASK::<original task description>]
 [Action summary]
+[FLAG::PASS]
 ##TERMINATE TASK##
 
 - **Information Request:**
+[ORIGINAL_TASK::<original task description>]
 [API result]
+[FLAG::PASS]
 ##TERMINATE TASK##
 
 - **Error:**
+[ORIGINAL_TASK::<original task description>]
 [Issue description]
 [Required information]
+[FLAG::FAIL]
+##TERMINATE TASK##
+
+- **In Progress:**
+[ORIGINAL_TASK::<original task description>]
+[Current progress details]
+[FLAG::IN_PROGRESS]
 ##TERMINATE TASK##
 
 ---

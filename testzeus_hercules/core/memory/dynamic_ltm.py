@@ -72,7 +72,9 @@ Retrieval Guidelines:
 	6.	Contextual Completeness: Ensure your response contains complete contextual information.
 	7.	Test Data: Return all required test data and test dependency information as specified by the task.
 	8.	Code Explanations: If the idea is simple, provide code examples to explain the concept clearly.
-    9.  DON'T EVERY GIVE EXAMPLES OR IMAGINARY SCENARIOS, ONLY USE THE INFORMATION YOU HAVE.
+    9.  NEVER GIVE EXAMPLES, SAMPLES OR IMAGINARY SCENARIOS.
+    10. ALWAYS RETURN LATEST DATA IF SIMILAR DATA FOUND IN MEMORY.
+    11. NEVER CHANGE THE DATA.
 
 Limitations:
 I work strictly with data that has been explicitly stored in my memory.""",
@@ -98,7 +100,7 @@ I work strictly with data that has been explicitly stored in my memory.""",
             retrieve_config={
                 "task": "qa",
                 "docs_path": self.static_data_list,
-                "chunk_token_size": 10000,
+                "chunk_token_size": 20000,
                 "model": self.llm_config.get("config_list", [{}])[0].get(
                     "model", "gpt-4o-mini"
                 ),
