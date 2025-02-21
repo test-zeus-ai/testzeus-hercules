@@ -6,7 +6,7 @@ from testzeus_hercules.utils.logger import logger
 
 
 @tool(
-    agent_names=["static_waiter_nav_agent"],
+    agent_names=["time_keeper_nav_agent"],
     description="Wait for a specified number of seconds. Only accepts numeric values between 0 and 3600 seconds.",
     name="wait_for_duration",
 )
@@ -62,3 +62,31 @@ async def wait_for_duration(
     except Exception as e:
         logger.error(f"Error during wait: {str(e)}")
         return {"status": "error", "message": f"Wait operation failed: {str(e)}"}
+
+
+@tool(
+    agent_names=["time_keeper_nav_agent"],
+    description="Get the current timestamp in string format.",
+    name="get_current_timestamp",
+)
+async def get_current_timestamp() -> Annotated[
+    Dict[str, str],
+    "Current timestamp in string format.",
+]:
+    """
+    Get the current timestamp asynchronously.
+
+    Returns:
+    - Dict[str, str]: A dictionary containing the current timestamp.
+
+    Example Usage:
+    ```python
+    result = await get_current_timestamp()
+    # Returns: {"timestamp": "2023-10-01T12:00:00"}
+    ```
+    """
+    from datetime import datetime
+
+    # Get current timestamp
+    current_timestamp = datetime.now().isoformat()
+    return {"timestamp": current_timestamp}

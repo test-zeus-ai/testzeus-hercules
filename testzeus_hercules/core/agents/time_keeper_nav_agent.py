@@ -1,13 +1,14 @@
 from testzeus_hercules.core.agents.base_nav_agent import BaseNavAgent
 
 
-class StaticWaiterNavAgent(BaseNavAgent):
-    agent_name: str = "static_waiter_nav_agent"
+class TimeKeeperNavAgent(BaseNavAgent):
+    agent_name: str = "time_keeper_nav_agent"
     prompt = """# Static Wait Operations Agent
 
    ## Core Purpose
    You will ONLY perform static wait operations. Your sole responsibility is to:
    - Wait for specified number of seconds
+   - Perform time related operations
    DENY ALL NON-WAIT TASKS.
 
    ## Key Guidelines
