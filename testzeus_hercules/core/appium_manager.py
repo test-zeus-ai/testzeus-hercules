@@ -282,16 +282,34 @@ class AppiumManager:
         if cls._ui_thread_pool is None:
             # Calculate optimal number of workers based on CPU cores
             # Use max(4, CPU_COUNT) to ensure we have enough threads for UI operations
-            worker_count = max(4, multiprocessing.cpu_count())
+            worker_count = max(30, multiprocessing.cpu_count())
             cls._ui_thread_pool = ThreadPoolExecutor(
                 max_workers=worker_count, thread_name_prefix="AppiumUI"
             )
         return cls._ui_thread_pool
 
-    async def _run_in_ui_thread(self, func: Callable[[], Any]) -> Any:
-        """Execute a function in the UI thread pool."""
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(self._get_thread_pool(), func)
+    async def _run_in_ui_thread(self, func: Callable[[], Any], identifier: str) -> Any:
+        """Execute a function in the UI thread and measure its execution time."""
+        start_time = time.time()
+        logger.info(f"[APPIUM_DRIVER_TIMING] Starting driver interaction: {identifier}")
+
+        try:
+            loop = asyncio.get_running_loop()
+            result = await loop.run_in_executor(self._get_thread_pool(), func)
+            # result = await asyncio.to_thread(func)
+
+            end_time = time.time()
+            logger.info(
+                f"[APPIUM_DRIVER_TIMING] Completed driver interaction: {identifier} in {end_time - start_time:.2f} seconds"
+            )
+
+            return result
+        except Exception as e:
+            end_time = time.time()
+            logger.error(
+                f"[APPIUM_DRIVER_TIMING] Failed driver interaction: {identifier} after {end_time - start_time:.2f} seconds: {str(e)}"
+            )
+            raise
 
     async def stop_appium(self) -> None:
         """
@@ -1411,7 +1429,9 @@ class AppiumManager:
             try:
                 # Try to get device screen size as a basic check
                 driver = cast(WebDriver, self.driver)
-                await self._run_in_ui_thread(driver.get_window_size)
+                await self._run_in_ui_thread(
+                    driver.get_window_size, "get_viewport_size"
+                )
                 logger.info("Appium session is responsive")
                 return True
             except Exception as e:
@@ -1617,7 +1637,8 @@ iOS Environment Setup Required:
 
             # Initialize WebDriver with W3C protocol
             self.driver = await self._run_in_ui_thread(
-                lambda: webdriver.Remote(command_executor=server_url, options=options)
+                lambda: webdriver.Remote(command_executor=server_url, options=options),
+                "create_session",
             )
 
             # Only set waitForIdleTimeout for Android if not set in capabilities
@@ -1626,7 +1647,8 @@ iOS Environment Setup Required:
                 and "settings[waitForIdleTimeout]" not in desired_caps
             ):
                 await self._run_in_ui_thread(
-                    lambda: self.driver.update_settings({"waitForIdleTimeout": 0})
+                    lambda: self.driver.update_settings({"waitForIdleTimeout": 0}),
+                    "set_waitForIdleTimeout",
                 )
 
             # Wait for session to be fully ready
@@ -1726,7 +1748,8 @@ iOS Environment Setup Required:
         try:
             driver = cast(WebDriver, self.driver)
             await self._run_in_ui_thread(
-                lambda: driver.get_screenshot_as_file(file_path)
+                lambda: driver.get_screenshot_as_file(file_path),
+                "take_screenshot",
             )
             logger.info(f"Screenshot saved: {file_path}")
             return file_path
@@ -1748,7 +1771,9 @@ iOS Environment Setup Required:
             return
         try:
             driver = cast(WebDriver, self.driver)
-            await self._run_in_ui_thread(lambda: driver.start_recording_screen())
+            await self._run_in_ui_thread(
+                lambda: driver.start_recording_screen(), "start_screen_recording"
+            )
             logger.info("Screen recording started.")
         except Exception as e:
             logger.error(f"Error starting screen recording: {e}")
@@ -1767,7 +1792,8 @@ iOS Environment Setup Required:
         try:
             driver = cast(WebDriver, self.driver)
             recording_data = await self._run_in_ui_thread(
-                lambda: driver.stop_recording_screen()
+                lambda: driver.stop_recording_screen(),
+                "stop_screen_recording",
             )
             video_bytes = base64.b64decode(recording_data)
             timestamp = int(time.time())
@@ -1855,7 +1881,9 @@ iOS Environment Setup Required:
             # Determine log type based on platform
             log_type = "logcat" if self.platformName.lower() == "android" else "syslog"
 
-            logs = await self._run_in_ui_thread(lambda: self.driver.get_log(log_type))
+            logs = await self._run_in_ui_thread(
+                lambda: self.driver.get_log(log_type), "get_device_logs"
+            )
             log_file_path = os.path.join(
                 self._logs_dir, f"device_logs_{int(time.time())}_{log_type}.txt"
             )
@@ -1907,126 +1935,142 @@ iOS Environment Setup Required:
         bounds_data: Optional[Dict[str, int]] = None,
         tag_name: Optional[str] = None,
     ) -> WebElement:
-        """Find element using multiple fallback strategies."""
-        if not self.driver:
-            raise RuntimeError("No active Appium session")
+        """Find element using the best available locator strategy."""
+        start_time = time.time()
+        logger.info("[APPIUM_DRIVER_TIMING] Starting element search")
 
-        driver = cast(WebDriver, self.driver)
+        try:
+            if not self.driver:
+                raise RuntimeError("No active Appium session")
 
-        async def try_direct_locators() -> Optional[WebElement]:
-            """Try direct locator strategies first."""
-            if accessibility_id:
-                try:
-                    return await self._run_in_ui_thread(
-                        lambda: driver.find_element(
-                            AppiumBy.ACCESSIBILITY_ID, accessibility_id
-                        )
-                    )
-                except Exception:
-                    pass
+            driver = cast(WebDriver, self.driver)
 
-            if res_id:
-                try:
-                    return await self._run_in_ui_thread(
-                        lambda: driver.find_element(AppiumBy.ID, res_id)
-                    )
-                except Exception:
-                    pass
-            return None
-
-        async def find_in_tree() -> Optional[WebElement]:
-            """Find element using accessibility tree matching."""
-            if self._accessibility_tree_cache is None:
-                await self.get_accessibility_tree()
-
-            # Call find_best_matching_node with all available parameters
-            best_node, score = find_best_matching_node(
-                tree=self._accessibility_tree_cache,
-                res_id=res_id,
-                accessibility_id=accessibility_id,
-                bounds_data=bounds_data,
-                tag_name=tag_name,
-            )
-
-            if best_node and score > 0:
-                # Try to find element using the matched node's identifiers
-                if best_node.get("content-desc") or best_node.get(
-                    "accessibilityIdentifier"
-                ):
+            async def try_direct_locators() -> Optional[WebElement]:
+                """Try direct locator strategies first."""
+                if accessibility_id:
                     try:
                         return await self._run_in_ui_thread(
                             lambda: driver.find_element(
-                                AppiumBy.ACCESSIBILITY_ID,
-                                best_node.get("content-desc")
-                                or best_node.get("accessibilityIdentifier"),
-                            )
+                                AppiumBy.ACCESSIBILITY_ID, accessibility_id
+                            ),
+                            "find_element_by_accessibility_id",
                         )
                     except Exception:
                         pass
 
-                if best_node.get("resource-id") or best_node.get("name"):
+                if res_id:
                     try:
                         return await self._run_in_ui_thread(
-                            lambda: driver.find_element(
-                                AppiumBy.ID,
-                                best_node.get("resource-id") or best_node.get("name"),
-                            )
+                            lambda: driver.find_element(AppiumBy.ID, res_id),
+                            "find_element_by_id",
                         )
                     except Exception:
                         pass
+                return None
 
-                # Last resort - try by bounds if available
-                if "bounds_data" in best_node:
-                    bounds = best_node["bounds_data"]
-                    try:
-                        if self.platformName.lower() == "android":
-                            # Android format
-                            xpath = (
-                                f"//*[@bounds='[{bounds['start_x']},{bounds['start_y']}]"
-                                f"[{bounds['end_x']},{bounds['end_y']}]']"
-                            )
-                        else:
-                            # iOS format - use position and size attributes
-                            x, y = bounds["start_x"], bounds["start_y"]
-                            width = bounds["end_x"] - bounds["start_x"]
-                            height = bounds["end_y"] - bounds["start_y"]
-                            xpath = (
-                                f"//*[@x='{x}' and @y='{y}' and "
-                                f"@width='{width}' and @height='{height}']"
-                            )
+            async def find_in_tree() -> Optional[WebElement]:
+                """Find element using accessibility tree matching."""
+                if self._accessibility_tree_cache is None:
+                    await self.get_accessibility_tree()
 
-                        return await self._run_in_ui_thread(
-                            lambda: driver.find_element(AppiumBy.XPATH, xpath)
-                        )
-                    except Exception:
-                        pass
-            return None
-
-        # First try: Tree matching
-        element = await find_in_tree()
-        if not element:
-            # Second try: Direct locators
-            element = await try_direct_locators()
-            if not element:
-                # If all attempts fail, raise exception with details
-                error_msg = (
-                    f"Element not found using: " f"Resource ID: {res_id}, "
-                    if res_id
-                    else (
-                        "" f"Accessibility ID: {accessibility_id}, "
-                        if accessibility_id
-                        else (
-                            "" f"Bounds: {bounds_data}, "
-                            if bounds_data
-                            else "" f"Tag: {tag_name}" if tag_name else ""
-                        )
-                    )
+                # Call find_best_matching_node with all available parameters
+                best_node, score = find_best_matching_node(
+                    tree=self._accessibility_tree_cache,
+                    res_id=res_id,
+                    accessibility_id=accessibility_id,
+                    bounds_data=bounds_data,
+                    tag_name=tag_name,
                 )
-                raise Exception(error_msg)
 
-        # Third try: Refresh tree and try again
-        self.clear_accessibility_tree_cache()
-        return element
+                if best_node and score > 0:
+                    # Try to find element using the matched node's identifiers
+                    if best_node.get("content-desc") or best_node.get(
+                        "accessibilityIdentifier"
+                    ):
+                        try:
+                            return await self._run_in_ui_thread(
+                                lambda: driver.find_element(
+                                    AppiumBy.ACCESSIBILITY_ID,
+                                    best_node.get("content-desc")
+                                    or best_node.get("accessibilityIdentifier"),
+                                ),
+                                "find_element_by_accessibility_id",
+                            )
+                        except Exception:
+                            pass
+
+                    if best_node.get("resource-id") or best_node.get("name"):
+                        try:
+                            return await self._run_in_ui_thread(
+                                lambda: driver.find_element(
+                                    AppiumBy.ID,
+                                    best_node.get("resource-id")
+                                    or best_node.get("name"),
+                                ),
+                                "find_element_by_id",
+                            )
+                        except Exception:
+                            pass
+
+                    # Last resort - try by bounds if available
+                    if "bounds_data" in best_node:
+                        bounds = best_node["bounds_data"]
+                        try:
+                            if self.platformName.lower() == "android":
+                                # Android format
+                                xpath = (
+                                    f"//*[@bounds='[{bounds['start_x']},{bounds['start_y']}]"
+                                    f"[{bounds['end_x']},{bounds['end_y']}]']"
+                                )
+                            else:
+                                # iOS format - use position and size attributes
+                                x, y = bounds["start_x"], bounds["start_y"]
+                                width = bounds["end_x"] - bounds["start_x"]
+                                height = bounds["end_y"] - bounds["start_y"]
+                                xpath = (
+                                    f"//*[@x='{x}' and @y='{y}' and "
+                                    f"@width='{width}' and @height='{height}']"
+                                )
+
+                            return await self._run_in_ui_thread(
+                                lambda: driver.find_element(AppiumBy.XPATH, xpath),
+                                "find_element_by_xpath",
+                            )
+                        except Exception:
+                            pass
+                return None
+
+            # First try: Tree matching
+            element = await find_in_tree()
+            if not element:
+                # Second try: Direct locators
+                element = await try_direct_locators()
+                if not element:
+                    # If all attempts fail, raise exception with details
+                    error_msg = (
+                        f"Element not found using: " f"Resource ID: {res_id}, "
+                        if res_id
+                        else (
+                            "" f"Accessibility ID: {accessibility_id}, "
+                            if accessibility_id
+                            else (
+                                "" f"Bounds: {bounds_data}, "
+                                if bounds_data
+                                else "" f"Tag: {tag_name}" if tag_name else ""
+                            )
+                        )
+                    )
+                    raise Exception(error_msg)
+
+            # Third try: Refresh tree and try again
+            self.clear_accessibility_tree_cache()
+            return element
+        except Exception as e:
+            end_time = time.time()
+            logger.error(
+                f"[APPIUM_DRIVER_TIMING] Failed to find element after {end_time - start_time:.2f} seconds: {str(e)}"
+            )
+            raise
 
     async def click_by_id(
         self,
@@ -2051,7 +2095,7 @@ iOS Environment Setup Required:
                 bounds_data=bounds_data,
             )
 
-            await self._run_in_ui_thread(element.click)
+            await self._run_in_ui_thread(element.click, "click_by_id")
             self.clear_accessibility_tree_cache()
 
             used_identifier = (
@@ -2095,7 +2139,9 @@ iOS Environment Setup Required:
                 bounds_data=bounds_data,
             )
 
-            await self._run_in_ui_thread(lambda: element.send_keys(text))
+            await self._run_in_ui_thread(
+                lambda: element.send_keys(text), "enter_text_by_id"
+            )
             self.clear_accessibility_tree_cache()
 
             used_identifier = (
@@ -2138,7 +2184,7 @@ iOS Environment Setup Required:
                 bounds_data=bounds_data,
             )
 
-            await self._run_in_ui_thread(element.clear)
+            await self._run_in_ui_thread(element.clear, "clear_text_by_id")
             self.clear_accessibility_tree_cache()
 
             used_identifier = (
@@ -2192,7 +2238,7 @@ iOS Environment Setup Required:
                 action.release()
                 return action.perform()
 
-            await self._run_in_ui_thread(perform_long_press)
+            await self._run_in_ui_thread(perform_long_press, "long_press_by_id")
             self.clear_accessibility_tree_cache()
 
             used_identifier = (
@@ -2227,7 +2273,7 @@ iOS Environment Setup Required:
         logger.info(f"Performing tap at coordinates ({x, {y}})")
         try:
             driver = cast(WebDriver, self.driver)
-            await self._run_in_ui_thread(lambda: driver.tap([(x, y)]))
+            await self._run_in_ui_thread(lambda: driver.tap([(x, y)]), "perform_tap")
             # Clear cache after interaction
             self.clear_accessibility_tree_cache()
         except Exception as e:
@@ -2256,7 +2302,8 @@ iOS Environment Setup Required:
         try:
             driver = cast(WebDriver, self.driver)
             await self._run_in_ui_thread(
-                lambda: driver.swipe(start_x, start_y, end_x, end_y, duration)
+                lambda: driver.swipe(start_x, start_y, end_x, end_y, duration),
+                "perform_swipe",
             )
             # Clear cache after interaction
             self.clear_accessibility_tree_cache()
@@ -2377,7 +2424,9 @@ iOS Environment Setup Required:
                 return self._accessibility_tree_cache
 
             driver = cast(WebDriver, self.driver)
-            source = await self._run_in_ui_thread(lambda: driver.page_source)
+            source = await self._run_in_ui_thread(
+                lambda: driver.page_source, "get_page_source"
+            )
             root = ET.fromstring(source)
 
             def parse_element_all(elem: ET.Element) -> Dict[str, Any]:
@@ -2450,7 +2499,8 @@ iOS Environment Setup Required:
                 logger.error("Driver is not properly initialized")
                 return None
             screenshot_base64 = await self._run_in_ui_thread(
-                lambda: self.driver.get_screenshot_as_base64()
+                lambda: self.driver.get_screenshot_as_base64(),
+                "see_screen",
             )
             image_data = base64.b64decode(screenshot_base64)
             image = Image.open(io.BytesIO(image_data))
@@ -2463,21 +2513,31 @@ iOS Environment Setup Required:
     # ─── GET VIEWPORT SIZE (SCREEN RESOLUTION) ───────────────────────────────────
 
     async def get_viewport_size(self) -> Optional[Dict[str, int]]:
-        """
-        Get the current viewport (screen resolution) of the device.
-        Returns a dictionary with 'width' and 'height' keys.
-        """
+        """Get the viewport size of the device."""
         if not self.driver:
-            logger.error("No Appium session available to get viewport size.")
             return None
+
+        start_time = time.time()
+        logger.info("[APPIUM_DRIVER_TIMING] Starting viewport size retrieval")
+
         try:
-            driver = cast(WebDriver, self.driver)
-            size = await self._run_in_ui_thread(driver.get_window_size)
-            logger.info(f"Viewport size: {size}")
-            return size
+            viewport = await self._run_in_ui_thread(
+                lambda: self.driver.get_window_size(),
+                "get_viewport_size",
+            )
+
+            end_time = time.time()
+            logger.info(
+                f"[APPIUM_DRIVER_TIMING] Retrieved viewport size in {end_time - start_time:.2f} seconds"
+            )
+
+            return viewport
         except Exception as e:
-            logger.error(f"Error getting viewport size: {e}")
-            raise e
+            end_time = time.time()
+            logger.error(
+                f"[APPIUM_DRIVER_TIMING] Failed to get viewport size after {end_time - start_time:.2f} seconds: {str(e)}"
+            )
+            raise
 
     # ─── IOS SPECIFIC GESTURES ─────────────────────────────────────────────────
 
@@ -2629,60 +2689,54 @@ iOS Environment Setup Required:
         """
         logger.debug(f"Processing state updated to: {processing_state}")
 
-    async def get_current_screen_state(self) -> str:
+    async def get_current_screen_state(self) -> str | None:
         """
         Get the current screen state (current app, home screen, etc.).
         """
         if not self.driver:
             return "No active Appium session"
         try:
-            driver = cast(WebDriver, self.driver)
 
-            def get_android_state() -> str:
+            async def get_android_state() -> Optional[str]:
+                """Get the current state of the Android app."""
+                driver = cast(WebDriver, self.driver)
+                if not driver:
+                    return None
+
                 try:
-                    current_package = driver.current_package
-                    current_activity = driver.current_activity
-
-                    if (
-                        current_package == "com.android.launcher"
-                        or current_package.endswith(".launcher")
-                    ):
-                        return "Home Screen"
-                    elif current_package == "com.android.systemui":
-                        return "System UI (Quick Settings/Notifications)"
-                    else:
-                        return f"App: {current_package} (Activity: {current_activity})"
+                    # Each driver interaction should be in its own thread call
+                    current_activity = await self._run_in_ui_thread(
+                        lambda: driver.current_activity, "get_current_activity"
+                    )
+                    current_package = await self._run_in_ui_thread(
+                        lambda: driver.current_package, "get_current_package"
+                    )
+                    return f"{current_package}/{current_activity}"
                 except Exception as e:
-                    logger.error(f"Error getting Android state: {e}")
-                    return "Error getting Android state"
+                    logger.error(f"Error getting Android app state: {e}")
+                    return None
 
-            def get_ios_state() -> str:
+            async def get_ios_state() -> Optional[str]:
+                """Get the current state of the iOS app."""
+                driver = cast(WebDriver, self.driver)
+                if not driver:
+                    return None
+
                 try:
-                    try:
-                        bundle_info = driver.execute_script("mobile: activeAppInfo")
-                        if (
-                            not bundle_info
-                            or bundle_info.get("bundleId") == "com.apple.springboard"
-                        ):
-                            return "Home Screen"
-                        return f"App: {bundle_info.get('bundleId', 'Unknown')}"
-                    except Exception:
-                        # Fallback to checking SpringBoard
-                        source = driver.page_source
-                        return (
-                            "Home Screen"
-                            if "XCUIElementTypeSpringBoard" in source
-                            else "Unknown App"
-                        )
+                    # Each driver interaction should be in its own thread call
+                    view_hierarchy = await self._run_in_ui_thread(
+                        lambda: driver.page_source, "get_page_source"
+                    )
+                    return view_hierarchy
                 except Exception as e:
-                    logger.error(f"Error getting iOS state: {e}")
-                    return "Error getting iOS state"
+                    logger.error(f"Error getting iOS app state: {e}")
+                    return None
 
             # Run the appropriate state check in thread executor
             if self.platformName.lower() == "android":
-                return await self._run_in_ui_thread(get_android_state)
+                return await get_android_state()
             else:
-                return await self._run_in_ui_thread(get_ios_state)
+                return await get_ios_state()
 
         except Exception as e:
             logger.error(f"Error getting current screen state: {e}")
@@ -2747,21 +2801,25 @@ iOS Environment Setup Required:
                 # Handle Android key press using key codes
                 key_code = android_key_mapping.get(key_name_lower)
                 if key_code is not None:
-                    await self._run_in_ui_thread(lambda: driver.press_keycode(key_code))
+                    await self._run_in_ui_thread(
+                        lambda: driver.press_keycode(key_code), "press_keycode"
+                    )
                 else:
                     # For character keys not in the mapping
                     await self._run_in_ui_thread(
                         lambda: driver.execute_script(
                             "mobile: shell",
                             {"command": "input", "args": ["text", key_name]},
-                        )
+                        ),
+                        "execute_script",
                     )
             else:  # iOS
                 # Handle iOS key press using Unicode characters
                 key_code = ios_key_mapping.get(key_name_lower, key_name)
                 action = ActionChains(driver)
                 await self._run_in_ui_thread(
-                    lambda: action.send_keys(key_code).perform()
+                    lambda: action.send_keys(key_code).perform(),
+                    "send_keys",
                 )
 
             logger.info(f"Pressed key: {key_name}")
@@ -2806,20 +2864,24 @@ iOS Environment Setup Required:
                 if key_code is None:
                     raise ValueError(f"Unknown hardware key: {key_name}")
 
-                await self._run_in_ui_thread(lambda: driver.press_keycode(key_code))
+                await self._run_in_ui_thread(
+                    lambda: driver.press_keycode(key_code), "press_keycode"
+                )
             else:  # iOS
                 # On iOS, some hardware actions are handled differently
                 if key_name.lower() in ["volume_up", "volume_down"]:
                     await self._run_in_ui_thread(
                         lambda: driver.execute_script(
                             "mobile: pressButton", {"name": key_name.lower()}
-                        )
+                        ),
+                        "execute_script",
                     )
                 elif key_name.lower() == "home":
                     await self._run_in_ui_thread(
                         lambda: driver.execute_script(
                             "mobile: pressButton", {"name": "home"}
-                        )
+                        ),
+                        "execute_script",
                     )
                 else:
                     raise ValueError(f"Unsupported hardware key for iOS: {key_name}")
@@ -2848,14 +2910,16 @@ iOS Environment Setup Required:
 
             if self.platformName.lower() == "android":
                 await self._run_in_ui_thread(
-                    lambda: driver.press_keycode(4)  # 4 is Android's back button
+                    lambda: driver.press_keycode(4),  # 4 is Android's back button
+                    "press_keycode",
                 )
             else:  # iOS
                 # For iOS, we need to use gestures or navigation commands
                 await self._run_in_ui_thread(
                     lambda: driver.execute_script(
                         "mobile: swipe", {"direction": "right"}
-                    )
+                    ),
+                    "execute_script",
                 )
             logger.info("Pressed back button")
 
@@ -2880,12 +2944,15 @@ iOS Environment Setup Required:
             driver = cast(WebDriver, self.driver)
 
             if self.platformName.lower() == "android":
-                await self._run_in_ui_thread(lambda: driver.press_keycode(3))
+                await self._run_in_ui_thread(
+                    lambda: driver.press_keycode(3), "press_keycode"
+                )
             else:  # iOS
                 await self._run_in_ui_thread(
                     lambda: driver.execute_script(
                         "mobile: pressButton", {"name": "home"}
-                    )
+                    ),
+                    "execute_script",
                 )
         except Exception as e:
             logger.error(f"Error pressing home button: {e}")
@@ -2911,14 +2978,16 @@ iOS Environment Setup Required:
                 await self._run_in_ui_thread(
                     lambda: driver.press_keycode(
                         187
-                    )  # 187 is Android's recent apps button
+                    ),  # 187 is Android's recent apps button
+                    "press_keycode",
                 )
             else:  # iOS
                 # For iOS 13+, use the app switcher gesture
                 await self._run_in_ui_thread(
                     lambda: driver.execute_script(
                         "mobile: swipe", {"direction": "up", "duration": 1.0}
-                    )
+                    ),
+                    "execute_script",
                 )
 
             logger.info("Pressed app switch button")
@@ -2973,7 +3042,8 @@ iOS Environment Setup Required:
                 # Press all modifier keys
                 for modifier in modifiers:
                     await self._run_in_ui_thread(
-                        lambda m=modifier: driver.press_keycode(m)
+                        lambda m=modifier: driver.press_keycode(m),
+                        "press_keycode",
                     )
 
                 # Press the main key if there is one
@@ -2982,7 +3052,9 @@ iOS Environment Setup Required:
 
                 # Release modifier keys in reverse order
                 for modifier in reversed(modifiers):
-                    await self._run_in_ui_thread(lambda m=modifier: driver.keyUp(m))
+                    await self._run_in_ui_thread(
+                        lambda m=modifier: driver.keyUp(m), "keyUp"
+                    )
 
             else:  # iOS
                 # For iOS, we can use the ActionChains
@@ -3009,7 +3081,7 @@ iOS Environment Setup Required:
                 for key in reversed(ios_keys):
                     action.key_up(key)
 
-                await self._run_in_ui_thread(action.perform)
+                await self._run_in_ui_thread(action.perform, "perform_action")
 
             logger.info(f"Pressed key combination: {key_combination}")
         except Exception as e:
@@ -3040,7 +3112,8 @@ iOS Environment Setup Required:
                         {
                             "command": "service list",
                         },
-                    )
+                    ),
+                    "execute_script",
                 )
 
                 # Check if package manager is responsive
@@ -3051,7 +3124,8 @@ iOS Environment Setup Required:
                             "command": "pm",
                             "args": ["list", "packages", "android"],
                         },
-                    )
+                    ),
+                    "execute_script",
                 )
 
                 if result and "android" in pm_result.lower():
@@ -3069,3 +3143,36 @@ iOS Environment Setup Required:
 
         logger.error("Android services failed to stabilize within timeout period")
         return False
+
+    async def get_android_state(self) -> Optional[str]:
+        """Get the current state of the Android app."""
+        if not self.driver:
+            return None
+
+        try:
+            # Each driver interaction should be in its own thread call
+            current_activity = await self._run_in_ui_thread(
+                lambda: self.driver.current_activity, "get_current_activity"
+            )
+            current_package = await self._run_in_ui_thread(
+                lambda: self.driver.current_package, "get_current_package"
+            )
+            return f"{current_package}/{current_activity}"
+        except Exception as e:
+            logger.error(f"Error getting Android app state: {e}")
+            return None
+
+    async def get_ios_state(self) -> Optional[str]:
+        """Get the current state of the iOS app."""
+        if not self.driver:
+            return None
+
+        try:
+            # Each driver interaction should be in its own thread call
+            view_hierarchy = await self._run_in_ui_thread(
+                lambda: self.driver.page_source, "get_page_source"
+            )
+            return view_hierarchy
+        except Exception as e:
+            logger.error(f"Error getting iOS app state: {e}")
+            return None
