@@ -67,11 +67,15 @@ class BaseConfigManager:
     # -------------------------------------------------------------------------
 
     @classmethod
-    def from_dict(cls, config_dict: dict, ignore_env: bool = False) -> "BaseConfigManager":
+    def from_dict(
+        cls, config_dict: dict, ignore_env: bool = False
+    ) -> "BaseConfigManager":
         return cls(config_dict, ignore_env=ignore_env)
 
     @classmethod
-    def from_json(cls, json_file_path: str, ignore_env: bool = False) -> "BaseConfigManager":
+    def from_json(
+        cls, json_file_path: str, ignore_env: bool = False
+    ) -> "BaseConfigManager":
         with open(json_file_path, "r", encoding="utf-8") as f:
             config_dict = json.load(f)
         return cls(config_dict, ignore_env=ignore_env)
@@ -85,8 +89,12 @@ class BaseConfigManager:
         Parse Hercules-specific command-line arguments
         and place them into the environment for consistency.
         """
-        parser = argparse.ArgumentParser(description="Hercules: The World's First Open-Source AI Agent for End-to-End Testing")
-        parser.add_argument("--input-file", type=str, help="Path to the input file.", required=False)
+        parser = argparse.ArgumentParser(
+            description="Hercules: The World's First Open-Source AI Agent for End-to-End Testing"
+        )
+        parser.add_argument(
+            "--input-file", type=str, help="Path to the input file.", required=False
+        )
         parser.add_argument(
             "--output-path",
             type=str,
@@ -123,6 +131,12 @@ class BaseConfigManager:
             help="Execute tests in bulk from tests directory",
             required=False,
         )
+        parser.add_argument(
+            "--reuse-vector-db",
+            action="store_true",
+            help="Reuse existing vector DB instead of creating fresh one",
+            required=False,
+        )
 
         # Parse known args; ignore unknown if you have other custom arguments
         args, _ = parser.parse_known_args()
@@ -141,6 +155,8 @@ class BaseConfigManager:
             os.environ["LLM_MODEL_API_KEY"] = args.llm_model_api_key
         if args.bulk:
             os.environ["EXECUTE_BULK"] = "true"
+        if args.reuse_vector_db:
+            os.environ["REUSE_VECTOR_DB"] = "true"
 
     def _merge_from_env(self) -> None:
         """
@@ -201,6 +217,8 @@ class BaseConfigManager:
             # Device Manager Configuration
             "DEVICE_MANAGER",
             "DEVICE_OS",
+            "USE_DYNAMIC_LTM",
+            "REUSE_VECTOR_DB",
         ]
 
         relevant_keys.append("ENABLE_PLAYWRIGHT_TRACING")
@@ -223,13 +241,22 @@ class BaseConfigManager:
         llm_model_name = self._config.get("LLM_MODEL_NAME")
         llm_model_api_key = self._config.get("LLM_MODEL_API_KEY")
         agents_llm_config_file = self._config.get("AGENTS_LLM_CONFIG_FILE")
-        agents_llm_config_file_ref_key = self._config.get("AGENTS_LLM_CONFIG_FILE_REF_KEY")
+        agents_llm_config_file_ref_key = self._config.get(
+            "AGENTS_LLM_CONFIG_FILE_REF_KEY"
+        )
 
-        if (llm_model_name and llm_model_api_key) and (agents_llm_config_file or agents_llm_config_file_ref_key):
-            logger.error("Provide either LLM_MODEL_NAME and LLM_MODEL_API_KEY together, " "or AGENTS_LLM_CONFIG_FILE and AGENTS_LLM_CONFIG_FILE_REF_KEY together, not both.")
+        if (llm_model_name and llm_model_api_key) and (
+            agents_llm_config_file or agents_llm_config_file_ref_key
+        ):
+            logger.error(
+                "Provide either LLM_MODEL_NAME and LLM_MODEL_API_KEY together, "
+                "or AGENTS_LLM_CONFIG_FILE and AGENTS_LLM_CONFIG_FILE_REF_KEY together, not both."
+            )
             exit(1)
 
-        if (not llm_model_name or not llm_model_api_key) and (not agents_llm_config_file or not agents_llm_config_file_ref_key):
+        if (not llm_model_name or not llm_model_api_key) and (
+            not agents_llm_config_file or not agents_llm_config_file_ref_key
+        ):
             logger.error(
                 "Either LLM_MODEL_NAME and LLM_MODEL_API_KEY must be set together, "
                 "or AGENTS_LLM_CONFIG_FILE and AGENTS_LLM_CONFIG_FILE_REF_KEY must be set together. "
@@ -253,12 +280,24 @@ class BaseConfigManager:
             "INPUT_GHERKIN_FILE_PATH",
             os.path.join(project_source_root, "input/test.feature"),
         )
-        self._config.setdefault("JUNIT_XML_BASE_PATH", os.path.join(project_source_root, "output"))
-        self._config.setdefault("TEST_DATA_PATH", os.path.join(project_source_root, "test_data"))
-        self._config.setdefault("SCREEN_SHOT_PATH", os.path.join(project_source_root, "proofs"))
-        self._config.setdefault("PROJECT_TEMP_PATH", os.path.join(project_source_root, "temp"))
-        self._config.setdefault("SOURCE_LOG_FOLDER_PATH", os.path.join(project_source_root, "log_files"))
-        self._config.setdefault("TMP_GHERKIN_PATH", os.path.join(project_source_root, "gherkin_files"))
+        self._config.setdefault(
+            "JUNIT_XML_BASE_PATH", os.path.join(project_source_root, "output")
+        )
+        self._config.setdefault(
+            "TEST_DATA_PATH", os.path.join(project_source_root, "test_data")
+        )
+        self._config.setdefault(
+            "SCREEN_SHOT_PATH", os.path.join(project_source_root, "proofs")
+        )
+        self._config.setdefault(
+            "PROJECT_TEMP_PATH", os.path.join(project_source_root, "temp")
+        )
+        self._config.setdefault(
+            "SOURCE_LOG_FOLDER_PATH", os.path.join(project_source_root, "log_files")
+        )
+        self._config.setdefault(
+            "TMP_GHERKIN_PATH", os.path.join(project_source_root, "gherkin_files")
+        )
 
         # Extra environment defaults from original code
         if "HF_HOME" not in self._config:
@@ -287,11 +326,15 @@ class BaseConfigManager:
         self._config.setdefault("REACTION_DELAY_TIME", "0.1")
         self._config.setdefault("EXECUTE_BULK", "false")
         self._config.setdefault("ENABLE_PLAYWRIGHT_TRACING", "false")
+        self._config.setdefault("REUSE_VECTOR_DB", "false")
+        self._config.setdefault("USE_DYNAMIC_LTM", "false")
+
+        self._config.setdefault("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python")
 
         # Appium defaults
         self._config.setdefault("APPIUM_SERVER_URL", None)
         self._config.setdefault("APPIUM_SERVER_PORT", "4723")
-        
+
         # Platform-specific defaults based on device OS
         device_os = self._config.get("DEVICE_OS", "android").lower()
         if device_os == "android":
@@ -304,15 +347,15 @@ class BaseConfigManager:
             self._config.setdefault("DEVICE_NAME", "iPhone Simulator")
             self._config.setdefault("AUTOMATION_NAME", "XCUITest")
             self._config.setdefault("IOS_SIMULATOR_DEVICE", "iPhone 14")
-        
+
         # Common Appium settings
         self._config.setdefault("APP_PATH", "")
-        self._config.setdefault("APPIUM_APK_PATH", "")       # Path to Android APK
-        self._config.setdefault("APPIUM_IOS_APP_PATH", "")   # Path to iOS app
-        self._config.setdefault("APPIUM_DEVICE_UUID", "")    # Specific device UUID
-        self._config.setdefault("APPIUM_PLATFORM_VERSION", "") # OS version to target
+        self._config.setdefault("APPIUM_APK_PATH", "")  # Path to Android APK
+        self._config.setdefault("APPIUM_IOS_APP_PATH", "")  # Path to iOS app
+        self._config.setdefault("APPIUM_DEVICE_UUID", "")  # Specific device UUID
+        self._config.setdefault("APPIUM_PLATFORM_VERSION", "")  # OS version to target
         self._config.setdefault("APPIUM_CAPABILITIES", "{}")
-        
+
         # iOS-specific defaults
         self._config.setdefault("IOS_BUNDLE_ID", "")
         self._config.setdefault("XCODE_ORG_ID", "")
@@ -388,6 +431,14 @@ class BaseConfigManager:
     def should_enable_tracing(self) -> bool:
         """Check if Playwright tracing should be enabled"""
         return self._config.get("ENABLE_PLAYWRIGHT_TRACING", "false").lower() == "true"
+
+    def should_reuse_vector_db(self) -> bool:
+        """Return whether to reuse existing vector DB or create fresh one."""
+        return self._config["REUSE_VECTOR_DB"].lower().strip() == "true"
+
+    def should_use_dynamic_ltm(self) -> bool:
+        """Return whether to use dynamic LTM or static LTM."""
+        return self._config["USE_DYNAMIC_LTM"].lower().strip() == "true"
 
     # -------------------------------------------------------------------------
     # Directory creation logic (mirroring your original code)
@@ -483,7 +534,7 @@ class BaseConfigManager:
     def get_app_path(self) -> str:
         """Get the path to the app package/bundle."""
         return self._config["APP_PATH"]
-        
+
     def get_appium_apk_path(self) -> str:
         """Get the path to the Android APK file."""
         return self._config["APPIUM_APK_PATH"]
@@ -640,7 +691,12 @@ class SingletonConfigManager(BaseConfigManager):
         super().__init__(config_dict=config_dict, ignore_env=ignore_env)
 
     @classmethod
-    def instance(cls, config_dict: Optional[dict] = None, ignore_env: bool = False, override: bool = False) -> "SingletonConfigManager":
+    def instance(
+        cls,
+        config_dict: Optional[dict] = None,
+        ignore_env: bool = False,
+        override: bool = False,
+    ) -> "SingletonConfigManager":
         if override and config_dict is not None:
             cls.reset_instance()
             cls._instance = cls(config_dict or {}, ignore_env=ignore_env)
@@ -660,8 +716,12 @@ def get_global_conf() -> SingletonConfigManager:
     return SingletonConfigManager.instance()
 
 
-def set_global_conf(config_dict: Optional[dict] = None, ignore_env: bool = False, override: bool = False) -> SingletonConfigManager:
-    return SingletonConfigManager.instance(config_dict, ignore_env=ignore_env, override=override)
+def set_global_conf(
+    config_dict: Optional[dict] = None, ignore_env: bool = False, override: bool = False
+) -> SingletonConfigManager:
+    return SingletonConfigManager.instance(
+        config_dict, ignore_env=ignore_env, override=override
+    )
 
 
 set_global_conf(
@@ -675,5 +735,7 @@ set_global_conf(
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 
 logger.info("[Singleton] MODE: %s", get_global_conf().get_mode())
-logger.info("[Singleton] Project Source Root: %s", get_global_conf().get_project_source_root())
+logger.info(
+    "[Singleton] Project Source Root: %s", get_global_conf().get_project_source_root()
+)
 # Send final telemetryCONF.send_config_telemetry()

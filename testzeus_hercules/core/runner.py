@@ -50,11 +50,15 @@ class BaseRunner:
         llm_config = AgentsLLMConfig()
         self.planner_agent_config = llm_config.get_planner_agent_config()
         self.nav_agent_config = llm_config.get_nav_agent_config()
+        self.mem_agent_config = llm_config.get_mem_agent_config()
+        self.helper_config = llm_config.get_helper_agent_config()
 
         self.simple_hercules = await SimpleHercules.create(
             self.stake_id,
             self.planner_agent_config,
             self.nav_agent_config,
+            self.mem_agent_config,
+            self.helper_config,
             save_chat_logs_to_files=self.save_chat_logs_to_files,
             planner_max_chat_round=self.planner_number_of_rounds,
             nav_max_chat_round=self.nav_agent_number_of_rounds,

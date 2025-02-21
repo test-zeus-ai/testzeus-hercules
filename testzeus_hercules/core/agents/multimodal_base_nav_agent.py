@@ -11,12 +11,20 @@ class MultimodalBaseNavAgent(BaseNavAgent):
     agent_name: str = "multimodal_base_nav_agent"
     prompt = "Base Multimodal Agent"
 
-    def __init__(self, model_config_list: List[Dict[str, Any]], llm_config_params: dict[str, Any], system_prompt: str | None, nav_executor: Any, agent_name: str = None, agent_prompt: str | None = None) -> None:
+    def __init__(
+        self,
+        model_config_list: list[dict[str, Any]],
+        llm_config_params: dict[str, Any],
+        system_prompt: str | None,
+        nav_executor: Any,
+        agent_name: str = None,
+        agent_prompt: str | None = None,
+    ) -> None:
         """
         Initialize the MultimodalBaseNavAgent using MultimodalConversableAgent instead of ConversableAgent.
         """
         self.nav_executor = nav_executor
-        user_ltm = self._BaseNavAgent__get_ltm()
+        user_ltm = self.get_ltm()
         agent_name = self.agent_name if agent_name is None else agent_name
 
         system_message = agent_prompt or self.prompt
@@ -25,14 +33,24 @@ class MultimodalBaseNavAgent(BaseNavAgent):
                 system_message = "\n".join(system_prompt)
             else:
                 system_message = system_prompt
-            logger.info(f"Using custom system prompt for MultimodalBaseNavAgent: {system_message}")
+            logger.info(
+                f"Using custom system prompt for MultimodalBaseNavAgent: {system_message}"
+            )
 
-        system_message = system_message + "\n" + f"Today's date is {datetime.now().strftime('%d %B %Y')}"
-        if user_ltm:
+        system_message = (
+            system_message
+            + "\n"
+            + f"Today's date is {datetime.now().strftime('%d %B %Y')}"
+        )
+        if False and user_ltm:
             user_ltm = "\n" + user_ltm
-            system_message = Template(system_message).substitute(basic_test_information=user_ltm)
+            system_message = Template(system_message).substitute(
+                basic_test_information=user_ltm
+            )
 
-        logger.info(f"Nav agent {agent_name} using model: {model_config_list[0]['model']}")
+        logger.info(
+            f"Nav agent {agent_name} using model: {model_config_list[0]['model']}"
+        )
 
         # Use MultimodalConversableAgent instead of ConversableAgent
         self.agent = MultimodalConversableAgent(

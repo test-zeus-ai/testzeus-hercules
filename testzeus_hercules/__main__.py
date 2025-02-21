@@ -50,7 +50,13 @@ async def sequential_process() -> None:
         feature_name = feat["feature"]
         scenario = feat["scenario"]
         # sanatise stake_id
-        stake_id = scenario.replace(" ", "_").replace(":", "_").replace("/", "_").replace("\\", "_").replace(".", "_")
+        stake_id = (
+            scenario.replace(" ", "_")
+            .replace(":", "_")
+            .replace("/", "_")
+            .replace("\\", "_")
+            .replace(".", "_")
+        )
 
         # TODO: remove the following set default hack later.
         get_global_conf().set_default_test_id(stake_id)
@@ -72,11 +78,13 @@ async def sequential_process() -> None:
         if get_global_conf().get_token_verbose():
             # Parse usage and sum across all agents based on keys
             for ag_name, agent in runner.simple_hercules.agents_map.items():
-                if agent.client and agent.client.total_usage_summary:
+                if agent and agent.client and agent.client.total_usage_summary:
                     for key, value in agent.client.total_usage_summary.items():
                         if key == "total_cost":
                             # Sum total_cost across agents
-                            cost_metrics["total_cost"] = cost_metrics.get("total_cost", 0) + value
+                            cost_metrics["total_cost"] = (
+                                cost_metrics.get("total_cost", 0) + value
+                            )
                         elif isinstance(value, dict):
                             if ag_name not in cost_metrics:
                                 cost_metrics[ag_name] = {}
@@ -89,12 +97,20 @@ async def sequential_process() -> None:
                                 }
 
                             cost_metrics[ag_name][key]["cost"] += value.get("cost", 0)
-                            cost_metrics[ag_name][key]["prompt_tokens"] += value.get("prompt_tokens", 0)
-                            cost_metrics[ag_name][key]["completion_tokens"] += value.get("completion_tokens", 0)
-                            cost_metrics[ag_name][key]["total_tokens"] += value.get("total_tokens", 0)
+                            cost_metrics[ag_name][key]["prompt_tokens"] += value.get(
+                                "prompt_tokens", 0
+                            )
+                            cost_metrics[ag_name][key][
+                                "completion_tokens"
+                            ] += value.get("completion_tokens", 0)
+                            cost_metrics[ag_name][key]["total_tokens"] += value.get(
+                                "total_tokens", 0
+                            )
                         else:
                             # For unexpected keys, just add them as-is
-                            cost_metrics[ag_name][key] = cost_metrics.get(key, 0) + value
+                            cost_metrics[ag_name][key] = (
+                                cost_metrics.get(key, 0) + value
+                            )
 
         execution_time = runner.execution_time
         if runner.result and runner.result.chat_history:
@@ -118,21 +134,30 @@ async def sequential_process() -> None:
                 scenario,
                 feature_file_path=file_path,
                 output_file_path="",
-                proofs_path=get_global_conf().get_proof_path(runner.device_manager.stake_id),
+                proofs_path=get_global_conf().get_proof_path(
+                    runner.device_manager.stake_id
+                ),
                 proofs_screenshot_path=runner.device_manager._screenshots_dir,
                 proofs_video_path=runner.device_manager.get_latest_video_path(),
                 network_logs_path=runner.device_manager.request_response_log_file,
                 logs_path=get_global_conf().get_source_log_folder_path(stake_id),
-                planner_thoughts_path=get_global_conf().get_source_log_folder_path(stake_id) + "/chat_messages.json",
+                planner_thoughts_path=get_global_conf().get_source_log_folder_path(
+                    stake_id
+                )
+                + "/chat_messages.json",
             )
         )
 
-    final_result_file_name = f"{get_global_conf().get_junit_xml_base_path()}/{feature_file_name}_result.xml"
+    final_result_file_name = (
+        f"{get_global_conf().get_junit_xml_base_path()}/{feature_file_name}_result.xml"
+    )
     await JUnitXMLGenerator.merge_junit_xml(result_of_tests, final_result_file_name)
     logger.info(f"Results published in junitxml file: {final_result_file_name}")
 
     # building html from junitxml
-    final_result_html_file_name = f"{get_global_conf().get_junit_xml_base_path()}/{feature_file_name}_result.html"
+    final_result_html_file_name = (
+        f"{get_global_conf().get_junit_xml_base_path()}/{feature_file_name}_result.html"
+    )
     prepare_html([final_result_file_name, final_result_html_file_name])
     logger.info(f"Results published in html file: {final_result_html_file_name}")
 
@@ -148,7 +173,9 @@ async def process_test_directory(test_dir: str) -> None:
     test_dir_name = os.path.basename(test_dir)
     test_config = {
         "PROJECT_SOURCE_ROOT": test_dir,
-        "INPUT_GHERKIN_FILE_PATH": os.path.join(test_dir, "input", f"{test_dir_name}.feature"),
+        "INPUT_GHERKIN_FILE_PATH": os.path.join(
+            test_dir, "input", f"{test_dir_name}.feature"
+        ),
         "TEST_DATA_PATH": os.path.join(test_dir, "test_data"),
     }
 
@@ -244,15 +271,20 @@ async def a_main() -> None:
                     logger.info(f"Processing test folder: {test_folder}")
                     await process_test_directory(test_dir)
         else:
-            logger.error("Bulk execution requested but no tests directory found at: %s", tests_dir)
+            logger.error(
+                "Bulk execution requested but no tests directory found at: %s",
+                tests_dir,
+            )
             exit(1)
     else:
         # Single test case execution
         logger.info("Single test execution mode")
         await sequential_process()
 
+
 def main() -> None:
     asyncio.run(a_main())
+
 
 if __name__ == "__main__":  # pragma: no cover
     main()

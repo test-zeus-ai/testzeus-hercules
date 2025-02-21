@@ -41,6 +41,6 @@ def final_reply_callback_user_proxy(
     return False, None
 
 
-def final_reply_callback_planner_agent(message: str, message_type: MessageType = MessageType.STEP):  # type: ignore
+def final_reply_callback_planner_agent(message: str, message_type: MessageType = MessageType.STEP, stake_id: str = "", helper_name: str = "", is_assert: bool = False, is_passed: bool = False, assert_summary: str = "", is_terminated: bool = False, is_completed: bool = False, final_response: str = ""):  # type: ignore
     add_event(EventType.STEP, EventData(detail=message_type.value))
     return False, None  # required to ensure the agent communication flow continues

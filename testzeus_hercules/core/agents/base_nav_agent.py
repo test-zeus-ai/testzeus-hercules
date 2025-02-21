@@ -9,6 +9,7 @@ from testzeus_hercules.core.memory.static_ltm import get_user_ltm
 from testzeus_hercules.core.generic_tools.tool_registry import tool_registry
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.logger import logger
+from testzeus_hercules.config import get_global_conf
 
 
 class BaseNavAgent:
@@ -27,7 +28,7 @@ class BaseNavAgent:
         - user_proxy_agent: An instance of the UserProxyAgent class.
         """
         self.nav_executor = nav_executor
-        user_ltm = self.__get_ltm()
+        user_ltm = self.get_ltm()
         agent_name = self.agent_name
 
         system_message = agent_prompt or self.prompt
@@ -36,13 +37,34 @@ class BaseNavAgent:
                 system_message = "\n".join(system_prompt)
             else:
                 system_message = system_prompt
-            logger.info(f"Using custom system prompt for BaseNavAgent: {system_message}")
+            logger.info(
+                f"Using custom system prompt for BaseNavAgent: {system_message}"
+            )
 
-        system_message = system_message + "\n" + f"Today's date is {datetime.now().strftime('%d %B %Y')}"
-        if user_ltm:  # add the user LTM to the system prompt if it exists
+        system_message = (
+            system_message
+            + "\n"
+            + f"Today's date is {datetime.now().strftime('%d %B %Y')}"
+        )
+        config = get_global_conf()
+        if (
+            not config.should_use_dynamic_ltm() and user_ltm
+        ):  # Use static LTM when dynamic is disabled
             user_ltm = "\n" + user_ltm
-            system_message = Template(system_message).substitute(basic_test_information=user_ltm)
-        logger.info(f"Nav agent {agent_name} using model: {model_config_list[0]['model']}")
+            system_message = Template(system_message).substitute(
+                basic_test_information=user_ltm
+            )
+        logger.info(
+            f"Nav agent {agent_name} using model: {model_config_list[0]['model']}"
+        )
+
+        # def print_incoming_message(
+        #     recipient, messages, sender, config
+        # ) -> tuple[bool, None]:
+        #     print(f"Incoming message to {recipient.name}: {messages[-1]['content']}")
+        #     print(f"Sent by: {sender.last_speaker.name}")
+        #     return False, None  # This ensures the agent continues its normal processing
+
         self.agent = autogen.ConversableAgent(
             name=agent_name,
             system_message=system_message,
@@ -51,10 +73,16 @@ class BaseNavAgent:
                 **llm_config_params,  # unpack all the name value pairs in llm_config_params as is
             },
         )
+
+        # self.agent.register_reply(
+        #     [autogen.ConversableAgent, None],
+        #     reply_func=print_incoming_message,
+        #     config=None,
+        # )
         # add_text_compressor(self.agent)
         self.register_tools()
 
-    def __get_ltm(self) -> str | None:
+    def get_ltm(self) -> str | None:
         """
         Get the the long term memory of the user.
         returns: str | None - The user LTM or None if not found.
@@ -69,7 +97,9 @@ class BaseNavAgent:
         # Register each tool for LLM by assistant agent and for execution by user_proxy_agen
         return None
 
-    def load_additional_tools(self, additional_tool_dirs: str = os.getenv("ADDITIONAL_TOOL_DIRS", "")) -> None:
+    def load_additional_tools(
+        self, additional_tool_dirs: str = os.getenv("ADDITIONAL_TOOL_DIRS", "")
+    ) -> None:
         """
         Dynamically load additional tools from directories or specific Python files
         specified by an environment variable.
@@ -95,7 +125,9 @@ class BaseNavAgent:
 
                 elif tool_path.endswith(".py") and os.path.isfile(tool_path):
                     # If the path is a specific .py file, load it directly
-                    module_name = os.path.basename(tool_path)[:-3]  # Strip .py extension
+                    module_name = os.path.basename(tool_path)[
+                        :-3
+                    ]  # Strip .py extension
                     directory_path = os.path.dirname(tool_path).replace("/", ".")
                     module_path = f"{directory_path}.{module_name}"
                     importlib.import_module(module_path)
@@ -111,6 +143,8 @@ class BaseNavAgent:
             if tool_registry_for_agent != self.agent_name:
                 continue
             for tool in tool_registry[tool_registry_for_agent]:
-                self.agent.register_for_llm(description=tool["description"])(tool["func"])
+                self.agent.register_for_llm(description=tool["description"])(
+                    tool["func"]
+                )
                 self.nav_executor.register_for_execution()(tool["func"])
                 logger.info("Registered additional tool: %s", tool["name"])

@@ -53,6 +53,6 @@ opt
 **/statics
 .mypy_cache
 .git
-
-**/bugreport-sdk*
-**/node_modules/
+**/bugreport*
+**/node_modules
+**/*.db
