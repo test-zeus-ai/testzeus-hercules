@@ -275,7 +275,7 @@ class SimpleHercules:
                 last_message = last_message.replace("##TERMINATE TASK##", "")  # type: ignore
                 if last_message and do_we_need_get_url:
                     last_message += " " + get_url()
-                if "[FLAG::PASS]" in last_message:
+                if "##FLAG::SAVE_IN_MEM##" in last_message:
                     mem = "Context from previous steps: " + last_message + "\n"
                     self.save_to_memory(mem)
                     store_run_data(mem)

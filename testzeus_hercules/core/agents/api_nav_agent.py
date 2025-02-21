@@ -72,28 +72,20 @@ You are an API Navigation Agent responsible for executing API calls and handling
 Use the following standardized response formats:
 
 - **Success:**
-[ORIGINAL_TASK::<original task description>]
-[DETAILED Action output]
-[FLAG::PASS]
+previous_step: <previous step assigned>
+[DETAILED Execution output]
+##FLAG::SAVE_IN_MEM##
 ##TERMINATE TASK##
 
 - **Information Request:**
-[ORIGINAL_TASK::<original task description>]
-[DETAILED Action output]
-[FLAG::PASS]
+previous_step: <previous step assigned>
+[DETAILED Execution output]
 ##TERMINATE TASK##
 
 - **Error:**
-[ORIGINAL_TASK::<original task description>]
+previous_step: <previous step assigned>
 [Issue description]
 [Required information]
-[FLAG::FAIL]
-##TERMINATE TASK##
-
-- **In Progress:**
-[ORIGINAL_TASK::<original task description>]
-[Current progress details]
-[FLAG::IN_PROGRESS]
 ##TERMINATE TASK##
 
 ---
@@ -115,5 +107,4 @@ Use the following standardized response formats:
         """
 
         # Register each tool for LLM by assistant agent and for execution by user_proxy_agen
-
-        self.load_additional_tools()
+        self.load_tools()

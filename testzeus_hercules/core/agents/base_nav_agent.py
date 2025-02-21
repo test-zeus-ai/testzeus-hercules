@@ -95,18 +95,16 @@ class BaseNavAgent:
         Register all the tools that the agent can perform.
         """
 
-        # Register each tool for LLM by assistant agent and for execution by user_proxy_agen
+        # Register the tools that were dynamically discovered
         return None
 
-    def load_additional_tools(
+    def load_tools(
         self, additional_tool_dirs: str = os.getenv("ADDITIONAL_TOOL_DIRS", "")
     ) -> None:
         """
         Dynamically load additional tools from directories or specific Python files
         specified by an environment variable.
         """
-        if len(additional_tool_dirs) == 0:
-            return
 
         additional_tool_paths: list[str] = additional_tool_dirs.split(",")
 
@@ -168,4 +166,4 @@ class BaseNavAgent:
                     tool["func"]
                 )
                 self.nav_executor.register_for_execution()(tool["func"])
-                logger.info("Registered additional tool: %s", tool["name"])
+                logger.info("Registered tool: %s", tool["name"])

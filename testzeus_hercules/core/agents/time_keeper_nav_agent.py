@@ -43,4 +43,5 @@ class TimeKeeperNavAgent(BaseNavAgent):
         """
         Register all the tools that the agent can perform.
         """
-        self.load_additional_tools()
+
+        self.load_tools()
