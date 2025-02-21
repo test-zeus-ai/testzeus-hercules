@@ -125,6 +125,7 @@ async def sequential_process() -> None:
         logger.info(f"Run completed for testcase: {scenario}")
         if cost_metrics:
             logger.info(f"Test run cost is : {cost_metrics}")
+
         result_of_tests.append(
             await build_junit_xml(
                 runner_result,
@@ -151,6 +152,7 @@ async def sequential_process() -> None:
     final_result_file_name = (
         f"{get_global_conf().get_junit_xml_base_path()}/{feature_file_name}_result.xml"
     )
+
     await JUnitXMLGenerator.merge_junit_xml(result_of_tests, final_result_file_name)
     logger.info(f"Results published in junitxml file: {final_result_file_name}")
 

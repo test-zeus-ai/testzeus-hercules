@@ -104,39 +104,59 @@ class BaseNavAgent:
         Dynamically load additional tools from directories or specific Python files
         specified by an environment variable.
         """
-        # Get additional tool directories or files from environment variable
-        if len(additional_tool_dirs) != 0:
-            additional_tool_paths: list[str] = additional_tool_dirs.split(",")
+        if len(additional_tool_dirs) == 0:
+            return
 
-            for tool_path in additional_tool_paths:
-                tool_path = tool_path.strip()  # Strip whitespace
+        additional_tool_paths: list[str] = additional_tool_dirs.split(",")
 
-                if os.path.isdir(tool_path):
+        for tool_path in additional_tool_paths:
+            tool_path = tool_path.strip()  # Strip whitespace
+
+            if os.path.isdir(tool_path):
+                # Add the parent directory to sys.path temporarily
+                import sys
+
+                parent_dir = os.path.dirname(tool_path)
+                sys.path.insert(0, parent_dir)
+
+                try:
                     # If the path is a directory, process all .py files in it
+                    dir_name = os.path.basename(tool_path)
                     for filename in os.listdir(tool_path):
                         if filename.endswith(".py"):
                             module_name = filename[:-3]  # Remove .py extension
-                            module_path = f"{tool_path.replace('/', '.')}.{module_name}"
-                            importlib.import_module(module_path)
+                            full_module_path = f"{dir_name}.{module_name}"
+                            importlib.import_module(full_module_path)
                             add_event(
                                 EventType.TOOL,
                                 EventData(detail=f"Registering tool: {filename}"),
                             )
+                finally:
+                    # Remove the directory from sys.path
+                    sys.path.remove(parent_dir)
 
-                elif tool_path.endswith(".py") and os.path.isfile(tool_path):
+            elif tool_path.endswith(".py") and os.path.isfile(tool_path):
+                # Add the parent directory to sys.path temporarily
+                import sys
+
+                parent_dir = os.path.dirname(tool_path)
+                sys.path.insert(0, parent_dir)
+
+                try:
                     # If the path is a specific .py file, load it directly
                     module_name = os.path.basename(tool_path)[
                         :-3
                     ]  # Strip .py extension
-                    directory_path = os.path.dirname(tool_path).replace("/", ".")
-                    module_path = f"{directory_path}.{module_name}"
-                    importlib.import_module(module_path)
+                    importlib.import_module(module_name)
                     add_event(
                         EventType.TOOL,
                         EventData(detail=f"Registering tool: {module_name}"),
                     )
-                else:
-                    logger.warning("Invalid tool path specified: %s", tool_path)
+                finally:
+                    # Remove the directory from sys.path
+                    sys.path.remove(parent_dir)
+            else:
+                logger.warning("Invalid tool path specified: %s", tool_path)
 
         # Register the tools that were dynamically discovered
         for tool_registry_for_agent in tool_registry:

@@ -42,7 +42,7 @@ Must return well-formatted JSON with:
 "is_assert": "boolean - if current step is assertion",
 "assert_summary": "EXPECTED RESULT: x\\nACTUAL RESULT: y (required if is_assert=true)",
 "is_passed": "boolean - assertion success status",
-"target_helper": "'navigation'|'api'|'sec'|'sql'|'static_waiter'|'Not_Applicable'"
+"target_helper": "'navigation'|'api'|'sec'|'sql'|'time_keeper'|'Not_Applicable'"
 }
 
 ## Helper Capabilities
@@ -50,8 +50,9 @@ Must return well-formatted JSON with:
 - API: Endpoint interactions, response handling
 - Security: Security testing constructs
 - SQL: Intent-based database operations
-- Static Waiter: Pauses execution for specified duration in seconds
+- Time Keeper: Pauses execution for specified duration in seconds, and perform time related operations
 - All helpers are stateless and handle one operation at a time
+- file interactions can be done by navigation agents.
 
 ## Key Guidelines
 1. Task Execution:
