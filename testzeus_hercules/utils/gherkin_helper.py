@@ -7,7 +7,9 @@ import aiofiles
 from testzeus_hercules.config import get_global_conf
 
 
-async def split_feature_file(input_file: str, output_dir: str, dont_append_header: bool = False) -> List[Dict[str, str]]:
+async def split_feature_file(
+    input_file: str, output_dir: str, dont_append_header: bool = False
+) -> List[Dict[str, str]]:
     """
     Splits a single BDD feature file into multiple feature files asynchronously.
     The script preserves the feature-level content that should be shared across all scenario files.
@@ -27,7 +29,7 @@ async def split_feature_file(input_file: str, output_dir: str, dont_append_heade
     async with aiofiles.open(input_file, "r") as f:
         feature_content = await f.read()
 
-    scenario_pattern = re.compile(r"\bScenario\b.*:")
+    scenario_pattern = re.compile(r"\b[Ss]cenario\b.*:")
     all_scenarios = scenario_pattern.findall(feature_content)
     parts = scenario_pattern.split(feature_content)
 
@@ -59,25 +61,33 @@ async def split_feature_file(input_file: str, output_dir: str, dont_append_heade
                 skip_line -= 1
 
         scenario_title = scenario.strip().split("\n")[0]
+        o_scenario_title = scenario_title
         scenario_filename = f"{scenario_title.replace(' ', '_')}.feature"
         output_file = os.path.join(output_dir, scenario_filename)
         f_scenario = scenario.strip()
+
         for comment_line in comment_lines_li:
             f_scenario = f_scenario.replace(comment_line, "")
 
-        if already_visited_scenarios[scenario_title] > 0:
-            scenario_title = f"{scenario_title} - {already_visited_scenarios[scenario_title]}"
-            scenario_filename = f"{scenario_title.replace(' ', '_')}_{already_visited_scenarios[scenario_title]}.feature"
+        if already_visited_scenarios[o_scenario_title] > 0:
+
+            scenario_filename = f"{scenario_title.replace(' ', '_')}_{already_visited_scenarios[o_scenario_title]}.feature"
+            scenario_title = (
+                f"{scenario_title} - {already_visited_scenarios[o_scenario_title]}"
+            )
             output_file = os.path.join(output_dir, scenario_filename)
-        already_visited_scenarios[scenario_title] += 1
+        already_visited_scenarios[o_scenario_title] += 1
 
         if dont_append_header and i > 0:
-            file_content = f"{prev_comment_lines}\n{all_scenarios[i]}{scenario_title}{f_scenario}"
+            file_content = (
+                f"{prev_comment_lines}\n{all_scenarios[i]}{scenario_title}{f_scenario}"
+            )
         else:
             file_content = f"{feature_header}\n\n{prev_comment_lines}\n{all_scenarios[i]}{scenario_title}{f_scenario}"
 
         async with aiofiles.open(output_file, "w") as f:
             await f.write(file_content)
+        prev_comment_lines = comment_lines
         prev_comment_lines = comment_lines
 
         scenario_di = {
@@ -109,7 +119,9 @@ async def serialize_feature_file(file_path: str) -> str:
     return feature_content
 
 
-async def process_feature_file(dont_append_header: bool = False) -> List[Dict[str, str]]:
+async def process_feature_file(
+    dont_append_header: bool = False,
+) -> List[Dict[str, str]]:
     """
     Processes a Gherkin feature file by splitting it into smaller parts.
 
