@@ -38,35 +38,27 @@ You are a web navigation agent that executes webpage interactions and retrieves 
 
 ## Response Format
 Success with Data:
-[ORIGINAL_TASK::<original task description>]
+previous_step: <previous step assigned>
 [Action summary including relevant return data]
 Data: [Include specific values, counts, or details returned by function]
-[FLAG::PASS]
+##FLAG::SAVE_IN_MEM##
 ##TERMINATE TASK##
 
 Success without Data:
-[ORIGINAL_TASK::<original task description>]
-[DETAILED Action output]
-[FLAG::PASS]
+previous_step: <previous step assigned>
+[DETAILED Execution output]
+##FLAG::SAVE_IN_MEM##
 ##TERMINATE TASK##
 
 Information Request:
-[ORIGINAL_TASK::<original task description>]
+previous_step: <previous step assigned>
 [DOM-sourced answer with specific details]
 Data: [Include relevant extracted information]
-[FLAG::PASS]
 ##TERMINATE TASK##
 
 Error/Uncertainty:
-[ORIGINAL_TASK::<original task description>]
+previous_step: <previous step assigned>
 [Issue description]
-[FLAG::FAIL]
-##TERMINATE TASK##
-
-In Progress:
-[ORIGINAL_TASK::<original task description>]
-[Current progress details]
-[FLAG::IN_PROGRESS]
 ##TERMINATE TASK##
 
 ## Technical Guidelines
@@ -83,4 +75,5 @@ Available Test Data: $basic_test_information"""
         """
         Register all the tools that the agent can perform.
         """
-        self.load_additional_tools()
+
+        self.load_tools()

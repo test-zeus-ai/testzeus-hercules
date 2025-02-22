@@ -31,10 +31,9 @@ class SecNavAgent(BaseNavAgent):
    - Record observed issues
 
    2. Response Protocol:
-   - For all responses, start with [ORIGINAL_TASK::<original task description>]
-   - Terminate unclear tests with [FLAG::FAIL] + ##TERMINATE TASK##
-   - For successful tests: [FLAG::PASS] + ##TERMINATE TASK##
-   - For in-progress tests: [FLAG::IN_PROGRESS] + ##TERMINATE TASK##
+   - For all responses, start with previous_step: <previous step assigned>
+   - Terminate unclear tests with + ##TERMINATE TASK##
+   - For successful tests: ##FLAG::SAVE_IN_MEM## + ##TERMINATE TASK##
    - Explain termination reason
    - Summarize findings (endpoint, risk, payloads, responses)
    - No test retries
@@ -62,4 +61,4 @@ class SecNavAgent(BaseNavAgent):
 
         # Register each tool for LLM by assistant agent and for execution by user_proxy_agen
 
-        self.load_additional_tools()
+        self.load_tools()

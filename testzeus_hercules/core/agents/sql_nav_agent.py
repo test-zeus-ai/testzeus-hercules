@@ -38,14 +38,11 @@ class SqlNavAgent(BaseNavAgent):
 
    ## Response Format
    - Task completion: 
-     [ORIGINAL_TASK::<original task description>]
-     Summary + [FLAG::PASS] + ##TERMINATE TASK##
+     previous_step: <previous step assigned>
+     Summary + ##FLAG::SAVE_IN_MEM## + ##TERMINATE TASK##
    - Failures: 
-     [ORIGINAL_TASK::<original task description>]
-     Detailed explanation + [FLAG::FAIL] + ##TERMINATE TASK##
-   - Progress: 
-     [ORIGINAL_TASK::<original task description>]
-     Step-by-step documentation + [FLAG::IN_PROGRESS]
+     previous_step: <previous step assigned>
+     Detailed explanation + ##TERMINATE TASK##
 
    ## Restrictions
    - No external knowledge use
@@ -62,4 +59,4 @@ class SqlNavAgent(BaseNavAgent):
 
         # Register each tool for LLM by assistant agent and for execution by user_proxy_agen
 
-        self.load_additional_tools()
+        self.load_tools()
