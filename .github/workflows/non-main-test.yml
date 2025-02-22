@@ -59,4 +59,6 @@ jobs:
       - name: Run linter
         run: make lint
       - name: Run tests
-        run: make test
+        run: |
+          set -e  # Exit immediately if a command exits with a non-zero status
+          make test

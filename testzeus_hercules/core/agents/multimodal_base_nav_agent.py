@@ -2,6 +2,7 @@ from datetime import datetime
 from string import Template
 from typing import Any
 
+from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.agents.base_nav_agent import BaseNavAgent
 from testzeus_hercules.utils.llm_helper import MultimodalConversableAgent
 from testzeus_hercules.utils.logger import logger
@@ -33,14 +34,27 @@ class MultimodalBaseNavAgent(BaseNavAgent):
                 system_message = "\n".join(system_prompt)
             else:
                 system_message = system_prompt
-            logger.info(f"Using custom system prompt for MultimodalBaseNavAgent: {system_message}")
+            logger.info(
+                f"Using custom system prompt for MultimodalBaseNavAgent: {system_message}"
+            )
 
-        system_message = system_message + "\n" + f"Today's date is {datetime.now().strftime('%d %B %Y')}"
-        if False and user_ltm:
+        system_message = (
+            system_message
+            + "\n"
+            + f"Today's date is {datetime.now().strftime('%d %B %Y')}"
+        )
+        config = get_global_conf()
+
+        if (
+            not config.should_use_dynamic_ltm() and user_ltm
+        ):  # Use static LTM when dynamic is disabled
             user_ltm = "\n" + user_ltm
-            system_message = Template(system_message).substitute(basic_test_information=user_ltm)
-
-        logger.info(f"Nav agent {agent_name} using model: {model_config_list[0]['model']}")
+            system_message = Template(system_message).substitute(
+                basic_test_information=user_ltm
+            )
+        logger.info(
+            f"Nav agent {agent_name} using model: {model_config_list[0]['model']}"
+        )
 
         # Use MultimodalConversableAgent instead of ConversableAgent
         self.agent = MultimodalConversableAgent(

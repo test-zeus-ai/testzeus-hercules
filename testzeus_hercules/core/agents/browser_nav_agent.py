@@ -46,7 +46,7 @@ Data: [Include specific values, counts, or details returned by function]
 
 Success without Data:
 previous_step: <previous step assigned>
-[DETAILED Execution output]
+[DETAILED EXPANDED COMPLETE LOSS LESS output]
 ##FLAG::SAVE_IN_MEM##
 ##TERMINATE TASK##
 

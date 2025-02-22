@@ -48,6 +48,7 @@ class BaseNavAgent:
             + f"Today's date is {datetime.now().strftime('%d %B %Y')}"
         )
         config = get_global_conf()
+
         if (
             not config.should_use_dynamic_ltm() and user_ltm
         ):  # Use static LTM when dynamic is disabled
@@ -75,12 +76,6 @@ class BaseNavAgent:
             },
         )
 
-        # self.agent.register_reply(
-        #     [autogen.ConversableAgent, None],
-        #     reply_func=print_incoming_message,
-        #     config=None,
-        # )
-        # add_text_compressor(self.agent)
         self.register_tools()
 
     def get_ltm(self) -> str | None:

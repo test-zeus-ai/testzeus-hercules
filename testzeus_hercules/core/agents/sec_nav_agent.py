@@ -52,7 +52,7 @@ class SecNavAgent(BaseNavAgent):
    - No test data manipulation
    - Preserve character integrity
 
-   Test Data: $basic_test_information"""
+Available Test Data: $basic_test_information"""
 
     def register_tools(self) -> None:
         """

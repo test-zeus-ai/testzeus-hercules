@@ -35,7 +35,7 @@ You are a test EXECUTION task planner that processes Gherkin BDD feature tasks a
 ## Response Format
 Must return well-formatted JSON with:
 {
-"plan": "VERY DETAILED EXPANDED plan (step-by-step with step numbers) stick to user task input AS CORE BUT HAVE LIBERTY TO EXPAND, ALL IN STRING FORMAT",
+"plan": "VERY DETAILED EFFICIENT EXPANDED plan (step-by-step with step numbers) ALL IN STRING FORMAT",
 "next_step": "Atomic operation for helper, ALL IN STRING FORMAT",
 "terminate": "'yes' when complete/failed, 'no' during iterations",
 "final_response": "Task outcome (only when terminate='yes')",
