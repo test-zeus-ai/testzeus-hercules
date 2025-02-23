@@ -10,8 +10,9 @@ Feature: User Signup and Account Deletion
     And the user fills in account details, Use the first record from the test data to fill all possible fields on the UI.
     And selects the checkbox "Sign up for our newsletter!"
     And selects the checkbox "Receive special offers from our partners!"
+    And user understand the fields of account information and additional details.
     And the user has filled in the account information
-    And the user fills in additional details,  Use the first record from the test data to fill all possible fields on the UI. if data dosen't match with UI find a substitute.
+    And the user fills in additional details,  Use the first record from the test data to fill all possible fields on the UI. augment data as per the fields requirents
     And clicks the "Create Account" button
     And the "ACCOUNT CREATED!" message should be visible
     And the user has created an account

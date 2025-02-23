@@ -5,13 +5,13 @@ from typing import Any, Optional
 
 import autogen  # type: ignore
 from autogen import ConversableAgent  # type: ignore
+from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.memory.dynamic_ltm import DynamicLTM
 from testzeus_hercules.core.memory.static_ltm import get_user_ltm
 from testzeus_hercules.core.post_process_responses import (
     final_reply_callback_planner_agent as print_message_as_planner,  # type: ignore
 )
 from testzeus_hercules.utils.logger import logger
-from testzeus_hercules.config import get_global_conf
 
 
 class PlannerAgent:
@@ -31,6 +31,7 @@ You are a test EXECUTION task planner that processes Gherkin BDD feature tasks a
 - Stick to the test case and test data provided while building the plan.
 - target_helper should be as per the next step operation.
 - ALL INFORMATION TO BE PASSED TO THE HELPER SHOULD BE IN THE NEXT_STEP IF IN MIDDLE OF PLAN EXECUTION
+- NEVER PASS TASK HELPER IN NEXT_STEP, ONLY PASS IN TARTGET_HELPER
 
 ## Response Format
 Must return well-formatted JSON with:
@@ -93,11 +94,13 @@ Browser Operations:
 - Manage dynamic content
 - Navigate pagination
 - Close popups
+- accessibility 
 
 API Operations:
 - Validate required parameters
 - Handle response states
 - Manage data flow between calls
+- accessibility 
 
 Security Operations:
 - Verify testing constructs
@@ -148,23 +151,13 @@ Available Test Data: $basic_test_information
                 system_message = "\n".join(system_prompt)
             else:
                 system_message = system_prompt
-            logger.info(
-                f"Using custom system prompt for PlannerAgent: {system_message}"
-            )
+            logger.info(f"Using custom system prompt for PlannerAgent: {system_message}")
 
         config = get_global_conf()
-        if (
-            not config.should_use_dynamic_ltm() and user_ltm
-        ):  # Use static LTM when dynamic is disabled
+        if not config.should_use_dynamic_ltm() and user_ltm:  # Use static LTM when dynamic is disabled
             user_ltm = "\n" + user_ltm
-            system_message = Template(system_message).substitute(
-                basic_test_information=user_ltm
-            )
-        system_message = (
-            system_message
-            + "\n"
-            + f"Today's date is {datetime.now().strftime('%d %B %Y')}"
-        )
+            system_message = Template(system_message).substitute(basic_test_information=user_ltm)
+        system_message = system_message + "\n" + f"Today's date is {datetime.now().strftime('%d %B %Y')}"
         logger.info(f"Planner agent using model: {model_config_list[0]['model']}")
 
         self.agent = autogen.AssistantAgent(

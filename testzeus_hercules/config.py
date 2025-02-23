@@ -64,15 +64,11 @@ class BaseConfigManager:
     # -------------------------------------------------------------------------
 
     @classmethod
-    def from_dict(
-        cls, config_dict: dict, ignore_env: bool = False
-    ) -> "BaseConfigManager":
+    def from_dict(cls, config_dict: dict, ignore_env: bool = False) -> "BaseConfigManager":
         return cls(config_dict, ignore_env=ignore_env)
 
     @classmethod
-    def from_json(
-        cls, json_file_path: str, ignore_env: bool = False
-    ) -> "BaseConfigManager":
+    def from_json(cls, json_file_path: str, ignore_env: bool = False) -> "BaseConfigManager":
         with open(json_file_path, "r", encoding="utf-8") as f:
             config_dict = json.load(f)
         return cls(config_dict, ignore_env=ignore_env)
@@ -86,12 +82,8 @@ class BaseConfigManager:
         Parse Hercules-specific command-line arguments
         and place them into the environment for consistency.
         """
-        parser = argparse.ArgumentParser(
-            description="Hercules: The World's First Open-Source AI Agent for End-to-End Testing"
-        )
-        parser.add_argument(
-            "--input-file", type=str, help="Path to the input file.", required=False
-        )
+        parser = argparse.ArgumentParser(description="Hercules: The World's First Open-Source AI Agent for End-to-End Testing")
+        parser.add_argument("--input-file", type=str, help="Path to the input file.", required=False)
         parser.add_argument(
             "--output-path",
             type=str,
@@ -219,22 +211,13 @@ class BaseConfigManager:
         llm_model_name = self._config.get("LLM_MODEL_NAME")
         llm_model_api_key = self._config.get("LLM_MODEL_API_KEY")
         agents_llm_config_file = self._config.get("AGENTS_LLM_CONFIG_FILE")
-        agents_llm_config_file_ref_key = self._config.get(
-            "AGENTS_LLM_CONFIG_FILE_REF_KEY"
-        )
+        agents_llm_config_file_ref_key = self._config.get("AGENTS_LLM_CONFIG_FILE_REF_KEY")
 
-        if (llm_model_name and llm_model_api_key) and (
-            agents_llm_config_file or agents_llm_config_file_ref_key
-        ):
-            logger.error(
-                "Provide either LLM_MODEL_NAME and LLM_MODEL_API_KEY together, "
-                "or AGENTS_LLM_CONFIG_FILE and AGENTS_LLM_CONFIG_FILE_REF_KEY together, not both."
-            )
+        if (llm_model_name and llm_model_api_key) and (agents_llm_config_file or agents_llm_config_file_ref_key):
+            logger.error("Provide either LLM_MODEL_NAME and LLM_MODEL_API_KEY together, " "or AGENTS_LLM_CONFIG_FILE and AGENTS_LLM_CONFIG_FILE_REF_KEY together, not both.")
             exit(1)
 
-        if (not llm_model_name or not llm_model_api_key) and (
-            not agents_llm_config_file or not agents_llm_config_file_ref_key
-        ):
+        if (not llm_model_name or not llm_model_api_key) and (not agents_llm_config_file or not agents_llm_config_file_ref_key):
             logger.error(
                 "Either LLM_MODEL_NAME and LLM_MODEL_API_KEY must be set together, "
                 "or AGENTS_LLM_CONFIG_FILE and AGENTS_LLM_CONFIG_FILE_REF_KEY must be set together. "
@@ -258,24 +241,12 @@ class BaseConfigManager:
             "INPUT_GHERKIN_FILE_PATH",
             os.path.join(project_source_root, "input/test.feature"),
         )
-        self._config.setdefault(
-            "JUNIT_XML_BASE_PATH", os.path.join(project_source_root, "output")
-        )
-        self._config.setdefault(
-            "TEST_DATA_PATH", os.path.join(project_source_root, "test_data")
-        )
-        self._config.setdefault(
-            "SCREEN_SHOT_PATH", os.path.join(project_source_root, "proofs")
-        )
-        self._config.setdefault(
-            "PROJECT_TEMP_PATH", os.path.join(project_source_root, "temp")
-        )
-        self._config.setdefault(
-            "SOURCE_LOG_FOLDER_PATH", os.path.join(project_source_root, "log_files")
-        )
-        self._config.setdefault(
-            "TMP_GHERKIN_PATH", os.path.join(project_source_root, "gherkin_files")
-        )
+        self._config.setdefault("JUNIT_XML_BASE_PATH", os.path.join(project_source_root, "output"))
+        self._config.setdefault("TEST_DATA_PATH", os.path.join(project_source_root, "test_data"))
+        self._config.setdefault("SCREEN_SHOT_PATH", os.path.join(project_source_root, "proofs"))
+        self._config.setdefault("PROJECT_TEMP_PATH", os.path.join(project_source_root, "temp"))
+        self._config.setdefault("SOURCE_LOG_FOLDER_PATH", os.path.join(project_source_root, "log_files"))
+        self._config.setdefault("TMP_GHERKIN_PATH", os.path.join(project_source_root, "gherkin_files"))
 
         # Extra environment defaults from original code
         if "HF_HOME" not in self._config:
@@ -576,12 +547,8 @@ def get_global_conf() -> SingletonConfigManager:
     return SingletonConfigManager.instance()
 
 
-def set_global_conf(
-    config_dict: Optional[dict] = None, ignore_env: bool = False, override: bool = False
-) -> SingletonConfigManager:
-    return SingletonConfigManager.instance(
-        config_dict, ignore_env=ignore_env, override=override
-    )
+def set_global_conf(config_dict: Optional[dict] = None, ignore_env: bool = False, override: bool = False) -> SingletonConfigManager:
+    return SingletonConfigManager.instance(config_dict, ignore_env=ignore_env, override=override)
 
 
 set_global_conf(
@@ -595,7 +562,5 @@ set_global_conf(
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 
 logger.info("[Singleton] MODE: %s", get_global_conf().get_mode())
-logger.info(
-    "[Singleton] Project Source Root: %s", get_global_conf().get_project_source_root()
-)
+logger.info("[Singleton] Project Source Root: %s", get_global_conf().get_project_source_root())
 # Send final telemetryCONF.send_config_telemetry()

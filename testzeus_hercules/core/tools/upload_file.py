@@ -17,9 +17,14 @@ from testzeus_hercules.utils.ui_messagetype import MessageType
 # Remove UploadFileEntry TypedDict class
 
 
-async def upload_file(
+@tool(
+    agent_names=["browser_nav_agent"],
+    name="click_and_upload_file",
+    description="Click and Upload a file to a file input element on the page.",
+)
+async def click_and_upload_file(
     entry: Annotated[
-        tuple,
+        List[str],
         "tuple containing 'selector' and 'file_path' in ('selector', 'file_path') format, selector is md attribute value of the dom element to interact, md is an ID and 'file_path' is the file_path to upload",
     ]
 ) -> Annotated[str, "Explanation of the outcome of this operation."]:
@@ -41,7 +46,6 @@ async def upload_file(
     function_name = inspect.currentframe().f_code.co_name  # type: ignore
 
     await browser_manager.take_screenshots(f"{function_name}_start", page)
-
     await browser_manager.highlight_element(selector)
 
     dom_changes_detected = None
@@ -52,7 +56,7 @@ async def upload_file(
 
     subscribe(detect_dom_changes)
 
-    result = await do_upload_file(page, selector, file_path)
+    result = await click_and_upload(page, selector, file_path)
     await asyncio.sleep(get_global_conf().get_delay_time())  # sleep for 100ms to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
 
@@ -63,12 +67,9 @@ async def upload_file(
     return result["detailed_message"]
 
 
-async def do_upload_file(page: Page, selector: str, file_path: str) -> dict[str, str]:
+async def click_and_upload(page: Page, selector: str, file_path: str) -> dict[str, str]:
     """
-    Performs the file upload operation on a file input element.
-
-    This function uploads the specified file to a file input element identified by the given selector.
-    It handles elements within the regular DOM, Shadow DOM, and iframes.
+    Clicks on an element and performs file upload using Playwright's FileChooser API.
 
     Args:
         page (Page): The Playwright Page object representing the browser tab.
@@ -76,10 +77,7 @@ async def do_upload_file(page: Page, selector: str, file_path: str) -> dict[str,
         file_path (str): The path to the file to upload.
 
     Returns:
-        dict[str, str]: Explanation of the outcome of this operation represented as a dictionary with 'summary_message' and 'detailed_message'.
-
-    Example:
-        result = await do_upload_file(page, '#fileInput', '/path/to/file.txt')
+        dict[str, str]: Explanation of the outcome represented as a dictionary with 'summary_message' and 'detailed_message'.
     """
     try:
         logger.debug(f"Looking for selector {selector} to upload file: {file_path}")
@@ -93,22 +91,19 @@ async def do_upload_file(page: Page, selector: str, file_path: str) -> dict[str,
 
         logger.info(f"Found selector '{selector}' to upload file")
 
-        # Get the element's tag name and type to determine how to interact with it
-        tag_name = await element.evaluate("el => el.tagName.toLowerCase()")
-        input_type = await element.evaluate("el => el.type")
+        # Use FileChooser API
+        async with page.expect_file_chooser() as fc_info:
+            await element.click()
 
-        if tag_name == "input" and input_type == "file":
-            # For file inputs, set the files directly
-            await element.set_input_files(file_path)
-            element_outer_html = await get_element_outer_html(element, page)
-            success_msg = f"Success. File '{file_path}' uploaded using the input with selector '{selector}'"
-            return {
-                "summary_message": success_msg,
-                "detailed_message": f"{success_msg}. Outer HTML: {element_outer_html}",
-            }
-        else:
-            error = f"Error: Element with selector '{selector}' is not a file input."
-            return {"summary_message": error, "detailed_message": error}
+        file_chooser = await fc_info.value
+        await file_chooser.set_files(file_path)
+
+        element_outer_html = await get_element_outer_html(element, page)
+        success_msg = f"Success. File '{file_path}' uploaded using the input with selector '{selector}'"
+        return {
+            "summary_message": success_msg,
+            "detailed_message": f"{success_msg}. Outer HTML: {element_outer_html}",
+        }
 
     except Exception as e:
         traceback.print_exc()
@@ -118,25 +113,25 @@ async def do_upload_file(page: Page, selector: str, file_path: str) -> dict[str,
 
 @tool(
     agent_names=["browser_nav_agent"],
-    name="bulk_upload_file",
-    description="Uploads files to multiple file input elements on the page.",
+    name="bulk_click_and_upload_file",
+    description="Click and Uploads files to multiple file input elements on the page.",
 )
-async def bulk_upload_file(
+async def bulk_click_and_upload_file(
     entries: Annotated[
         List[List[str]],
-        "List of tuple containing 'selector' and 'file_path' in [('selector', 'file_path'), ..] format, selector is md attribute value of the dom element to interact, md is an ID and 'file_path' is the file_path to upload",
-    ]  # noqa: UP006
+        "List of tuples, each containing ('selector', 'file_path'). 'selector' is the md attribute value of the DOM element to interact with (md is an ID), and 'file_path' is the path to the file to upload",
+    ]
 ) -> Annotated[
     List[dict],
     "List of dictionaries, each containing 'selector' and the result of the operation.",
-]:  # noqa: UP006
+]:
     add_event(EventType.INTERACTION, EventData(detail="BulkUploadFile"))
-    results: List[dict[str, str]] = []  # noqa: UP006
+    results: List[dict] = []
     logger.info("Executing bulk upload file command")
+
     for entry in entries:
         selector = entry[0]
-        result = await upload_file(entry)  # Use dictionary directly
-
+        result = await click_and_upload_file(entry)
         results.append({"selector": selector, "result": result})
 
     return results
