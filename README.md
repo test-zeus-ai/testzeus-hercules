@@ -70,6 +70,7 @@ Our mission? To **democratize and disrupt test automation**, making top-tier tes
 ## ⚙️ Installation and Usage
 
 Hercules offers multiple ways to get started, catering to different user preferences and requirements.
+If you are new to the Python ecosystem and don't know where to begin, dont worry and read the footnotes on understanding the basics.
 
 
 For a quick taste of the solution, you can try the notebook here: 
@@ -639,6 +640,8 @@ GEO_PROVIDER=maps_co
 ```
 This allows Hercules to alter or simulate user location during test execution, broadening your test coverage for scenarios that rely on user geography.
 
+Note: If you are looking for native app test automation, we've got you covered, as we've built out early support for Appium powered native app automation [here](https://github.com/test-zeus-ai/testzeus-hercules/pull/41)
+
 ---
 
 
@@ -886,6 +889,111 @@ Hercules also picks some inspiration from the legacy TestZeus repo [here](https:
 
 With Hercules, testing is no longer just a step in the process—it's a powerful, streamlined experience that brings quality to the forefront.
 
+
+## 🚀 Footnotes: On virtual environments and other important commands in Python
+
+If you're coming from a **Java** or **JavaScript** background, working with Python might feel a bit different at first—but don't worry! Python’s simplicity, combined with powerful tools like virtual environments, makes managing dependencies easy and efficient.
+
+### 🎓 **Understanding Virtual Environments**
+
+In Java, you might use tools like Maven or Gradle to manage project dependencies, or in JavaScript, you'd use `npm` or `yarn`. In Python, **virtual environments** serve a similar purpose. They allow you to create isolated spaces for your project's dependencies, avoiding conflicts with other Python projects on your system.
+
+Think of it like a sandboxed environment where TestZeus Hercules and its dependencies live independently from other Python packages.
+
+
+### 🏗️ **Setup Instructions**
+
+#### ✅ **1. Prerequisites**
+
+First, ensure Python 3.11 or higher is installed. You can verify this by running:
+
+```bash
+python --version
+# or
+python3 --version
+```
+
+If Python isn’t installed, [download it here](https://www.python.org/downloads/) or if you are on Windows, just follow the instructions [here](https://github.com/test-zeus-ai/testzeus-hercules/#%EF%B8%8F-running-hercules-on-a-windows-machine).
+
+---
+
+#### 🏰 **2. Creating and Activating a Virtual Environment**
+
+To set up a clean Python environment for your project:
+
+```bash
+# Create a virtual environment named 'venv'
+python -m venv venv
+
+# Activate the virtual environment
+# On Windows:
+venv\Scripts\activate
+
+# On macOS/Linux:
+source venv/bin/activate
+```
+
+You’ll notice your terminal prompt changes—this indicates the virtual environment is active.
+
+To **deactivate** the virtual environment later, simply run:
+```bash
+deactivate
+```
+
+---
+
+#### 📥 **3. Installing TestZeus Hercules**
+
+Once your virtual environment is activated, install the latest version of TestZeus Hercules directly from PyPI:
+
+```bash
+pip install testzeus-hercules
+```
+
+---
+
+#### 🔄 **4. Updating TestZeus Hercules**
+
+To update to the latest version, use:
+
+```bash
+pip install --upgrade testzeus-hercules
+```
+
+---
+
+#### ❌ **5. Uninstalling TestZeus Hercules**
+
+If you need to remove the package:
+
+```bash
+pip uninstall testzeus-hercules
+```
+
+---
+
+#### 🔍 **6. Checking Installed Packages**
+
+To verify that TestZeus Hercules is installed and check its version:
+
+```bash
+pip list
+```
+
+---
+
+### 🔗 **Additional Tips for Java/JS Developers**
+
+- **`pip`** is like `npm` or `mvn`—it's used for installing and managing Python packages.
+- Python's simplicity means fewer configuration files—most things can be done directly from the command line.
+
+---
+
+### 💡 **Next Steps**
+
+Now that TestZeus Hercules is installed and ready to go, dive into [our documentation](https://github.com/test-zeus-ai/testzeus-hercules/) to learn how to create and run your first test cases with ease!
+
+---
 
 ## Star History
 
