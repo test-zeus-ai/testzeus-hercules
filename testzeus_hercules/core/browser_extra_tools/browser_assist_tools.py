@@ -81,9 +81,6 @@ async def capture_the_screen() -> Annotated[str, "Path to of screenshot"]:
         dict: Error message if something fails
     """
     try:
-        import ipdb
-
-        ipdb.set_trace()
         # Get current screenshot
         browser_manager = PlaywrightManager()
         screenshot_stream = await browser_manager.get_latest_screenshot_stream()

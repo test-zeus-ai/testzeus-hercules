@@ -57,7 +57,9 @@ async def click_and_upload_file(
     subscribe(detect_dom_changes)
 
     result = await click_and_upload(page, selector, file_path)
-    await asyncio.sleep(get_global_conf().get_delay_time())  # sleep for 100ms to allow the mutation observer to detect changes
+    await asyncio.sleep(
+        get_global_conf().get_delay_time()
+    )  # sleep for 100ms to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
 
     await browser_manager.take_screenshots(f"{function_name}_end", page)
