@@ -44,7 +44,15 @@ def test_feature_execution(feature_folder: str) -> None:
 
     # Execute Hercules with the updated .env file
     try:
-        result = subprocess.run(["poetry", "run", "python", "-m", "testzeus_hercules"], check=True, capture_output=True, text=True, encoding="utf-8", errors="replace", env=load_env_in_dict)
+        result = subprocess.run(
+            ["poetry", "run", "python", "-m", "testzeus_hercules"],
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=load_env_in_dict,
+        )
         print(f"Standard Output:\n{result.stdout}")
         print(f"Standard Error:\n{result.stderr}")
         print(f"Return Code: {result.returncode}")

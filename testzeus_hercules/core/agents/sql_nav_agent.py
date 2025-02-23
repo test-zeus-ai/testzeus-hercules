@@ -50,7 +50,7 @@ class SqlNavAgent(BaseNavAgent):
    - Strict schema adherence
    - Task boundary enforcement
 
-   Test Data: $basic_test_information"""
+Available Test Data: $basic_test_information"""
 
     def register_tools(self) -> None:
         """

@@ -7,9 +7,7 @@ import aiofiles
 from testzeus_hercules.config import get_global_conf
 
 
-async def split_feature_file(
-    input_file: str, output_dir: str, dont_append_header: bool = False
-) -> List[Dict[str, str]]:
+async def split_feature_file(input_file: str, output_dir: str, dont_append_header: bool = False) -> List[Dict[str, str]]:
     """
     Splits a single BDD feature file into multiple feature files asynchronously.
     The script preserves the feature-level content that should be shared across all scenario files.
@@ -72,16 +70,12 @@ async def split_feature_file(
         if already_visited_scenarios[o_scenario_title] > 0:
 
             scenario_filename = f"{scenario_title.replace(' ', '_')}_{already_visited_scenarios[o_scenario_title]}.feature"
-            scenario_title = (
-                f"{scenario_title} - {already_visited_scenarios[o_scenario_title]}"
-            )
+            scenario_title = f"{scenario_title} - {already_visited_scenarios[o_scenario_title]}"
             output_file = os.path.join(output_dir, scenario_filename)
         already_visited_scenarios[o_scenario_title] += 1
 
         if dont_append_header and i > 0:
-            file_content = (
-                f"{prev_comment_lines}\n{all_scenarios[i]}{scenario_title}{f_scenario}"
-            )
+            file_content = f"{prev_comment_lines}\n{all_scenarios[i]}{scenario_title}{f_scenario}"
         else:
             file_content = f"{feature_header}\n\n{prev_comment_lines}\n{all_scenarios[i]}{scenario_title}{f_scenario}"
 

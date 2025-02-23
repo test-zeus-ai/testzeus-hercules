@@ -37,7 +37,7 @@ class TimeKeeperNavAgent(BaseNavAgent):
    - No complex operations
    - No dynamic calculations
 
-   Test Data: $basic_test_information"""
+Available Test Data: $basic_test_information"""
 
     def register_tools(self) -> None:
         """

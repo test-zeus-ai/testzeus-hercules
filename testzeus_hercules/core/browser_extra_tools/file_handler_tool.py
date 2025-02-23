@@ -1,8 +1,8 @@
-import os
 import json
-import yaml
-from typing import Union, Annotated
+import os
+from typing import Annotated, Union
 
+import yaml
 from testzeus_hercules.core.tools.tool_registry import tool
 
 # ------------------------------------------------------------------------------
@@ -35,9 +35,7 @@ def persist_findings(
             except Exception as e:
                 raise ValueError("Provided data is not valid JSON: " + str(e))
             if not isinstance(parsed_data, (dict, list)):
-                raise ValueError(
-                    "For JSON files, data must represent a dictionary or a list."
-                )
+                raise ValueError("For JSON files, data must represent a dictionary or a list.")
             with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(parsed_data, f, indent=4)
         elif ext in [".yaml", ".yml"]:
@@ -46,9 +44,7 @@ def persist_findings(
             except Exception as e:
                 raise ValueError("Provided data is not valid YAML: " + str(e))
             if not isinstance(parsed_data, (dict, list)):
-                raise ValueError(
-                    "For YAML files, data must represent a dictionary or a list."
-                )
+                raise ValueError("For YAML files, data must represent a dictionary or a list.")
             with open(file_path, "w", encoding="utf-8") as f:
                 yaml.safe_dump(parsed_data, f)
         elif ext in [".txt", ".log"]:
@@ -75,9 +71,7 @@ def persist_findings(
         "operation fails."
     ),
 )
-def recall_findings(
-    file_path: Annotated[str, "The path to the file from which data should be read."]
-) -> Annotated[
+def recall_findings(file_path: Annotated[str, "The path to the file from which data should be read."]) -> Annotated[
     Union[dict, list, str],
     "The file content (parsed object for JSON/YAML or string for TXT/LOG) or an error message.",
 ]:
@@ -137,9 +131,7 @@ def augment_findings(
             except Exception as e:
                 raise ValueError("Provided data is not valid JSON: " + str(e))
             if not isinstance(new_data_parsed, (dict, list)):
-                raise ValueError(
-                    "For JSON files, data must represent a dictionary or a list."
-                )
+                raise ValueError("For JSON files, data must represent a dictionary or a list.")
             if existing_data is None:
                 new_data = new_data_parsed
             elif isinstance(existing_data, list):
@@ -153,13 +145,9 @@ def augment_findings(
                     existing_data.update(new_data_parsed)
                     new_data = existing_data
                 else:
-                    raise ValueError(
-                        "Existing JSON file is a dict; new data must also be a dict to merge."
-                    )
+                    raise ValueError("Existing JSON file is a dict; new data must also be a dict to merge.")
             else:
-                raise ValueError(
-                    "Existing JSON file content must be a dictionary or a list to append."
-                )
+                raise ValueError("Existing JSON file content must be a dictionary or a list to append.")
             with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(new_data, f, indent=4)
 
@@ -174,9 +162,7 @@ def augment_findings(
             except Exception as e:
                 raise ValueError("Provided data is not valid YAML: " + str(e))
             if not isinstance(new_data_parsed, (dict, list)):
-                raise ValueError(
-                    "For YAML files, data must represent a dictionary or a list."
-                )
+                raise ValueError("For YAML files, data must represent a dictionary or a list.")
             if existing_data is None:
                 new_data = new_data_parsed
             elif isinstance(existing_data, list):
@@ -190,13 +176,9 @@ def augment_findings(
                     existing_data.update(new_data_parsed)
                     new_data = existing_data
                 else:
-                    raise ValueError(
-                        "Existing YAML file is a dict; new data must also be a dict to merge."
-                    )
+                    raise ValueError("Existing YAML file is a dict; new data must also be a dict to merge.")
             else:
-                raise ValueError(
-                    "Existing YAML file content must be a dictionary or a list to append."
-                )
+                raise ValueError("Existing YAML file content must be a dictionary or a list to append.")
             with open(file_path, "w", encoding="utf-8") as f:
                 yaml.safe_dump(new_data, f)
 

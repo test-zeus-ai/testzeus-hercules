@@ -2,6 +2,7 @@ from datetime import datetime
 from string import Template
 from typing import Any, List, Dict
 
+from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.agents.base_nav_agent import BaseNavAgent
 from testzeus_hercules.utils.llm_helper import MultimodalConversableAgent
 from testzeus_hercules.utils.logger import logger
@@ -42,12 +43,15 @@ class MultimodalBaseNavAgent(BaseNavAgent):
             + "\n"
             + f"Today's date is {datetime.now().strftime('%d %B %Y')}"
         )
-        if False and user_ltm:
+        config = get_global_conf()
+
+        if (
+            not config.should_use_dynamic_ltm() and user_ltm
+        ):  # Use static LTM when dynamic is disabled
             user_ltm = "\n" + user_ltm
             system_message = Template(system_message).substitute(
                 basic_test_information=user_ltm
             )
-
         logger.info(
             f"Nav agent {agent_name} using model: {model_config_list[0]['model']}"
         )

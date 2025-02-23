@@ -1,2 +1,2 @@
-URL: https://opensource-demo.orangehrmlive.com/web/index.php/auth/login
+URL: https://www.csm-testcenter.org/test?do=show&subdo=common&test=file_upload
 image: ./tests/run_data/imageUpload/test_data/image.jpg

@@ -46,7 +46,13 @@ async def take_browser_screenshot(
 
         # Create a timestamped filename
         timestamp = int(time.time())
-        base_filename = screenshot_title.replace(" ", "_").replace("/", "_").replace(":", "_").lower() + f"_{timestamp}"
+        base_filename = (
+            screenshot_title.replace(" ", "_")
+            .replace("/", "_")
+            .replace(":", "_")
+            .lower()
+            + f"_{timestamp}"
+        )
         screenshot_file = os.path.join(screenshots_dir, f"{base_filename}.png")
 
         # Save the screenshot
@@ -63,10 +69,10 @@ async def take_browser_screenshot(
 
 @tool(
     agent_names=["navigation_nav_agent"],
-    name="see_the_page",
+    name="capture_the_screen",
     description="give you the current screenshot of the browser view",
 )
-async def see_the_page() -> Annotated[str, "Path to of screenshot"]:
+async def capture_the_screen() -> Annotated[str, "Path to of screenshot"]:
     """
     Take and save a snapshot of the current browser view, overwriting previous snapshot.
 
@@ -75,6 +81,9 @@ async def see_the_page() -> Annotated[str, "Path to of screenshot"]:
         dict: Error message if something fails
     """
     try:
+        import ipdb
+
+        ipdb.set_trace()
         # Get current screenshot
         browser_manager = PlaywrightManager()
         screenshot_stream = await browser_manager.get_latest_screenshot_stream()
