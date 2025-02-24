@@ -51,7 +51,9 @@ async def set_date_time_value(
     subscribe(detect_dom_changes)
 
     result = await do_set_date_time_value(page, selector, input_value)
-    await asyncio.sleep(get_global_conf().get_delay_time())  # sleep to allow the mutation observer to detect changes
+    await asyncio.sleep(
+        get_global_conf().get_delay_time()
+    )  # sleep to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
     await page.wait_for_load_state()
     await browser_manager.take_screenshots(f"{function_name}_end", page)
@@ -61,7 +63,9 @@ async def set_date_time_value(
     return result["detailed_message"]
 
 
-async def do_set_date_time_value(page: Page, selector: str, input_value: str) -> dict[str, str]:
+async def do_set_date_time_value(
+    page: Page, selector: str, input_value: str
+) -> dict[str, str]:
     """
     Performs the input value setting operation on an input element.
 
@@ -80,9 +84,13 @@ async def do_set_date_time_value(page: Page, selector: str, input_value: str) ->
         result = await do_set_date_time_value(page, '#dateInput', '2023-10-10')
     """
     try:
-        logger.debug(f"Looking for selector {selector} to set input value: {input_value}")
+        logger.debug(
+            f"Looking for selector {selector} to set input value: {input_value}"
+        )
         browser_manager = PlaywrightManager()
-        element = await browser_manager.find_element(selector, page)
+        element = await browser_manager.find_element(
+            selector, page, element_name="enter_date_time"
+        )
         if element is None:
             error = f"Error: Selector '{selector}' not found. Unable to continue."
             return {"summary_message": error, "detailed_message": error}

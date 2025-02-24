@@ -8,6 +8,7 @@ from testzeus_hercules.config import get_global_conf  # Add this import
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.prompts import LLM_PROMPTS
 from testzeus_hercules.core.tools.press_key_combination import press_key_combination
+from testzeus_hercules.core.browser_logger import get_browser_logger
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.dom_helper import get_element_outer_html
@@ -47,13 +48,15 @@ async def custom_fill_element(page: Page, selector: str, text_to_enter: str) -> 
         )
         logger.debug(f"custom_fill_element result: {result}")
     except Exception as e:
-        logger.error(f"Error in custom_fill_element, Selector: {selector}, Text: {text_to_enter}. Error: {str(e)}")
+        logger.error(
+            f"Error in custom_fill_element, Selector: {selector}, Text: {text_to_enter}. Error: {str(e)}"
+        )
         raise
 
 
 async def entertext(
     entry: Annotated[
-        tuple,
+        tuple[str, str],
         "tuple containing 'selector' and 'value_to_fill' in ('selector', 'value_to_fill') format, selector is md attribute value of the dom element to interact, md is an ID and 'value_to_fill' is the value or text of the option to select",
     ]
 ) -> Annotated[str, "Text entry result"]:
@@ -105,7 +108,9 @@ async def entertext(
     )
 
     result = await do_entertext(page, selector, text_to_enter)
-    await asyncio.sleep(get_global_conf().get_delay_time())  # sleep to allow the mutation observer to detect changes
+    await asyncio.sleep(
+        get_global_conf().get_delay_time()
+    )  # sleep to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
     await page.wait_for_load_state()
     await browser_manager.take_screenshots(f"{function_name}_end", page)
@@ -115,7 +120,9 @@ async def entertext(
     return result["detailed_message"]
 
 
-async def do_entertext(page: Page, selector: str, text_to_enter: str, use_keyboard_fill: bool = True) -> dict[str, str]:
+async def do_entertext(
+    page: Page, selector: str, text_to_enter: str, use_keyboard_fill: bool = True
+) -> dict[str, str]:
     """
     Performs the text entry operation on a DOM or Shadow DOM element.
 
@@ -127,7 +134,7 @@ async def do_entertext(page: Page, selector: str, text_to_enter: str, use_keyboa
         page (Page): The Playwright Page object representing the browser tab in which the operation will be performed.
         selector (str): The CSS selector string used to locate the target DOM element.
         text_to_enter (str): The text value to be set in the target element. Existing content will be overwritten.
-        use_keyboard_fill (bool, optional): Determines whether to simulate keyboard typing or not.
+        use_keyboard_fill (bool, optional): Whether to simulate keyboard typing or not.
                                             Defaults to False.
 
     Returns:
@@ -145,13 +152,34 @@ async def do_entertext(page: Page, selector: str, text_to_enter: str, use_keyboa
         logger.debug(f"Looking for selector {selector} to enter text: {text_to_enter}")
 
         browser_manager = PlaywrightManager()
-        elem = await browser_manager.find_element(selector, page)
+        elem = await browser_manager.find_element(
+            selector, page, element_name="entertext"
+        )
         if not elem:
+            # Initialize selector logger with proof path
+            selector_logger = get_browser_logger(get_global_conf().get_proof_path())
+            # Log failed selector interaction
+            await selector_logger.log_selector_interaction(
+                tool_name="entertext",
+                selector=selector,
+                action="input",
+                selector_type="css" if "md=" in selector else "custom",
+                success=False,
+                error_message=f"Error: Selector {selector} not found. Unable to continue.",
+            )
             error = f"Error: Selector {selector} not found. Unable to continue."
             return {"summary_message": error, "detailed_message": error}
 
         logger.info(f"Found selector {selector} to enter text")
         element_outer_html = await get_element_outer_html(elem, page)
+
+        # Initialize selector logger with proof path
+        selector_logger = get_browser_logger(get_global_conf().get_proof_path())
+        # Get alternative selectors and element attributes for logging
+        alternative_selectors = await selector_logger.get_alternative_selectors(
+            elem, page
+        )
+        element_attributes = await selector_logger.get_element_attributes(elem)
 
         if use_keyboard_fill:
             await elem.focus()
@@ -167,7 +195,25 @@ async def do_entertext(page: Page, selector: str, text_to_enter: str, use_keyboa
 
         await elem.focus()
         await page.wait_for_load_state()
-        logger.info(f'Success. Text "{text_to_enter}" set successfully in the element with selector {selector}')
+
+        # Log successful selector interaction
+        await selector_logger.log_selector_interaction(
+            tool_name="entertext",
+            selector=selector,
+            action="input",
+            selector_type="css" if "md=" in selector else "custom",
+            alternative_selectors=alternative_selectors,
+            element_attributes=element_attributes,
+            success=True,
+            additional_data={
+                "text_entered": text_to_enter,
+                "input_method": "keyboard" if use_keyboard_fill else "javascript",
+            },
+        )
+
+        logger.info(
+            f'Success. Text "{text_to_enter}" set successfully in the element with selector {selector}'
+        )
         success_msg = f'Success. Text "{text_to_enter}" set successfully in the element with selector {selector}'
         return {
             "summary_message": success_msg,
@@ -175,6 +221,18 @@ async def do_entertext(page: Page, selector: str, text_to_enter: str, use_keyboa
         }
 
     except Exception as e:
+        # Initialize selector logger with proof path
+        selector_logger = get_browser_logger(get_global_conf().get_proof_path())
+        # Log failed selector interaction
+        await selector_logger.log_selector_interaction(
+            tool_name="entertext",
+            selector=selector,
+            action="input",
+            selector_type="css" if "md=" in selector else "custom",
+            success=False,
+            error_message=str(e),
+        )
+
         traceback.print_exc()
         error = f"Error entering text in selector {selector}."
         return {"summary_message": error, "detailed_message": f"{error} Error: {e}"}
@@ -191,14 +249,19 @@ async def bulk_enter_text(
         "List of tuple containing 'selector' and 'value_to_fill' in [('selector', 'value_to_fill'), ..] format, selector is md attribute value of the dom element to interact, md is an ID and 'value_to_fill' is the value or text",
     ]
 ) -> Annotated[
-    List[dict],
+    List[Dict[str, str]],
     "List of dictionaries, each containing 'selector' and the result of the operation.",
-]:  # noqa: UP006
+]:
     add_event(EventType.INTERACTION, EventData(detail="BulkSetInputValue"))
-    results: List[dict[str, str]] = []  # noqa: UP006
+    results: List[Dict[str, str]] = []
     logger.info("Executing bulk set input value command")
     for entry in entries:
-        result = await entertext(entry)  # Use dictionary directly
+        if len(entry) != 2:
+            logger.error(f"Invalid entry format: {entry}. Expected [selector, value]")
+            continue
+        result = await entertext(
+            (entry[0], entry[1])
+        )  # Create tuple with explicit values
         results.append({"selector": entry[0], "result": result})
 
     return results
