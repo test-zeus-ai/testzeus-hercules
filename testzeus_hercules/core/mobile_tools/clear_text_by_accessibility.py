@@ -1,74 +1,48 @@
-import asyncio
-from typing import Annotated, Dict, Optional
+from typing import Annotated, Dict
+import time
 from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.appium_manager import AppiumManager
 from testzeus_hercules.core.generic_tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.logger import logger
 
+
 @tool(
-    agent_names=["navigation_nav_agent"],
-    description="Clears text from element identified by identifier.",
-    name="clear_text_by_id"
+    agent_names=["mobile_nav_agent"],
+    description="Clear text from an element using its accessibility ID.",
+    name="clear_text_by_id",
 )
-async def clear_text_by_id(
-    resource_id: Annotated[str, "Resource ID of the element (Android: resource-id, iOS: name)"] = None,
-    accessibility_id: Annotated[str, "Accessibility ID of the element (Android: content-desc, iOS: accessibilityIdentifier)"] = None,
-    start_x: Annotated[int, "Start X coordinate"] = None,
-    start_y: Annotated[int, "Start Y coordinate"] = None,
-    end_x: Annotated[int, "End X coordinate"] = None,
-    end_y: Annotated[int, "End Y coordinate"] = None,
-    wait_before_action: Annotated[float, "Wait time before action in seconds"] = 0.0,
-) -> Annotated[str, "Clear text result"]:
+def clear_text_by_id(
+    res_id: Annotated[str, "Resource ID of the element."] = "",
+    accessibility_id: Annotated[str, "Accessibility ID of the element."] = "",
+    wait_before_action: Annotated[
+        float, "Time to wait before clearing text (in seconds)."
+    ] = 0.0,
+) -> Annotated[Dict[str, str], "Result of the text clearing operation."]:
     """
-    Clear text from an element identified by its resource ID, accessibility ID, or coordinates.
+    Clear text from an element using its resource ID or accessibility ID.
     """
-    if not any([resource_id, accessibility_id, all([start_x, start_y, end_x, end_y])]):
-        raise RuntimeError("Must provide either resource_id, accessibility_id, or complete coordinates")
+    try:
+        appium_manager = AppiumManager()
 
-    bounds_data = None
-    if all([start_x, start_y, end_x, end_y]):
-        bounds_data = {
-            "start_x": start_x,
-            "start_y": start_y,
-            "end_x": end_x,
-            "end_y": end_y
+        # Wait before action if specified
+        if wait_before_action > 0:
+            time.sleep(wait_before_action)
+
+        # Clear the text
+        appium_manager.clear_text_by_id(
+            res_id=res_id,
+            accessibility_id=accessibility_id,
+        )
+
+        # Wait after action
+        time.sleep(get_global_conf().get_delay_time())
+
+        return {
+            "status": "success",
+            "message": f"Cleared text from element with res_id='{res_id}' or accessibility_id='{accessibility_id}'",
         }
-        
-    logger.info(
-        "Executing clear_text_by_id with " +
-        (f'resource_id: "{resource_id}", ' if resource_id else "") +
-        (f'accessibility_id: "{accessibility_id}", ' if accessibility_id else "") +
-        (f"bounds: ({start_x},{start_y}) to ({end_x},{end_y})" if bounds_data else "")
-    )
-    add_event(EventType.INTERACTION, EventData(detail="clear_text_by_id"))
 
-    # Initialize AppiumManager
-    appium_manager = AppiumManager()
-    
-    if not appium_manager.driver:
-        raise RuntimeError("No active Appium session. Please initialize a session first.")
-
-    # Optional wait before action
-    if wait_before_action > 0:
-        await asyncio.sleep(wait_before_action)
-
-    # Directly call clear_text_by_id with all parameters
-    await appium_manager.clear_text_by_id(
-        res_id=resource_id,
-        accessibility_id=accessibility_id,
-        bounds_data=bounds_data
-    )
-    
-    # Wait for any animations or state changes
-    await asyncio.sleep(get_global_conf().get_delay_time())
-    
-    success_msg = (
-        "Successfully cleared text from element. " +
-        (f'Resource ID: "{resource_id}", ' if resource_id else "") +
-        (f'Accessibility ID: "{accessibility_id}", ' if accessibility_id else "") +
-        (f"Bounds: ({start_x},{start_y}) to ({end_x},{end_y})" if bounds_data else "") +
-        "The text field has been emptied and any UI updates have been processed."
-    )
-    logger.info(success_msg)
-    return success_msg
+    except Exception as e:
+        logger.error(f"Error in clear_text_by_id: {str(e)}")
+        return {"error": str(e)}

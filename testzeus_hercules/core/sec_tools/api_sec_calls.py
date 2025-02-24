@@ -1,13 +1,13 @@
-import asyncio
 import os
 import platform
+import subprocess
 import tarfile
 import time
 import zipfile
 from pathlib import Path
-from typing import Annotated, Any, List, Optional, Tuple
+from typing import Annotated, Any, Dict, List, Optional, Tuple, Union
 
-import aiohttp
+import requests
 from inflection import parameterize
 from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.generic_tools.tool_registry import sec_logger as file_logger
@@ -18,9 +18,12 @@ from testzeus_hercules.utils.logger import logger
 CACHE_DIR = Path(get_global_conf().get_hf_home()) / "nuclei_tool"
 NUCLEI_BINARY = CACHE_DIR / "nuclei"
 
-
-NUCLEI_RELEASE_API_URL = "https://api.github.com/repos/projectdiscovery/nuclei/releases/latest"
-NUCLEI_DOWNLOAD_URL_TEMPLATE = "https://github.com/projectdiscovery/nuclei/releases/download/{version}/{filename}"
+NUCLEI_RELEASE_API_URL = (
+    "https://api.github.com/repos/projectdiscovery/nuclei/releases/latest"
+)
+NUCLEI_DOWNLOAD_URL_TEMPLATE = (
+    "https://github.com/projectdiscovery/nuclei/releases/download/{version}/{filename}"
+)
 
 security_terms_explanation = {
     "cve": "Common Vulnerabilities and Exposures, a standardized list of publicly disclosed security vulnerabilities.",
@@ -44,36 +47,20 @@ security_terms_explanation = {
 }
 
 
-async def download_file(url: str, dest: Path) -> None:
-    """Download a file from a URL to a destination path."""
-    logger.info(f"Downloading {url} to {dest}")
-    file_logger(f"Downloading {url} to {dest}")
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as resp:
-            resp.raise_for_status()
-            with open(dest, "wb") as f:
-                while True:
-                    chunk = await resp.content.read(1024)
-                    if not chunk:
-                        break
-                    f.write(chunk)
-
-
-async def get_latest_nuclei_version(
+def get_latest_nuclei_version(
     base_url: str = NUCLEI_RELEASE_API_URL,
 ) -> str:
     """Get the latest Nuclei release version from GitHub API."""
-    async with aiohttp.ClientSession() as session:
-        async with session.get(base_url) as resp:
-            resp.raise_for_status()
-            data = await resp.json()
-            version = data["tag_name"]
-            logger.info(f"Latest Nuclei version: {version}")
-            file_logger(f"Latest Nuclei version: {version}")
-            return version
+    response = requests.get(base_url)
+    response.raise_for_status()
+    data = response.json()
+    version = data["tag_name"]
+    logger.info(f"Latest Nuclei version: {version}")
+    file_logger(f"Latest Nuclei version: {version}")
+    return version
 
 
-async def ensure_nuclei_installed() -> None:
+def ensure_nuclei_installed() -> None:
     """Ensure that Nuclei binary is installed in the cache directory."""
     if NUCLEI_BINARY.exists():
         logger.info("Nuclei binary already exists.")
@@ -87,7 +74,7 @@ async def ensure_nuclei_installed() -> None:
     system = platform.system()
     arch = platform.machine()
 
-    version = await get_latest_nuclei_version(base_url=NUCLEI_RELEASE_API_URL)
+    version = get_latest_nuclei_version(base_url=NUCLEI_RELEASE_API_URL)
     version_number = version.lstrip("v")  # Remove 'v' prefix if present
 
     if system == "Windows":
@@ -103,10 +90,17 @@ async def ensure_nuclei_installed() -> None:
             nuclei_filename = f"nuclei_{version_number}_linux_amd64.zip"
         binary_name = "nuclei"
 
-    nuclei_url = NUCLEI_DOWNLOAD_URL_TEMPLATE.format(version=version, filename=nuclei_filename)
+    nuclei_url = NUCLEI_DOWNLOAD_URL_TEMPLATE.format(
+        version=version, filename=nuclei_filename
+    )
 
     archive_path = CACHE_DIR / nuclei_filename
-    await download_file(nuclei_url, archive_path)
+    response = requests.get(nuclei_url, stream=True)
+    response.raise_for_status()
+    with open(archive_path, "wb") as f:
+        for chunk in response.iter_content(chunk_size=8192):
+            if chunk:
+                f.write(chunk)
 
     # Extract the binary
     if archive_path.suffix == ".zip":
@@ -123,7 +117,7 @@ async def ensure_nuclei_installed() -> None:
     file_logger("Nuclei binary downloaded and installed.")
 
 
-async def run_nuclei_command(
+def run_nuclei_command(
     is_open_api_spec: bool,
     open_api_spec_path: Optional[str],
     target_url: Optional[str],
@@ -133,7 +127,7 @@ async def run_nuclei_command(
     extra_args: Optional[list] = None,
 ) -> Tuple[str, str, int]:
     """Run a Nuclei command and return stdout, stderr, and return code."""
-    await ensure_nuclei_installed()
+    ensure_nuclei_installed()
 
     command = [
         str(NUCLEI_BINARY),
@@ -150,7 +144,9 @@ async def run_nuclei_command(
         if open_api_spec_path:
             command.extend(["-l", open_api_spec_path])
         else:
-            error_message = "open_api_spec_path is required when is_open_api_spec is True"
+            error_message = (
+                "open_api_spec_path is required when is_open_api_spec is True"
+            )
             logger.error(error_message)
             file_logger(error_message)
             raise Exception(error_message)
@@ -173,46 +169,67 @@ async def run_nuclei_command(
     logger.info(f"Running Nuclei command: {' '.join(command)}")
     file_logger(f"Running Nuclei command: {' '.join(command)}")
 
-    process = await asyncio.create_subprocess_exec(
-        *command,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
     )
-    stdout, stderr = await process.communicate()
+    stdout, stderr = process.communicate()
 
-    stdout_decoded = stdout.decode()
-    stderr_decoded = stderr.decode()
+    file_logger(f"Nuclei command stdout: {stdout}")
+    file_logger(f"Nuclei command stderr: {stderr}")
 
-    file_logger(f"Nuclei command stdout: {stdout_decoded}")
-    file_logger(f"Nuclei command stderr: {stderr_decoded}")
-
-    return stdout_decoded, stderr_decoded, process.returncode
+    return stdout, stderr, process.returncode
 
 
 def create_headers(
-    bearer_token: Optional[str],
-    header_tokens: Optional[List[str]],
-    jwt_token: Optional[str],
+    bearer_token: str,
+    header_tokens: List[str],
+    jwt_token: str,
     start_time: float,
-) -> Tuple[Optional[List[Tuple[str, str]]], Optional[Tuple[Any, float]]]:
-    headers_list = []
+) -> Tuple[Dict[str, str], Optional[Tuple[str, float]]]:
+    """
+    Create headers for the security scan request.
+
+    Args:
+        bearer_token: Bearer token for authentication
+        header_tokens: List of header tokens in Key=Value format
+        jwt_token: JWT token for authentication
+        start_time: Start time of the request
+
+    Returns:
+        Tuple containing:
+        - Dictionary of headers
+        - Optional tuple of (error message, elapsed time) if there's an error
+    """
+    headers: Dict[str, str] = {}
+    headers_list: List[Tuple[str, str]] = []
+
+    # Process bearer token
     if bearer_token:
-        headers_list.append(("Authorization", f"Bearer {bearer_token}"))
-    if header_tokens:
-        for header in header_tokens:
-            if "=" in header:
-                key, value = header.split("=", 1)
-                headers_list.append((key.strip(), value.strip()))
-            else:
-                error_message = f"Invalid header_token format: {header}. Expected 'Key=Value'."
-                logger.error(error_message)
-                file_logger(error_message)
-                end_time = time.perf_counter()
-                duration = end_time - start_time
-                return None, ({"error": error_message}, duration)
+        headers["Authorization"] = f"Bearer {bearer_token}"
+
+    # Process JWT token
     if jwt_token:
-        headers_list.append(("Authorization", f"JWT {jwt_token}"))
-    headers = headers_list if headers_list else None
+        headers["Authorization"] = f"JWT {jwt_token}"
+
+    # Process header tokens
+    for header in header_tokens:
+        if "=" in header:
+            key, value = header.split("=", 1)
+            headers_list.append((key.strip(), value.strip()))
+        else:
+            error_message = (
+                f"Invalid header_token format: {header}. Expected 'Key=Value'."
+            )
+            logger.error(error_message)
+            return {}, (error_message, time.time() - start_time)
+
+    # Add processed headers
+    for key, value in headers_list:
+        headers[key] = value
+
     return headers, None
 
 
@@ -225,7 +242,7 @@ for tag, explanation in security_terms_explanation.items():
         tag: str,
         explanation: str,
     ) -> Any:
-        async def tool_function(
+        def tool_function(
             is_open_api_spec: Annotated[
                 bool,
                 "Is the input an OpenAPI spec (True) or a target URL (False)? If true, open_api_spec_path is required with the path of the file.",
@@ -238,15 +255,14 @@ for tag, explanation in security_terms_explanation.items():
                 str,
                 "Path to the OpenAPI spec file (required if is_open_api_spec is True).",
             ] = "",
-            bearer_token: Annotated[str, "Optional Bearer token for authentication."] = "",
+            bearer_token: Annotated[
+                str, "Optional Bearer token for authentication."
+            ] = "",
             header_tokens: Annotated[
                 List[str],
                 "Optional list of header tokens in 'Key=Value' format.",
             ] = [],
             jwt_token: Annotated[str, "Optional JWT token for authentication."] = "",
-            # output_dir: Annotated[
-            #     str, "Optional output directory for results."
-            # ] = "nuclei_results",
         ) -> Annotated[
             Tuple[dict, float],
             "Result dictionary and time taken for the test in seconds.",
@@ -260,13 +276,15 @@ for tag, explanation in security_terms_explanation.items():
                 output_path = Path(OUTPUT_PATH)
                 output_path.mkdir(parents=True, exist_ok=True)
 
-                headers, error = create_headers(bearer_token, header_tokens, jwt_token, start_time)
+                headers, error = create_headers(
+                    bearer_token, header_tokens, jwt_token, start_time
+                )
                 if error:
                     return {"error": error[0]}, error[1]
 
                 output_file = output_path / f"{tag}.txt"
 
-                stdout, stderr, returncode = await run_nuclei_command(
+                stdout, stderr, returncode = run_nuclei_command(
                     is_open_api_spec,
                     open_api_spec_path,
                     target_url,
@@ -294,7 +312,6 @@ for tag, explanation in security_terms_explanation.items():
                 if content:
                     return (
                         {
-                            # "message": f"Test completed. output saved in {output_file}",
                             "test_result": content,
                         },
                         duration,

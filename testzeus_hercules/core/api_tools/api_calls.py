@@ -1,10 +1,9 @@
 import base64
 import json
 import time
-from typing import Annotated, Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import httpx
-from testzeus_hercules.core.generic_tools.tool_registry import api_logger as file_logger
 from testzeus_hercules.core.generic_tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
 
@@ -13,38 +12,29 @@ from testzeus_hercules.utils.logger import logger
 # ------------------------------------------------------------------------------
 
 
-async def log_request(request: httpx.Request) -> None:
-    """
-    Log details of the outgoing HTTP request.
-    """
-    timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-    log_data = {
-        "timestamp": timestamp,
+def log_request(request: httpx.Request) -> None:
+    """Log request details."""
+    log_data: Dict[str, Any] = {
         "method": request.method,
         "url": str(request.url),
         "headers": dict(request.headers),
-        "body": (request.content.decode("utf-8", errors="ignore") if request.content else None),
+        "body": (
+            request.content.decode("utf-8", errors="ignore")
+            if request.content
+            else None
+        ),
     }
-    file_logger(f"Request Data: {log_data}")
+    logger.debug(f"Request Data: {log_data}")
 
 
-async def log_response(response: httpx.Response) -> None:
-    """
-    Log details of the incoming HTTP response.
-    """
-    timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-    try:
-        body_bytes = await response.aread()
-        body = body_bytes.decode("utf-8", errors="ignore")
-    except Exception as e:
-        body = f"Failed to read response: {e}"
-    log_data = {
-        "timestamp": timestamp,
+def log_response(response: httpx.Response) -> None:
+    """Log response details."""
+    log_data: Dict[str, Any] = {
         "status_code": response.status_code,
         "headers": dict(response.headers),
-        "body": body,
+        "body": response.text,
     }
-    file_logger(f"Response Data: {log_data}")
+    logger.debug(f"Response Data: {log_data}")
 
 
 def determine_status_type(status_code: int) -> str:
@@ -62,7 +52,7 @@ def determine_status_type(status_code: int) -> str:
     return "unknown"
 
 
-async def handle_error_response(e: httpx.HTTPStatusError) -> dict:
+def handle_error_response(e: httpx.HTTPStatusError) -> dict:
     """
     Extract error details from an HTTPStatusError.
     """
@@ -83,7 +73,7 @@ async def handle_error_response(e: httpx.HTTPStatusError) -> dict:
 # ------------------------------------------------------------------------------
 
 
-async def _send_request(
+def _send_request(
     method: str,
     url: str,
     *,
@@ -105,13 +95,11 @@ async def _send_request(
     """
     query_params = query_params or {}
     headers = headers.copy() if headers else {}
-    req_kwargs = {"params": query_params}
+    req_kwargs: Dict[str, Any] = {"params": query_params}
 
-    if body_mode == "multipart" and body:
-        form = httpx.FormData()
-        for key, value in body.items():
-            form.add_field(key, value)
-        req_kwargs["data"] = form
+    if body_mode == "multipart" and isinstance(body, dict):
+        files = {k: str(v) for k, v in body.items()}
+        req_kwargs["files"] = files
 
     elif body_mode == "urlencoded" and body:
         headers.setdefault("Content-Type", "application/x-www-form-urlencoded")
@@ -129,39 +117,12 @@ async def _send_request(
         req_kwargs["json"] = body
 
     start_time = time.perf_counter()
-    try:
-        async with httpx.AsyncClient(
-            event_hooks={"request": [log_request], "response": [log_response]},
-            timeout=httpx.Timeout(5.0),
-        ) as client:
-            response = await client.request(method, url, headers=headers, **req_kwargs)
-            response.raise_for_status()
-            duration = time.perf_counter() - start_time
 
-            try:
-                parsed_body = response.json()
-            except Exception:
-                parsed_body = response.text or ""
-            result = {
-                "status_code": response.status_code,
-                "status_type": determine_status_type(response.status_code),
-                "body": parsed_body,
-            }
-            # Minify the JSON response and replace double quotes with single quotes.
-            result_str = json.dumps(result, separators=(",", ":")).replace('"', "'")
-            return result_str, duration
-
-    except httpx.HTTPStatusError as e:
-        duration = time.perf_counter() - start_time
-        logger.error(f"HTTP error: {e}")
-        error_data = await handle_error_response(e)
-        return json.dumps(error_data, separators=(",", ":")).replace('"', "'"), duration
-
-    except Exception as e:
-        duration = time.perf_counter() - start_time
-        logger.error(f"Unexpected error: {e}")
-        error_data = {"error": str(e), "status_code": None, "status_type": "failure"}
-        return json.dumps(error_data, separators=(",", ":")).replace('"', "'"), duration
+    with httpx.Client(follow_redirects=True) as client:
+        response = client.request(method, url, headers=headers, **req_kwargs)
+        response.raise_for_status()
+        elapsed_time = time.perf_counter() - start_time
+        return response.text, elapsed_time
 
 
 # ------------------------------------------------------------------------------
@@ -187,29 +148,24 @@ async def _send_request(
         "This single function can generate any combination supported by _send_request."
     ),
 )
-async def generic_http_api(
-    method: Annotated[str, "HTTP method (e.g. GET, POST, PUT, PATCH, DELETE, etc.)."],
-    url: Annotated[str, "The API endpoint URL."],
-    auth_type: Annotated[
-        str,
-        "Authentication type. Options: basic, jwt, form_login, bearer, api_key. (Optional)",
-    ] = None,
-    auth_value: Annotated[
-        Any,
-        "Authentication value: for 'basic' provide [username, password]; for others, provide a string. (Optional)",
-    ] = None,
-    query_params: Annotated[Dict[str, Any], "URL query parameters."] = {},
-    body: Annotated[Any, "Request payload."] = None,
-    body_mode: Annotated[
-        str,
-        "Body mode: multipart, urlencoded, raw, binary, or json. (Optional)",
-    ] = None,
-    headers: Annotated[Dict[str, str], "Additional HTTP headers."] = {},
-) -> Annotated[Tuple[str, float], "Minified JSON response and call duration (in seconds)."]:
+def generic_http_api(
+    method: str,
+    url: str,
+    auth_type: Optional[str] = None,
+    auth_value: Optional[Any] = None,
+    query_params: Dict[str, Any] = {},
+    body: Optional[Any] = None,
+    body_mode: Optional[str] = None,
+    headers: Dict[str, str] = {},
+) -> Tuple[str, float]:
     # Set authentication headers based on auth_type.
     if auth_type:
         auth_type = auth_type.lower()
-        if auth_type == "basic" and isinstance(auth_value, list) and len(auth_value) == 2:
+        if (
+            auth_type == "basic"
+            and isinstance(auth_value, list)
+            and len(auth_value) == 2
+        ):
             creds = f"{auth_value[0]}:{auth_value[1]}"
             token = base64.b64encode(creds.encode()).decode()
             headers["Authorization"] = f"Basic {token}"
@@ -222,9 +178,58 @@ async def generic_http_api(
         elif auth_type == "api_key":
             headers["x-api-key"] = auth_value
 
-    return await _send_request(
+    return _send_request(
         method,
         url,
+        query_params=query_params,
+        body=body,
+        body_mode=body_mode,
+        headers=headers,
+    )
+
+
+@tool(
+    agent_names=["api_nav_agent"],
+    description="Send an HTTP request with the specified method and parameters.",
+    name="send_http_request",
+)
+def send_http_request(
+    method: str,
+    url: str,
+    query_params: Optional[Dict[str, Any]] = None,
+    body: Optional[Any] = None,
+    body_mode: Optional[str] = None,
+    auth_type: Optional[str] = None,
+    auth_value: Optional[Union[str, List[str]]] = None,
+    headers: Optional[Dict[str, str]] = None,
+) -> Tuple[str, float]:
+    """
+    Send an HTTP request with the specified method and parameters.
+
+    Returns:
+        Tuple[str, float]: Response text and call duration in seconds
+    """
+    # Set authentication headers based on auth_type.
+    headers = headers or {}
+    if auth_type:
+        auth_type_lower = auth_type.lower()
+        if (
+            auth_type_lower == "basic"
+            and isinstance(auth_value, list)
+            and len(auth_value) == 2
+            and all(isinstance(v, str) for v in auth_value)
+        ):
+            creds = f"{auth_value[0]}:{auth_value[1]}"
+            token = base64.b64encode(creds.encode()).decode()
+            headers["Authorization"] = f"Basic {token}"
+        elif auth_type_lower == "bearer" and isinstance(auth_value, str):
+            headers["Authorization"] = f"Bearer {auth_value}"
+        elif auth_type_lower == "api_key" and isinstance(auth_value, str):
+            headers["X-API-Key"] = auth_value
+
+    return _send_request(
+        method=method,
+        url=url,
         query_params=query_params,
         body=body,
         body_mode=body_mode,

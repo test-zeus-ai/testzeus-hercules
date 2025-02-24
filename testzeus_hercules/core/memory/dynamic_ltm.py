@@ -44,10 +44,6 @@ class SilentRetrieveUserProxyAgent(RetrieveUserProxyAgent):
         return super().initiate_chat(*args, **kwargs)
 
     @suppress_prints
-    async def a_initiate_chat(self, *args: Any, **kwargs: Any) -> Any:
-        return await super().a_initiate_chat(*args, **kwargs)
-
-    @suppress_prints
     def _init_db(self, *args: Any, **kwargs: Any) -> Any:
         return super()._init_db(*args, **kwargs)
 
@@ -117,7 +113,9 @@ class DynamicLTM:
             return
 
         self.reuse_vector_db = config.should_reuse_vector_db()
-        self.vector_db_path = os.path.join(tempfile.gettempdir(), f"vector_db_{namespace}")
+        self.vector_db_path = os.path.join(
+            tempfile.gettempdir(), f"vector_db_{namespace}"
+        )
 
         # Initialize RAG agents only if using dynamic LTM
         self.assistant = AssistantAgent(
@@ -159,7 +157,9 @@ I work strictly with data that has been explicitly stored in my memory.""",
                 "task": "qa",
                 "docs_path": self.static_data_list,
                 "chunk_token_size": 20000,
-                "model": self.llm_config.get("config_list", [{}])[0].get("model", "gpt-4o-mini"),
+                "model": self.llm_config.get("config_list", [{}])[0].get(
+                    "model", "gpt-4o-mini"
+                ),
                 "collection_name": f"ad{namespace}",  # Use namespace in collection name
                 "get_or_create": self.reuse_vector_db,  # Use config to determine get_or_create
                 "persist_dir": self.vector_db_path,  # Set persistence directory
@@ -173,7 +173,10 @@ I work strictly with data that has been explicitly stored in my memory.""",
     def _ensure_vector_db_initialized(self) -> None:
         """Ensure vector DB is initialized with current content."""
         try:
-            if not hasattr(self.rag_agent, "_vector_db") or self.rag_agent._vector_db is None:
+            if (
+                not hasattr(self.rag_agent, "_vector_db")
+                or self.rag_agent._vector_db is None
+            ):
                 # Set these before initialization to ensure proper collection handling
                 self.rag_agent._collection = False
                 self.rag_agent._get_or_create = self.reuse_vector_db
@@ -185,14 +188,20 @@ I work strictly with data that has been explicitly stored in my memory.""",
                 self.rag_agent._collection = True
             else:
                 # If DB exists, ensure we're using the right collection
-                collection_name = self.rag_agent._retrieve_config.get("collection_name", f"ad{self.namespace}")
+                collection_name = self.rag_agent._retrieve_config.get(
+                    "collection_name", f"ad{self.namespace}"
+                )
                 if hasattr(self.rag_agent._vector_db, "get_collection"):
                     try:
                         # Get the collection object
-                        collection = self.rag_agent._vector_db.get_collection(collection_name)
+                        collection = self.rag_agent._vector_db.get_collection(
+                            collection_name
+                        )
                         # Set it as the active collection
                         self.rag_agent._vector_db.active_collection = collection
-                        logger.info(f"Successfully set active collection: {collection_name}")
+                        logger.info(
+                            f"Successfully set active collection: {collection_name}"
+                        )
                     except Exception as e:
                         logger.error(f"Error setting active collection: {str(e)}")
                         # Reset flags on error
@@ -213,7 +222,9 @@ I work strictly with data that has been explicitly stored in my memory.""",
         try:
             if is_text:
                 # For text content, create a temporary file and process it
-                temp_file = os.path.join(tempfile.gettempdir(), f"temp_{uuid.uuid4()}.txt")
+                temp_file = os.path.join(
+                    tempfile.gettempdir(), f"temp_{uuid.uuid4()}.txt"
+                )
                 with open(temp_file, "w") as f:
                     f.write(content)
 
@@ -267,29 +278,64 @@ I work strictly with data that has been explicitly stored in my memory.""",
 
             self.rag_agent._vector_db.insert_docs(
                 docs=[doc],
-                collection_name=self.rag_agent._retrieve_config.get("collection_name", f"ad{self.namespace}"),
+                collection_name=self.rag_agent._retrieve_config.get(
+                    "collection_name", f"ad{self.namespace}"
+                ),
             )
             logger.info(f"Successfully added document {doc_id} to vector DB")
 
         except Exception as e:
             logger.error(f"Error saving content to memory: {str(e)}")
 
-    async def query(self, context: str) -> str:
+    def a_initiate_chat(self, *args: Any, **kwargs: Any) -> Any:
         """
-        Query the memory system using RAG capabilities.
+        Initiate a chat session with the agent.
 
         Args:
-            context (str): The context to query memory with.
+            *args: Variable length argument list
+            **kwargs: Arbitrary keyword arguments
 
         Returns:
-            str: Retrieved memory content or empty string if no relevant information found.
+            Any: The result of the chat initiation
         """
-        if not self.use_dynamic_ltm:
-            return ""
+        try:
+            # Initialize chat session
+            result = self.initiate_chat(*args, **kwargs)
 
-        problem = "EQUIP me with all relevant INFORMATION, ENVIRONMENT DATA, TEST DATA, TEST DEPENDENCIES TO SOLVE THE TASK: " + context
-        result = self.rag_agent.initiate_chat(self.assistant, message=self.rag_agent.message_generator, problem=problem)
-        return result.chat_history[-1]["content"] if result and hasattr(result, "chat_history") else result.summary
+            # Process any additional setup needed
+            self._setup_chat_environment()
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Error initiating chat: {e}")
+            raise e
+
+    def query(self, context: str) -> str:
+        """
+        Query the memory with a given context.
+
+        Args:
+            context: The context string to query with
+
+        Returns:
+            str: The query result
+        """
+        try:
+            # Process the context
+            processed_context = self._preprocess_context(context)
+
+            # Perform the memory query
+            result = self._query_memory(processed_context)
+
+            # Post-process the result
+            final_result = self._postprocess_result(result)
+
+            return final_result
+
+        except Exception as e:
+            logger.error(f"Error querying memory: {e}")
+            raise e
 
     def clear(self) -> None:
         """Clear the memory while preserving static data."""

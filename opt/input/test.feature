@@ -1,6 +1,5 @@
-Feature: Open Google homepage 
-
-  Scenario: User opens Google homepage
-    Given I have a web browser open
-    When I navigate to "https://www.google.com"
-    Then I should see the Google homepage
+Feature: Lead Creation
+  Scenario: User creates a new lead via API source and validate creation.
+    Given I am logged into Salesforce url: URL with valid credentials username, password
+    When I create a lead via app launcher with Indian Dummy data via UI.
+    Then a lead should be created.

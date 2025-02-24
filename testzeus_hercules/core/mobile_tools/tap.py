@@ -1,75 +1,53 @@
-import asyncio
-from typing import Annotated
+from typing import Annotated, Dict
+import time
 from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.appium_manager import AppiumManager
 from testzeus_hercules.core.generic_tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.logger import logger
 
+
 @tool(
-    agent_names=["navigation_nav_agent"],
-    description="Performs tap action at specified coordinates.",
-    name="tap"
+    agent_names=["mobile_nav_agent"],
+    description="Tap at specific coordinates on the screen.",
+    name="tap",
 )
-async def tap(
-    x: Annotated[int, "X coordinate for tap"],
-    y: Annotated[int, "Y coordinate for tap"],
-    wait_before_action: Annotated[float, "Wait time before action in seconds"] = 0.0,
-) -> Annotated[str, "Tap result"]:
+def tap(
+    x: Annotated[float, "X coordinate for the tap."],
+    y: Annotated[float, "Y coordinate for the tap."],
+    wait_before_action: Annotated[
+        float, "Time to wait before tapping (in seconds)."
+    ] = 0.0,
+) -> Annotated[Dict[str, str], "Result of the tap operation."]:
     """
-    Perform a tap action at the specified coordinates.
-    
-    Args:
-        x (int): X coordinate for the tap action
-        y (int): Y coordinate for the tap action
-        wait_before_action (float): Optional wait time before the action
-        
-    Returns:
-        str: Message indicating success or failure of the tap action
+    Tap at specific coordinates on the screen.
     """
-    logger.info(f'Executing tap at coordinates: ({x}, {y})')
-    add_event(EventType.INTERACTION, EventData(detail="tap"))
-
-    # Initialize AppiumManager
-    appium_manager = AppiumManager()
-    
-    if not appium_manager.driver:
-        logger.error("No Appium session available for tap action.")
-        return "Error: No active Appium session. Please initialize a session first."
-
-    # Validate coordinates
-    viewport = await appium_manager.get_viewport_size()
-    if viewport:
-        if x < 0 or x > viewport['width'] or y < 0 or y > viewport['height']:
-            error_msg = (
-                f"Invalid coordinates ({x}, {y}). Must be within viewport dimensions: "
-                f"width={viewport['width']}, height={viewport['height']}"
-            )
-            logger.error(error_msg)
-            return f"Error: {error_msg}"
-
-    # Optional wait before action
-    if wait_before_action > 0:
-        await asyncio.sleep(wait_before_action)
-
     try:
-        # Perform tap action - screenshots are handled by AppiumManager
-        await appium_manager.perform_tap(x, y)
-        
-        # Wait for any animations or state changes
-        await asyncio.sleep(get_global_conf().get_delay_time())
-        
-        success_msg = (
-            f'Successfully performed tap at coordinates: ({x}, {y}). '
-            f'Any touch responses or UI changes have been processed.'
-        )
-        logger.info(success_msg)
-        return success_msg
+        appium_manager = AppiumManager()
+
+        # Get viewport size to validate coordinates
+        viewport = appium_manager.get_viewport_size()
+        if viewport:
+            if x > viewport["width"] or y > viewport["height"]:
+                return {
+                    "error": f"Coordinates ({x}, {y}) are outside viewport bounds ({viewport['width']}, {viewport['height']})"
+                }
+
+        # Wait before tapping if specified
+        if wait_before_action > 0:
+            time.sleep(wait_before_action)
+
+        # Perform the tap
+        appium_manager.perform_tap(int(x), int(y))
+
+        # Wait after tap
+        time.sleep(get_global_conf().get_delay_time())
+
+        return {
+            "status": "success",
+            "message": f"Tapped at coordinates ({x}, {y})",
+        }
 
     except Exception as e:
-        error_msg = (
-            f'Failed to perform tap at coordinates: ({x}, {y}). '
-            f'This might indicate invalid coordinates or a connection issue. Error: {str(e)}'
-        )
-        logger.error(error_msg)
-        return f"Error: {error_msg}"
+        logger.error(f"Error in tap: {str(e)}")
+        return {"error": str(e)}

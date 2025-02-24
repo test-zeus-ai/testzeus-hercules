@@ -14,7 +14,7 @@ from testzeus_hercules.utils.logger import logger
     name="take_browser_screenshot",
     description="Take a screenshot of the current browser view and save it",
 )
-async def take_browser_screenshot(
+def take_browser_screenshot(
     screenshot_title: Annotated[str, "Title/description for this screenshot"],
 ) -> Union[str, Dict[str, str]]:
     """
@@ -30,11 +30,11 @@ async def take_browser_screenshot(
     try:
         # Get current screenshot
         browser_manager = PlaywrightManager()
-        screenshot_stream = await browser_manager.get_latest_screenshot_stream()
+        screenshot_stream = browser_manager.get_latest_screenshot_stream()
         if not screenshot_stream:
-            page = await browser_manager.get_current_page()
-            await browser_manager.take_screenshots("browser_screenshot", page)
-            screenshot_stream = await browser_manager.get_latest_screenshot_stream()
+            page = browser_manager.get_current_page()
+            browser_manager.take_screenshots("browser_screenshot", page)
+            screenshot_stream = browser_manager.get_latest_screenshot_stream()
 
         if not screenshot_stream:
             return {"error": "Failed to capture current browser view"}
@@ -72,7 +72,7 @@ async def take_browser_screenshot(
     name="capture_the_screen",
     description="give you the current screenshot of the browser view",
 )
-async def capture_the_screen() -> Annotated[str, "Path to of screenshot"]:
+def capture_the_screen() -> Annotated[str, "Path to of screenshot"]:
     """
     Take and save a snapshot of the current browser view, overwriting previous snapshot.
 
@@ -83,11 +83,11 @@ async def capture_the_screen() -> Annotated[str, "Path to of screenshot"]:
     try:
         # Get current screenshot
         browser_manager = PlaywrightManager()
-        screenshot_stream = await browser_manager.get_latest_screenshot_stream()
+        screenshot_stream = browser_manager.get_latest_screenshot_stream()
         if not screenshot_stream:
-            page = await browser_manager.get_current_page()
-            await browser_manager.take_screenshots("browser_snapshot", page)
-            screenshot_stream = await browser_manager.get_latest_screenshot_stream()
+            page = browser_manager.get_current_page()
+            browser_manager.take_screenshots("browser_snapshot", page)
+            screenshot_stream = browser_manager.get_latest_screenshot_stream()
 
         if not screenshot_stream:
             return {"error": "Failed to capture current browser view"}

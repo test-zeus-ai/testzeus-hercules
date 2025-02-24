@@ -1,94 +1,74 @@
-import json
-from typing import Annotated
+from typing import Annotated, Dict, Optional
 
+from playwright.sync_api import Page
+from testzeus_hercules.core.generic_tools.tool_registry import tool
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
-from testzeus_hercules.core.generic_tools.tool_registry import (
-    accessibility_logger,
-    accessibility_logger_json,
-    tool,
-)
-
-AXE_SCRIPT_URL = "https://cdnjs.cloudflare.com/ajax/libs/axe-core/4.10.2/axe.min.js"
+from testzeus_hercules.utils.logger import logger
 
 
 @tool(
-    agent_names=["navigation_nav_agent"],
-    description="Test the current page a11y accessibility using Axe-core. This tool is used to check only the a11y accessibility of the page.",
+    agent_names=["accessibility_nav_agent"],
+    description="Test the accessibility of the current page.",
     name="test_page_accessibility",
 )
-async def test_page_accessibility(
-    page_path: Annotated[str, "Current page URL"],
-) -> Annotated[str, "Minified JSON string of accessibility test results"]:
+def test_page_accessibility() -> (
+    Annotated[Dict[str, str], "Result of the accessibility test."]
+):
     """
-    Performs an accessibility test on the current page.
-
-    Parameters:
-
-    Returns:
-    - A **string** with the Axe-core accessibility test results in minified JSON format.
+    Test the accessibility of the current page using axe-core.
     """
     try:
-        # Create and use the PlaywrightManager
         browser_manager = PlaywrightManager()
-        page = await browser_manager.get_current_page()
+        page = browser_manager.get_current_page()
 
-        if not page:
-            raise ValueError("No active page found. OpenURL command opens a new page.")
+        # Wait for the page to be ready
+        page.wait_for_load_state("domcontentloaded")
 
-        await page.wait_for_load_state("domcontentloaded")
-
-        # Inject the Axe-core script
-        response = await page.evaluate(
-            f"""
-            fetch("{AXE_SCRIPT_URL}").then(res => res.text())
+        # Load axe-core from CDN
+        response = page.evaluate(
             """
+            fetch('https://cdnjs.cloudflare.com/ajax/libs/axe-core/4.7.0/axe.min.js')
+                .then(response => response.text())
+        """
         )
-        await page.add_script_tag(content=response)
 
-        # Run accessibility checks
-        axe_results = await page.evaluate(
+        # Add axe-core to the page
+        page.add_script_tag(content=response)
+
+        # Run accessibility tests
+        axe_results = page.evaluate(
             """
-            async () => {
-                return await axe.run();
+            () => {
+                return axe.run();
             }
-            """
+        """
         )
 
-        # Output summary of violations
+        # Process results
         violations = axe_results.get("violations", [])
-        incomplete = axe_results.get("incomplete", [])
-        failureSummaries = []
-        for violation in violations:
-            nodes = violation.get("nodes", [])
-            for node in nodes:
-                failureSummaries.append(node.get("failureSummary"))
-
-        # Log details
-        accessibility_logger(page_path, violations + incomplete)
-        accessibility_logger_json(page_path, json.dumps(axe_results, indent=4))
-
-        # If no violation failures, return success
-        if not failureSummaries:
-            result_dict = {
-                "status": "success",
+        if not violations:
+            return {
+                "success": True,
                 "message": "No accessibility violations found.",
-                "details": "All good",
             }
-            return json.dumps(result_dict, separators=(",", ":"))
+        else:
+            violation_details = []
+            for violation in violations:
+                violation_details.append(
+                    {
+                        "impact": violation.get("impact", "unknown"),
+                        "description": violation.get("description", "No description"),
+                        "help": violation.get("help", "No help available"),
+                        "nodes": len(violation.get("nodes", [])),
+                    }
+                )
 
-        # Otherwise, report the failures
-        result_dict = {
-            "status": "failure",
-            "message": f"Accessibility violations found: {len(failureSummaries)}",
-            "details": failureSummaries,
-        }
-        return json.dumps(result_dict, separators=(",", ":"))
+            return {
+                "success": False,
+                "message": "Accessibility violations found.",
+                "violations": violation_details,
+            }
 
     except Exception as e:
-        # In case of error, return an error payload
-        error_dict = {
-            "status": "error",
-            "message": "An error occurred while performing the accessibility test.",
-            "error": str(e),
-        }
-        return json.dumps(error_dict, separators=(",", ":"))
+        logger.error(f"Error testing page accessibility: {str(e)}")
+        return {"error": str(e)}

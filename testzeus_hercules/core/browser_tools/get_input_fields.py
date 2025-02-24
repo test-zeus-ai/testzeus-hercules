@@ -1,12 +1,12 @@
 import json
 import os
 import time
-from typing import Annotated, Any, Union
+from typing import Annotated, Dict, List, Optional, Union
 
-from playwright.async_api import Page
+from playwright.sync_api import Page
 from testzeus_hercules.config import get_global_conf
-from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.generic_tools.tool_registry import tool
+from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.dom_helper import wait_for_non_loading_dom_state
 from testzeus_hercules.utils.get_detailed_accessibility_tree import (
@@ -17,80 +17,108 @@ from testzeus_hercules.utils.logger import logger
 
 
 @tool(
-    agent_names=["navigation_nav_agent"],
-    description="""DOM Type dict Retrieval Tool, giving only html input types elements on page.
-Notes: [Elements ordered as displayed, Consider ordinal/numbered item positions]""",
+    agent_names=["input_field_nav_agent"],
+    description="Get information about all input fields on the current page.",
     name="get_input_fields",
 )
-async def get_input_fields() -> Annotated[str, "DOM type dict giving all input elements on page"]:
+def get_input_fields() -> (
+    Annotated[Dict[str, Dict], "Information about input fields on the page"]
+):
+    """
+    Get information about all input fields on the current page.
+    """
+    try:
+        browser_manager = PlaywrightManager()
+        browser_manager.wait_for_page_and_frames_load()
+        page = browser_manager.get_current_page()
+        page.wait_for_load_state()
 
-    add_event(EventType.INTERACTION, EventData(detail="get_input_fields"))
-    start_time = time.time()
-    # Create and use the PlaywrightManager
-    browser_manager = PlaywrightManager()
-    await browser_manager.wait_for_page_and_frames_load()
-    page = await browser_manager.get_current_page()
-    await page.wait_for_load_state()
-    if page is None:  # type: ignore
-        raise ValueError("No active page found. OpenURL command opens a new page.")
+        # Wait for any dynamic content to load
+        wait_for_non_loading_dom_state(page, 1)
 
-    extracted_data = ""
-    await wait_for_non_loading_dom_state(page, 1)
-    logger.debug("Fetching DOM for input_fields")
-    extracted_data = await do_get_accessibility_info(page, only_input_fields=True)
-    if extracted_data is None:
-        return "Could not fetch input fields. Please consider trying with content_type all_fields."
+        # Get input field information
+        extracted_data = do_get_accessibility_info(page, only_input_fields=True)
 
-    # Flatten the hierarchy into a list of elements
-    def flatten_elements(node: dict, parent_name: str = "", parent_title: str = "") -> list[dict]:
-        elements = []
-        form_elements = {"input", "label", "select", "textarea", "button", "fieldset", "legend", "datalist", "output", "option", "optgroup"}
+        return extracted_data
+    except Exception as e:
+        logger.error(f"Error getting input fields: {str(e)}")
+        return {"error": str(e)}
 
-        if "children" in node:
-            # Get current node's name and title for passing to children
-            current_name = node.get("name", parent_name)
-            current_title = node.get("title", parent_title)
 
-            for child in node["children"]:
-                # If child doesn't have name/title, it will use parent's values
-                if "name" not in child and current_name:
-                    child["name"] = current_name
-                if "title" not in child and current_title:
-                    child["title"] = current_title
-                elements.extend(flatten_elements(child, current_name, current_title))
+def do_get_accessibility_info(
+    page: Page, only_input_fields: bool = False
+) -> Dict[str, Dict]:
+    """
+    Get accessibility information from the page.
+    """
+    js_code = """
+    (onlyInputFields) => {
+        function getAccessibilityInfo(element, index) {
+            const info = {
+                tag: element.tagName.toLowerCase(),
+                type: element.type || '',
+                value: element.value || '',
+                placeholder: element.placeholder || '',
+                'aria-label': element.getAttribute('aria-label') || '',
+                role: element.getAttribute('role') || '',
+                name: element.name || '',
+                id: element.id || '',
+                class: element.className || '',
+                disabled: element.disabled || false,
+                required: element.required || false,
+                readOnly: element.readOnly || false,
+                maxLength: element.maxLength || '',
+                pattern: element.pattern || '',
+                autocomplete: element.autocomplete || '',
+                checked: element.checked || false,
+                selected: element.selected || false,
+                multiple: element.multiple || false,
+                size: element.size || '',
+                step: element.step || '',
+                min: element.min || '',
+                max: element.max || '',
+                'aria-required': element.getAttribute('aria-required') || '',
+                'aria-invalid': element.getAttribute('aria-invalid') || '',
+                'aria-expanded': element.getAttribute('aria-expanded') || '',
+                'aria-haspopup': element.getAttribute('aria-haspopup') || '',
+                'aria-controls': element.getAttribute('aria-controls') || '',
+                'aria-owns': element.getAttribute('aria-owns') || '',
+                'aria-describedby': element.getAttribute('aria-describedby') || '',
+                'data-testid': element.getAttribute('data-testid') || '',
+            };
 
-        if "md" in node and node.get("tag", "").lower() in form_elements:
-            new_node = node.copy()
-            new_node.pop("children", None)
-            elements.append(new_node)
-        return elements
+            // Add computed styles
+            const computedStyle = window.getComputedStyle(element);
+            info.styles = {
+                display: computedStyle.display,
+                visibility: computedStyle.visibility,
+                position: computedStyle.position,
+                width: computedStyle.width,
+                height: computedStyle.height,
+                backgroundColor: computedStyle.backgroundColor,
+                color: computedStyle.color,
+                fontSize: computedStyle.fontSize,
+                fontFamily: computedStyle.fontFamily,
+                border: computedStyle.border,
+                padding: computedStyle.padding,
+                margin: computedStyle.margin,
+                opacity: computedStyle.opacity,
+            };
 
-    extracted_data = flatten_elements(extracted_data)
+            return info;
+        }
 
-    elapsed_time = time.time() - start_time
-    logger.info(f"Get DOM Command executed in {elapsed_time} seconds")
+        const elements = onlyInputFields
+            ? document.querySelectorAll('input, select, textarea, button')
+            : document.querySelectorAll('*');
 
-    # Count elements
-    rr = 0
-    if isinstance(extracted_data, (dict, list)):
-        rr = len(extracted_data)
-    add_event(
-        EventType.DETECTION,
-        EventData(detail=f"DETECTED {rr} components"),
-    )
+        const result = {};
+        elements.forEach((element, index) => {
+            result[index] = getAccessibilityInfo(element, index);
+        });
 
-    if isinstance(extracted_data, list):
-        for i, item in enumerate(extracted_data):
-            extracted_data[i] = await rename_children(item)
-
-    extracted_data = json.dumps(extracted_data, separators=(",", ":"))
-    extracted_data_legend = """Key legend:
-t: tag
-r: role
-c: children
-n: name
-tl: title
-Dict >>
-"""
-    extracted_data = extracted_data_legend + extracted_data
-    return extracted_data or "Its Empty, try something else"  # type: ignore
+        return result;
+    }
+    """
+    extracted_data = page.evaluate(js_code, only_input_fields)
+    return extracted_data

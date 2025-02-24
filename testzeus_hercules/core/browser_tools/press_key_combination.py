@@ -1,94 +1,84 @@
-import asyncio
-import inspect
-from typing import Annotated
-
-from playwright.async_api import Page  # type: ignore
+from typing import Annotated, Dict
+import time
+from playwright.sync_api import Page
 from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.generic_tools.tool_registry import tool
-from testzeus_hercules.utils.dom_mutation_observer import subscribe  # type: ignore
-from testzeus_hercules.utils.dom_mutation_observer import unsubscribe  # type: ignore
 from testzeus_hercules.utils.logger import logger
 
 
-@tool(agent_names=["navigation_nav_agent"], description="""Executes key press on page (Enter, PageDown, ArrowDown, etc.).""", name="press_key_combination")
-async def press_key_combination(key_combination: Annotated[str, "key to press, e.g., Enter, PageDown etc"]) -> str:
-    logger.info(f"Executing press_key_combination with key combo: {key_combination}")
-    # Create and use the PlaywrightManager
-    browser_manager = PlaywrightManager()
-    page = await browser_manager.get_current_page()
-
-    if page is None:  # type: ignore
-        raise ValueError("No active page found. OpenURL command opens a new page.")
-
-    # Split the key combination if it's a combination of keys
-    keys = key_combination.split("+")
-
-    dom_changes_detected = None
-
-    def detect_dom_changes(changes: str):  # type: ignore
-        nonlocal dom_changes_detected
-        dom_changes_detected = changes  # type: ignore
-
-    subscribe(detect_dom_changes)
-    # If it's a combination, hold down the modifier keys
-    for key in keys[:-1]:  # All keys except the last one are considered modifier keys
-        await page.keyboard.down(key)
-
-    # Press the last key in the combination
-    await page.keyboard.press(keys[-1])
-
-    # Release the modifier keys
-    for key in keys[:-1]:
-        await page.keyboard.up(key)
-    await asyncio.sleep(get_global_conf().get_delay_time())  # sleep for 100ms to allow the mutation observer to detect changes
-    unsubscribe(detect_dom_changes)
-    await page.wait_for_load_state()
-    if dom_changes_detected:
-        return f"Key {key_combination} executed successfully.\n As a consequence of this action, new elements have appeared in view:{dom_changes_detected}. This means that the action is not yet executed and needs further interaction. Get all_fields DOM to complete the interaction."
-
-    return f"Key {key_combination} executed successfully"
-
-
-async def do_press_key_combination(browser_manager: PlaywrightManager, page: Page, key_combination: str) -> bool:
+@tool(
+    agent_names=["keyboard_nav_agent"],
+    description="Press a key combination in the browser.",
+    name="press_key_combination",
+)
+def press_key_combination(
+    key_combination: Annotated[str, "Key combination to press (e.g., Control+A)."],
+    wait_before_action: Annotated[
+        float, "Time to wait before pressing (in seconds)."
+    ] = 0.0,
+) -> Annotated[Dict[str, str], "Result of the key combination press operation."]:
     """
-    Presses a key combination on the provided page.
-
-    This function simulates the pressing of a key or a combination of keys on a web page.
-    The `key_combination` should be a string that represents the keys to be pressed, separated by '+' if it's a combination.
-    For example, 'Control+C' to copy or 'Alt+F4' to close a window on Windows.
-
-    Parameters:
-    - browser_manager (PlaywrightManager): The PlaywrightManager instance.
-    - page (Page): The Playwright page instance.
-    - key_combination (str): The key combination to press, represented as a string. For combinations, use '+' as a separator.
-
-    Returns:
-    bool: True if success and False if failed
+    Press a key combination in the browser.
     """
-
-    logger.info(f"Executing press_key_combination with key combo: {key_combination}")
     try:
-        function_name = inspect.currentframe().f_code.co_name  # type: ignore
-        await browser_manager.take_screenshots(f"{function_name}_start", page)
-        # Split the key combination if it's a combination of keys
-        keys = key_combination.split("+")
+        browser_manager = PlaywrightManager()
+        page = browser_manager.get_current_page()
 
-        # If it's a combination, hold down the modifier keys
-        for key in keys[:-1]:  # All keys except the last one are considered modifier keys
-            await page.keyboard.down(key)
+        # Wait before action if specified
+        if wait_before_action > 0:
+            time.sleep(wait_before_action)
 
-        # Press the last key in the combination
-        await page.keyboard.press(keys[-1])
+        # Press the key combination
+        success = do_press_key_combination(browser_manager, page, key_combination)
 
-        # Release the modifier keys
-        for key in keys[:-1]:
-            await page.keyboard.up(key)
+        # Wait after action
+        time.sleep(get_global_conf().get_delay_time())
+
+        if success:
+            return {
+                "status": "success",
+                "message": f"Pressed key combination: {key_combination}",
+            }
+        else:
+            return {
+                "error": f"Failed to press key combination: {key_combination}",
+            }
 
     except Exception as e:
-        logger.error(f'Error executing press_key_combination "{key_combination}": {e}')
+        logger.error(f"Error in press_key_combination: {str(e)}")
+        return {"error": str(e)}
+
+
+def do_press_key_combination(
+    browser_manager: PlaywrightManager, page: Page, key_combination: str
+) -> bool:
+    """
+    Helper function to perform the actual key combination press.
+    """
+    try:
+        # Take screenshot before action
+        browser_manager.take_screenshots("press_key_combination_start", page)
+
+        # Split the combination into individual keys
+        keys = key_combination.split("+")
+
+        # Press all keys in the combination
+        for key in keys[:-1]:
+            page.keyboard.down(key)
+
+        # Press and release the last key
+        page.keyboard.press(keys[-1])
+
+        # Release all held keys in reverse order
+        for key in reversed(keys[:-1]):
+            page.keyboard.up(key)
+
+        # Take screenshot after action
+        browser_manager.take_screenshots("press_key_combination_end", page)
+
+        return True
+
+    except Exception as e:
+        logger.error(f"Error in do_press_key_combination: {str(e)}")
         return False
-
-    await browser_manager.take_screenshots(f"{function_name}_end", page)
-
-    return True

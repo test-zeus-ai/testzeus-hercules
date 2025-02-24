@@ -1,41 +1,36 @@
-from typing import Annotated
+from typing import Annotated, Dict
 
+from testzeus_hercules.core.generic_tools.tool_registry import tool
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
-from testzeus_hercules.utils.js_helper import block_ads
+from testzeus_hercules.utils.logger import logger
 
 
-async def geturl() -> Annotated[str, "Returns the full URL of the current active web site/page."]:
+@tool(
+    agent_names=["url_nav_agent"],
+    description="Get the current URL of the active page.",
+    name="geturl",
+)
+def geturl() -> Annotated[Dict[str, str], "Current URL and page title."]:
     """
-    Returns the full URL of the current page
-
-    Parameters:
-
-    Returns:
-    - Full URL the browser's active page.
+    Get the current URL and title of the active page.
     """
-
     try:
-        # Create and use the PlaywrightManager
         browser_manager = PlaywrightManager()
-        page = await browser_manager.get_current_page()
-        await page.wait_for_load_state()
-        # await page.route("**/*", block_ads)
+        page = browser_manager.get_current_page()
 
-        if not page:
-            raise ValueError("No active page found. OpenURL command opens a new page.")
+        # Wait for the page to be ready
+        page.wait_for_load_state()
+        page.wait_for_load_state("domcontentloaded")
 
-        await page.wait_for_load_state("domcontentloaded")
+        # Get URL and title
+        url = page.url
+        title = page.title()
 
-        # Get the URL of the current page
-        try:
-            title = await page.title()
-            current_url = page.url
-            if len(current_url) > 250:
-                current_url = current_url[:250] + "..."
-            return f"Current Page: {current_url}, Title: {title}"  # type: ignore
-        except:  # noqa: E722
-            current_url = page.url
-            return f"Current Page: {current_url}"
-
+        return {
+            "success": True,
+            "url": url,
+            "title": title,
+        }
     except Exception as e:
-        raise ValueError("No active page found. OpenURL command opens a new page.") from e
+        logger.error(f"Error getting URL: {str(e)}")
+        return {"error": str(e)}

@@ -19,8 +19,9 @@ def _write_comparison_to_file(comparison_data: Dict, filepath: str) -> None:
     """Write comparison data to a JSON file."""
     try:
         write_json(filepath, comparison_data)
+        logger.info(f"Comparison data written to {filepath}")
     except Exception as e:
-        logger.error(f"Error writing comparison data to file: {e}")
+        logger.error(f"Error writing comparison data: {e}")
 
 
 @tool(
@@ -44,35 +45,37 @@ def compare_visual_screenshot(
             screenshot_stream = browser_manager.get_latest_screenshot_stream()
 
         if not screenshot_stream:
-            return {"error": "Failed to capture current screenshot"}
+            return {"error": "Failed to capture current browser view"}
 
-        # Create image comparison agent
+        # Initialize image comparison agents
         image_agent = autogen.AssistantAgent(
             name="image_comparison_agent",
             llm_config={"config_list": get_global_conf().get_llm_config()},
             system_message="You are an expert at comparing images and identifying visual differences.",
         )
 
-        # Create user proxy for image comparison
         image_ex_user_proxy = autogen.UserProxyAgent(
-            name="image_comparison_user_proxy",
+            name="image_comparison_user",
             human_input_mode="NEVER",
             max_consecutive_auto_reply=1,
             code_execution_config=False,
         )
 
-        # Prepare message for image comparison
-        message = {
-            "role": "user",
-            "content": f"Compare these two images and describe the differences focusing on {comparison_description}:\n"
-            f"1. Reference image: {reference_image_path}\n"
-            f"2. Current screenshot: {screenshot_stream}\n",
-        }
+        # Prepare the message for the image agent
+        message = f"""
+        Compare these two images:
+        1. Reference image: {reference_image_path}
+        2. Current screenshot (in memory)
 
-        # Get comparison result
+        Focus on: {comparison_description}
+
+        Provide a detailed comparison highlighting any differences.
+        """
+
+        # Perform the comparison
         chat_response = image_ex_user_proxy.initiate_chat(image_agent, message=message)
 
-        # Prepare comparison data
+        # Process the results
         comparison_data = {
             "reference_image": reference_image_path,
             "comparison_description": comparison_description,
@@ -81,21 +84,29 @@ def compare_visual_screenshot(
             ),
         }
 
-        # Save comparison data if debug mode is enabled
-        if get_global_conf().get_debug_mode():
-            debug_dir = os.path.join(get_global_conf().get_proof_path(), "debug")
-            os.makedirs(debug_dir, exist_ok=True)
-            comparison_file = os.path.join(debug_dir, "visual_comparison.json")
-            _write_comparison_to_file(comparison_data, comparison_file)
+        # Save the comparison results
+        comparison_file = os.path.join(
+            get_global_conf().get_proof_path(), "visual_comparison.json"
+        )
+        _write_comparison_to_file(comparison_data, comparison_file)
 
         return {
-            "status": "success",
+            "success": True,
             "message": "Visual comparison completed successfully",
             "details": comparison_data["comparison_result"],
         }
 
     except Exception as e:
-        logger.error(f"Error in visual comparison: {e}")
+        logger.error(f"Error in visual comparison: {str(e)}")
+        comparison_data = {
+            "error": str(e),
+            "reference_image": reference_image_path,
+            "comparison_description": comparison_description,
+        }
+        comparison_file = os.path.join(
+            get_global_conf().get_proof_path(), "visual_comparison_error.json"
+        )
+        _write_comparison_to_file(comparison_data, comparison_file)
         return {"error": str(e)}
 
 
@@ -121,35 +132,36 @@ def validate_visual_feature(
             screenshot_stream = browser_manager.get_latest_screenshot_stream()
 
         if not screenshot_stream:
-            return {"error": "Failed to capture current screenshot"}
+            return {"error": "Failed to capture current browser view"}
 
-        # Create image validation agent
+        # Initialize image validation agents
         image_agent = autogen.AssistantAgent(
             name="image_validation_agent",
             llm_config={"config_list": get_global_conf().get_llm_config()},
             system_message="You are an expert at validating visual features in user interfaces.",
         )
 
-        # Create user proxy for image validation
         image_ex_user_proxy = autogen.UserProxyAgent(
-            name="image_validation_user_proxy",
+            name="image_validation_user",
             human_input_mode="NEVER",
             max_consecutive_auto_reply=1,
             code_execution_config=False,
         )
 
-        # Prepare message for feature validation
-        message = {
-            "role": "user",
-            "content": f"Validate the following visual feature in this screenshot:\n"
-            f"Feature to validate: {feature_description}\n"
-            f"Screenshot: {screenshot_stream}\n",
-        }
+        # Prepare the validation prompt
+        validation_prompt = f"""
+        Analyze the current screenshot and validate the following feature:
+        {feature_description}
 
-        # Get validation result
-        chat_response = image_ex_user_proxy.initiate_chat(image_agent, message=message)
+        Provide a detailed assessment of whether the feature is present and correctly displayed.
+        """
 
-        # Prepare validation data
+        # Perform the validation
+        chat_response = image_ex_user_proxy.initiate_chat(
+            image_agent, message=validation_prompt
+        )
+
+        # Process the results
         validation_data = {
             "feature_description": feature_description,
             "validation_result": chat_response.get(
@@ -157,19 +169,26 @@ def validate_visual_feature(
             ),
         }
 
-        # Save validation data if debug mode is enabled
-        if get_global_conf().get_debug_mode():
-            debug_dir = os.path.join(get_global_conf().get_proof_path(), "debug")
-            os.makedirs(debug_dir, exist_ok=True)
-            validation_file = os.path.join(debug_dir, "visual_validation.json")
-            _write_comparison_to_file(validation_data, validation_file)
+        # Save the validation results
+        validation_file = os.path.join(
+            get_global_conf().get_proof_path(), "visual_validation.json"
+        )
+        _write_comparison_to_file(validation_data, validation_file)
 
         return {
-            "status": "success",
+            "success": True,
             "message": "Visual validation completed successfully",
             "details": validation_data["validation_result"],
         }
 
     except Exception as e:
-        logger.error(f"Error in visual validation: {e}")
+        logger.error(f"Error in visual validation: {str(e)}")
+        validation_data = {
+            "error": str(e),
+            "feature_description": feature_description,
+        }
+        validation_file = os.path.join(
+            get_global_conf().get_proof_path(), "visual_validation_error.json"
+        )
+        _write_comparison_to_file(validation_data, validation_file)
         return {"error": str(e)}

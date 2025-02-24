@@ -1,5 +1,5 @@
 import time
-from typing import Annotated, Dict, List
+from typing import Annotated, Dict, List, Optional
 
 from playwright.sync_api import ElementHandle, Page
 from testzeus_hercules.config import get_global_conf
@@ -69,7 +69,7 @@ def click_and_upload(page: Page, selector: str, file_path: str) -> Dict[str, str
         file_chooser.set_files(file_path)
 
         return {
-            "status": "success",
+            "success": True,
             "message": f"File uploaded successfully to element: {element_outer_html}",
         }
     except Exception as e:

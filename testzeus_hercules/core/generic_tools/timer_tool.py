@@ -1,4 +1,4 @@
-import asyncio
+import time
 from typing import Annotated, Dict
 
 from testzeus_hercules.core.generic_tools.tool_registry import tool
@@ -10,7 +10,7 @@ from testzeus_hercules.utils.logger import logger
     description="Wait for a specified number of seconds. Only accepts numeric values between 0 and 3600 seconds.",
     name="wait_for_duration",
 )
-async def wait_for_duration(
+def wait_for_duration(
     duration: Annotated[
         float,
         "Number of seconds to wait. Must be between 0 and 3600 seconds.",
@@ -20,7 +20,7 @@ async def wait_for_duration(
     "Result of the wait operation containing status and message.",
 ]:
     """
-    Wait for a specified duration asynchronously.
+    Wait for a specified duration.
 
     Parameters:
     - duration (float): The number of seconds to wait. Must be between 0 and 3600 seconds.
@@ -30,7 +30,7 @@ async def wait_for_duration(
 
     Example Usage:
     ```python
-    result = await wait_for_duration(5.5)
+    result = wait_for_duration(5.5)
     # Returns: {"status": "success", "message": "Waited for 5.5 seconds"}
     ```
 
@@ -54,7 +54,7 @@ async def wait_for_duration(
 
         # Perform the wait
         logger.info(f"Starting wait for {duration} seconds")
-        await asyncio.sleep(duration)
+        time.sleep(duration)
         logger.info(f"Completed wait for {duration} seconds")
 
         return {"status": "success", "message": f"Waited for {duration} seconds"}
@@ -69,19 +69,19 @@ async def wait_for_duration(
     description="Get the current timestamp in string format.",
     name="get_current_timestamp",
 )
-async def get_current_timestamp() -> Annotated[
+def get_current_timestamp() -> Annotated[
     Dict[str, str],
     "Current timestamp in string format.",
 ]:
     """
-    Get the current timestamp asynchronously.
+    Get the current timestamp synchronously.
 
     Returns:
     - Dict[str, str]: A dictionary containing the current timestamp.
 
     Example Usage:
     ```python
-    result = await get_current_timestamp()
+    result = get_current_timestamp()
     # Returns: {"timestamp": "2023-10-01T12:00:00"}
     ```
     """

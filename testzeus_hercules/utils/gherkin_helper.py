@@ -1,15 +1,17 @@
 import os
 import re
 from collections import defaultdict
-from typing import Dict, List
+from typing import Dict, List, DefaultDict
 
-import aiofiles
 from testzeus_hercules.config import get_global_conf
+from testzeus_hercules.utils.logger import logger
 
 
-async def split_feature_file(input_file: str, output_dir: str, dont_append_header: bool = False) -> List[Dict[str, str]]:
+def split_feature_file(
+    input_file: str, output_dir: str, dont_append_header: bool = False
+) -> List[Dict[str, str]]:
     """
-    Splits a single BDD feature file into multiple feature files asynchronously.
+    Splits a single BDD feature file into multiple feature files.
     The script preserves the feature-level content that should be shared across all scenario files.
 
     Parameters:
@@ -24,8 +26,8 @@ async def split_feature_file(input_file: str, output_dir: str, dont_append_heade
 
     res_opt_list = []
 
-    async with aiofiles.open(input_file, "r") as f:
-        feature_content = await f.read()
+    with open(input_file, "r") as f:
+        feature_content = f.read()
 
     scenario_pattern = re.compile(r"\b[Ss]cenario\b.*:")
     all_scenarios = scenario_pattern.findall(feature_content)
@@ -41,60 +43,62 @@ async def split_feature_file(input_file: str, output_dir: str, dont_append_heade
 
     scenarios = parts[1:]
     prev_comment_lines = ""
-
-    already_visited_scenarios = defaultdict(int)
+    already_visited_scenarios: DefaultDict[str, int] = defaultdict(int)
 
     for i, scenario in enumerate(scenarios):
-        comment_lines = ""
-        comment_lines_li = []
-        skip_line = 1
-        for a_line in scenario.split("\n")[::-1]:
-            line = a_line.strip()
-            if line.startswith("#"):
-                comment_lines = line + "\n" + comment_lines
-                comment_lines_li.append(line)
-            elif skip_line == 0:
-                break
+        scenario_name = all_scenarios[i].replace("Scenario:", "").strip()
+        already_visited_scenarios[scenario_name] += 1
+        visit_count = already_visited_scenarios[scenario_name]
+
+        # Extract any comment lines before the scenario
+        lines = scenario.strip().split("\n")
+        comment_lines = []
+        scenario_lines = []
+        for line in lines:
+            if line.strip().startswith("#"):
+                comment_lines.append(line)
             else:
-                skip_line -= 1
+                scenario_lines.append(line)
 
-        scenario_title = scenario.strip().split("\n")[0]
-        o_scenario_title = scenario_title
-        scenario_filename = f"{scenario_title.replace(' ', '_')}.feature"
-        output_file = os.path.join(output_dir, scenario_filename)
-        f_scenario = scenario.strip()
+        # Update prev_comment_lines for the next iteration
+        prev_comment_lines = "\n".join(comment_lines)
 
-        for comment_line in comment_lines_li:
-            f_scenario = f_scenario.replace(comment_line, "")
+        # Combine the scenario content
+        scenario_content = (
+            "Scenario: " + scenario_name + "\n" + "\n".join(scenario_lines)
+        )
 
-        if already_visited_scenarios[o_scenario_title] > 0:
-
-            scenario_filename = f"{scenario_title.replace(' ', '_')}_{already_visited_scenarios[o_scenario_title]}.feature"
-            scenario_title = f"{scenario_title} - {already_visited_scenarios[o_scenario_title]}"
-            output_file = os.path.join(output_dir, scenario_filename)
-        already_visited_scenarios[o_scenario_title] += 1
-
-        if dont_append_header and i > 0:
-            file_content = f"{prev_comment_lines}\n{all_scenarios[i]}{scenario_title}{f_scenario}"
+        # Create output file name
+        safe_scenario_name = (
+            re.sub(r"[^\w\s-]", "", scenario_name).strip().replace(" ", "_")
+        )
+        if visit_count > 1:
+            output_file = os.path.join(
+                output_dir, f"{safe_scenario_name}_{visit_count}.feature"
+            )
         else:
-            file_content = f"{feature_header}\n\n{prev_comment_lines}\n{all_scenarios[i]}{scenario_title}{f_scenario}"
+            output_file = os.path.join(output_dir, f"{safe_scenario_name}.feature")
 
-        async with aiofiles.open(output_file, "w") as f:
-            await f.write(file_content)
-        prev_comment_lines = comment_lines
-        prev_comment_lines = comment_lines
+        # Write the feature file
+        with open(output_file, "w") as f:
+            if i == 0 or not dont_append_header:
+                f.write(feature_header + "\n\n")
+            if prev_comment_lines:
+                f.write(prev_comment_lines + "\n")
+            f.write(scenario_content)
 
-        scenario_di = {
-            "feature": feature_name,
-            "scenario": scenario_title,
-            "output_file": output_file,
-        }
-        res_opt_list.append(scenario_di)
+        res_opt_list.append(
+            {
+                "feature": feature_name,
+                "scenario": scenario_name,
+                "file_path": output_file,
+            }
+        )
 
     return res_opt_list
 
 
-async def serialize_feature_file(file_path: str) -> str:
+def serialize_feature_file(file_path: str) -> str:
     """
     Converts a feature file to a single line string where new lines are replaced with "#newline#".
 
@@ -104,8 +108,8 @@ async def serialize_feature_file(file_path: str) -> str:
     Returns:
     str: The serialized content of the feature file.
     """
-    async with aiofiles.open(file_path, "r") as f:
-        feature_content = await f.read()
+    with open(file_path, "r") as f:
+        feature_content = f.read()
     while "  " in feature_content:
         feature_content = feature_content.replace("  ", " ")
     feature_content = feature_content.replace("\n\n", "\n")
@@ -113,23 +117,19 @@ async def serialize_feature_file(file_path: str) -> str:
     return feature_content
 
 
-async def process_feature_file(
-    dont_append_header: bool = False,
-) -> List[Dict[str, str]]:
+def process_feature_file(dont_append_header: bool = False) -> List[Dict[str, str]]:
     """
-    Processes a Gherkin feature file by splitting it into smaller parts.
+    Process the feature file specified in the global configuration.
+
+    Parameters:
+    dont_append_header (bool): If True, the Feature header is only added to the first extracted scenario file.
 
     Returns:
-        List[Dict[str, str]]: A list of dictionaries containing the split parts of the feature file.
+    list: A list of dictionaries containing feature, scenario, and file path information.
     """
-    tmp_gherkin_path = get_global_conf().get_tmp_gherkin_path()
     input_gherkin_file_path = get_global_conf().get_input_gherkin_file_path()
-
-    return await split_feature_file(
-        input_gherkin_file_path,
-        tmp_gherkin_path,
-        dont_append_header=dont_append_header,
-    )
+    output_dir = os.path.dirname(input_gherkin_file_path)
+    return split_feature_file(input_gherkin_file_path, output_dir, dont_append_header)
 
 
 def split_test(pass_background_to_all: bool = True) -> None:
@@ -154,7 +154,7 @@ def split_test(pass_background_to_all: bool = True) -> None:
     # list_of_feats = split_feature_file(feature_file_path, output_dir)
     list_of_feats = process_feature_file(pass_background_to_all=pass_background_to_all)
     for feat in list_of_feats:
-        file_path = feat["output_file"]
+        file_path = feat["file_path"]
         logger.info(serialize_feature_file(file_path))
 
 

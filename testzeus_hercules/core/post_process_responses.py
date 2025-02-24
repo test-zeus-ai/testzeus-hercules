@@ -1,4 +1,3 @@
-import asyncio
 from typing import Any
 
 import autogen  # type: ignore
@@ -31,7 +30,9 @@ def final_reply_callback_user_proxy(
     last_message = messages[-1]
     logger.debug(f"Post Process Message (User Proxy):{last_message}")
     if last_message.get("content") and "##TERMINATE##" in last_message["content"]:
-        last_agent_response = last_message["content"].replace("##TERMINATE##", "").strip()
+        last_agent_response = (
+            last_message["content"].replace("##TERMINATE##", "").strip()
+        )
         if last_agent_response:
             logger.debug("*****Final Reply*****")
             logger.debug(f"Final Response: {last_agent_response}")

@@ -16,27 +16,19 @@ exclude = [
 [tool.poetry.dependencies]
 python = "<3.13,>=3.10"
 httpx = "^0.27.0"
-nest-asyncio = "^1.6.0"
-
-
-openai = "^1.47.0"
- 
 pillow = "^10.3.0"
 playwright = "<=1.49.0"
 pydantic = "^2.6.2"
 python-dotenv = "^1.0.0"
 python-json-logger = "^2.0.7"
 pyyaml = "^6.0.1"
-
 sqlalchemy = "^2.0.36"
 junitparser = "^3.2.0"
 sentry-sdk = "^2.18.0"
 playwright-recaptcha = "^0.5.1"
 junit2html = "^31.0.2"
-aiohttp = "^3.11.7"
 inflection = "^0.5.1"
 autogen = {extras = ["retrievechat", "ollama", "anthropic", "groq", "gemini", "lmm", "mistral", "bedrock", "gemini"], version = "^0.7.5"}
-aiofiles = "^24.1.0"
 chromadb = "^0.6.3"
 sentence-transformers = "^3.4.1"
 unstructured = {extras = ["all-docs"], version = "^0.16.21"}

@@ -2,162 +2,115 @@
 iOS-specific gesture implementations for TestZeus-Hercules.
 """
 
-import asyncio
-from typing import Optional, cast
-from appium.webdriver.webdriver import WebDriver
-from selenium.webdriver.common.action_chains import ActionChains
+from typing import Annotated, Dict, Optional
+
+from testzeus_hercules.core.appium_manager import AppiumManager
+from testzeus_hercules.core.generic_tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
 
-async def perform_pinch(
-    driver: WebDriver,
-    scale: float = 0.5,
-    velocity: float = 1.0,
-    element_id: Optional[str] = None
-) -> None:
-    """
-    Perform a pinch gesture (zoom in/out).
-    
-    Args:
-        driver: WebDriver instance
-        scale: Scale factor. Values > 1 zoom in, values < 1 zoom out
-        velocity: Speed of the pinch gesture (default: 1.0)
-        element_id: Optional element to perform the gesture on
-    """
-    args = {
-        'scale': scale,
-        'velocity': velocity
-    }
-    if element_id:
-        args['element'] = element_id
-        
-    loop = asyncio.get_running_loop()
-    await loop.run_in_executor(
-        None,
-        lambda: driver.execute_script('mobile: pinch', args)
-    )
-    logger.info(f"Performed pinch with scale {scale} and velocity {velocity}")
 
-async def perform_force_touch(
-    driver: WebDriver,
-    x: Optional[int] = None,
-    y: Optional[int] = None,
-    element_id: Optional[str] = None,
-    pressure: float = 0.8,
-    duration: float = 0.5
-) -> None:
+@tool(
+    agent_names=["mobile_nav_agent"],
+    description="Perform a pinch gesture on the screen.",
+    name="perform_pinch",
+)
+def perform_pinch(
+    scale: Annotated[float, "Scale factor for the pinch gesture."],
+    velocity: Annotated[float, "Velocity of the pinch gesture."],
+) -> Annotated[Dict[str, str], "Result of the pinch gesture operation."]:
     """
-    Perform a force touch (3D Touch) gesture.
-    
-    Args:
-        driver: WebDriver instance
-        x: X coordinate for the force touch (if not using element_id)
-        y: Y coordinate for the force touch (if not using element_id)
-        element_id: Optional element to perform force touch on
-        pressure: Pressure level (0.0 to 1.0, default 0.8)
-        duration: Duration of the force touch in seconds (default 0.5)
+    Perform a pinch gesture on the screen.
     """
-    args = {
-        'pressure': pressure,
-        'duration': duration
-    }
-    
-    if element_id:
-        args['element'] = element_id
-    elif x is not None and y is not None:
-        args['x'] = x
-        args['y'] = y
-    else:
-        raise ValueError("Either element_id or both x and y coordinates must be provided")
-        
-    loop = asyncio.get_running_loop()
-    await loop.run_in_executor(
-        None,
-        lambda: driver.execute_script('mobile: forceTouch', args)
-    )
-    logger.info(f"Performed force touch with pressure {pressure} and duration {duration}")
+    try:
+        appium_manager = AppiumManager()
+        appium_manager.perform_pinch(scale, velocity)
+        return {"status": "success", "message": "Pinch gesture performed successfully"}
+    except Exception as e:
+        logger.error(f"Error performing pinch gesture: {str(e)}")
+        return {"error": str(e)}
 
-async def perform_double_tap(
-    driver: WebDriver,
-    x: Optional[int] = None,
-    y: Optional[int] = None,
-    element_id: Optional[str] = None,
-    duration: float = 0.1
-) -> None:
-    """
-    Perform a double tap gesture.
-    
-    Args:
-        driver: WebDriver instance
-        x: X coordinate for the double tap (if not using element_id)
-        y: Y coordinate for the double tap (if not using element_id)
-        element_id: Optional element to perform double tap on
-        duration: Duration between taps in seconds (default 0.1)
-    """
-    args = {'duration': duration}
-    if element_id:
-        args['element'] = element_id
-    elif x is not None and y is not None:
-        args['x'] = x
-        args['y'] = y
-    else:
-        raise ValueError("Either element_id or both x and y coordinates must be provided")
-        
-    loop = asyncio.get_running_loop()
-    await loop.run_in_executor(
-        None,
-        lambda: driver.execute_script('mobile: doubleTap', args)
-    )
-    logger.info("Performed double tap gesture")
 
-async def perform_haptic(
-    driver: WebDriver,
-    type: str = "selection"
-) -> None:
+@tool(
+    agent_names=["mobile_nav_agent"],
+    description="Perform a force touch gesture on the screen.",
+    name="perform_force_touch",
+)
+def perform_force_touch(
+    pressure: Annotated[float, "Pressure level for the force touch."],
+    duration: Annotated[float, "Duration of the force touch in seconds."],
+) -> Annotated[Dict[str, str], "Result of the force touch operation."]:
     """
-    Trigger haptic feedback.
-    
-    Args:
-        driver: WebDriver instance
-        type: Type of haptic feedback ('selection', 'light', 'medium', 'heavy')
+    Perform a force touch gesture on the screen.
     """
-    valid_types = ['selection', 'light', 'medium', 'heavy']
-    if type not in valid_types:
-        raise ValueError(f"Invalid haptic type. Must be one of: {valid_types}")
-        
-    loop = asyncio.get_running_loop()
-    await loop.run_in_executor(
-        None,
-        lambda: driver.execute_script('mobile: performIoHapticFeedback', {'type': type})
-    )
-    logger.info(f"Performed haptic feedback of type: {type}")
+    try:
+        appium_manager = AppiumManager()
+        appium_manager.perform_force_touch(pressure, duration)
+        return {"status": "success", "message": "Force touch performed successfully"}
+    except Exception as e:
+        logger.error(f"Error performing force touch: {str(e)}")
+        return {"error": str(e)}
 
-async def perform_alert_action(
-    driver: WebDriver,
-    action: str,
-    button_label: Optional[str] = None
-) -> None:
+
+@tool(
+    agent_names=["mobile_nav_agent"],
+    description="Perform a double tap gesture on the screen.",
+    name="perform_double_tap",
+)
+def perform_double_tap(
+    x: Annotated[float, "X coordinate for the double tap."],
+    y: Annotated[float, "Y coordinate for the double tap."],
+) -> Annotated[Dict[str, str], "Result of the double tap operation."]:
     """
-    Handle iOS system alerts.
-    
-    Args:
-        driver: WebDriver instance
-        action: Action to perform ('accept', 'dismiss', 'getButtons', 'click')
-        button_label: Button label text (required when action is 'click')
+    Perform a double tap gesture on the screen.
     """
-    valid_actions = ['accept', 'dismiss', 'getButtons', 'click']
-    if action not in valid_actions:
-        raise ValueError(f"Invalid alert action. Must be one of: {valid_actions}")
-        
-    args = {'action': action}
-    if action == 'click':
-        if not button_label:
-            raise ValueError("button_label is required when action is 'click'")
-        args['button'] = button_label
-        
-    loop = asyncio.get_running_loop()
-    result = await loop.run_in_executor(
-        None,
-        lambda: driver.execute_script('mobile: alert', args)
-    )
-    logger.info(f"Performed alert action: {action}")
-    return result
+    try:
+        appium_manager = AppiumManager()
+        appium_manager.perform_double_tap(x, y)
+        return {"status": "success", "message": "Double tap performed successfully"}
+    except Exception as e:
+        logger.error(f"Error performing double tap: {str(e)}")
+        return {"error": str(e)}
+
+
+@tool(
+    agent_names=["mobile_nav_agent"],
+    description="Perform a haptic feedback gesture.",
+    name="perform_haptic",
+)
+def perform_haptic(
+    type: Annotated[str, "Type of haptic feedback to perform."],
+) -> Annotated[Dict[str, str], "Result of the haptic feedback operation."]:
+    """
+    Perform a haptic feedback gesture.
+    """
+    try:
+        appium_manager = AppiumManager()
+        appium_manager.perform_haptic(type)
+        return {
+            "status": "success",
+            "message": "Haptic feedback performed successfully",
+        }
+    except Exception as e:
+        logger.error(f"Error performing haptic feedback: {str(e)}")
+        return {"error": str(e)}
+
+
+@tool(
+    agent_names=["mobile_nav_agent"],
+    description="Perform an alert action.",
+    name="perform_alert_action",
+)
+def perform_alert_action(
+    action: Annotated[str, "Action to perform on the alert (accept/dismiss)."],
+    button_label: Annotated[str, "Label of the button to click."],
+) -> Annotated[Dict[str, str], "Result of the alert action operation."]:
+    """
+    Perform an action on an alert dialog.
+    """
+    try:
+        appium_manager = AppiumManager()
+        appium_manager.perform_alert_action(action, button_label)
+        return {"status": "success", "message": "Alert action performed successfully"}
+    except Exception as e:
+        logger.error(f"Error performing alert action: {str(e)}")
+        return {"error": str(e)}

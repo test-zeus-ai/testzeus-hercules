@@ -29,6 +29,7 @@ IOS_INPUT_CLASSES = {
     "XCUIElementTypeSlider",
 }
 
+
 def substitute_keys(data: Dict[str, Any], platform: str) -> Dict[str, Any]:
     """
     Recursively substitute keys in the data dictionary according to reference dictionary.
@@ -36,10 +37,10 @@ def substitute_keys(data: Dict[str, Any], platform: str) -> Dict[str, Any]:
     """
     if not isinstance(data, dict):
         return data
-        
+
     ref_dict = REFERENCE_DICT.get(platform.lower(), {})
     result = {}
-    
+
     for key, value in data.items():
         if isinstance(value, dict):
             if key == "bounds_data":
@@ -60,18 +61,22 @@ def substitute_keys(data: Dict[str, Any], platform: str) -> Dict[str, Any]:
         elif isinstance(value, list):
             # Handle list items
             new_key = ref_dict.get(key, key)
-            result[new_key] = [substitute_keys(item, platform) if isinstance(item, dict) else item for item in value]
+            result[new_key] = [
+                substitute_keys(item, platform) if isinstance(item, dict) else item
+                for item in value
+            ]
         else:
             # Simple key-value pair
             new_key = ref_dict.get(key, key)
             result[new_key] = value
-            
+
     return result
+
 
 def generate_legend(platform: str) -> str:
     ref_dict = REFERENCE_DICT.get(platform.lower(), {})
     legend_items = []
-    
+
     for key, value in ref_dict.items():
         if isinstance(value, dict):
             for sub_key, sub_value in value.items():
@@ -79,21 +84,26 @@ def generate_legend(platform: str) -> str:
                     legend_items.append(f"{sub_value}: {sub_key}")
         elif key != value:  # Only include if different
             legend_items.append(f"{value}: {key}")
-    
+
     return "Key legend:\n" + "\n".join(legend_items) + "\nDict >>\n"
+
 
 def filter_fields(node: Dict[str, Any], platform: str) -> Dict[str, Any]:
     result = {}
-    
+
     # Get appropriate class set based on platform
-    input_classes = ANDROID_INPUT_CLASSES if platform == "android" else IOS_INPUT_CLASSES
-    
+    input_classes = (
+        ANDROID_INPUT_CLASSES if platform == "android" else IOS_INPUT_CLASSES
+    )
+
     # Check if current node's class is in input classes
-    node_class = node.get("class", "") if platform == "android" else node.get("type", "")
-    
+    node_class = (
+        node.get("class", "") if platform == "android" else node.get("type", "")
+    )
+
     if True or any(cls in str(node_class) for cls in input_classes):
         result = node.copy()
-    
+
     # Process children if they exist
     if "children" in node:
         input_children = []
@@ -105,47 +115,25 @@ def filter_fields(node: Dict[str, Any], platform: str) -> Dict[str, Any]:
             result["children"] = input_children
         elif not result:  # If no input fields found in this branch
             return {}
-    
+
     return result
 
+
 @tool(
-    agent_names=["navigation_nav_agent"],
-    description="""Retrieve all elements from the current mobile screen""",
-    name="read_screen"
+    agent_names=["mobile_nav_agent"],
+    description="Get information about all elements on the current mobile screen.",
+    name="read_screen",
 )
-async def read_screen() -> Annotated[str, "Dict of elements on current screen"]:
-    add_event(EventType.INTERACTION, EventData(detail="read_screen"))
-    logger.info("Getting all elements from mobile screen")
-
-    appium_manager = AppiumManager.get_instance()
-    if not appium_manager.driver:
-        return "No active Appium session found"
-
+def read_screen() -> (
+    Annotated[Dict[str, str], "Information about elements on current screen"]
+):
+    """
+    Get information about all elements on the current mobile screen.
+    """
     try:
-        tree = await appium_manager.get_accessibility_tree()
-        platform = appium_manager.platformName.lower()
-        
-        # Filter input fields first
-        filtered_tree = filter_fields(tree, platform)
-        
-        # Only proceed if we have results
-        if not filtered_tree:
-            return "No elements found"
-        
-        # Substitute keys using reference dictionary
-        tree_with_substituted_keys = substitute_keys(filtered_tree, platform)
-        
-        # Generate legend
-        legend = generate_legend(platform)
-        
-        # Convert to compressed JSON
-        json_data = json.dumps(tree_with_substituted_keys, separators=(',', ':'))
-        
-        # Combine legend and data
-        result = legend + json_data
-        
-        return result
-
+        appium_manager = AppiumManager()
+        tree = appium_manager.get_accessibility_tree()
+        return {"status": "success", "tree": tree}
     except Exception as e:
-        logger.error(f"Error getting elements: {e}")
-        return f"Error retrieving elements of the screen: {str(e)}"
+        logger.error(f"Error reading screen: {str(e)}")
+        return {"error": str(e)}

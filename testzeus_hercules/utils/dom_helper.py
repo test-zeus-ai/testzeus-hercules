@@ -1,63 +1,65 @@
-import asyncio
+import time
+from typing import Optional, Union, cast
 
-from playwright.async_api import ElementHandle, Page
+from playwright.sync_api import ElementHandle, Page
 from testzeus_hercules.utils.logger import logger
 
 
-async def wait_for_non_loading_dom_state(page: Page, max_wait_seconds: int) -> None:
-    end_time = asyncio.get_event_loop().time() + max_wait_seconds
-    while asyncio.get_event_loop().time() < end_time:
-        all_frames_ready = True
-        for frame in page.frames:
-            dom_state = await frame.evaluate("document.readyState")
-            if dom_state == "loading":
-                all_frames_ready = False
-                break  # Exit the loop if any frame is still loading
-        if all_frames_ready:
-            logger.debug("All frames have DOM state not 'loading'")
-            break  # Exit the outer loop if all frames are ready
-        await asyncio.sleep(0.1)
-
-
-async def get_element_outer_html(element: ElementHandle, page: Page, element_tag_name: str | None = None) -> str:
+def wait_for_non_loading_dom_state(page: Page, timeout: int = 5) -> None:
     """
-    Constructs the opening tag of an HTML element along with its attributes.
-
-    Args:
-        element (ElementHandle): The element to retrieve the opening tag for.
-        page (Page): The page object associated with the element.
-        element_tag_name (str, optional): The tag name of the element. Defaults to None. If not passed, it will be retrieved from the element.
-
-    Returns:
-        str: The opening tag of the HTML element, including a select set of attributes.
+    Wait for the DOM to reach a non-loading state.
+    This includes waiting for network idle and no visible loading indicators.
     """
-    tag_name: str = element_tag_name if element_tag_name else await page.evaluate("element => element.tagName.toLowerCase()", element)
+    try:
+        # Wait for network idle
+        page.wait_for_load_state("networkidle", timeout=timeout * 1000)
 
-    attributes_of_interest: list[str] = [
-        "id",
-        "name",
-        "aria-label",
-        "placeholder",
-        "href",
-        "src",
-        "aria-autocomplete",
-        "role",
-        "type",
-        "data-testid",
-        "value",
-        "selected",
-        "aria-labelledby",
-        "aria-describedby",
-        "aria-haspopup",
-        "title",
-        "aria-controls",
-    ]
-    opening_tag: str = f"<{tag_name}"
+        # Wait for any loading spinners to disappear
+        loading_selectors = [
+            "[class*='loading']",
+            "[class*='spinner']",
+            "[id*='loading']",
+            "[id*='spinner']",
+            "[aria-busy='true']",
+        ]
 
-    for attr in attributes_of_interest:
-        value: str = await element.get_attribute(attr)  # type: ignore
-        if value:
-            opening_tag += f' {attr}="{value}"'
-    opening_tag += ">"
+        for selector in loading_selectors:
+            try:
+                page.wait_for_selector(selector, state="hidden", timeout=timeout * 1000)
+            except:
+                # Ignore if selector not found
+                pass
 
-    return opening_tag
+    except Exception as e:
+        logger.warning(f"Error waiting for non-loading DOM state: {e}")
+
+
+def get_element_outer_html(element: ElementHandle, page: Page) -> str:
+    """
+    Get the outer HTML of an element.
+    """
+    try:
+        # First try to get the outerHTML directly
+        outer_html = element.evaluate("element => element.outerHTML")
+        if outer_html:
+            return outer_html
+
+        # If that fails, try to get the tag name and build a simple representation
+        tag_name = element.evaluate("element => element.tagName.toLowerCase()")
+        return f"<{tag_name}></{tag_name}>"
+
+    except Exception as e:
+        logger.error(f"Error getting element outer HTML: {e}")
+        return "Element HTML not available"
+
+
+def get_element_attribute(element: ElementHandle, attr: str) -> Optional[str]:
+    """
+    Get an attribute value from an element.
+    """
+    try:
+        value: str = element.get_attribute(attr)  # type: ignore
+        return value
+    except Exception as e:
+        logger.error(f"Error getting element attribute {attr}: {e}")
+        return None

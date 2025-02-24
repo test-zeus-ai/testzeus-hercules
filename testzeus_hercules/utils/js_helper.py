@@ -1,17 +1,25 @@
 import json
 import re
+from typing import Any, Dict, Optional
 
-from playwright.async_api import Route
+from playwright.sync_api import Route
 from testzeus_hercules.utils.logger import logger
 
 
-async def block_ads(route: Route) -> None:
-    # List of ad-related keywords or domains
-    ad_keywords = ["ads", "doubleclick.net", "googlesyndication", "adservice"]
-    if any(keyword in route.request.url for keyword in ad_keywords):
-        await route.abort()  # Block the ad request
-    else:
-        await route.continue_()  # Continue with other requests
+def block_ads(route: Route) -> None:
+    """
+    Block ad-related requests.
+    """
+    try:
+        # List of common ad-related domains
+        ad_domains = ["google-analytics.com", "doubleclick.net", "adnxs.com"]
+        if any(domain in route.request.url for domain in ad_domains):
+            route.abort()  # Block the ad request
+        else:
+            route.continue_()  # Continue with other requests
+    except Exception as e:
+        logger.error(f"Error in block_ads: {e}")
+        route.continue_()  # Continue in case of error
 
 
 def escape_js_message(message: str) -> str:
@@ -87,18 +95,47 @@ const findElementInShadowDOMAndIframes = (parent, selector) => {
 TEMPLATES = {"FIND_ELEMENT_IN_SHADOW_DOM": FIND_ELEMENT_IN_SHADOW_DOM}
 
 
-def get_js_with_element_finder(action_js_code: str) -> str:
+def get_js_with_element_finder(js_code: str) -> str:
     """
-    Combines the element finder code with specific action code.
-
-    Args:
-        action_js_code: JavaScript code that uses findElementInShadowDOMAndIframes
-
-    Returns:
-        Combined JavaScript code
+    Inject element finder function into JavaScript code.
     """
-    pattern = "/*INJECT_FIND_ELEMENT_IN_SHADOW_DOM*/"
-    if pattern in action_js_code:
-        return action_js_code.replace(pattern, TEMPLATES["FIND_ELEMENT_IN_SHADOW_DOM"])
-    else:
-        return action_js_code
+    element_finder_js = """
+    function findElementInShadowDOMAndIframes(root, selector) {
+        // Try to find in the current document first
+        let element = root.querySelector(selector);
+        if (element) {
+            return element;
+        }
+
+        // Search in shadow roots
+        const allElements = root.querySelectorAll('*');
+        for (const elem of allElements) {
+            if (elem.shadowRoot) {
+                element = findElementInShadowDOMAndIframes(elem.shadowRoot, selector);
+                if (element) {
+                    return element;
+                }
+            }
+        }
+
+        // Search in iframes
+        const iframes = root.querySelectorAll('iframe');
+        for (const iframe of iframes) {
+            try {
+                const iframeDoc = iframe.contentDocument;
+                if (iframeDoc) {
+                    element = findElementInShadowDOMAndIframes(iframeDoc, selector);
+                    if (element) {
+                        return element;
+                    }
+                }
+            } catch (err) {
+                console.log('Error accessing iframe:', err);
+            }
+        }
+
+        return null;
+    }
+    """
+
+    return js_code.replace("/*INJECT_FIND_ELEMENT_IN_SHADOW_DOM*/", element_finder_js)
