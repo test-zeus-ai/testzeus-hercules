@@ -7,7 +7,7 @@ import zipfile
 from pathlib import Path
 from typing import Annotated, Any, List, Optional, Tuple
 
-import aiohttp
+import httpx
 from inflection import parameterize
 from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.tools.tool_registry import sec_logger as file_logger
@@ -19,8 +19,12 @@ CACHE_DIR = Path(get_global_conf().get_hf_home()) / "nuclei_tool"
 NUCLEI_BINARY = CACHE_DIR / "nuclei"
 
 
-NUCLEI_RELEASE_API_URL = "https://api.github.com/repos/projectdiscovery/nuclei/releases/latest"
-NUCLEI_DOWNLOAD_URL_TEMPLATE = "https://github.com/projectdiscovery/nuclei/releases/download/{version}/{filename}"
+NUCLEI_RELEASE_API_URL = (
+    "https://api.github.com/repos/projectdiscovery/nuclei/releases/latest"
+)
+NUCLEI_DOWNLOAD_URL_TEMPLATE = (
+    "https://github.com/projectdiscovery/nuclei/releases/download/{version}/{filename}"
+)
 
 security_terms_explanation = {
     "cve": "Common Vulnerabilities and Exposures, a standardized list of publicly disclosed security vulnerabilities.",
@@ -48,14 +52,11 @@ async def download_file(url: str, dest: Path) -> None:
     """Download a file from a URL to a destination path."""
     logger.info(f"Downloading {url} to {dest}")
     file_logger(f"Downloading {url} to {dest}")
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as resp:
-            resp.raise_for_status()
+    async with httpx.AsyncClient() as client:
+        async with client.stream("GET", url) as response:
+            response.raise_for_status()
             with open(dest, "wb") as f:
-                while True:
-                    chunk = await resp.content.read(1024)
-                    if not chunk:
-                        break
+                async for chunk in response.aiter_bytes():
                     f.write(chunk)
 
 
@@ -63,14 +64,14 @@ async def get_latest_nuclei_version(
     base_url: str = NUCLEI_RELEASE_API_URL,
 ) -> str:
     """Get the latest Nuclei release version from GitHub API."""
-    async with aiohttp.ClientSession() as session:
-        async with session.get(base_url) as resp:
-            resp.raise_for_status()
-            data = await resp.json()
-            version = data["tag_name"]
-            logger.info(f"Latest Nuclei version: {version}")
-            file_logger(f"Latest Nuclei version: {version}")
-            return version
+    async with httpx.AsyncClient() as client:
+        response = await client.get(base_url)
+        response.raise_for_status()
+        data = response.json()
+        version = data["tag_name"]
+        logger.info(f"Latest Nuclei version: {version}")
+        file_logger(f"Latest Nuclei version: {version}")
+        return version
 
 
 async def ensure_nuclei_installed() -> None:
@@ -103,7 +104,9 @@ async def ensure_nuclei_installed() -> None:
             nuclei_filename = f"nuclei_{version_number}_linux_amd64.zip"
         binary_name = "nuclei"
 
-    nuclei_url = NUCLEI_DOWNLOAD_URL_TEMPLATE.format(version=version, filename=nuclei_filename)
+    nuclei_url = NUCLEI_DOWNLOAD_URL_TEMPLATE.format(
+        version=version, filename=nuclei_filename
+    )
 
     archive_path = CACHE_DIR / nuclei_filename
     await download_file(nuclei_url, archive_path)
@@ -150,7 +153,9 @@ async def run_nuclei_command(
         if open_api_spec_path:
             command.extend(["-l", open_api_spec_path])
         else:
-            error_message = "open_api_spec_path is required when is_open_api_spec is True"
+            error_message = (
+                "open_api_spec_path is required when is_open_api_spec is True"
+            )
             logger.error(error_message)
             file_logger(error_message)
             raise Exception(error_message)
@@ -204,7 +209,9 @@ def create_headers(
                 key, value = header.split("=", 1)
                 headers_list.append((key.strip(), value.strip()))
             else:
-                error_message = f"Invalid header_token format: {header}. Expected 'Key=Value'."
+                error_message = (
+                    f"Invalid header_token format: {header}. Expected 'Key=Value'."
+                )
                 logger.error(error_message)
                 file_logger(error_message)
                 end_time = time.perf_counter()
@@ -238,7 +245,9 @@ for tag, explanation in security_terms_explanation.items():
                 str,
                 "Path to the OpenAPI spec file (required if is_open_api_spec is True).",
             ] = "",
-            bearer_token: Annotated[str, "Optional Bearer token for authentication."] = "",
+            bearer_token: Annotated[
+                str, "Optional Bearer token for authentication."
+            ] = "",
             header_tokens: Annotated[
                 List[str],
                 "Optional list of header tokens in 'Key=Value' format.",
@@ -260,7 +269,9 @@ for tag, explanation in security_terms_explanation.items():
                 output_path = Path(OUTPUT_PATH)
                 output_path.mkdir(parents=True, exist_ok=True)
 
-                headers, error = create_headers(bearer_token, header_tokens, jwt_token, start_time)
+                headers, error = create_headers(
+                    bearer_token, header_tokens, jwt_token, start_time
+                )
                 if error:
                     return {"error": error[0]}, error[1]
 

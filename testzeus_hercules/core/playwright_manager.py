@@ -61,7 +61,9 @@ class PlaywrightManager:
     _default_instance: Optional["PlaywrightManager"] = None
     _homepage = "about:blank"
 
-    def __new__(cls, *args, stake_id: Optional[str] = None, **kwargs) -> "PlaywrightManager":
+    def __new__(
+        cls, *args, stake_id: Optional[str] = None, **kwargs
+    ) -> "PlaywrightManager":
         # If no stake_id provided and we have a default instance, return it
         if stake_id is None:
             if cls._default_instance is None:
@@ -70,7 +72,9 @@ class PlaywrightManager:
                 instance.__initialized = False
                 cls._default_instance = instance
                 cls._instances["0"] = instance
-                logger.debug("Created default PlaywrightManager instance with stake_id '0'")
+                logger.debug(
+                    "Created default PlaywrightManager instance with stake_id '0'"
+                )
             return cls._default_instance
 
         # If stake_id provided, get or create instance for that stake_id
@@ -78,7 +82,9 @@ class PlaywrightManager:
             instance = super().__new__(cls)
             instance.__initialized = False
             cls._instances[stake_id] = instance
-            logger.debug(f"Created new PlaywrightManager instance for stake_id '{stake_id}'")
+            logger.debug(
+                f"Created new PlaywrightManager instance for stake_id '{stake_id}'"
+            )
             # If this is the first instance ever, make it the default
             if cls._default_instance is None:
                 cls._default_instance = instance
@@ -138,7 +144,9 @@ class PlaywrightManager:
         viewport: Optional[Tuple[int, int]] = None,
         locale: Optional[str] = None,
         timezone: Optional[str] = None,  # e.g. "America/New_York"
-        geolocation: Optional[Dict[str, float]] = None,  # {"latitude": 51.5, "longitude": -0.13}
+        geolocation: Optional[
+            Dict[str, float]
+        ] = None,  # {"latitude": 51.5, "longitude": -0.13}
         color_scheme: Optional[str] = None,  # "light", "dark", "no-preference"
         allow_all_permissions: bool = True,
         log_console: Optional[bool] = None,
@@ -163,7 +171,11 @@ class PlaywrightManager:
         self.stake_id = stake_id or "0"
 
         # Video recording settings
-        self._record_video = record_video if record_video is not None else get_global_conf().should_record_video()
+        self._record_video = (
+            record_video
+            if record_video is not None
+            else get_global_conf().should_record_video()
+        )
         self._latest_video_path = None
         self._video_dir = None
 
@@ -172,8 +184,14 @@ class PlaywrightManager:
         # ----------------------
         # 1) BROWSER / HEADLESS
         # ----------------------
-        self.browser_type = browser_type or get_global_conf().get_browser_type() or "chromium"
-        self.isheadless = headless if headless is not None else get_global_conf().should_run_headless()
+        self.browser_type = (
+            browser_type or get_global_conf().get_browser_type() or "chromium"
+        )
+        self.isheadless = (
+            headless
+            if headless is not None
+            else get_global_conf().should_run_headless()
+        )
         self.cdp_config = cdp_config or get_global_conf().get_cdp_config()
 
         # ----------------------
@@ -181,7 +199,11 @@ class PlaywrightManager:
         # ----------------------
         self.notification_manager = NotificationManager()
         self.user_response_future: Optional[asyncio.Future[str]] = None
-        self._take_screenshots = take_screenshots if take_screenshots is not None else get_global_conf().should_take_screenshots()
+        self._take_screenshots = (
+            take_screenshots
+            if take_screenshots is not None
+            else get_global_conf().should_take_screenshots()
+        )
         self.stake_id = stake_id
 
         # ----------------------
@@ -202,7 +224,11 @@ class PlaywrightManager:
         # ----------------------
         # 4) LOGS
         # ----------------------
-        self.log_requests_responses = log_requests_responses if log_requests_responses is not None else get_global_conf().should_capture_network()
+        self.log_requests_responses = (
+            log_requests_responses
+            if log_requests_responses is not None
+            else get_global_conf().should_capture_network()
+        )
         self.request_response_logs: List[Dict] = []
 
         # ----------------------
@@ -215,7 +241,9 @@ class PlaywrightManager:
         self._latest_video_path: Optional[str] = None
 
         # Extension caching directory
-        self._extension_cache_dir = os.path.join(".", ".cache", "browser", self.browser_type, "extension")
+        self._extension_cache_dir = os.path.join(
+            ".", ".cache", "browser", self.browser_type, "extension"
+        )
         self._extension_path: Optional[str] = None
 
         # ----------------------
@@ -232,12 +260,18 @@ class PlaywrightManager:
 
         self.user_locale = locale or get_global_conf().get_locale()  # or None
         self.user_timezone = timezone or get_global_conf().get_timezone()  # or None
-        self.user_geolocation = geolocation or get_global_conf().get_geolocation()  # or None
-        self.user_color_scheme = color_scheme or get_global_conf().get_color_scheme() or "light"
+        self.user_geolocation = (
+            geolocation or get_global_conf().get_geolocation()
+        )  # or None
+        self.user_color_scheme = (
+            color_scheme or get_global_conf().get_color_scheme() or "light"
+        )
 
         # If iPhone, override browser
         if self.device_name and "iphone" in self.device_name.lower():
-            logger.info(f"Detected iPhone in device_name='{self.device_name}'; forcing browser_type=webkit.")
+            logger.info(
+                f"Detected iPhone in device_name='{self.device_name}'; forcing browser_type=webkit."
+            )
             self.browser_type = "webkit"
 
         # logging console messages
@@ -295,11 +329,17 @@ class PlaywrightManager:
             return
 
         if self.browser_type == "chromium":
-            extension_url = "https://github.com/gorhill/uBlock/releases/download/1.61.0/" "uBlock0_1.61.0.chromium.zip"
+            extension_url = (
+                "https://github.com/gorhill/uBlock/releases/download/1.61.0/"
+                "uBlock0_1.61.0.chromium.zip"
+            )
             extension_file_name = "uBlock0_1.61.0.chromium.zip"
             extension_dir_name = "uBlock0_1.61.0.chromium"
         elif self.browser_type == "firefox":
-            extension_url = "https://addons.mozilla.org/firefox/downloads/file/4359936/" "ublock_origin-1.60.0.xpi"
+            extension_url = (
+                "https://addons.mozilla.org/firefox/downloads/file/4359936/"
+                "ublock_origin-1.60.0.xpi"
+            )
             extension_file_name = "uBlock0_1.60.0.firefox.xpi"
             extension_dir_name = "uBlock0_1.60.0.firefox"
         else:
@@ -322,9 +362,14 @@ class PlaywrightManager:
                         await asyncio.to_thread(lambda: open(path, "wb").write(content))
 
                     await write_file_async(extension_file_path, response.content)
-                    logger.info(f"Extension downloaded and saved to {extension_file_path}")
+                    logger.info(
+                        f"Extension downloaded and saved to {extension_file_path}"
+                    )
                 else:
-                    logger.error(f"Failed to download extension from {extension_url}, " f"status {response.status_code}")
+                    logger.error(
+                        f"Failed to download extension from {extension_url}, "
+                        f"status {response.status_code}"
+                    )
                     return
 
         if self.browser_type == "chromium":
@@ -335,7 +380,9 @@ class PlaywrightManager:
                     with zipfile.ZipFile(zip_path, "r") as zip_ref:
                         zip_ref.extractall(extract_dir)
 
-                await asyncio.to_thread(unzip_archive, extension_file_path, extension_unzip_dir)
+                await asyncio.to_thread(
+                    unzip_archive, extension_file_path, extension_unzip_dir
+                )
             self._extension_path = extension_unzip_dir + "/uBlock0.chromium"
         elif self.browser_type == "firefox":
             self._extension_path = extension_file_path
@@ -399,7 +446,9 @@ class PlaywrightManager:
                 _browser = await browser_type.connect(endpoint_url, timeout=120000)
                 recording_supported = False
             else:
-                _browser = await browser_type.connect_over_cdp(endpoint_url, timeout=120000)
+                _browser = await browser_type.connect_over_cdp(
+                    endpoint_url, timeout=120000
+                )
 
             context_options = {}
             if recording_supported:
@@ -422,9 +471,13 @@ class PlaywrightManager:
             await self.prepare_extension()
 
             if self._record_video:
-                await self._launch_browser_with_video(browser_type, user_dir, disable_args)
+                await self._launch_browser_with_video(
+                    browser_type, user_dir, disable_args
+                )
             else:
-                await self._launch_persistent_browser(browser_type, user_dir, disable_args)
+                await self._launch_persistent_browser(
+                    browser_type, user_dir, disable_args
+                )
 
         # Start tracing only once after browser context is created
         await self._start_tracing()
@@ -442,7 +495,9 @@ class PlaywrightManager:
             if device:
                 context_options.update(device)
             else:
-                logger.warning(f"Device '{self.device_name}' not found. Using custom viewport.")
+                logger.warning(
+                    f"Device '{self.device_name}' not found. Using custom viewport."
+                )
                 context_options["viewport"] = {
                     "width": self.user_viewport[0],
                     "height": self.user_viewport[1],
@@ -491,7 +546,9 @@ class PlaywrightManager:
             browser_context_kwargs.update(self._build_emulation_context_options())
 
             if self.browser_type == "chromium" and self._extension_path is not None:
-                disable_args.append(f"--disable-extensions-except={self._extension_path}")
+                disable_args.append(
+                    f"--disable-extensions-except={self._extension_path}"
+                )
                 disable_args.append(f"--load-extension={self._extension_path}")
             elif self.browser_type == "firefox" and self._extension_path is not None:
                 browser_context_kwargs["firefox_user_prefs"] = {
@@ -506,7 +563,9 @@ class PlaywrightManager:
                     "extensions.webextensions.userScripts.enabled": True,
                 }
 
-            self._browser_context = await browser_type.launch_persistent_context(user_dir, **browser_context_kwargs)
+            self._browser_context = await browser_type.launch_persistent_context(
+                user_dir, **browser_context_kwargs
+            )
         except (PlaywrightError, OSError) as e:
             await self._handle_launch_exception(e, user_dir, browser_type, disable_args)
 
@@ -526,7 +585,9 @@ class PlaywrightManager:
 
         try:
             if self.browser_type == "chromium" and self._extension_path is not None:
-                disable_args.append(f"--disable-extensions-except={self._extension_path}")
+                disable_args.append(
+                    f"--disable-extensions-except={self._extension_path}"
+                )
                 disable_args.append(f"--load-extension={self._extension_path}")
 
             browser = await browser_type.launch(
@@ -551,14 +612,19 @@ class PlaywrightManager:
     ) -> None:
         if "Target page, context or browser has been closed" in str(e):
             new_user_dir = tempfile.mkdtemp()
-            logger.error(f"Failed to launch persistent context with user dir {user_dir}: {e}. " f"Trying with a new user dir {new_user_dir}")
+            logger.error(
+                f"Failed to launch persistent context with user dir {user_dir}: {e}. "
+                f"Trying with a new user dir {new_user_dir}"
+            )
             self._browser_context = await browser_type.launch_persistent_context(
                 new_user_dir,
                 headless=self.isheadless,
                 args=args or [],
             )
         elif "Chromium distribution 'chrome' is not found" in str(e):
-            raise ValueError("Chrome is not installed on this device. Install Google Chrome or use 'playwright install'.") from None
+            raise ValueError(
+                "Chrome is not installed on this device. Install Google Chrome or use 'playwright install'."
+            ) from None
         else:
             raise e from None
 
@@ -593,7 +659,9 @@ class PlaywrightManager:
             "post_data": decoded_post_data,
         }
         # Instead of writing directly, do it via asyncio
-        asyncio.ensure_future(self._write_log_entry_to_file(log_entry, self.request_response_log_file))
+        asyncio.ensure_future(
+            self._write_log_entry_to_file(log_entry, self.request_response_log_file)
+        )
 
     def log_response(self, response: Any) -> None:
         log_entry = {
@@ -604,7 +672,9 @@ class PlaywrightManager:
             "headers": response.headers,
             "body": None,
         }
-        asyncio.ensure_future(self._write_log_entry_to_file(log_entry, self.request_response_log_file))
+        asyncio.ensure_future(
+            self._write_log_entry_to_file(log_entry, self.request_response_log_file)
+        )
 
     async def _write_log_entry_to_file(self, log_entry: Dict, log_file: str) -> None:
         """Write a single log entry asynchronously."""
@@ -681,14 +751,20 @@ class PlaywrightManager:
         async def set_iframe_navigation_handlers() -> None:
             for frame in page.frames:
                 if frame != page.main_frame:
-                    frame.on("domcontentloaded", handle_navigation_for_mutation_observer)
+                    frame.on(
+                        "domcontentloaded", handle_navigation_for_mutation_observer
+                    )
 
         await set_iframe_navigation_handlers()
 
-        await page.expose_function("dom_mutation_change_detected", dom_mutation_change_detected)
+        await page.expose_function(
+            "dom_mutation_change_detected", dom_mutation_change_detected
+        )
         page.on(
             "frameattached",
-            lambda frame: frame.on("domcontentloaded", handle_navigation_for_mutation_observer),
+            lambda frame: frame.on(
+                "domcontentloaded", handle_navigation_for_mutation_observer
+            ),
         )
 
     async def highlight_element(self, selector: str) -> None:
@@ -742,7 +818,9 @@ class PlaywrightManager:
         screenshot_path = os.path.join(self.get_screenshots_dir(), screenshot_name)
 
         try:
-            await page.wait_for_load_state(state=load_state, timeout=take_snapshot_timeout)
+            await page.wait_for_load_state(
+                state=load_state, timeout=take_snapshot_timeout
+            )
             screenshot_bytes = await page.screenshot(
                 path=screenshot_path,
                 full_page=full_page,
@@ -750,16 +828,22 @@ class PlaywrightManager:
                 caret="initial",
                 scale="device",
             )
+
             self._latest_screenshot_bytes = screenshot_bytes
             logger.debug(f"Screenshot saved: {screenshot_path}")
         except Exception as e:
             logger.error(f"Failed to take screenshot at {screenshot_path}: {e}")
 
     async def get_latest_screenshot_stream(self) -> Optional[BytesIO]:
+        if not self._latest_screenshot_bytes:
+            # Take a new screenshot if none exists
+            page = await self.get_current_page()
+            await self.take_screenshots("latest_screenshot", page)
+
         if self._latest_screenshot_bytes:
             return BytesIO(self._latest_screenshot_bytes)
         else:
-            logger.warning("No screenshot available.")
+            logger.warning("Failed to take screenshot.")
             return None
 
     def get_latest_video_path(self) -> Optional[str]:
@@ -782,14 +866,24 @@ class PlaywrightManager:
                             else:
                                 video_name = os.path.basename(video_path)
                             video_dir = os.path.dirname(video_path)
-                            safe_url = page.url.replace("://", "_").replace("/", "_").replace(".", "_") if not page.url else "video_of"
-                            new_video_path = os.path.join(video_dir, f"{safe_url}_{video_name}")
+                            safe_url = (
+                                page.url.replace("://", "_")
+                                .replace("/", "_")
+                                .replace(".", "_")
+                                if not page.url
+                                else "video_of"
+                            )
+                            new_video_path = os.path.join(
+                                video_dir, f"{safe_url}_{video_name}"
+                            )
 
                             # rename asynchronously
                             def rename_file(src, dst):
                                 os.rename(src, dst)
 
-                            await asyncio.to_thread(rename_file, video_path, new_video_path)
+                            await asyncio.to_thread(
+                                rename_file, video_path, new_video_path
+                            )
                             self._latest_video_path = new_video_path
                             logger.info(f"Video recorded at {new_video_path}")
                     except Exception as e:
@@ -818,7 +912,9 @@ class PlaywrightManager:
     async def update_processing_state(self, processing_state: str) -> None:
         pass
 
-    async def command_completed(self, command: str, elapsed_time: Optional[float] = None) -> None:
+    async def command_completed(
+        self, command: str, elapsed_time: Optional[float] = None
+    ) -> None:
         logger.debug(f'Command "{command}" completed.')
 
     # -------------------------------------------------------------------------
@@ -893,7 +989,9 @@ class PlaywrightManager:
             if url.startswith(("data:", "blob:")):
                 return
             headers = request.headers
-            if headers.get("purpose") == "prefetch" or headers.get("sec-fetch-dest") in ["video", "audio"]:
+            if headers.get("purpose") == "prefetch" or headers.get(
+                "sec-fetch-dest"
+            ) in ["video", "audio"]:
                 return
             nonlocal last_activity
             pending_requests.add(request)
@@ -938,10 +1036,14 @@ class PlaywrightManager:
             while True:
                 await asyncio.sleep(0.1)
                 now = asyncio.get_event_loop().time()
-                if (len(pending_requests) == 0) and ((now - last_activity) >= WAIT_FOR_NETWORK_IDLE):
+                if (len(pending_requests) == 0) and (
+                    (now - last_activity) >= WAIT_FOR_NETWORK_IDLE
+                ):
                     break
                 if now - start_time > MAX_WAIT_PAGE_LOAD_TIME:
-                    logger.debug(f"Network timeout after {MAX_WAIT_PAGE_LOAD_TIME}s with {len(pending_requests)} pending requests")
+                    logger.debug(
+                        f"Network timeout after {MAX_WAIT_PAGE_LOAD_TIME}s with {len(pending_requests)} pending requests"
+                    )
                     break
         finally:
             page.remove_listener("request", on_request)
@@ -949,7 +1051,9 @@ class PlaywrightManager:
 
         logger.debug(f"Network stabilized for {WAIT_FOR_NETWORK_IDLE} ms")
 
-    async def wait_for_page_and_frames_load(self, timeout_overwrite: Optional[float] = None) -> None:
+    async def wait_for_page_and_frames_load(
+        self, timeout_overwrite: Optional[float] = None
+    ) -> None:
         start_time = time.time()
         try:
             await self._wait_for_stable_network()
@@ -958,7 +1062,9 @@ class PlaywrightManager:
 
         elapsed = time.time() - start_time
         remaining = max((timeout_overwrite or MIN_WAIT_PAGE_LOAD_TIME) - elapsed, 0)
-        logger.debug(f"Page loaded in {elapsed:.2f}s, waiting {remaining:.2f}s more for stability.")
+        logger.debug(
+            f"Page loaded in {elapsed:.2f}s, waiting {remaining:.2f}s more for stability."
+        )
 
     # -------------------------------------------------------------------------
     # NEW METHODS for updating context properties on the fly
@@ -1004,7 +1110,9 @@ class PlaywrightManager:
         await self.create_browser_context()
         await self.go_to_homepage()
 
-    async def perform_javascript_click(self, page: Page, selector: str, type_of_click: str) -> str:
+    async def perform_javascript_click(
+        self, page: Page, selector: str, type_of_click: str
+    ) -> str:
         js_code = """(params) => {
             /*INJECT_FIND_ELEMENT_IN_SHADOW_DOM*/
             const selector = params[0];
@@ -1088,16 +1196,26 @@ class PlaywrightManager:
         }"""
 
         try:
-            logger.info(f"Executing JavaScript '{type_of_click}' on element with selector: {selector}")
-            result: str = await page.evaluate(get_js_with_element_finder(js_code), (selector, type_of_click))
-            logger.debug(f"Executed JavaScript '{type_of_click}' on element with selector: {selector}")
+            logger.info(
+                f"Executing JavaScript '{type_of_click}' on element with selector: {selector}"
+            )
+            result: str = await page.evaluate(
+                get_js_with_element_finder(js_code), (selector, type_of_click)
+            )
+            logger.debug(
+                f"Executed JavaScript '{type_of_click}' on element with selector: {selector}"
+            )
             return result
         except Exception as e:
-            logger.error(f"Error executing JavaScript '{type_of_click}' on element with selector: {selector}. Error: {e}")
+            logger.error(
+                f"Error executing JavaScript '{type_of_click}' on element with selector: {selector}. Error: {e}"
+            )
             traceback.print_exc()
             return f"Error executing JavaScript '{type_of_click}' on element with selector: {selector}"
 
-    async def is_element_present(self, selector: str, page: Optional[Page] = None) -> bool:
+    async def is_element_present(
+        self, selector: str, page: Optional[Page] = None
+    ) -> bool:
         """Check if an element is present in DOM/Shadow DOM/iframes."""
         if page is None:
             page = await self.get_current_page()
@@ -1115,7 +1233,9 @@ class PlaywrightManager:
 
         return await page.evaluate_handle(get_js_with_element_finder(js_code), selector)
 
-    async def find_element(self, selector: str, page: Optional[Page] = None) -> Optional[ElementHandle]:
+    async def find_element(
+        self, selector: str, page: Optional[Page] = None
+    ) -> Optional[ElementHandle]:
         """Find element in DOM/Shadow DOM/iframes and return ElementHandle."""
         if page is None:
             page = await self.get_current_page()
@@ -1131,13 +1251,17 @@ class PlaywrightManager:
             return findElementInShadowDOMAndIframes(document, selector);
         }"""
 
-        element = await page.evaluate_handle(get_js_with_element_finder(js_code), selector)
+        element = await page.evaluate_handle(
+            get_js_with_element_finder(js_code), selector
+        )
         if element:
             return element.as_element()
 
         return None
 
-    async def perform_javascript_click(self, page: Page, selector: str, type_of_click: str) -> str:
+    async def perform_javascript_click(
+        self, page: Page, selector: str, type_of_click: str
+    ) -> str:
         js_code = """(params) => {
             /*INJECT_FIND_ELEMENT_IN_SHADOW_DOM*/
             const selector = params[0];
@@ -1221,16 +1345,26 @@ class PlaywrightManager:
         }"""
 
         try:
-            logger.info(f"Executing JavaScript '{type_of_click}' on element with selector: {selector}")
-            result: str = await page.evaluate(get_js_with_element_finder(js_code), (selector, type_of_click))
-            logger.debug(f"Executed JavaScript '{type_of_click}' on element with selector: {selector}")
+            logger.info(
+                f"Executing JavaScript '{type_of_click}' on element with selector: {selector}"
+            )
+            result: str = await page.evaluate(
+                get_js_with_element_finder(js_code), (selector, type_of_click)
+            )
+            logger.debug(
+                f"Executed JavaScript '{type_of_click}' on element with selector: {selector}"
+            )
             return result
         except Exception as e:
-            logger.error(f"Error executing JavaScript '{type_of_click}' on element with selector: {selector}. Error: {e}")
+            logger.error(
+                f"Error executing JavaScript '{type_of_click}' on element with selector: {selector}. Error: {e}"
+            )
             traceback.print_exc()
             return f"Error executing JavaScript '{type_of_click}' on element with selector: {selector}"
 
-    async def is_element_present(self, selector: str, page: Optional[Page] = None) -> bool:
+    async def is_element_present(
+        self, selector: str, page: Optional[Page] = None
+    ) -> bool:
         """Check if an element is present in DOM/Shadow DOM/iframes."""
         if page is None:
             page = await self.get_current_page()
@@ -1248,7 +1382,9 @@ class PlaywrightManager:
 
         return await page.evaluate_handle(get_js_with_element_finder(js_code), selector)
 
-    async def find_element(self, selector: str, page: Optional[Page] = None) -> Optional[ElementHandle]:
+    async def find_element(
+        self, selector: str, page: Optional[Page] = None
+    ) -> Optional[ElementHandle]:
         """Find element in DOM/Shadow DOM/iframes and return ElementHandle."""
         if page is None:
             page = await self.get_current_page()
@@ -1264,7 +1400,9 @@ class PlaywrightManager:
             return findElementInShadowDOMAndIframes(document, selector);
         }"""
 
-        element = await page.evaluate_handle(get_js_with_element_finder(js_code), selector)
+        element = await page.evaluate_handle(
+            get_js_with_element_finder(js_code), selector
+        )
         if element:
             return element.as_element()
 
@@ -1289,4 +1427,6 @@ class PlaywrightManager:
             "location": msg.location,  # has 'url', 'lineNumber', 'columnNumber'
         }
         # Write asynchronously to console_log_file
-        asyncio.ensure_future(self._write_log_entry_to_file(log_entry, self.console_log_file))
+        asyncio.ensure_future(
+            self._write_log_entry_to_file(log_entry, self.console_log_file)
+        )
