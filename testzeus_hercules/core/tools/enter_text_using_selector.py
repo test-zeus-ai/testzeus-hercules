@@ -8,7 +8,7 @@ from testzeus_hercules.config import get_global_conf  # Add this import
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.prompts import LLM_PROMPTS
 from testzeus_hercules.core.tools.press_key_combination import press_key_combination
-from testzeus_hercules.core.tools.browser_logger import get_browser_logger
+from testzeus_hercules.core.browser_logger import get_browser_logger
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.dom_helper import get_element_outer_html
@@ -152,7 +152,9 @@ async def do_entertext(
         logger.debug(f"Looking for selector {selector} to enter text: {text_to_enter}")
 
         browser_manager = PlaywrightManager()
-        elem = await browser_manager.find_element(selector, page)
+        elem = await browser_manager.find_element(
+            selector, page, element_name="entertext"
+        )
         if not elem:
             # Initialize selector logger with proof path
             selector_logger = get_browser_logger(get_global_conf().get_proof_path())

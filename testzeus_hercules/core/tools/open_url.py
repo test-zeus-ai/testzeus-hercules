@@ -4,7 +4,7 @@ from typing import Annotated
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
-from testzeus_hercules.core.tools.browser_logger import get_browser_logger
+from testzeus_hercules.core.browser_logger import get_browser_logger
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
 

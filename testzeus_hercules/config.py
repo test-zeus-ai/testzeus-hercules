@@ -242,6 +242,7 @@ class BaseConfigManager:
             "BROWSER_VERSION",
             "BROWSER_PATH",
             "ENABLE_PLAYWRIGHT_TRACING",
+            "ENABLE_BOUNDING_BOX_SCREENSHOTS",
         ]
 
         for key in relevant_keys:
@@ -350,6 +351,7 @@ class BaseConfigManager:
         self._config.setdefault("REUSE_VECTOR_DB", "false")
         self._config.setdefault("USE_DYNAMIC_LTM", "false")
         self._config.setdefault("ENABLE_BROWSER_LOGS", "false")
+        self._config.setdefault("ENABLE_BOUNDING_BOX_SCREENSHOTS", "false")
 
         self._config.setdefault("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python")
 
@@ -451,6 +453,13 @@ class BaseConfigManager:
     def get_browser_version(self) -> Optional[str]:
         """Get the configured browser version (e.g., '114', '115.0.1', 'latest')"""
         return self._config.get("BROWSER_VERSION")
+
+    def should_take_bounding_box_screenshots(self) -> bool:
+        """Check if bounding box screenshots should be enabled"""
+        return (
+            self._config.get("ENABLE_BOUNDING_BOX_SCREENSHOTS", "false").lower()
+            == "true"
+        )
 
     # -------------------------------------------------------------------------
     # Directory creation logic (mirroring your original code)

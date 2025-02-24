@@ -7,7 +7,7 @@ from typing import Annotated, Dict, List, Tuple  # noqa: UP035
 from playwright.async_api import ElementHandle, Page
 from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
-from testzeus_hercules.core.tools.browser_logger import get_browser_logger
+from testzeus_hercules.core.browser_logger import get_browser_logger
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.dom_helper import get_element_outer_html
@@ -86,7 +86,9 @@ async def click_and_upload(page: Page, selector: str, file_path: str) -> dict[st
         logger.debug(f"Looking for selector {selector} to upload file: {file_path}")
 
         browser_manager = PlaywrightManager()
-        element = await browser_manager.find_element(selector, page)
+        element = await browser_manager.find_element(
+            selector, page, element_name="upload_file"
+        )
 
         if element is None:
             # Initialize selector logger with proof path

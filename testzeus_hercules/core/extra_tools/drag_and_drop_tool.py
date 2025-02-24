@@ -8,10 +8,20 @@ from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.logger import logger
 
 
-@tool(agent_names=["browser_nav_agent"], description="Performs drag and drop operation from source to target.", name="drag_and_drop")
+@tool(
+    agent_names=["browser_nav_agent"],
+    description="Performs drag and drop operation from source to target.",
+    name="drag_and_drop",
+)
 async def drag_and_drop(
-    source_selector: Annotated[str, "Source element selector is md attribute value of the dom element to interact, md is an ID"],
-    target_selector: Annotated[str, "Target element selector using any valid Playwright selector only (ARIA, CSS, XPath, etc.)"],
+    source_selector: Annotated[
+        str,
+        "Source element selector is md attribute value of the dom element to interact, md is an ID",
+    ],
+    target_selector: Annotated[
+        str,
+        "Target element selector using any valid Playwright selector only (ARIA, CSS, XPath, etc.)",
+    ],
     wait_before_execution: Annotated[float, "Wait time before drag and drop"] = 0.0,
 ) -> Annotated[str, "Drag and drop operation result"]:
 
@@ -35,7 +45,9 @@ async def drag_and_drop(
             await asyncio.sleep(wait_before_execution)
 
         # Find source using md selector
-        source_element = await browser_manager.find_element(selector, page)
+        source_element = await browser_manager.find_element(
+            selector, page, element_name="drag_and_drop"
+        )
         if source_element is None:
             raise ValueError(f"Source element with selector: '{selector}' not found")
 
@@ -80,7 +92,9 @@ async def drag_and_drop(
                 continue
 
         if target_element is None:
-            raise ValueError(f"Target element not found using any of these selectors: {selectors_to_try}")
+            raise ValueError(
+                f"Target element not found using any of these selectors: {selectors_to_try}"
+            )
 
         # Ensure elements are visible and get their positions
         try:

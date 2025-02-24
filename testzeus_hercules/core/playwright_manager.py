@@ -7,10 +7,12 @@ import tempfile
 import time
 import traceback  # Add this import
 import zipfile
+import io
+import httpx
 from io import BytesIO
 from typing import Any, Dict, List, Optional, Tuple, Union, Literal
-
-import httpx
+from PIL import Image, ImageDraw, ImageFont
+from datetime import datetime
 from playwright.async_api import BrowserContext, BrowserType, ElementHandle
 from playwright.async_api import Error as PlaywrightError  # for exception handling
 from playwright.async_api import Page, Playwright
@@ -23,6 +25,7 @@ from testzeus_hercules.utils.dom_mutation_observer import (
 )
 from testzeus_hercules.utils.js_helper import get_js_with_element_finder
 from testzeus_hercules.utils.logger import logger
+from testzeus_hercules.core.browser_logger import get_browser_logger
 
 # Ensures that playwright does not wait for font loading when taking screenshots.
 # Reference: https://github.com/microsoft/playwright/issues/28995
@@ -173,6 +176,7 @@ class PlaywrightManager:
         allow_all_permissions: bool = True,
         log_console: Optional[bool] = None,
         console_log_file: Optional[str] = None,
+        take_bounding_box_screenshots: Optional[bool] = None,  # New parameter
     ):
         """
         Initialize the PlaywrightManager.
@@ -232,6 +236,11 @@ class PlaywrightManager:
             take_screenshots
             if take_screenshots is not None
             else get_global_conf().should_take_screenshots()
+        )
+        self._take_bounding_box_screenshots = (
+            take_bounding_box_screenshots
+            if take_bounding_box_screenshots is not None
+            else get_global_conf().should_take_bounding_box_screenshots()
         )
         self.stake_id = stake_id
 
@@ -1392,15 +1401,29 @@ class PlaywrightManager:
         return await page.evaluate_handle(get_js_with_element_finder(js_code), selector)
 
     async def find_element(
-        self, selector: str, page: Optional[Page] = None
+        self,
+        selector: str,
+        page: Optional[Page] = None,
+        element_name: Optional[str] = None,
     ) -> Optional[ElementHandle]:
-        """Find element in DOM/Shadow DOM/iframes and return ElementHandle."""
+        """Find element in DOM/Shadow DOM/iframes and return ElementHandle.
+        Also captures a screenshot with the element's bounding box and metadata overlay if enabled.
+
+        Args:
+            selector: The selector to find the element
+            page: Optional page instance to search in
+            element_name: Optional friendly name for the element (used in screenshot naming)
+        """
         if page is None:
             page = await self.get_current_page()
 
         # Try regular DOM first
         element = await page.query_selector(selector)
         if element:
+            if self._take_bounding_box_screenshots:
+                await self._capture_element_with_bbox(
+                    element, page, selector, element_name
+                )
             return element
 
         # Check Shadow DOM and iframes
@@ -1413,9 +1436,249 @@ class PlaywrightManager:
             get_js_with_element_finder(js_code), selector
         )
         if element:
-            return element.as_element()
+            element_handle = element.as_element()
+            if element_handle:
+                if self._take_bounding_box_screenshots:
+                    await self._capture_element_with_bbox(
+                        element_handle, page, selector, element_name
+                    )
+            return element_handle
 
         return None
+
+    async def _capture_element_with_bbox(
+        self,
+        element: ElementHandle,
+        page: Page,
+        selector: str,
+        element_name: Optional[str] = None,
+    ) -> None:
+        """Capture screenshot with bounding box and metadata overlay."""
+        try:
+            # Get element's bounding box
+            bbox = await element.bounding_box()
+            if not bbox:
+                return
+
+            # Get element's accessibility info
+            accessibility_info = await element.evaluate(
+                """element => {
+                return {
+                    ariaLabel: element.getAttribute('aria-label'),
+                    role: element.getAttribute('role'),
+                    name: element.getAttribute('name'),
+                    title: element.getAttribute('title')
+                }
+            }"""
+            )
+
+            # Use the first non-empty value from accessibility info
+            element_identifier = next(
+                (
+                    val
+                    for val in [
+                        accessibility_info.get("ariaLabel"),
+                        accessibility_info.get("role"),
+                        accessibility_info.get("name"),
+                        accessibility_info.get("title"),
+                    ]
+                    if val
+                ),
+                "element",  # default if no accessibility info found
+            )
+
+            # Construct screenshot name
+            screenshot_name = f"{element_identifier}_{element_name or selector}_bbox_{int(datetime.now().timestamp())}"
+
+            # Take screenshot using existing method
+            await self.take_screenshots(
+                name=screenshot_name,
+                page=page,
+                full_page=True,
+                include_timestamp=False,
+            )
+
+            # Get the latest screenshot using get_latest_screenshot_stream
+            screenshot_stream = await self.get_latest_screenshot_stream()
+            if not screenshot_stream:
+                logger.error("Failed to get screenshot for bounding box overlay")
+                return
+
+            image = Image.open(screenshot_stream)
+            draw = ImageDraw.Draw(image)
+
+            # Draw bounding box
+            draw.rectangle(
+                [
+                    (bbox["x"], bbox["y"]),
+                    (bbox["x"] + bbox["width"], bbox["y"] + bbox["height"]),
+                ],
+                outline="orange",
+                width=4,
+            )
+
+            # Prepare metadata text
+            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            url = page.url
+            test_name = self.stake_id or "default"
+            element_info = f"Element: {element_identifier} by {element_name}"
+
+            # Create metadata text block with word wrapping
+            metadata = [
+                f"Timestamp: {current_time}",
+                f"URL: {url}",
+                f"Test: {test_name}",
+                element_info,
+            ]
+
+            # Calculate text position and size
+            try:
+                font = ImageFont.truetype("Arial", 14)
+            except:
+                font = ImageFont.load_default()
+
+            # Increase text padding by 10%
+            text_padding = 11  # Original 10 + 10%
+            line_height = 22  # Original 20 + 10%
+
+            # Calculate text dimensions with word wrapping
+            max_width = min(
+                image.width * 0.4, 400
+            )  # Reduced from 500px to 400px for better wrapping
+            wrapped_lines = []
+
+            for text in metadata:
+                if text.startswith("URL: "):
+                    # Special handling for URLs - break into chunks
+                    url_prefix = "URL: "
+                    url_text = text[len(url_prefix) :]
+                    current_line = url_prefix
+
+                    # Break URL into segments of reasonable length
+                    segment_length = (
+                        40  # Adjust this value to control URL segment length
+                    )
+                    start = 0
+                    while start < len(url_text):
+                        end = start + segment_length
+                        if end < len(url_text):
+                            # Look for a good breaking point
+                            break_chars = ["/", "?", "&", "-", "_", "."]
+                            for char in break_chars:
+                                pos = url_text[start : end + 10].find(char)
+                                if pos != -1:
+                                    end = start + pos + 1
+                                    break
+                        else:
+                            end = len(url_text)
+
+                        segment = url_text[start:end]
+                        if start == 0:
+                            wrapped_lines.append(url_prefix + segment)
+                        else:
+                            wrapped_lines.append(" " * len(url_prefix) + segment)
+                        start = end
+                else:
+                    # Normal text wrapping for non-URL lines
+                    words = text.split()
+                    current_line = words[0]
+                    for word in words[1:]:
+                        test_line = current_line + " " + word
+                        test_width = draw.textlength(test_line, font=font)
+                        if test_width <= max_width:
+                            current_line = test_line
+                        else:
+                            wrapped_lines.append(current_line)
+                            current_line = word
+                    wrapped_lines.append(current_line)
+
+            # Calculate background dimensions with some extra padding
+            bg_width = max_width + (text_padding * 2)
+            bg_height = (line_height * len(wrapped_lines)) + (text_padding * 2)
+
+            # Draw background rectangle for metadata
+            bg_x = image.width - bg_width - text_padding
+            bg_y = text_padding
+
+            # Draw semi-transparent background
+            bg_color = (0, 0, 0, 128)
+            bg_layer = Image.new("RGBA", image.size, (0, 0, 0, 0))
+            bg_draw = ImageDraw.Draw(bg_layer)
+            bg_draw.rectangle(
+                [bg_x, bg_y, bg_x + bg_width, bg_y + bg_height], fill=bg_color
+            )
+
+            # Composite the background onto the main image
+            image = Image.alpha_composite(image.convert("RGBA"), bg_layer)
+            draw = ImageDraw.Draw(image)
+
+            # Draw wrapped text
+            current_y = bg_y + text_padding
+            for line in wrapped_lines:
+                draw.text(
+                    (bg_x + text_padding, current_y), line, fill="white", font=font
+                )
+                current_y += line_height
+
+            # Save the modified screenshot
+            screenshot_path = os.path.join(
+                self.get_screenshots_dir(), f"{screenshot_name}.png"
+            )
+
+            # Convert back to RGB before saving as PNG
+            image = image.convert("RGB")
+            image.save(screenshot_path, "PNG")
+
+            logger.debug(f"Saved bounding box screenshot: {screenshot_path}")
+
+            # Get browser logger instance
+            browser_logger = get_browser_logger(self.get_screenshots_dir())
+
+            # Get element attributes and alternative selectors for logging
+            element_attributes = await browser_logger.get_element_attributes(element)
+            alternative_selectors = await browser_logger.get_alternative_selectors(
+                element, page
+            )
+
+            # Log the screenshot interaction
+            await browser_logger.log_browser_interaction(
+                tool_name="find_element",
+                action="capture_bounding_box_screenshot",
+                interaction_type="screenshot",
+                selector=selector,
+                selector_type="custom",
+                alternative_selectors=alternative_selectors,
+                element_attributes=element_attributes,
+                success=True,
+                additional_data={
+                    "screenshot_name": f"{screenshot_name}.png",
+                    "screenshot_path": screenshot_path,
+                    "element_identifier": element_identifier,
+                    "bounding_box": bbox,
+                    "url": url,
+                    "timestamp": current_time,
+                    "test_name": test_name,
+                    "element_name": element_name,
+                },
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to capture element with bounding box: {e}")
+            traceback.print_exc()
+
+            # Log failure in browser logger
+            browser_logger = get_browser_logger(self.get_screenshots_dir())
+            await browser_logger.log_browser_interaction(
+                tool_name="find_element",
+                action="capture_bounding_box_screenshot",
+                interaction_type="screenshot",
+                selector=selector,
+                success=False,
+                error_message=str(e),
+                additional_data={
+                    "element_name": element_name,
+                },
+            )
 
     async def setup_console_logging(self, page: Page) -> None:
         """Attach an event listener to capture console logs if enabled."""

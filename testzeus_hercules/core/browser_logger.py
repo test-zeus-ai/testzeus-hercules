@@ -263,45 +263,58 @@ class BrowserLogger:
         try:
             selectors = {}
 
-            # Get XPath
+            # Get XPath with improved error handling and properly scoped variables
             xpath = await page.evaluate(
                 """(element) => {
-                const getXPath = (elm) => {
-                    const allNodes = document.getElementsByTagName('*');
-                    for (let segs = []; elm && elm.nodeType == 1; elm = elm.parentNode) {
-                        if (elm.hasAttribute('id')) {
-                            segs.unshift(`//*[@id="${elm.getAttribute('id')}"]`);
-                            return segs.join('/');
-                        } else {
-                            let sib = elm, nth = 1;
-                            for (sib = sib.previousSibling; sib; sib = sib.previousSibling) {
-                                if (sib.nodeType == 1 && sib.tagName == elm.tagName) nth++;
+                try {
+                    const getXPath = (elm) => {
+                        if (!elm || !elm.nodeType) return null;
+                        
+                        const segs = [];
+                        while (elm && elm.nodeType === 1) {
+                            if (elm.hasAttribute('id')) {
+                                segs.unshift(`//*[@id="${elm.getAttribute('id')}"]`);
+                                return segs.join('/');
+                            } else {
+                                let sib = elm;
+                                let nth = 1;
+                                for (sib = sib.previousSibling; sib; sib = sib.previousSibling) {
+                                    if (sib.nodeType === 1 && sib.tagName === elm.tagName) nth++;
+                                }
+                                segs.unshift(elm.tagName.toLowerCase() + '[' + nth + ']');
                             }
-                            segs.unshift(elm.tagName.toLowerCase() + '[' + nth + ']');
+                            elm = elm.parentNode;
                         }
-                    }
-                    return segs.length ? '/' + segs.join('/') : null;
-                };
-                return getXPath(element);
+                        return segs.length ? '/' + segs.join('/') : null;
+                    };
+                    return getXPath(element);
+                } catch (error) {
+                    console.error('XPath generation error:', error);
+                    return null;
+                }
             }""",
                 element,
             )
             if xpath:
                 selectors["xpath"] = xpath
 
-            # Get ARIA selector
+            # Get ARIA selector with improved error handling
             aria = await page.evaluate(
                 """(element) => {
-                const getARIASelector = (elm) => {
-                    if (elm.getAttribute('role')) {
-                        return `[role="${elm.getAttribute('role')}"]`;
+                try {
+                    if (!element || !element.nodeType) return null;
+                    
+                    if (element.getAttribute('role')) {
+                        return `[role="${element.getAttribute('role')}"]`;
                     }
-                    if (elm.getAttribute('aria-label')) {
-                        return `[aria-label="${elm.getAttribute('aria-label')}"]`;
+                    if (element.getAttribute('aria-label')) {
+                        return `[aria-label="${element.getAttribute('aria-label')}"]`;
                     }
                     return null;
-                };
-                return getARIASelector(element);
+                } catch (error) {
+                    console.error('ARIA selector generation error:', error);
+                    return null;
+                }
             }""",
                 element,
             )
