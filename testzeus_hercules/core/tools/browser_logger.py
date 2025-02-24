@@ -1,7 +1,7 @@
 import json
 import os
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.utils.logger import logger
@@ -9,7 +9,12 @@ from testzeus_hercules.utils.logger import logger
 
 class BrowserLogger:
     """
-    A logger class for tracking browser interactions in browser agent tools.
+    A logger class for tracking interactions across different navigation agents:
+    - browser_nav_agent: Browser interactions
+    - api_nav_agent: API calls and responses
+    - sec_nav_agent: Security testing operations
+    - sql_nav_agent: Database operations
+
     Logs are stored in NDJSON format (Newline Delimited JSON).
     """
 
@@ -26,7 +31,7 @@ class BrowserLogger:
         """Set up the log file path in the proofs directory."""
         if not self._proof_path:
             self._proof_path = get_global_conf().get_proof_path()
-        self._log_file = os.path.join(self._proof_path, "browser_logs.ndjson")
+        self._log_file = os.path.join(self._proof_path, "interaction_logs.ndjson")
         os.makedirs(os.path.dirname(self._log_file), exist_ok=True)
 
     @classmethod
@@ -36,13 +41,17 @@ class BrowserLogger:
             cls._instance = cls(proof_path)
         return cls._instance
 
-    async def log_browser_interaction(
+    async def log_interaction(
         self,
+        agent_type: str,  # browser_nav_agent, api_nav_agent, sec_nav_agent, sql_nav_agent
         tool_name: str,
         action: str,
-        interaction_type: str,  # selector, navigation, dialog, screenshot, etc.
+        interaction_type: str,
+        intent: Optional[str] = None,
+        request_data: Optional[Dict[str, Any]] = None,
+        response_data: Optional[Dict[str, Any]] = None,
         selector: Optional[str] = None,
-        selector_type: Optional[str] = None,  # css, xpath, or aria
+        selector_type: Optional[str] = None,
         alternative_selectors: Optional[Dict[str, str]] = None,
         element_attributes: Optional[Dict[str, str]] = None,
         success: bool = True,
@@ -50,21 +59,25 @@ class BrowserLogger:
         additional_data: Optional[Dict[str, Any]] = None,
     ) -> None:
         """
-        Log a browser interaction to the NDJSON file.
+        Log any type of interaction to the NDJSON file.
 
         Args:
+            agent_type: Type of agent performing the interaction
             tool_name: Name of the tool performing the interaction
-            action: The type of action (click, input, hover, navigate, etc.)
-            interaction_type: Type of interaction (selector, navigation, dialog, etc.)
-            selector: The selector used for the interaction (if applicable)
-            selector_type: Type of selector (css, xpath, aria) if selector is used
-            alternative_selectors: Dictionary of alternative selectors for the same element
-            element_attributes: Dictionary of element attributes if available
+            action: The type of action being performed
+            interaction_type: Type of interaction (selector/api/security/sql)
+            intent: Description of what the interaction aims to achieve
+            request_data: Data sent in the request (for API/SQL operations)
+            response_data: Data received in response (for API/SQL operations)
+            selector: The selector used (for browser interactions)
+            selector_type: Type of selector used (for browser interactions)
+            alternative_selectors: Alternative selectors (for browser interactions)
+            element_attributes: Element attributes (for browser interactions)
             success: Whether the interaction was successful
             error_message: Error message if the interaction failed
             additional_data: Any additional data to log
         """
-        # Check if browser logging is enabled
+        # Check if logging is enabled
         if not get_global_conf().should_enable_browser_logs():
             return
 
@@ -75,11 +88,21 @@ class BrowserLogger:
         try:
             log_entry = {
                 "timestamp": time.time(),
+                "agent_type": agent_type,
                 "tool_name": tool_name,
                 "action": action,
                 "interaction_type": interaction_type,
                 "success": success,
             }
+
+            if intent:
+                log_entry["intent"] = intent
+
+            if request_data:
+                log_entry["request_data"] = request_data
+
+            if response_data:
+                log_entry["response_data"] = response_data
 
             if selector:
                 log_entry["selector"] = selector
@@ -100,7 +123,112 @@ class BrowserLogger:
                 file.write(line)
 
         except Exception as e:
-            logger.error(f"Failed to write browser log: {e}")
+            logger.error(f"Failed to write interaction log: {e}")
+
+    async def log_browser_interaction(
+        self,
+        tool_name: str,
+        action: str,
+        interaction_type: str,
+        selector: Optional[str] = None,
+        selector_type: Optional[str] = None,
+        alternative_selectors: Optional[Dict[str, str]] = None,
+        element_attributes: Optional[Dict[str, str]] = None,
+        success: bool = True,
+        error_message: Optional[str] = None,
+        additional_data: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Log a browser interaction."""
+        await self.log_interaction(
+            agent_type="browser_nav_agent",
+            tool_name=tool_name,
+            action=action,
+            interaction_type=interaction_type,
+            selector=selector,
+            selector_type=selector_type,
+            alternative_selectors=alternative_selectors,
+            element_attributes=element_attributes,
+            success=success,
+            error_message=error_message,
+            additional_data=additional_data,
+        )
+
+    async def log_api_interaction(
+        self,
+        tool_name: str,
+        action: str,
+        intent: str,
+        request_data: Dict[str, Any],
+        response_data: Optional[Dict[str, Any]] = None,
+        success: bool = True,
+        error_message: Optional[str] = None,
+        additional_data: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Log an API interaction."""
+        await self.log_interaction(
+            agent_type="api_nav_agent",
+            tool_name=tool_name,
+            action=action,
+            interaction_type="api",
+            intent=intent,
+            request_data=request_data,
+            response_data=response_data,
+            success=success,
+            error_message=error_message,
+            additional_data=additional_data,
+        )
+
+    async def log_security_interaction(
+        self,
+        tool_name: str,
+        action: str,
+        intent: str,
+        test_type: str,
+        target: str,
+        findings: Optional[Dict[str, Any]] = None,
+        success: bool = True,
+        error_message: Optional[str] = None,
+        additional_data: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Log a security testing interaction."""
+        await self.log_interaction(
+            agent_type="sec_nav_agent",
+            tool_name=tool_name,
+            action=action,
+            interaction_type="security",
+            intent=intent,
+            request_data={"test_type": test_type, "target": target},
+            response_data=findings,
+            success=success,
+            error_message=error_message,
+            additional_data=additional_data,
+        )
+
+    async def log_sql_interaction(
+        self,
+        tool_name: str,
+        action: str,
+        intent: str,
+        query: str,
+        parameters: Optional[Dict[str, Any]] = None,
+        result: Optional[Any] = None,
+        success: bool = True,
+        error_message: Optional[str] = None,
+        additional_data: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Log a SQL interaction."""
+        await self.log_interaction(
+            agent_type="sql_nav_agent",
+            tool_name=tool_name,
+            action=action,
+            interaction_type="sql",
+            intent=intent,
+            request_data={"query": query, "parameters": parameters},
+            response_data={"result": result} if result is not None else None,
+            success=success,
+            error_message=error_message,
+            additional_data=additional_data,
+        )
 
     async def log_selector_interaction(
         self,
@@ -114,20 +242,7 @@ class BrowserLogger:
         error_message: Optional[str] = None,
         additional_data: Optional[Dict[str, Any]] = None,
     ) -> None:
-        """
-        Log a selector interaction to the NDJSON file.
-
-        Args:
-            tool_name: Name of the tool performing the interaction
-            selector: The selector used for the interaction
-            action: The type of action (click, input, hover, etc.)
-            selector_type: Type of selector (css, xpath, aria)
-            alternative_selectors: Dictionary of alternative selectors for the same element
-            element_attributes: Dictionary of element attributes if available
-            success: Whether the interaction was successful
-            error_message: Error message if the interaction failed
-            additional_data: Any additional data to log
-        """
+        """Log a selector interaction (legacy method for compatibility)."""
         await self.log_browser_interaction(
             tool_name=tool_name,
             action=action,
@@ -144,16 +259,7 @@ class BrowserLogger:
     async def get_alternative_selectors(
         self, element: Any, page: Any
     ) -> Dict[str, str]:
-        """
-        Generate alternative selectors for an element.
-
-        Args:
-            element: The Playwright element
-            page: The Playwright page object
-
-        Returns:
-            Dictionary containing alternative selectors
-        """
+        """Generate alternative selectors for an element."""
         try:
             selectors = {}
 
@@ -208,15 +314,7 @@ class BrowserLogger:
             return {}
 
     async def get_element_attributes(self, element: Any) -> Dict[str, str]:
-        """
-        Get relevant attributes from an element.
-
-        Args:
-            element: The Playwright element
-
-        Returns:
-            Dictionary containing element attributes
-        """
+        """Get relevant attributes from an element."""
         try:
             attributes = {}
 

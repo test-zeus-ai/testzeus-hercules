@@ -3,13 +3,29 @@
 import argparse
 import json
 import os
-from typing import Optional
+from typing import Optional, Literal
 
 from dotenv import load_dotenv
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.timestamp_helper import get_timestamp_str
 
 TS = get_timestamp_str()
+
+# Add browser channel types
+BROWSER_CHANNELS = Literal[
+    "chrome",
+    "chrome-beta",
+    "chrome-dev",
+    "chrome-canary",
+    "msedge",
+    "msedge-beta",
+    "msedge-dev",
+    "msedge-canary",
+    "firefox",
+    "firefox-beta",
+    "firefox-dev-edition",
+    "firefox-nightly",
+]
 
 
 class BaseConfigManager:
@@ -134,6 +150,24 @@ class BaseConfigManager:
             help="Reuse existing vector DB instead of creating fresh one",
             required=False,
         )
+        parser.add_argument(
+            "--browser-channel",
+            type=str,
+            help="Browser channel to use (e.g., chrome-beta, firefox-nightly)",
+            required=False,
+        )
+        parser.add_argument(
+            "--browser-path",
+            type=str,
+            help="Custom path to browser executable",
+            required=False,
+        )
+        parser.add_argument(
+            "--browser-version",
+            type=str,
+            help="Specific browser version to use (e.g., '114', '115.0.1', 'latest')",
+            required=False,
+        )
 
         # Parse known args; ignore unknown if you have other custom arguments
         args, _ = parser.parse_known_args()
@@ -154,6 +188,12 @@ class BaseConfigManager:
             os.environ["EXECUTE_BULK"] = "true"
         if args.reuse_vector_db:
             os.environ["REUSE_VECTOR_DB"] = "true"
+        if args.browser_channel:
+            os.environ["BROWSER_CHANNEL"] = args.browser_channel
+        if args.browser_path:
+            os.environ["BROWSER_PATH"] = args.browser_path
+        if args.browser_version:
+            os.environ["BROWSER_VERSION"] = args.browser_version
 
     def _merge_from_env(self) -> None:
         """
@@ -198,9 +238,11 @@ class BaseConfigManager:
             "USE_DYNAMIC_LTM",
             "REUSE_VECTOR_DB",
             "ENABLE_BROWSER_LOGS",
+            "BROWSER_CHANNEL",
+            "BROWSER_VERSION",
+            "BROWSER_PATH",
+            "ENABLE_PLAYWRIGHT_TRACING",
         ]
-
-        relevant_keys.append("ENABLE_PLAYWRIGHT_TRACING")
 
         for key in relevant_keys:
             if key in os.environ:
@@ -297,7 +339,7 @@ class BaseConfigManager:
         self._config.setdefault("HEADLESS", "true")
         self._config.setdefault("RECORD_VIDEO", "true")
         self._config.setdefault("TAKE_SCREENSHOTS", "true")
-        self._config.setdefault("BROWSER_TYPE", "chromium")
+
         self._config.setdefault("CAPTURE_NETWORK", "true")
         self._config.setdefault("DONT_CLOSE_BROWSER", "false")
         self._config.setdefault("GEO_PROVIDER", None)
@@ -310,6 +352,12 @@ class BaseConfigManager:
         self._config.setdefault("ENABLE_BROWSER_LOGS", "false")
 
         self._config.setdefault("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python")
+
+        # Browser configuration
+        self._config.setdefault("BROWSER_TYPE", "chromium")
+        self._config.setdefault("BROWSER_CHANNEL", None)  # Default to stable channel
+        self._config.setdefault("BROWSER_PATH", None)  # Default to system browser
+        self._config.setdefault("BROWSER_VERSION", None)  # Default to latest version
 
         if self._config["MODE"] == "debug":
             self.timestamp = "0"
@@ -391,6 +439,18 @@ class BaseConfigManager:
     def should_enable_browser_logs(self) -> bool:
         """Check if browser logging should be enabled"""
         return self._config.get("ENABLE_BROWSER_LOGS", "false").lower() == "true"
+
+    def get_browser_channel(self) -> Optional[BROWSER_CHANNELS]:
+        """Get the configured browser channel (e.g., chrome-beta, firefox-nightly)"""
+        return self._config.get("BROWSER_CHANNEL")
+
+    def get_browser_path(self) -> Optional[str]:
+        """Get the custom browser executable path if configured"""
+        return self._config.get("BROWSER_PATH")
+
+    def get_browser_version(self) -> Optional[str]:
+        """Get the configured browser version (e.g., '114', '115.0.1', 'latest')"""
+        return self._config.get("BROWSER_VERSION")
 
     # -------------------------------------------------------------------------
     # Directory creation logic (mirroring your original code)
