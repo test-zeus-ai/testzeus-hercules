@@ -649,13 +649,13 @@ Note: If you are looking for native app test automation, we've got you covered, 
 
 ### Multi-Agentic Solution
 
-Hercules leverages a multi-agent architecture based on the AutoGen framework. Building on the foundation provided by the AutoGen framework, Hercules's architecture leverages the interplay between tools and agents. Each tool embodies an atomic action, a fundamental building block that, when executed, returns a natural language description of its outcome. This granularity allows Hercules to flexibly assemble these tools to tackle complex web automation workflows.
+Hercules leverages a multi-agent architecture based on the [AG2 (Formerly AutoGen)](https://github.com/ag2ai/ag2) framework. Building on the foundation provided by the AG2 framework, Hercules's architecture leverages the interplay between tools and agents. Each tool embodies an atomic action, a fundamental building block that, when executed, returns a natural language description of its outcome. This granularity allows Hercules to flexibly assemble these tools to tackle complex web automation workflows. Check out more projects built with AG2 at [Build with AG2](https://github.com/ag2ai/build-with-ag2)!
 
 #### System View
 
 ![Architecture Diagram](statics/assets/hercules-architecture.jpg)
 
-The diagram above shows the configuration chosen on top of AutoGen architecture. The tools can be partitioned differently, but this is the one that we chose for the time being. We chose to use tools that map to what humans learn about the web browser rather than allow the LLM to write code as it pleases. We see the use of configured tools to be safer and more predictable in its outcomes. Certainly, it can click on the wrong things, but at least it is not going to execute malicious unknown code.
+The diagram above shows the configuration chosen on top of AG2 architecture. The tools can be partitioned differently, but this is the one that we chose for the time being. We chose to use tools that map to what humans learn about the web browser rather than allow the LLM to write code as it pleases. We see the use of configured tools to be safer and more predictable in its outcomes. Certainly, it can click on the wrong things, but at least it is not going to execute malicious unknown code.
 
 
 #### Agents
