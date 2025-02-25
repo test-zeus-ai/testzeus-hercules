@@ -184,13 +184,6 @@ LLM Parameters:
 ## Device Configuration
 
 ### Device Manager
-- `DEVICE_MANAGER`: Device automation framework
-  - Values: `appium`, `playwright`
-  - Implementation: Determines automation framework selection
-
-- `DEVICE_OS`: Target operating system
-  - Values: `android`, `ios`
-  - Implementation: Used for mobile testing configuration
 
 ### Device Settings
 - `RUN_DEVICE`: Target device for testing

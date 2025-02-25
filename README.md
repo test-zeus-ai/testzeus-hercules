@@ -5,7 +5,7 @@
 [![CI Test](https://github.com/test-zeus-ai/testzeus-hercules/actions/workflows/main-test.yml/badge.svg)](https://github.com/test-zeus-ai/testzeus-hercules/actions/workflows/main-test.yml)
 [![Slack](https://img.shields.io/badge/slack-TestZeus-brightgreen.svg?logo=slack)](https://join.slack.com/t/testzeuscommunityhq/shared_invite/zt-2v2br8wog-FAmo_76xRHx~k~1oNaGQ0Q)
 
-Testing modern web applications can be difficult, with frequent changes and complex features making it hard to keep up. That’s where **Hercules** comes in. Hercules is the world’s first open-source testing agent, built to handle the toughest testing tasks so you don’t have to. It turns simple, easy-to-write Gherkin steps into fully automated **end to end** tests—no coding skills needed. Whether you’re working with tricky platforms like Salesforce or running tests in your CI/CD pipeline, Hercules adapts to your needs and takes care of the details. With Hercules, testing becomes simple, reliable, and efficient, helping teams everywhere deliver better software. Here's a quick demo of lead creation using natural english language test (without any code):
+Testing modern web applications can be difficult, with frequent changes and complex features making it hard to keep up. That's where **Hercules** comes in. Hercules is the world's first open-source testing agent, built to handle the toughest testing tasks so you don't have to. It turns simple, easy-to-write Gherkin steps into fully automated **end to end** tests—no coding skills needed. Whether you're working with tricky platforms like Salesforce or running tests in your CI/CD pipeline, Hercules adapts to your needs and takes care of the details. With Hercules, testing becomes simple, reliable, and efficient, helping teams everywhere deliver better software. Here's a quick demo of lead creation using natural english language test (without any code):
 
 ![HerculesUsage](statics/LeadcreationDemo.gif)
 
@@ -444,7 +444,7 @@ chmod +x helper_script.sh
 	•	Install testzeus-hercules and Playwright dependencies.
 	•	Create the opt folder structure (for input/output/test data).
 	•	Download sample config files: agents_llm_config.json, .env, and example feature/test data files.
-	•	Important: You will be prompted to edit both agents_llm_config.json and .env files. After you’ve added your API keys and other custom configurations, press Enter to continue.
+	•	Important: You will be prompted to edit both agents_llm_config.json and .env files. After you've added your API keys and other custom configurations, press Enter to continue.
 
 3. **Script Output**
 	-	After completion, the script automatically runs testzeus-hercules --project-base=opt.
@@ -452,6 +452,8 @@ chmod +x helper_script.sh
 ---
 
 ## 📝 Configuration Details
+
+For a comprehensive guide to all environment variables and configuration options available in TestZeus Hercules, please refer to our [Environment Variables and Configuration Guide](docs/environment_variables.md). This document provides detailed information about core environment variables, LLM configuration, browser settings, testing configuration, device configuration, logging options, and more.
 
 ### Disabling Telemetry
 
@@ -613,7 +615,7 @@ With Hercules, testing is no longer just a step in the process—it's a powerful
 
 ### Mobile Device Emulation
 
-Hercules supports running the browser in “mobile mode” for a variety of device types. Playwright provides a large list of device descriptors here:
+Hercules supports running the browser in "mobile mode" for a variety of device types. Playwright provides a large list of device descriptors here:
 [List of mobile devices supported](https://github.com/microsoft/playwright/blob/main/packages/playwright-core/src/server/deviceDescriptorsSource.json)
 
 #### Enabling Mobile Mode
@@ -892,7 +894,7 @@ With Hercules, testing is no longer just a step in the process—it's a powerful
 
 ## 🚀 Footnotes: On virtual environments and other important commands in Python
 
-If you're coming from a **Java** or **JavaScript** background, working with Python might feel a bit different at first—but don't worry! Python’s simplicity, combined with powerful tools like virtual environments, makes managing dependencies easy and efficient.
+If you're coming from a **Java** or **JavaScript** background, working with Python might feel a bit different at first—but don't worry! Python's simplicity, combined with powerful tools like virtual environments, makes managing dependencies easy and efficient.
 
 ### 🎓 **Understanding Virtual Environments**
 
@@ -913,7 +915,7 @@ python --version
 python3 --version
 ```
 
-If Python isn’t installed, [download it here](https://www.python.org/downloads/) or if you are on Windows, just follow the instructions [here](https://github.com/test-zeus-ai/testzeus-hercules/#%EF%B8%8F-running-hercules-on-a-windows-machine).
+If Python isn't installed, [download it here](https://www.python.org/downloads/) or if you are on Windows, just follow the instructions [here](https://github.com/test-zeus-ai/testzeus-hercules/#%EF%B8%8F-running-hercules-on-a-windows-machine).
 
 ---
 
@@ -933,7 +935,7 @@ venv\Scripts\activate
 source venv/bin/activate
 ```
 
-You’ll notice your terminal prompt changes—this indicates the virtual environment is active.
+You'll notice your terminal prompt changes—this indicates the virtual environment is active.
 
 To **deactivate** the virtual environment later, simply run:
 ```bash
