@@ -38,15 +38,27 @@ class BaseNavAgent:
                 system_message = "\n".join(system_prompt)
             else:
                 system_message = system_prompt
-            logger.info(f"Using custom system prompt for BaseNavAgent: {system_message}")
+            logger.info(
+                f"Using custom system prompt for BaseNavAgent: {system_message}"
+            )
 
-        system_message = system_message + "\n" + f"Today's date is {datetime.now().strftime('%d %B %Y')}"
+        system_message = (
+            system_message
+            + "\n"
+            + f"Current timestamp is {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        )
         config = get_global_conf()
 
-        if not config.should_use_dynamic_ltm() and user_ltm:  # Use static LTM when dynamic is disabled
+        if (
+            not config.should_use_dynamic_ltm() and user_ltm
+        ):  # Use static LTM when dynamic is disabled
             user_ltm = "\n" + user_ltm
-            system_message = Template(system_message).substitute(basic_test_information=user_ltm)
-        logger.info(f"Nav agent {agent_name} using model: {model_config_list[0]['model']}")
+            system_message = Template(system_message).substitute(
+                basic_test_information=user_ltm
+            )
+        logger.info(
+            f"Nav agent {agent_name} using model: {model_config_list[0]['model']}"
+        )
 
         # def print_incoming_message(
         #     recipient, messages, sender, config
@@ -81,7 +93,9 @@ class BaseNavAgent:
         # Register the tools that were dynamically discovered
         return None
 
-    def load_tools(self, additional_tool_dirs: str = os.getenv("ADDITIONAL_TOOL_DIRS", "")) -> None:
+    def load_tools(
+        self, additional_tool_dirs: str = os.getenv("ADDITIONAL_TOOL_DIRS", "")
+    ) -> None:
         """
         Dynamically load additional tools from directories or specific Python files
         specified by an environment variable.
@@ -124,7 +138,9 @@ class BaseNavAgent:
 
                 try:
                     # If the path is a specific .py file, load it directly
-                    module_name = os.path.basename(tool_path)[:-3]  # Strip .py extension
+                    module_name = os.path.basename(tool_path)[
+                        :-3
+                    ]  # Strip .py extension
                     importlib.import_module(module_name)
                     add_event(
                         EventType.TOOL,
@@ -141,6 +157,8 @@ class BaseNavAgent:
             if tool_registry_for_agent != self.agent_name:
                 continue
             for tool in tool_registry[tool_registry_for_agent]:
-                self.agent.register_for_llm(description=tool["description"])(tool["func"])
+                self.agent.register_for_llm(description=tool["description"])(
+                    tool["func"]
+                )
                 self.nav_executor.register_for_execution()(tool["func"])
                 logger.info("Registered tool: %s", tool["name"])

@@ -61,17 +61,27 @@ class AgentsLLMConfig:
 
                 if config_file_ref_key:
                     if config_file_ref_key in file_config:
-                        logger.info(f"Loading configuration from: {config_file} with key: {config_file_ref_key}")
+                        logger.info(
+                            f"Loading configuration from: {config_file} with key: {config_file_ref_key}"
+                        )
                         raw_config = file_config[config_file_ref_key]
 
                         # Process configurations for both planner_agent and nav_agent
-                        planner_config = self._normalize_config(raw_config.get("planner_agent", {}))
-                        navigation_nav_config = self._normalize_config(raw_config.get("nav_agent", {}))
+                        planner_config = self._normalize_config(
+                            raw_config.get("planner_agent", {})
+                        )
+                        navigation_nav_config = self._normalize_config(
+                            raw_config.get("nav_agent", {})
+                        )
                         config = {
                             "planner_agent": planner_config,
                             "nav_agent": navigation_nav_config,
-                            "mem_agent": self._normalize_config(raw_config.get("mem_agent", {})),
-                            "helper_agent": self._normalize_config(raw_config.get("helper_agent", {})),
+                            "mem_agent": self._normalize_config(
+                                raw_config.get("mem_agent", {})
+                            ),
+                            "helper_agent": self._normalize_config(
+                                raw_config.get("helper_agent", {})
+                            ),
                             "other_settings": {
                                 k: v
                                 for k, v in raw_config.items()
@@ -84,13 +94,21 @@ class AgentsLLMConfig:
                                 ]
                             },
                         }
-                        logger.info(f"Using configuration key '{config_file_ref_key}' from the config file.")
+                        logger.info(
+                            f"Using configuration key '{config_file_ref_key}' from the config file."
+                        )
                     else:
-                        logger.error(f"Key '{config_file_ref_key}' not found in the configuration file.")
-                        raise KeyError(f"Key '{config_file_ref_key}' not found in the configuration file.")
+                        logger.error(
+                            f"Key '{config_file_ref_key}' not found in the configuration file."
+                        )
+                        raise KeyError(
+                            f"Key '{config_file_ref_key}' not found in the configuration file."
+                        )
                 else:
                     logger.error("AGENTS_LLM_CONFIG_FILE_REF_KEY is not provided.")
-                    raise ValueError("AGENTS_LLM_CONFIG_FILE_REF_KEY must be provided if AGENTS_LLM_CONFIG_FILE is set.")
+                    raise ValueError(
+                        "AGENTS_LLM_CONFIG_FILE_REF_KEY must be provided if AGENTS_LLM_CONFIG_FILE is set."
+                    )
 
             except Exception as e:
                 logger.error(f"Error loading configuration file: {e}")
@@ -129,14 +147,23 @@ class AgentsLLMConfig:
 
             # Process configurations for both planner_agent and nav_agent
             planner_config = self._normalize_config(llm_config.get("planner_agent", {}))
-            navigation_nav_config = self._normalize_config(llm_config.get("nav_agent", {}))
+            navigation_nav_config = self._normalize_config(
+                llm_config.get("nav_agent", {})
+            )
 
             config = {
                 "planner_agent": planner_config,
                 "nav_agent": navigation_nav_config,
                 "mem_agent": self._normalize_config(llm_config.get("mem_agent", {})),
-                "helper_agent": self._normalize_config(llm_config.get("helper_agent", {})),
-                "other_settings": {k: v for k, v in llm_config.items() if k not in ["planner_agent", "nav_agent", "mem_agent", "helper_agent"]},
+                "helper_agent": self._normalize_config(
+                    llm_config.get("helper_agent", {})
+                ),
+                "other_settings": {
+                    k: v
+                    for k, v in llm_config.items()
+                    if k
+                    not in ["planner_agent", "nav_agent", "mem_agent", "helper_agent"]
+                },
             }
 
             return config
@@ -185,7 +212,10 @@ class AgentsLLMConfig:
 
         # Capture other settings that start with 'LLM_MODEL'
         for original_key in os.environ:
-            if original_key.startswith("LLM_MODEL") and original_key not in self.KEY_MAPPING_ENV_MODEL:
+            if (
+                original_key.startswith("LLM_MODEL")
+                and original_key not in self.KEY_MAPPING_ENV_MODEL
+            ):
                 other_settings[original_key] = os.getenv(original_key)
 
         # Apply defaults for 'temperature', 'top_p', 'seed' if not present
@@ -196,7 +226,7 @@ class AgentsLLMConfig:
         elif model_name.startswith("gpt"):  # type: ignore
             llm_config_params.setdefault("temperature", 0.0)  # type: ignore
             llm_config_params.setdefault("top_p", 0.001)  # type: ignore
-            # llm_config_params.setdefault("seed", 12345)  # type: ignore
+            llm_config_params.setdefault("seed", 12345)  # type: ignore
         else:
             llm_config_params.setdefault("temperature", 0.1)  # type: ignore
             llm_config_params.setdefault("top_p", 0.1)  # type: ignore

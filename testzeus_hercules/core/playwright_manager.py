@@ -1302,6 +1302,17 @@ class PlaywrightManager:
             const centerX = rect.left + rect.width / 2;
             const centerY = rect.top + rect.height / 2;
 
+            // Create and dispatch mousedown event first
+            const mouseDown = new MouseEvent('mousedown', {
+                bubbles: true,
+                cancelable: true,
+                view: window,
+                clientX: centerX,
+                clientY: centerY,
+                button: (type_of_click === 'right_click' ? 2 : type_of_click === 'middle_click' ? 1 : 0)
+            });
+            element.dispatchEvent(mouseDown);
+
             // Common mouse move event
             const mouseMove = new MouseEvent('mousemove', {
                 bubbles: true,
@@ -1312,9 +1323,19 @@ class PlaywrightManager:
             });
             element.dispatchEvent(mouseMove);
 
-            // Handle different click types
+            // Handle different click types with proper event sequence
             switch(type_of_click) {
                 case 'right_click':
+                    const mouseUp = new MouseEvent('mouseup', {
+                        bubbles: true,
+                        cancelable: true,
+                        clientX: centerX,
+                        clientY: centerY,
+                        button: 2,
+                        view: window
+                    });
+                    element.dispatchEvent(mouseUp);
+                    
                     const contextMenuEvent = new MouseEvent('contextmenu', {
                         bubbles: true,
                         cancelable: true,
@@ -1323,33 +1344,71 @@ class PlaywrightManager:
                         button: 2,
                         view: window
                     });
-                    element.dispatchEvent(contextMenuEvent);
+                    const prevented = !element.dispatchEvent(contextMenuEvent);
+                    if (prevented) {
+                        console.log('Context menu was prevented by the page');
+                    }
                     break;
 
                 case 'double_click':
+                    // First click
+                    const click1 = new MouseEvent('click', {
+                        bubbles: true,
+                        cancelable: true,
+                        clientX: centerX,
+                        clientY: centerY,
+                        detail: 1,
+                        view: window
+                    });
+                    element.dispatchEvent(click1);
+
+                    // Second click
+                    const click2 = new MouseEvent('click', {
+                        bubbles: true,
+                        cancelable: true,
+                        clientX: centerX,
+                        clientY: centerY,
+                        detail: 2,
+                        view: window
+                    });
+                    element.dispatchEvent(click2);
+
+                    // Double click event
                     const dblClickEvent = new MouseEvent('dblclick', {
                         bubbles: true,
                         cancelable: true,
                         clientX: centerX,
                         clientY: centerY,
-                        button: 0,
                         view: window
                     });
                     element.dispatchEvent(dblClickEvent);
                     break;
 
-                case 'middle_click':
-                    const middleClickEvent = new MouseEvent('click', {
+                default: // normal click or middle click
+                    const mouseUpEvent = new MouseEvent('mouseup', {
                         bubbles: true,
                         cancelable: true,
-                        button: 1,
+                        clientX: centerX,
+                        clientY: centerY,
+                        button: (type_of_click === 'middle_click' ? 1 : 0),
                         view: window
                     });
-                    element.dispatchEvent(middleClickEvent);
-                    break;
+                    element.dispatchEvent(mouseUpEvent);
 
-                default: // normal click
-                    element.click();
+                    const clickEvent = new MouseEvent('click', {
+                        bubbles: true,
+                        cancelable: true,
+                        clientX: centerX,
+                        clientY: centerY,
+                        button: (type_of_click === 'middle_click' ? 1 : 0),
+                        view: window
+                    });
+                    const clickPrevented = !element.dispatchEvent(clickEvent);
+                    
+                    // If it's a link and click wasn't prevented, handle navigation
+                    if (!clickPrevented && element.tagName.toLowerCase() === 'a' && element.href) {
+                        window.location.href = element.href;
+                    }
                     break;
             }
 

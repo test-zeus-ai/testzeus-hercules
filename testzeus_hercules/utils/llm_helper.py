@@ -37,10 +37,16 @@ class MultimodalConversableAgent(ConversableAgent):
         *args: Any,
         **kwargs: Any,
     ):
-        super().__init__(name, system_message, is_termination_msg=is_termination_msg, *args, **kwargs)
+        super().__init__(
+            name, system_message, is_termination_msg=is_termination_msg, *args, **kwargs
+        )
         # call the setter to handle special format.
         self.update_system_message(system_message)
-        self._is_termination_msg = is_termination_msg if is_termination_msg is not None else (lambda x: content_str(x.get("content")) == "TERMINATE")
+        self._is_termination_msg = (
+            is_termination_msg
+            if is_termination_msg is not None
+            else (lambda x: content_str(x.get("content")) == "TERMINATE")
+        )
 
         # Override the `generate_oai_reply`
         self.replace_reply_func(
@@ -53,7 +59,9 @@ class MultimodalConversableAgent(ConversableAgent):
         )
 
     def update_system_message(self, system_message: Union[dict, list, str]) -> None:
-        self._oai_system_message[0]["content"] = self._message_to_dict(system_message)["content"]
+        self._oai_system_message[0]["content"] = self._message_to_dict(system_message)[
+            "content"
+        ]
         self._oai_system_message[0]["role"] = "system"
 
     @staticmethod
@@ -75,11 +83,15 @@ class MultimodalConversableAgent(ConversableAgent):
             assert "content" in message, "The message dict must have a `content` field"
             if isinstance(message["content"], str):
                 message = copy.deepcopy(message)
-                message["content"] = gpt4v_formatter(message["content"], img_format="pil")
+                message["content"] = gpt4v_formatter(
+                    message["content"], img_format="pil"
+                )
             try:
                 content_str(message["content"])
             except (TypeError, ValueError) as e:
-                print("The `content` field should be compatible with the content_str function!")
+                print(
+                    "The `content` field should be compatible with the content_str function!"
+                )
                 raise e
             return message
         raise ValueError(f"Unsupported message type: {type(message)}")
@@ -99,12 +111,18 @@ class MultimodalConversableAgent(ConversableAgent):
             messages = self._oai_messages[sender]
 
         # Convert PIL images to base64 for all messages
-        messages_with_b64_img = message_formatter_pil_to_b64(self._oai_system_message + messages)
+        messages_with_b64_img = message_formatter_pil_to_b64(
+            self._oai_system_message + messages
+        )
 
         # Use the base class's _generate_oai_reply_from_client method since it handles tool calls properly
-        extracted_response = self._generate_oai_reply_from_client(llm_client=client, messages=messages_with_b64_img, cache=self.client_cache)
+        extracted_response = self._generate_oai_reply_from_client(
+            llm_client=client, messages=messages_with_b64_img, cache=self.client_cache
+        )
 
-        return (False, None) if extracted_response is None else (True, extracted_response)
+        return (
+            (False, None) if extracted_response is None else (True, extracted_response)
+        )
 
     async def a_generate_oai_reply(
         self,
@@ -119,7 +137,9 @@ class MultimodalConversableAgent(ConversableAgent):
 
         iostream = IOStream.get_default()
 
-        def _generate_oai_reply(self, iostream: IOStream, *args: Any, **kwargs: Any) -> tuple[bool, Union[str, dict, None]]:
+        def _generate_oai_reply(
+            self, iostream: IOStream, *args: Any, **kwargs: Any
+        ) -> tuple[bool, Union[str, dict, None]]:
             with IOStream.set_default(iostream):
                 return self.generate_oai_reply(*args, **kwargs)
 
@@ -139,7 +159,9 @@ class MultimodalConversableAgent(ConversableAgent):
         )
 
 
-def convert_model_config_to_autogen_format(model_config: dict[str, str]) -> list[dict[str, Any]]:
+def convert_model_config_to_autogen_format(
+    model_config: dict[str, str]
+) -> list[dict[str, Any]]:
     """Convert model configuration to Autogen format.
 
     Args:
@@ -156,7 +178,9 @@ def convert_model_config_to_autogen_format(model_config: dict[str, str]) -> list
     return autogen.config_list_from_json(env_or_file=temp_file_path)
 
 
-def is_agent_planner_termination_message(x: dict[str, str], final_response_callback: callable = None) -> bool:
+def is_agent_planner_termination_message(
+    x: dict[str, str], final_response_callback: callable = None
+) -> bool:
     """Check if a message should terminate the planner agent conversation.
 
     Args:
@@ -177,7 +201,9 @@ def is_agent_planner_termination_message(x: dict[str, str], final_response_callb
         should_terminate = True
     else:
         try:
-            content_json = json.loads(content.replace("```json", "").replace("```", "").strip())
+            content_json = json.loads(
+                content.replace("```json", "").replace("```", "").strip()
+            )
             _terminate = content_json.get("terminate", "no")
             final_response = content_json.get("final_response", None)
             if _terminate == "yes":
@@ -193,7 +219,7 @@ def is_agent_planner_termination_message(x: dict[str, str], final_response_callb
 def create_multimodal_agent(
     name: str,
     system_message: str = "You are a multimodal conversable agent.",
-    llm_config: Optional[List[Dict[str, Any]]] = None,
+    llm_config: Optional[Dict[str, Any]] = None,
 ) -> MultimodalConversableAgent:
     """Create a multimodal conversable agent as a singleton.
 
@@ -205,13 +231,17 @@ def create_multimodal_agent(
     Returns:
         MultimodalConversableAgent instance
     """
+
     # Singleton instance variable
     if not hasattr(create_multimodal_agent, "_instance"):
         # Get the LLM config for the image comparison agent
         _mca_agent_config = AgentsLLMConfig().get_helper_agent_config()
-        _llm_config = llm_config or convert_model_config_to_autogen_format(_mca_agent_config["model_config_params"])
+        _llm_config = [llm_config] or convert_model_config_to_autogen_format(
+            _mca_agent_config["model_config_params"]
+        )
         if _llm_config:
             _llm_config = _llm_config[0]
+
         create_multimodal_agent._instance = MultimodalConversableAgent(
             name=name,
             max_consecutive_auto_reply=1,
@@ -264,7 +294,9 @@ def process_chat_message_content(content: Any) -> Any:
         try:
             return json.loads(content)
         except json.JSONDecodeError:
-            logger.debug(f"Failed to decode JSON: {content}, keeping as multiline string")
+            logger.debug(
+                f"Failed to decode JSON: {content}, keeping as multiline string"
+            )
             return content
     elif isinstance(content, (dict, list)):
         return content
