@@ -60,7 +60,7 @@ async def click(
     browser_manager = PlaywrightManager()
     page = await browser_manager.get_current_page()
     # await page.route("**/*", block_ads)
-    action_on_dialog = action_on_dialog.lower() if action_on_dialog else None
+    action_on_dialog = action_on_dialog.lower() if action_on_dialog else ""
     type_of_click = type_of_click.lower() if type_of_click else "click"
 
     async def handle_dialog(dialog: Any) -> None:
@@ -255,9 +255,26 @@ async def do_click(
                 "detailed_message": f'Select menu option "{element_value}" selected. The select element\'s outer HTML is: {element_outer_html}.',
             }
 
-        msg = await browser_manager.perform_javascript_click(
-            page, selector, type_of_click
-        )
+        input_type = await element.evaluate("(el) => el.type")
+
+        # Determine if it's checkable
+        if element_tag_name == "input" and input_type in ["checkbox", "radio"]:
+            await element.check()
+            msg = f'Checked element with selector: "{selector}"'
+        else:
+            # Perform the click based on the type_of_click
+            if type_of_click == "right_click":
+                await element.click(button="right")
+                msg = f'Right-clicked element with selector: "{selector}"'
+            elif type_of_click == "double_click":
+                await element.dblclick()
+                msg = f'Double-clicked element with selector: "{selector}"'
+            elif type_of_click == "middle_click":
+                await element.click(button="middle")
+                msg = f'Middle-clicked element with selector: "{selector}"'
+            else:  # Default to regular click
+                await element.click()
+                msg = f'Clicked element with selector: "{selector}"'
 
         # Log successful selector interaction
         await selector_logger.log_selector_interaction(

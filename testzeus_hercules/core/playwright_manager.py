@@ -362,6 +362,16 @@ class PlaywrightManager:
             self._playwright = None
 
     async def prepare_extension(self) -> None:
+        """
+        Prepare browser extensions (uBlock Origin) if enabled in config.
+        """
+        # Skip if extensions are disabled in config
+        if not get_global_conf().should_enable_ublock_extension():
+            logger.info(
+                "uBlock extension is disabled in config. Skipping installation."
+            )
+            return
+
         if os.name == "nt":
             logger.info("Skipping extension preparation on Windows.")
             return
@@ -608,11 +618,34 @@ class PlaywrightManager:
                     launch_options["channel"] = self.browser_channel
                 # Note: version is handled during installation, not at launch time
             elif self.browser_type == "firefox":
-                if self.browser_channel:
-                    launch_options["firefox_user_prefs"] = {
-                        "app.update.auto": False,
-                        "browser.shell.checkDefaultBrowser": False,
-                    }
+                firefox_prefs = {
+                    "app.update.auto": False,
+                    "browser.shell.checkDefaultBrowser": False,
+                    "media.navigator.permission.disabled": True,
+                    "permissions.default.screen": 1,
+                    "media.getusermedia.window.enabled": True,
+                }
+
+                # Auto-accept screen sharing if enabled in config
+                if get_global_conf().should_auto_accept_screen_sharing():
+                    firefox_prefs.update(
+                        {
+                            "permissions.default.camera": 1,  # 0=ask, 1=allow, 2=block
+                            "permissions.default.microphone": 1,
+                            "permissions.default.desktop-notification": 1,
+                            "media.navigator.streams.fake": True,
+                            "media.getusermedia.screensharing.enabled": True,
+                            "media.getusermedia.browser.enabled": True,
+                            "dom.disable_beforeunload": True,
+                            "media.autoplay.default": 0,
+                            "media.autoplay.enabled": True,
+                            "privacy.webrtc.legacyGlobalIndicator": False,
+                            "privacy.webrtc.hideGlobalIndicator": True,
+                            "permissions.default.desktop": 1,
+                        }
+                    )
+
+                launch_options["firefox_user_prefs"] = firefox_prefs
                 # Note: version is handled during installation, not at launch time
             elif self.browser_type == "webkit":
                 # WebKit doesn't support channels or direct version specification at launch
@@ -666,11 +699,37 @@ class PlaywrightManager:
                     browser_context_kwargs["channel"] = self.browser_channel
                 # Note: version is handled during installation, not at launch time
             elif self.browser_type == "firefox":
+                firefox_prefs = {
+                    "app.update.auto": False,
+                    "browser.shell.checkDefaultBrowser": False,
+                    "media.navigator.permission.disabled": True,
+                    "permissions.default.screen": 1,
+                    "media.getusermedia.window.enabled": True,
+                }
+
+                # Auto-accept screen sharing if enabled in config
+                if get_global_conf().should_auto_accept_screen_sharing():
+                    firefox_prefs.update(
+                        {
+                            "permissions.default.camera": 1,  # 0=ask, 1=allow, 2=block
+                            "permissions.default.microphone": 1,
+                            "permissions.default.desktop-notification": 1,
+                            "media.navigator.streams.fake": True,
+                            "media.getusermedia.screensharing.enabled": True,
+                            "media.getusermedia.browser.enabled": True,
+                            "dom.disable_beforeunload": True,
+                            "media.autoplay.default": 0,
+                            "media.autoplay.enabled": True,
+                            "privacy.webrtc.legacyGlobalIndicator": False,
+                            "privacy.webrtc.hideGlobalIndicator": True,
+                            "permissions.default.desktop": 1,
+                        }
+                    )
+
                 if self.browser_channel:
-                    browser_context_kwargs["firefox_user_prefs"] = {
-                        "app.update.auto": False,
-                        "browser.shell.checkDefaultBrowser": False,
-                    }
+                    browser_context_kwargs["firefox_user_prefs"] = firefox_prefs
+                else:
+                    browser_context_kwargs["firefox_user_prefs"] = firefox_prefs
                 # Note: version is handled during installation, not at launch time
             elif self.browser_type == "webkit":
                 # WebKit doesn't support channels or direct version specification at launch
@@ -705,6 +764,7 @@ class PlaywrightManager:
                     logger.error(f"Error installing browser version: {e}")
                     raise
 
+            # Update browser_context_kwargs with emulation options
             browser_context_kwargs.update(self._build_emulation_context_options())
 
             if self.browser_type == "chromium" and self._extension_path is not None:
@@ -713,17 +773,24 @@ class PlaywrightManager:
                 )
                 disable_args.append(f"--load-extension={self._extension_path}")
             elif self.browser_type == "firefox" and self._extension_path is not None:
-                browser_context_kwargs["firefox_user_prefs"] = {
-                    "xpinstall.signatures.required": False,
-                    "extensions.autoDisableScopes": 0,
-                    "extensions.enabledScopes": 15,
-                    "extensions.installDistroAddons": False,
-                    "extensions.update.enabled": False,
-                    "browser.shell.checkDefaultBrowser": False,
-                    "browser.startup.homepage": "about:blank",
-                    "toolkit.telemetry.reportingpolicy.firstRun": False,
-                    "extensions.webextensions.userScripts.enabled": True,
-                }
+                # Merge with existing firefox_user_prefs if any
+                firefox_user_prefs = browser_context_kwargs.get(
+                    "firefox_user_prefs", {}
+                )
+                firefox_user_prefs.update(
+                    {
+                        "xpinstall.signatures.required": False,
+                        "extensions.autoDisableScopes": 0,
+                        "extensions.enabledScopes": 15,
+                        "extensions.installDistroAddons": False,
+                        "extensions.update.enabled": False,
+                        "browser.shell.checkDefaultBrowser": False,
+                        "browser.startup.homepage": "about:blank",
+                        "toolkit.telemetry.reportingpolicy.firstRun": False,
+                        "extensions.webextensions.userScripts.enabled": True,
+                    }
+                )
+                browser_context_kwargs["firefox_user_prefs"] = firefox_user_prefs
 
             self._browser_context = await browser_type.launch_persistent_context(
                 user_dir, **browser_context_kwargs
@@ -1302,16 +1369,15 @@ class PlaywrightManager:
             const centerX = rect.left + rect.width / 2;
             const centerY = rect.top + rect.height / 2;
 
-            // Create and dispatch mousedown event first
-            const mouseDown = new MouseEvent('mousedown', {
-                bubbles: true,
-                cancelable: true,
-                view: window,
-                clientX: centerX,
-                clientY: centerY,
-                button: (type_of_click === 'right_click' ? 2 : type_of_click === 'middle_click' ? 1 : 0)
-            });
-            element.dispatchEvent(mouseDown);
+            // Check if we're in Salesforce
+            const isSalesforce = window.location.href.includes('lightning/') || 
+                                window.location.href.includes('force.com') || 
+                                document.querySelector('.slds-dropdown, lightning-base-combobox') !== null;
+                                
+            // Check if element is SVG or SVG child
+            const isSvgElement = element.tagName.toLowerCase() === 'svg' || 
+                                element.ownerSVGElement !== null ||
+                                element.namespaceURI === 'http://www.w3.org/2000/svg';
 
             // Common mouse move event
             const mouseMove = new MouseEvent('mousemove', {
@@ -1323,19 +1389,9 @@ class PlaywrightManager:
             });
             element.dispatchEvent(mouseMove);
 
-            // Handle different click types with proper event sequence
+            // Handle different click types
             switch(type_of_click) {
                 case 'right_click':
-                    const mouseUp = new MouseEvent('mouseup', {
-                        bubbles: true,
-                        cancelable: true,
-                        clientX: centerX,
-                        clientY: centerY,
-                        button: 2,
-                        view: window
-                    });
-                    element.dispatchEvent(mouseUp);
-                    
                     const contextMenuEvent = new MouseEvent('contextmenu', {
                         bubbles: true,
                         cancelable: true,
@@ -1344,70 +1400,108 @@ class PlaywrightManager:
                         button: 2,
                         view: window
                     });
-                    const prevented = !element.dispatchEvent(contextMenuEvent);
-                    if (prevented) {
-                        console.log('Context menu was prevented by the page');
-                    }
+                    element.dispatchEvent(contextMenuEvent);
                     break;
 
                 case 'double_click':
-                    // First click
-                    const click1 = new MouseEvent('click', {
-                        bubbles: true,
-                        cancelable: true,
-                        clientX: centerX,
-                        clientY: centerY,
-                        detail: 1,
-                        view: window
-                    });
-                    element.dispatchEvent(click1);
-
-                    // Second click
-                    const click2 = new MouseEvent('click', {
-                        bubbles: true,
-                        cancelable: true,
-                        clientX: centerX,
-                        clientY: centerY,
-                        detail: 2,
-                        view: window
-                    });
-                    element.dispatchEvent(click2);
-
-                    // Double click event
                     const dblClickEvent = new MouseEvent('dblclick', {
                         bubbles: true,
                         cancelable: true,
                         clientX: centerX,
                         clientY: centerY,
+                        button: 0,
                         view: window
                     });
                     element.dispatchEvent(dblClickEvent);
                     break;
 
-                default: // normal click or middle click
-                    const mouseUpEvent = new MouseEvent('mouseup', {
+                case 'middle_click':
+                    const middleClickEvent = new MouseEvent('click', {
                         bubbles: true,
                         cancelable: true,
-                        clientX: centerX,
-                        clientY: centerY,
-                        button: (type_of_click === 'middle_click' ? 1 : 0),
+                        button: 1,
                         view: window
                     });
-                    element.dispatchEvent(mouseUpEvent);
+                    element.dispatchEvent(middleClickEvent);
+                    break;
 
-                    const clickEvent = new MouseEvent('click', {
-                        bubbles: true,
-                        cancelable: true,
-                        clientX: centerX,
-                        clientY: centerY,
-                        button: (type_of_click === 'middle_click' ? 1 : 0),
-                        view: window
-                    });
-                    const clickPrevented = !element.dispatchEvent(clickEvent);
-                    
-                    // If it's a link and click wasn't prevented, handle navigation
-                    if (!clickPrevented && element.tagName.toLowerCase() === 'a' && element.href) {
-                        window.location.href = element.href;
+                default: // normal click
+                    // For SVG elements or Salesforce, use event sequence approach
+                    if (isSvgElement || isSalesforce) {
+                        // SVG elements need full event sequence
+                        // Create and dispatch mousedown event first
+                        const mouseDown = new MouseEvent('mousedown', {
+                            bubbles: true,
+                            cancelable: true,
+                            view: window,
+                            clientX: centerX,
+                            clientY: centerY,
+                            button: 0
+                        });
+                        element.dispatchEvent(mouseDown);
+                        
+                        const mouseUpEvent = new MouseEvent('mouseup', {
+                            bubbles: true,
+                            cancelable: true,
+                            clientX: centerX,
+                            clientY: centerY,
+                            button: 0,
+                            view: window
+                        });
+                        element.dispatchEvent(mouseUpEvent);
+
+                        const clickEvent = new MouseEvent('click', {
+                            bubbles: true,
+                            cancelable: true,
+                            clientX: centerX,
+                            clientY: centerY,
+                            button: 0,
+                            view: window
+                        });
+                        element.dispatchEvent(clickEvent);
+                    } else {
+                        // For regular HTML elements, try direct click first, fallback to event sequence
+                        try {
+                            // Try the native click method first
+                            element.click();
+                        } catch (error) {
+                            console.log('Native click failed, using event sequence');
+                            // Fallback to event sequence
+                            const mouseDown = new MouseEvent('mousedown', {
+                                bubbles: true,
+                                cancelable: true,
+                                view: window,
+                                clientX: centerX,
+                                clientY: centerY,
+                                button: 0
+                            });
+                            element.dispatchEvent(mouseDown);
+                            
+                            const mouseUpEvent = new MouseEvent('mouseup', {
+                                bubbles: true,
+                                cancelable: true,
+                                clientX: centerX,
+                                clientY: centerY,
+                                button: 0,
+                                view: window
+                            });
+                            element.dispatchEvent(mouseUpEvent);
+
+                            const clickEvent = new MouseEvent('click', {
+                                bubbles: true,
+                                cancelable: true,
+                                clientX: centerX,
+                                clientY: centerY,
+                                button: 0,
+                                view: window
+                            });
+                            element.dispatchEvent(clickEvent);
+                            
+                            // If it's a link and click wasn't prevented, handle navigation
+                            if (element.tagName.toLowerCase() === 'a' && element.href) {
+                                window.location.href = element.href;
+                            }
+                        }
                     }
                     break;
             }
@@ -1567,7 +1661,7 @@ class PlaywrightManager:
             draw = ImageDraw.Draw(image)
 
             # Draw bounding box
-            draw.rectangle(
+            draw.line(
                 [
                     (bbox["x"], bbox["y"]),
                     (bbox["x"] + bbox["width"], bbox["y"] + bbox["height"]),

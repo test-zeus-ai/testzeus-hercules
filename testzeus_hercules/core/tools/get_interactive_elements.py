@@ -107,17 +107,18 @@ async def get_interactive_elements() -> (
         EventData(detail=f"DETECTED {rr} components"),
     )
 
-    if isinstance(extracted_data, dict):
-        extracted_data = await rename_children(extracted_data)
+    #     if isinstance(extracted_data, dict):
+    #         extracted_data = await rename_children(extracted_data)
 
+    #     extracted_data = json.dumps(extracted_data, separators=(",", ":"))
+    #     extracted_data_legend = """Key legend:
+    # t: tag
+    # r: role
+    # c: children
+    # n: name
+    # tl: title
+    # Dict >>
+    # """
+    #     extracted_data = extracted_data_legend + extracted_data
     extracted_data = json.dumps(extracted_data, separators=(",", ":"))
-    extracted_data_legend = """Key legend:
-t: tag
-r: role
-c: children
-n: name
-tl: title
-Dict >>
-"""
-    extracted_data = extracted_data_legend + extracted_data
     return extracted_data or "Its Empty, try something else"  # type: ignore

@@ -96,18 +96,19 @@ async def get_input_fields() -> (
         EventData(detail=f"DETECTED {rr} components"),
     )
 
-    if isinstance(extracted_data, list):
-        for i, item in enumerate(extracted_data):
-            extracted_data[i] = await rename_children(item)
+    #     if isinstance(extracted_data, list):
+    #         for i, item in enumerate(extracted_data):
+    #             extracted_data[i] = await rename_children(item)
 
+    #     extracted_data = json.dumps(extracted_data, separators=(",", ":"))
+    #     extracted_data_legend = """Key legend:
+    # t: tag
+    # r: role
+    # c: children
+    # n: name
+    # tl: title
+    # Dict >>
+    # """
+    #     extracted_data = extracted_data_legend + extracted_data
     extracted_data = json.dumps(extracted_data, separators=(",", ":"))
-    extracted_data_legend = """Key legend:
-t: tag
-r: role
-c: children
-n: name
-tl: title
-Dict >>
-"""
-    extracted_data = extracted_data_legend + extracted_data
     return extracted_data or "Its Empty, try something else"  # type: ignore

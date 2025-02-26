@@ -168,6 +168,30 @@ class BaseConfigManager:
             help="Specific browser version to use (e.g., '114', '115.0.1', 'latest')",
             required=False,
         )
+        parser.add_argument(
+            "--enable-ublock",
+            action="store_true",
+            help="Enable uBlock Origin extension",
+            required=False,
+        )
+        parser.add_argument(
+            "--disable-ublock",
+            action="store_true",
+            help="Disable uBlock Origin extension",
+            required=False,
+        )
+        parser.add_argument(
+            "--auto-accept-screen-sharing",
+            action="store_true",
+            help="Automatically accept screen sharing prompts",
+            required=False,
+        )
+        parser.add_argument(
+            "--disable-auto-accept-screen-sharing",
+            action="store_true",
+            help="Disable automatic acceptance of screen sharing prompts",
+            required=False,
+        )
 
         # Parse known args; ignore unknown if you have other custom arguments
         args, _ = parser.parse_known_args()
@@ -194,6 +218,12 @@ class BaseConfigManager:
             os.environ["BROWSER_PATH"] = args.browser_path
         if args.browser_version:
             os.environ["BROWSER_VERSION"] = args.browser_version
+        if args.enable_ublock:
+            os.environ["ENABLE_UBLOCK_EXTENSION"] = "true"
+        if args.disable_ublock:
+            os.environ["ENABLE_UBLOCK_EXTENSION"] = "false"
+        if args.auto_accept_screen_sharing:
+            os.environ["AUTO_ACCEPT_SCREEN_SHARING"] = "true"
 
     def _merge_from_env(self) -> None:
         """
@@ -243,6 +273,8 @@ class BaseConfigManager:
             "BROWSER_PATH",
             "ENABLE_PLAYWRIGHT_TRACING",
             "ENABLE_BOUNDING_BOX_SCREENSHOTS",
+            "ENABLE_UBLOCK_EXTENSION",
+            "AUTO_ACCEPT_SCREEN_SHARING",
         ]
 
         for key in relevant_keys:
@@ -352,6 +384,8 @@ class BaseConfigManager:
         self._config.setdefault("USE_DYNAMIC_LTM", "false")
         self._config.setdefault("ENABLE_BROWSER_LOGS", "false")
         self._config.setdefault("ENABLE_BOUNDING_BOX_SCREENSHOTS", "false")
+        self._config.setdefault("ENABLE_UBLOCK_EXTENSION", "false")
+        self._config.setdefault("AUTO_ACCEPT_SCREEN_SHARING", "true")
 
         self._config.setdefault("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python")
 
@@ -460,6 +494,14 @@ class BaseConfigManager:
             self._config.get("ENABLE_BOUNDING_BOX_SCREENSHOTS", "false").lower()
             == "true"
         )
+
+    def should_enable_ublock_extension(self) -> bool:
+        """Check if uBlock extension should be enabled"""
+        return self._config.get("ENABLE_UBLOCK_EXTENSION", "true").lower() == "true"
+
+    def should_auto_accept_screen_sharing(self) -> bool:
+        """Check if screen sharing should be automatically accepted"""
+        return self._config.get("AUTO_ACCEPT_SCREEN_SHARING", "true").lower() == "true"
 
     # -------------------------------------------------------------------------
     # Directory creation logic (mirroring your original code)
