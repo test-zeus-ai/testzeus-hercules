@@ -55,7 +55,9 @@ async def set_date_time_value(
         get_global_conf().get_delay_time()
     )  # sleep to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
-    await page.wait_for_load_state()
+
+    await browser_manager.wait_for_load_state_if_enabled(page=page)
+
     await browser_manager.take_screenshots(f"{function_name}_end", page)
 
     if dom_changes_detected:

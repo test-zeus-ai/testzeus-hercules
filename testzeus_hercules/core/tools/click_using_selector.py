@@ -136,7 +136,8 @@ async def click(
     )  # sleep to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
 
-    await page.wait_for_load_state()
+    await browser_manager.wait_for_load_state_if_enabled(page=page)
+
     await browser_manager.take_screenshots(f"{function_name}_end", page)
 
     if dom_changes_detected:

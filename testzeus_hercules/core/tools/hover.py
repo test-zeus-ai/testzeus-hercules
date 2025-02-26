@@ -54,7 +54,9 @@ async def hover(
         get_global_conf().get_delay_time()
     )  # sleep to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
-    await page.wait_for_load_state()
+
+    await browser_manager.wait_for_load_state_if_enabled(page=page)
+
     await browser_manager.take_screenshots(f"{function_name}_end", page)
 
     if dom_changes_detected:
@@ -93,10 +95,15 @@ async def do_hover(
         # Attempt to find the element on the main page or in shadow DOMs and iframes
         browser_manager = PlaywrightManager()
 
-        element = await browser_manager.find_element(
-            selector, page, element_name="hover"
-        )
-        if element is None:
+        # Get the current page
+        page = await browser_manager.get_current_page()
+
+        # Wait for the page to load
+        await browser_manager.wait_for_load_state_if_enabled(page=page)
+
+        # Find the element
+        element = await page.query_selector(selector)
+        if not element:
             # Initialize selector logger with proof path
             selector_logger = get_browser_logger(get_global_conf().get_proof_path())
             # Log failed selector interaction

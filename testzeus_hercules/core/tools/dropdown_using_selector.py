@@ -56,7 +56,8 @@ async def select_option(
     await asyncio.sleep(get_global_conf().get_delay_time())
     unsubscribe(detect_dom_changes)
 
-    await page.wait_for_load_state()
+    await browser_manager.wait_for_load_state_if_enabled(page=page)
+
     await browser_manager.take_screenshots(f"{function_name}_end", page)
 
     # Simply return the detailed message
@@ -202,9 +203,9 @@ async def do_select_option(
 
         # For all other element types (custom dropdowns, Lightning components, etc.)
         # Click to open dropdown
+
         await element.click()
         await asyncio.sleep(1)  # Wait for dropdown to open
-        await element.click()
 
         # Try using role-based selectors (most reliable approach)
         try:
@@ -370,7 +371,7 @@ async def do_select_option(
             success=False,
             error_message=f"Could not find option '{option_value}' in the dropdown with any selection method.",
         )
-        error = f"Error: Option '{option_value}' not found in the element with selector '{selector}' using any selection method."
+        error = f"Error: Option '{option_value}' not found in the element with selector '{selector}' using any selection method. TRY CLICKING THE ELEMENT FIRST AND RETRY."
         return {"summary_message": error, "detailed_message": error}
 
     except Exception as e:

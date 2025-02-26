@@ -1,5 +1,6 @@
 import inspect
 from typing import Annotated
+import asyncio
 
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from testzeus_hercules.config import get_global_conf
@@ -70,8 +71,19 @@ async def openurl(
         status = response.status if response else None
         ok = response.ok if response else False
 
+        # Wait for the page to load
+        try:
+            await browser_manager.wait_for_load_state_if_enabled(
+                page=page, state="domcontentloaded"
+            )
+
+            # Additional wait time if specified
+            if timeout > 0:
+                await asyncio.sleep(timeout)
+        except Exception as e:
+            logger.error(f"An error occurred while waiting for the page to load: {e}")
+
         # Wait for the network to idle
-        await page.wait_for_load_state()
         await browser_manager.wait_for_page_and_frames_load()
 
         # Log successful navigation

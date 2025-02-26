@@ -112,7 +112,9 @@ async def entertext(
         get_global_conf().get_delay_time()
     )  # sleep to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
-    await page.wait_for_load_state()
+
+    await browser_manager.wait_for_load_state_if_enabled(page=page)
+
     await browser_manager.take_screenshots(f"{function_name}_end", page)
 
     if dom_changes_detected:
@@ -194,7 +196,7 @@ async def do_entertext(
             await custom_fill_element(page, selector, text_to_enter)
 
         await elem.focus()
-        await page.wait_for_load_state()
+        await browser_manager.wait_for_load_state_if_enabled(page=page)
 
         # Log successful selector interaction
         await selector_logger.log_selector_interaction(

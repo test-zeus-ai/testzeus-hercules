@@ -275,6 +275,7 @@ class BaseConfigManager:
             "ENABLE_BOUNDING_BOX_SCREENSHOTS",
             "ENABLE_UBLOCK_EXTENSION",
             "AUTO_ACCEPT_SCREEN_SHARING",
+            "NO_WAIT_FOR_LOAD_STATE",
         ]
 
         for key in relevant_keys:
@@ -398,6 +399,15 @@ class BaseConfigManager:
         if self._config["MODE"] == "debug":
             self.timestamp = "0"
 
+        # Set default values for config parameters that weren't specified.
+        # Set defaults for missing values
+        defaults = {
+            "NO_WAIT_FOR_LOAD_STATE": "false",
+        }
+
+        for key, value in defaults.items():
+            self._config.setdefault(key, value)
+
     # -------------------------------------------------------------------------
     # Public Getters & Setters
     # -------------------------------------------------------------------------
@@ -502,6 +512,10 @@ class BaseConfigManager:
     def should_auto_accept_screen_sharing(self) -> bool:
         """Check if screen sharing should be automatically accepted"""
         return self._config.get("AUTO_ACCEPT_SCREEN_SHARING", "true").lower() == "true"
+
+    def should_skip_wait_for_load_state(self) -> bool:
+        """Return whether to skip wait_for_load_state calls."""
+        return self._config["NO_WAIT_FOR_LOAD_STATE"].lower().strip() == "true"
 
     # -------------------------------------------------------------------------
     # Directory creation logic (mirroring your original code)

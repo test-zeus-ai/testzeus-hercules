@@ -26,6 +26,7 @@ from testzeus_hercules.utils.dom_mutation_observer import (
 from testzeus_hercules.utils.js_helper import get_js_with_element_finder
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.core.browser_logger import get_browser_logger
+from pathlib import Path
 
 # Ensures that playwright does not wait for font loading when taking screenshots.
 # Reference: https://github.com/microsoft/playwright/issues/28995
@@ -1052,8 +1053,8 @@ class PlaywrightManager:
         screenshot_path = os.path.join(self.get_screenshots_dir(), screenshot_name)
 
         try:
-            await page.wait_for_load_state(
-                state=load_state, timeout=take_snapshot_timeout
+            await self.wait_for_load_state_if_enabled(
+                page=page, state=load_state, timeout=take_snapshot_timeout
             )
             screenshot_bytes = await page.screenshot(
                 path=screenshot_path,
@@ -1288,17 +1289,30 @@ class PlaywrightManager:
     async def wait_for_page_and_frames_load(
         self, timeout_overwrite: Optional[float] = None
     ) -> None:
-        start_time = time.time()
+        """Wait for the page and all frames to load."""
+        page = await self.get_current_page()
+
         try:
             await self._wait_for_stable_network()
         except Exception:
             logger.warning("Page load stable-network check failed, continuing...")
 
-        elapsed = time.time() - start_time
-        remaining = max((timeout_overwrite or MIN_WAIT_PAGE_LOAD_TIME) - elapsed, 0)
-        logger.debug(
-            f"Page loaded in {elapsed:.2f}s, waiting {remaining:.2f}s more for stability."
-        )
+    async def wait_for_load_state_if_enabled(
+        self,
+        page: Page,
+        state: Literal["load", "domcontentloaded", "networkidle"] = "domcontentloaded",
+        timeout: Optional[float] = None,
+    ) -> None:
+        """
+        Wait for the page to reach a specific state if wait_for_load_state is enabled.
+
+        Args:
+            page: The playwright page object
+            state: The state to wait for (load, domcontentloaded, networkidle)
+            timeout: Maximum time to wait for in milliseconds
+        """
+        if not get_global_conf().should_skip_wait_for_load_state():
+            await page.wait_for_load_state(state=state, timeout=timeout)
 
     # -------------------------------------------------------------------------
     # NEW METHODS for updating context properties on the fly

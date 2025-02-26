@@ -120,7 +120,9 @@ async def setslider(
         get_global_conf().get_delay_time()
     )  # sleep to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
-    await page.wait_for_load_state()
+
+    await browser_manager.wait_for_load_state_if_enabled(page=page)
+
     await browser_manager.take_screenshots(f"{function_name}_end", page)
 
     if dom_changes_detected:
@@ -234,7 +236,7 @@ async def do_setslider(
         )
 
         await elem_handle.focus()
-        await page.wait_for_load_state()
+        await browser_manager.wait_for_load_state_if_enabled(page=page)
         logger.info(
             f"Success. Slider value {value_to_set} set successfully in the element with selector {selector}"
         )

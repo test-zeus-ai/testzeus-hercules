@@ -32,7 +32,9 @@ async def get_interactive_elements() -> (
     browser_manager = PlaywrightManager()
     await browser_manager.wait_for_page_and_frames_load()
     page = await browser_manager.get_current_page()
-    await page.wait_for_load_state()
+
+    await browser_manager.wait_for_load_state_if_enabled(page=page)
+
     if page is None:  # type: ignore
         raise ValueError("No active page found. OpenURL command opens a new page.")
 
