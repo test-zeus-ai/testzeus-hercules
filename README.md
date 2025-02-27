@@ -170,11 +170,12 @@ To set up and run Hercules on a Windows machine:
 #### Supported AI Models for TestZeus-Hercules
 - Anthropic: Compatible with Haiku 3.5 and above.
 - Groq: Supports any version with function calling and coding capabilities.
-- Mistral: Supports any version with function calling and coding capabilities. Mistral-large, Mistral-medium
-- OpenAI: Fully compatible with GPT-4o and above. Note: OpenAI GPT-4o-mini is only supported for sub agents, for planner it is still recommended to use GPT-4o.
-- Ollama: Supported with medium models and function calling.
-- Gemini: 1.5 pro and above.
-- Hosting: supported on AWS bedrock, GCP VertexAI, AzureAI.
+- Mistral: Supports any version with function calling and coding capabilities. Mistral-large, Mistral-medium. Only heavey models.
+- OpenAI: Fully compatible with GPT-4o/o3-mini and above. Note: OpenAI GPT-4o-mini is only supported for sub-agents, for planner it is still recommended to use GPT-4o.
+- Ollama: Supported with medium models and function calling. Heavy models only 70b and above.
+- Gemini: [deprecated, because of flaky execution]. Refer: https://testzeuscommunityhq.slack.com/archives/C0828GV2HEC/p1740628636862819
+- Deepseek: [deprecated, because of flaky execution]. Refer: https://testzeuscommunityhq.slack.com/archives/C0828GV2HEC/p1740628636862819
+- Hosting: supported on AWS bedrock, GCP VertexAI, AzureAI. [tested models, OpenAI, Anthropic Sonet and Haiku, Llamma 60b above with function calling]
 Note: Kindly ensure that the model you are using can handle agentic activities like function calling. For example larger models like OpenAI GPT 4O, Llama >70B, Mistral large etc.
 
 #### Execution Flow
