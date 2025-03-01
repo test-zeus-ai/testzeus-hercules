@@ -259,8 +259,11 @@ async def do_click(
         input_type = await element.evaluate("(el) => el.type")
 
         # Determine if it's checkable
-        if element_tag_name == "input" and input_type in ["checkbox", "radio"]:
+        if element_tag_name == "input" and input_type in ["radio"]:
             await element.check()
+            msg = f'Checked element with selector: "{selector}"'
+        elif element_tag_name == "input" and input_type in ["checkbox"]:
+            await element.type(" ")
             msg = f'Checked element with selector: "{selector}"'
         else:
             # Perform the click based on the type_of_click
@@ -294,6 +297,39 @@ async def do_click(
             "detailed_message": f"{msg} The clicked element's outer HTML is: {element_outer_html}.",
         }  # type: ignore
     except Exception as e:
+        # Try a JavaScript fallback click before giving up
+        try:
+            logger.info(
+                f'Standard click failed for "{selector}". Attempting JavaScript fallback click.'
+            )
+
+            msg = await browser_manager.perform_javascript_click(
+                page, selector, type_of_click
+            )
+
+            if msg:
+                # Initialize selector logger with proof path
+                selector_logger = get_browser_logger(get_global_conf().get_proof_path())
+                # Log successful JavaScript fallback click
+                await selector_logger.log_selector_interaction(
+                    tool_name="click",
+                    selector=selector,
+                    action=f"js_fallback_{type_of_click}",
+                    selector_type="css" if "md=" in selector else "custom",
+                    success=True,
+                    additional_data={"click_type": "javascript_fallback"},
+                )
+
+                msg = f'Successfully clicked element with selector: "{selector}" using JavaScript fallback'
+                return {
+                    "summary_message": msg,
+                    "detailed_message": f"{msg}. The standard click method failed, but JavaScript click succeeded.",
+                }
+        except Exception as js_error:
+            logger.error(f"JavaScript fallback click also failed: {js_error}")
+            # Both standard and fallback methods failed, proceed with original error handling
+            pass
+
         # Initialize selector logger with proof path
         selector_logger = get_browser_logger(get_global_conf().get_proof_path())
         # Log failed selector interaction

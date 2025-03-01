@@ -6,7 +6,6 @@ from typing import Annotated, Dict, List, Tuple
 from playwright.async_api import Page
 from testzeus_hercules.config import get_global_conf  # Add this import
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
-from testzeus_hercules.core.prompts import LLM_PROMPTS
 from testzeus_hercules.core.tools.press_key_combination import press_key_combination
 from testzeus_hercules.core.browser_logger import get_browser_logger
 from testzeus_hercules.core.tools.tool_registry import tool
@@ -243,7 +242,7 @@ async def do_entertext(
 @tool(
     agent_names=["browser_nav_agent"],
     name="bulk_enter_text",
-    description="Enters text into multiple DOM elements using a bulk operation. An dict containing'selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'text' (text to enter on the element)",
+    description="Enters text into multiple text input/textarea elements using a bulk operation. An dict containing'selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'text' (text to enter on the element)",
 )
 async def bulk_enter_text(
     entries: Annotated[

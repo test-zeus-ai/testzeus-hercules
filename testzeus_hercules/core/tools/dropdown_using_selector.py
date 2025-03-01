@@ -156,6 +156,7 @@ async def do_select_option(
         # Handle standard HTML select element
         if tag_name == "select":
             # Use built-in functionality for select elements
+            # Use built-in functionality for select elements
             await element.select_option(value=option_value)
             await selector_logger.log_selector_interaction(
                 tool_name="select_option",
@@ -179,8 +180,26 @@ async def do_select_option(
         # Handle input types
         elif tag_name == "input":
             input_type = await element.evaluate("el => el.type")
-            if input_type in ["number", "range"]:
+            input_role = await element.evaluate("el => el.role")
+            if input_type in [
+                "number",
+                "range",
+                "combobox",
+                "listbox",
+                "dropdown",
+                "spinner",
+                "select",
+                "option",
+            ] or input_role in [
+                "combobox",
+                "listbox",
+                "dropdown",
+                "spinner",
+                "select",
+            ]:
+                await element.click()
                 await element.fill(option_value)
+
                 await selector_logger.log_selector_interaction(
                     tool_name="select_option",
                     selector=selector,
@@ -393,7 +412,7 @@ async def do_select_option(
     agent_names=["browser_nav_agent"],
     name="bulk_select_option",
     description=(
-        "Used to select an option in multiple dropdowns or spinners in a single attempt. "
+        "Used to select an option in multiple picklist/listbox/combobox/dropdowns/spinners in a single attempt. "
         "Each entry is a tuple of (selector, value_to_fill)."
     ),
 )

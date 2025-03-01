@@ -1,9 +1,10 @@
+from testzeus_hercules.core.agents.base_nav_agent import BaseNavAgent
 from testzeus_hercules.core.agents.multimodal_base_nav_agent import (
     MultimodalBaseNavAgent,
 )
 
 
-class BrowserNavAgent(MultimodalBaseNavAgent):
+class BrowserNavAgent(BaseNavAgent):
     agent_name: str = "browser_nav_agent"
     prompt = """# Web Navigation Agent
 <CURRENT_CURSOR_POSITION>
