@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "testzeus-hercules"
-version = "0.0.38"
+version = "0.0.39"
 description = "Hercules: The World's First Open-Source AI Agent for End-to-End Testing"
 authors = ["Shriyansh Agnihotri <shriyansh@testzeus.com>"]
 readme = "README.md"
