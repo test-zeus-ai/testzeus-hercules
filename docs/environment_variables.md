@@ -142,6 +142,12 @@ LLM Parameters:
   - Default: `false`
   - Implementation: Controls browser cleanup behavior
 
+- `BROWSER_COOKIES`: Set cookies for the browser context
+  - Format: JSON array of cookie objects
+  - Example: `[{"name": "session", "value": "123456", "domain": "example.com", "path": "/"}]`
+  - Default: `None` (no cookies)
+  - Implementation: Cookies are added to the browser context after creation using `browserContext.add_cookies()`
+
 ## Testing Configuration
 
 ### Test Execution

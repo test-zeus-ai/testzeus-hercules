@@ -220,6 +220,25 @@ CDP_ENDPOINT_URL=ws://your-chrome-host:9222
 
 This allows Hercules running in Docker to connect to an external browser instance, enabling visible test execution even when running in a container.
 
+### Browser Cookie Configuration
+
+To set cookies for the browser context, you can use the `BROWSER_COOKIES` environment variable:
+
+```bash
+export BROWSER_COOKIES='[{"name": "session", "value": "123456", "domain": "example.com", "path": "/", "httpOnly": true, "secure": true}]'
+```
+
+The cookies must be provided as a JSON array of cookie objects with the following properties:
+- `name`: Cookie name (required)
+- `value`: Cookie value (required)
+- `domain`: Cookie domain (required)
+- `path`: Cookie path (defaults to "/")
+- `httpOnly`: Whether the cookie is HTTP-only (defaults to false)
+- `secure`: Whether the cookie is secure (defaults to false)
+- `expires`: Cookie expiration time in seconds since epoch (defaults to -1, session cookie)
+
+Cookies are added to the browser context after it's created, ensuring compatibility with all browser types (Chromium, Firefox, WebKit).
+
 ## Remote Browser Testing Platforms
 
 Hercules supports running tests on various remote browser platforms using the CDP (Chrome DevTools Protocol) endpoint URL. Here's how to configure different providers:

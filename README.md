@@ -125,6 +125,18 @@ PROJECT_BASE/
 - `--llm-model LLM_MODEL`: Name of the LLM model to be used by the agent (recommended is `gpt-4o`, but it can take others).
 - `--llm-model-api-key LLM_MODEL_API_KEY`: API key for the LLM model, something like `sk-proj-k.......`.
 
+#### Environment Variables
+
+In addition to command-line parameters, Hercules supports various environment variables for configuration:
+
+- `BROWSER_TYPE`: Type of browser to use (`chromium`, `firefox`, `webkit`). Default: `chromium`
+- `HEADLESS`: Run browser in headless mode (`true`, `false`). Default: `true`
+- `BROWSER_RESOLUTION`: Browser window resolution (format: `width,height`). Example: `1920,1080`
+- `BROWSER_COOKIES`: Set cookies for the browser context. Format: JSON array of cookie objects. Example: `[{"name": "session", "value": "123456", "domain": "example.com", "path": "/"}]`
+- `RECORD_VIDEO`: Record test execution videos (`true`, `false`). Default: `true`
+- `TAKE_SCREENSHOTS`: Take screenshots during test (`true`, `false`). Default: `true`
+
+For a complete list of environment variables, see our [Environment Variables Guide](docs/environment_variables.md).
 
 #### Running Hercules
 
