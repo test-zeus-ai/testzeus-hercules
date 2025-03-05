@@ -13,7 +13,7 @@ from testzeus_hercules.core.tools.tool_registry import (
 )
 from testzeus_hercules.utils.logger import logger
 
-AXE_SCRIPT_URL = "https://cdnjs.cloudflare.com/ajax/libs/axe-core/4.7.0/axe.min.js"
+AXE_SCRIPT_URL = "https://cdnjs.cloudflare.com/ajax/libs/axe-core/4.10.2/axe.min.js"
 
 
 @tool(

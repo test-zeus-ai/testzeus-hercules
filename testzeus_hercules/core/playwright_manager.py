@@ -302,9 +302,10 @@ class PlaywrightManager:
         self.user_geolocation = (
             geolocation or get_global_conf().get_geolocation()
         )  # or None
-        self.user_color_scheme = (
-            color_scheme or get_global_conf().get_color_scheme() or "light"
-        )
+        self.user_color_scheme = color_scheme or get_global_conf().get_color_scheme()
+
+        # Get browser cookies from config
+        self.browser_cookies = get_global_conf().get_browser_cookies()
 
         # If iPhone, override browser
         if self.device_name and "iphone" in self.device_name.lower():
@@ -512,6 +513,9 @@ class PlaywrightManager:
             # page = await self._browser_context.new_page()
             await page.goto("https://www.testzeus.com", timeout=120000)
 
+            # Add cookies if provided
+            await self._add_cookies_if_provided()
+
         else:
             if self.browser_type != "chromium":
                 disable_args = []
@@ -533,31 +537,27 @@ class PlaywrightManager:
 
     def _build_emulation_context_options(self) -> Dict[str, Any]:
         """
-        Combine device descriptor with user overrides (locale, timezone, geolocation,
-        color scheme, plus optional permissions).
+        Build context options for emulation based on device name and other settings.
         """
-        context_options: Dict[str, Any] = {}
+        context_options = {}
 
-        # 1) If device_name is set, retrieve from built-in devices
-        if self.device_name and self._playwright:
+        # 1) Device emulation
+        if self.device_name:
             device = self._playwright.devices.get(self.device_name)
             if device:
                 context_options.update(device)
             else:
                 logger.warning(
-                    f"Device '{self.device_name}' not found. Using custom viewport."
+                    f"Device '{self.device_name}' not found in Playwright devices."
                 )
-                context_options["viewport"] = {
-                    "width": self.user_viewport[0],
-                    "height": self.user_viewport[1],
-                }
         else:
+            # Set viewport manually if no device
             context_options["viewport"] = {
                 "width": self.user_viewport[0],
                 "height": self.user_viewport[1],
             }
 
-        # 2) Additional overrides
+        # 2) Override locale, timezone, geolocation, color scheme
         if self.user_locale:
             context_options["locale"] = self.user_locale
         if self.user_timezone:
@@ -662,6 +662,10 @@ class PlaywrightManager:
             context_options.update(self._build_emulation_context_options())
 
             self._browser_context = await browser.new_context(**context_options)
+
+            # Add cookies if provided
+            await self._add_cookies_if_provided()
+
         except Exception as e:
             logger.error(f"Failed to launch browser with video recording: {e}")
             raise e
@@ -758,14 +762,11 @@ class PlaywrightManager:
                         logger.error(
                             f"Failed to install browser version: {stderr.decode()}"
                         )
-                        raise RuntimeError(
-                            f"Failed to install {self.browser_type}@{self.browser_version}"
-                        )
                 except Exception as e:
                     logger.error(f"Error installing browser version: {e}")
                     raise
 
-            # Update browser_context_kwargs with emulation options
+            # Update browser_context_kwargs with emulation options (includes cookies if set)
             browser_context_kwargs.update(self._build_emulation_context_options())
 
             if self.browser_type == "chromium" and self._extension_path is not None:
@@ -796,6 +797,10 @@ class PlaywrightManager:
             self._browser_context = await browser_type.launch_persistent_context(
                 user_dir, **browser_context_kwargs
             )
+
+            # Add cookies if provided
+            await self._add_cookies_if_provided()
+
         except (PlaywrightError, OSError) as e:
             await self._handle_launch_exception(e, user_dir, browser_type, disable_args)
 
@@ -838,6 +843,10 @@ class PlaywrightManager:
             self._browser_context = await browser_type.launch_persistent_context(
                 new_user_dir, **launch_options
             )
+
+            # Add cookies if provided
+            await self._add_cookies_if_provided()
+
         elif any(err in str(e) for err in ["is not found", "Executable doesn't exist"]):
             channel_info = (
                 f" (channel: {self.browser_channel})" if self.browser_channel else ""
@@ -1356,6 +1365,7 @@ class PlaywrightManager:
             await self._browser_context.close()
             self._browser_context = None
         await self.create_browser_context()
+        # Note: create_browser_context already calls _add_cookies_if_provided
         await self.go_to_homepage()
 
     async def perform_javascript_click(
@@ -1869,3 +1879,18 @@ class PlaywrightManager:
         asyncio.ensure_future(
             self._write_log_entry_to_file(log_entry, self.console_log_file)
         )
+
+    async def _add_cookies_if_provided(self) -> None:
+        """
+        Add cookies to the browser context if they are provided in the configuration.
+        This method should be called after the browser context is created.
+        """
+        if self.browser_cookies and self._browser_context:
+            try:
+                logger.info(
+                    f"Adding {len(self.browser_cookies)} cookies to browser context"
+                )
+                await self._browser_context.add_cookies(self.browser_cookies)
+                logger.info("Cookies added successfully")
+            except Exception as e:
+                logger.error(f"Failed to add cookies to browser context: {e}")

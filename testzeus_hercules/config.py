@@ -3,7 +3,7 @@
 import argparse
 import json
 import os
-from typing import Optional, Literal
+from typing import Optional, Literal, List, Dict, Any
 
 from dotenv import load_dotenv
 from testzeus_hercules.utils.logger import logger
@@ -276,6 +276,7 @@ class BaseConfigManager:
             "ENABLE_UBLOCK_EXTENSION",
             "AUTO_ACCEPT_SCREEN_SHARING",
             "NO_WAIT_FOR_LOAD_STATE",
+            "BROWSER_COOKIES",
         ]
 
         for key in relevant_keys:
@@ -395,6 +396,7 @@ class BaseConfigManager:
         self._config.setdefault("BROWSER_CHANNEL", None)  # Default to stable channel
         self._config.setdefault("BROWSER_PATH", None)  # Default to system browser
         self._config.setdefault("BROWSER_VERSION", None)  # Default to latest version
+        self._config.setdefault("BROWSER_COOKIES", None)  # Default to no cookies
 
         if self._config["MODE"] == "debug":
             self.timestamp = "0"
@@ -442,6 +444,31 @@ class BaseConfigManager:
         cdp_endpoint_url = self._config.get("CDP_ENDPOINT_URL")
         if cdp_endpoint_url:
             return {"endpoint_url": cdp_endpoint_url}
+        return None
+
+    def get_browser_cookies(self) -> Optional[List[Dict[str, Any]]]:
+        """
+        Return browser cookies if `BROWSER_COOKIES` is set.
+        Expected format is a JSON string representing a list of cookie objects:
+        [
+            {
+                'name': 'mycookie',
+                'value': 'cookie_value',
+                'domain': 'example.com',
+                'path': '/',
+                'httpOnly': True,
+                'secure': True,
+                'expires': -1
+            }
+        ]
+        """
+        browser_cookies = self._config.get("BROWSER_COOKIES")
+        if browser_cookies:
+            logger.info(f"BROWSER_COOKIES: {browser_cookies}")
+            try:
+                return json.loads(browser_cookies)
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse BROWSER_COOKIES: {e}")
         return None
 
     def should_run_headless(self) -> bool:

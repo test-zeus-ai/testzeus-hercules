@@ -9,6 +9,9 @@ from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.press_key_combination import press_key_combination
 from testzeus_hercules.core.browser_logger import get_browser_logger
 from testzeus_hercules.core.tools.tool_registry import tool
+from testzeus_hercules.core.tools.dropdown_using_selector import (
+    interact_with_element_select_type,
+)
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.dom_helper import get_element_outer_html
 from testzeus_hercules.utils.dom_mutation_observer import subscribe, unsubscribe
@@ -124,31 +127,6 @@ async def entertext(
 async def do_entertext(
     page: Page, selector: str, text_to_enter: str, use_keyboard_fill: bool = True
 ) -> dict[str, str]:
-    """
-    Performs the text entry operation on a DOM or Shadow DOM element.
-
-    This function performs the text entry operation on a DOM element identified by the given CSS selector.
-    It applies a pulsating border effect to the element during the operation for visual feedback.
-    The function supports both direct setting of the 'value' property and simulating keyboard typing.
-
-    Args:
-        page (Page): The Playwright Page object representing the browser tab in which the operation will be performed.
-        selector (str): The CSS selector string used to locate the target DOM element.
-        text_to_enter (str): The text value to be set in the target element. Existing content will be overwritten.
-        use_keyboard_fill (bool, optional): Whether to simulate keyboard typing or not.
-                                            Defaults to False.
-
-    Returns:
-        dict[str, str]: Explanation of the outcome of this operation represented as a dictionary with 'summary_message' and 'detailed_message'.
-
-    Example:
-        result = await do_entertext(page, '#username', 'test_user')
-
-    Note:
-        - The 'use_keyboard_fill' parameter determines whether to simulate keyboard typing or not.
-        - If 'use_keyboard_fill' is set to True, the function uses the 'page.keyboard.type' method to enter the text.
-        - If 'use_keyboard_fill' is set to False, the function uses the 'custom_fill_element' method to enter the text.
-    """
     try:
         logger.debug(f"Looking for selector {selector} to enter text: {text_to_enter}")
 
@@ -156,9 +134,11 @@ async def do_entertext(
         elem = await browser_manager.find_element(
             selector, page, element_name="entertext"
         )
+
+        # Initialize selector logger with proof path
+        selector_logger = get_browser_logger(get_global_conf().get_proof_path())
+
         if not elem:
-            # Initialize selector logger with proof path
-            selector_logger = get_browser_logger(get_global_conf().get_proof_path())
             # Log failed selector interaction
             await selector_logger.log_selector_interaction(
                 tool_name="entertext",
@@ -170,6 +150,39 @@ async def do_entertext(
             )
             error = f"Error: Selector {selector} not found. Unable to continue."
             return {"summary_message": error, "detailed_message": error}
+        else:
+            # Get element properties to determine the best selection strategy
+            tag_name = await elem.evaluate("el => el.tagName.toLowerCase()")
+            element_role = await elem.evaluate("el => el.getAttribute('role') || ''")
+            element_type = await elem.evaluate("el => el.type || ''")
+            input_roles = ["combobox", "listbox", "dropdown", "spinner", "select"]
+            input_types = [
+                "range",
+                "combobox",
+                "listbox",
+                "dropdown",
+                "spinner",
+                "select",
+                "option",
+            ]
+            logger.info(f"element_role: {element_role}, element_type: {element_type}")
+            if element_role in input_roles or element_type in input_types:
+                properties = {
+                    "tag_name": tag_name,
+                    "element_role": element_role,
+                    "element_type": element_type,
+                    "element_outer_html": await get_element_outer_html(elem, page),
+                    "alternative_selectors": await selector_logger.get_alternative_selectors(
+                        elem, page
+                    ),
+                    "element_attributes": await selector_logger.get_element_attributes(
+                        elem
+                    ),
+                    "selector_logger": selector_logger,
+                }
+                return await interact_with_element_select_type(
+                    page, elem, selector, text_to_enter, properties
+                )
 
         logger.info(f"Found selector {selector} to enter text")
         element_outer_html = await get_element_outer_html(elem, page)
@@ -242,7 +255,7 @@ async def do_entertext(
 @tool(
     agent_names=["browser_nav_agent"],
     name="bulk_enter_text",
-    description="Enters text into multiple text input/textarea elements using a bulk operation. An dict containing'selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'text' (text to enter on the element)",
+    description="Enters text into multiple text fields and textarea elements using a bulk operation based on detected fields details. An dict containing'selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'text' (text to enter on the element)",
 )
 async def bulk_enter_text(
     entries: Annotated[
