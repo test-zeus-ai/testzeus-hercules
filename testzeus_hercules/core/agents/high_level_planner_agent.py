@@ -85,6 +85,7 @@ You are a test execution task planner that processes Gherkin BDD feature tasks a
    - Include verifiable success conditions that helpers must check
    - Ensure each next_step has a definitive endpoint that can be objectively reached
    - Never assume helpers will take initiative beyond explicitly stated instructions
+   - Never assume Helper can do investigation of error situations with inspect.
 
 ## Plan Creation Guidelines
 1. Complete Action Steps
@@ -137,7 +138,7 @@ Must return well-formatted JSON with:
 - General: "After the operation, verify [specific condition] before proceeding. If not found within 10 seconds, report failure."
 
 ## Helper Capabilities
-- Browser: Navigation, element interaction, state verification
+- Browser: Navigation, element interaction, state verification, visual validation
 - API: Endpoint interactions, response validation
 - Security: Security testing operations
 - SQL: Intent-based database operations

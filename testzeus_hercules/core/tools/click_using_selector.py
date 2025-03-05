@@ -206,14 +206,11 @@ async def do_click(
             # If scrollIntoView fails, just move on, not a big deal
             pass
 
-        try:
-            await element.wait_for_element_state("visible", timeout=200)
-            logger.info(
-                f'Executing ClickElement with "{selector}" as the selector. Element is attached and visible. Clicking the element.'
-            )
-        except Exception:
-            # If the element is not visible, try to click it anyway
-            pass
+        if not await element.is_visible():
+            return {
+                "summary_message": f'Element with selector: "{selector}" is not visible, Try another element',
+                "detailed_message": f'Element with selector: "{selector}" is not visible, Try another element',
+            }
 
         element_tag_name = await element.evaluate(
             "element => element.tagName.toLowerCase()"
@@ -229,6 +226,14 @@ async def do_click(
             element, page
         )
         element_attributes = await selector_logger.get_element_attributes(element)
+
+        # hack for aura component in salesforce
+        element_title = (await element.get_attribute("title")).lower()
+        if "upload" in element_title:
+            return {
+                "summary_message": "Use the click_and_upload_file tool to upload files",
+                "detailed_message": "Use the click_and_upload_file tool to upload files",
+            }
 
         if element_tag_name == "option":
             element_value = await element.get_attribute("value")

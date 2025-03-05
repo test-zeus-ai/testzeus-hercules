@@ -118,6 +118,19 @@ async def click_and_upload(page: Page, selector: str, file_path: str) -> dict[st
         # Check if element is a file input
         element_type = await element.evaluate("el => el.type")
         if element_type != "file":
+
+            logger.info(
+                f"Element is not a file input. Found type: {element_type}, trying to click it and upload"
+            )
+
+            # Use FileChooser API
+            async with page.expect_file_chooser() as fc_info:
+                await element.click()
+
+            file_chooser = await fc_info.value
+            await file_chooser.set_files(file_path)
+
+            # Log successful selector interaction
             # Log failed selector interaction for non-file input
             await selector_logger.log_selector_interaction(
                 tool_name="upload_file",
@@ -129,17 +142,11 @@ async def click_and_upload(page: Page, selector: str, file_path: str) -> dict[st
                 success=False,
                 error_message=f"Error: Element is not a file input. Found type: {element_type}",
             )
-            error = f"Error: Element is not a file input. Found type: {element_type}"
+            error = f"Error: Element is not a file input. Found type: {element_type}, pass selectors with type as file"
             return {"summary_message": error, "detailed_message": error}
 
-        # Use FileChooser API
-        async with page.expect_file_chooser() as fc_info:
-            await element.click()
+        await element.set_input_files(file_path)
 
-        file_chooser = await fc_info.value
-        await file_chooser.set_files(file_path)
-
-        # Log successful selector interaction
         await selector_logger.log_selector_interaction(
             tool_name="upload_file",
             selector=selector,
@@ -176,31 +183,31 @@ async def click_and_upload(page: Page, selector: str, file_path: str) -> dict[st
         return {"summary_message": error, "detailed_message": f"{error} Error: {e}"}
 
 
-@tool(
-    agent_names=["browser_nav_agent"],
-    name="bulk_click_and_upload_file",
-    description="Click and Uploads files to multiple file input elements on the page.",
-)
-async def bulk_click_and_upload_file(
-    entries: Annotated[
-        List[List[str]],
-        "List of tuples, each containing ('selector', 'file_path'). 'selector' is the md attribute value of the DOM element to interact with (md is an ID), and 'file_path' is the path to the file to upload",
-    ]
-) -> Annotated[
-    List[Dict[str, str]],
-    "List of dictionaries, each containing 'selector' and the result of the operation.",
-]:
-    add_event(EventType.INTERACTION, EventData(detail="BulkUploadFile"))
-    results: List[Dict[str, str]] = []
-    logger.info("Executing bulk upload file command")
+# @tool(
+#     agent_names=["browser_nav_agent"],
+#     name="bulk_click_and_upload_file",
+#     description="Click and Uploads files to multiple file input elements on the page.",
+# )
+# async def bulk_click_and_upload_file(
+#     entries: Annotated[
+#         List[List[str]],
+#         "List of tuples, each containing ('selector', 'file_path'). 'selector' is the md attribute value of the DOM element to interact with (md is an ID), and 'file_path' is the path to the file to upload",
+#     ]
+# ) -> Annotated[
+#     List[Dict[str, str]],
+#     "List of dictionaries, each containing 'selector' and the result of the operation.",
+# ]:
+#     add_event(EventType.INTERACTION, EventData(detail="BulkUploadFile"))
+#     results: List[Dict[str, str]] = []
+#     logger.info("Executing bulk upload file command")
 
-    for entry in entries:
-        if len(entry) != 2:
-            logger.error(
-                f"Invalid entry format: {entry}. Expected [selector, file_path]"
-            )
-            continue
-        result = await click_and_upload_file(entry)
-        results.append({"selector": entry[0], "result": result})
+#     for entry in entries:
+#         if len(entry) != 2:
+#             logger.error(
+#                 f"Invalid entry format: {entry}. Expected [selector, file_path]"
+#             )
+#             continue
+#         result = await click_and_upload_file(entry)
+#         results.append({"selector": entry[0], "result": result})
 
-    return results
+#     return results

@@ -350,7 +350,7 @@ class SimpleHercules:
                     return actual_response  # type: ignore
                 else:
                     logger.error("Target helper not found in the response")
-                    return "skip this step and return only JSON"  # type: ignore
+                    return "skip this step and return only JSON, Also return the valid target helper in the JSON"  # type: ignore
 
         # Updated logic to handle agent names with underscores
         nav_agents_names = list(
