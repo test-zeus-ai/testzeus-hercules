@@ -508,10 +508,14 @@ class PlaywrightManager:
                     logger.info("Recording video in CDP mode.")
             else:
                 logger.info("Recording video not supported in given CDP URL.")
+
             self._browser_context = await _browser.new_context(**context_options)
-            page = await _browser.new_page()
-            # page = await self._browser_context.new_page()
-            await page.goto("https://www.testzeus.com", timeout=120000)
+            pages = self._browser_context.pages
+            if pages:
+                page = pages[0]
+            else:
+                page = await self._browser_context.new_page()
+            await page.goto("https://www.google.com", timeout=120000)
 
             # Add cookies if provided
             await self._add_cookies_if_provided()
