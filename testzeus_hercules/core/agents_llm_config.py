@@ -1,5 +1,6 @@
 import json
 import os
+import random
 from typing import Any
 
 from testzeus_hercules.utils.logger import logger
@@ -226,7 +227,7 @@ class AgentsLLMConfig:
         elif model_name.startswith("gpt"):  # type: ignore
             llm_config_params.setdefault("temperature", 0.0)  # type: ignore
             llm_config_params.setdefault("top_p", 0.001)  # type: ignore
-            llm_config_params.setdefault("seed", 12345)  # type: ignore
+            llm_config_params["seed"] = random.randint(12000, 12345)  # type: ignore
         else:
             llm_config_params.setdefault("temperature", 0.1)  # type: ignore
             llm_config_params.setdefault("top_p", 0.1)  # type: ignore

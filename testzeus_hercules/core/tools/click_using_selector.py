@@ -1,22 +1,16 @@
 import asyncio
 import inspect
-import json
-import traceback
-from dataclasses import dataclass
-from typing import Annotated, Any, Optional
+from typing import Annotated, Any
 
-from playwright.async_api import ElementHandle, Page
-from testzeus_hercules.config import get_global_conf  # Add this import
+from playwright.async_api import Page
+from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.browser_logger import get_browser_logger
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.dom_helper import get_element_outer_html
-from testzeus_hercules.utils.dom_mutation_observer import subscribe  # type: ignore
-from testzeus_hercules.utils.dom_mutation_observer import unsubscribe  # type: ignore
-from testzeus_hercules.utils.js_helper import block_ads, get_js_with_element_finder
+from testzeus_hercules.utils.dom_mutation_observer import subscribe, unsubscribe
 from testzeus_hercules.utils.logger import logger
-from testzeus_hercules.utils.ui_messagetype import MessageType
 
 page_data_store = {}
 
@@ -99,7 +93,6 @@ async def click(
 
         except Exception as e:
             logger.info(f"Error handling dialog: {e}")
-            # await dialog.accept(user_input_dialog_response)
 
     if page is None:  # type: ignore
         raise ValueError("No active page found. OpenURL command opens a new page.")
@@ -148,19 +141,6 @@ async def click(
 async def do_click(
     page: Page, selector: str, wait_before_execution: float, type_of_click: str
 ) -> dict[str, str]:
-    """
-    Executes the click action on the element with the given selector within the provided page,
-    including searching within iframes if necessary.
-
-    Parameters:
-    - page: The Playwright page instance.
-    - selector: The query selector string to identify the element for the click action.
-    - wait_before_execution: Optional wait time in seconds before executing the click event logic.
-    - type_of_click: The type of click to perform.
-
-    Returns:
-    dict[str,str] - Explanation of the outcome of this operation represented as a dictionary with 'summary_message' and 'detailed_message'.
-    """
     logger.info(
         f'Executing ClickElement with "{selector}" as the selector. Wait time before execution: {wait_before_execution} seconds.'
     )
@@ -198,7 +178,7 @@ async def do_click(
             f'Element with selector: "{selector}" is attached. Scrolling it into view if needed.'
         )
         try:
-            await element.scroll_into_view_if_needed(timeout=200)
+            await element.scroll_into_view_if_needed(timeout=2000)
             logger.info(
                 f'Element with selector: "{selector}" is attached and scrolled into view. Waiting for the element to be visible.'
             )
@@ -228,7 +208,7 @@ async def do_click(
         element_attributes = await selector_logger.get_element_attributes(element)
 
         # hack for aura component in salesforce
-        element_title = (await element.get_attribute("title")).lower()
+        element_title = (await element.get_attribute("title") or "").lower()
         if "upload" in element_title:
             return {
                 "summary_message": "Use the click_and_upload_file tool to upload files",
@@ -303,6 +283,9 @@ async def do_click(
         }  # type: ignore
     except Exception as e:
         # Try a JavaScript fallback click before giving up
+        import traceback
+
+        traceback.print_exc()
         try:
             logger.info(
                 f'Standard click failed for "{selector}". Attempting JavaScript fallback click.'

@@ -72,7 +72,6 @@ class SimpleHercules:
         browser_nav_max_chat_round: int = 10,
     ):
         self.timestamp = get_timestamp_str()
-        oai.Completion.set_cache(5, cache_path_root=".cache")
         self.planner_number_of_rounds = planner_max_chat_round
         self.nav_agent_number_of_rounds = browser_nav_max_chat_round
 
