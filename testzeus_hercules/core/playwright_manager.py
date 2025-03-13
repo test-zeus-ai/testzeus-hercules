@@ -161,6 +161,10 @@ class PlaywrightManager:
         screenshots_dir: Optional[str] = None,
         take_screenshots: Optional[bool] = None,
         cdp_config: Optional[Dict] = None,
+        cdp_reuse_tabs: Optional[bool] = False,  # New parameter to control tab reuse
+        cdp_navigate_on_connect: Optional[
+            bool
+        ] = True,  # New parameter to control navigation
         record_video: Optional[bool] = None,
         video_dir: Optional[str] = None,
         log_requests_responses: Optional[bool] = None,
@@ -189,7 +193,7 @@ class PlaywrightManager:
         viewport, etc., *unless* you explicitly override them via other parameters.
         """
         self.allow_all_permissions = allow_all_permissions
-        if self.__initialized:
+        if hasattr(self, "_PlaywrightManager__initialized") and self.__initialized:
             return  # Already inited, no-op
 
         self.__initialized = True
@@ -203,8 +207,8 @@ class PlaywrightManager:
             if record_video is not None
             else get_global_conf().should_record_video()
         )
-        self._latest_video_path = None
-        self._video_dir = None
+        self._latest_video_path: Optional[str] = None
+        self._video_dir: Optional[str] = None
 
         proof_path = get_global_conf().get_proof_path(test_id=self.stake_id)
 
@@ -227,6 +231,19 @@ class PlaywrightManager:
             else get_global_conf().should_run_headless()
         )
         self.cdp_config = cdp_config or get_global_conf().get_cdp_config()
+
+        # CDP behavior settings
+        config = get_global_conf()
+        self.cdp_reuse_tabs = (
+            cdp_reuse_tabs
+            if cdp_reuse_tabs is not None
+            else getattr(config, "cdp_reuse_tabs", True)
+        )
+        self.cdp_navigate_on_connect = (
+            cdp_navigate_on_connect
+            if cdp_navigate_on_connect is not None
+            else getattr(config, "cdp_navigate_on_connect", False)
+        )
 
         # ----------------------
         # 2) BASIC FLAGS
@@ -277,7 +294,6 @@ class PlaywrightManager:
         self._browser_context: Optional[BrowserContext] = None
         self.__async_initialize_done = False
         self._latest_screenshot_bytes: Optional[bytes] = None
-        self._latest_video_path: Optional[str] = None
 
         # Extension caching directory
         self._extension_cache_dir = os.path.join(
@@ -500,22 +516,94 @@ class PlaywrightManager:
                     endpoint_url, timeout=120000
                 )
 
+            # Prepare context options
             context_options = {}
-            if recording_supported:
-                if self._record_video:
-                    context_options = {"record_video_dir": self._video_dir}
-                    context_options.update(self._build_emulation_context_options())
-                    logger.info("Recording video in CDP mode.")
-            else:
-                logger.info("Recording video not supported in given CDP URL.")
+            if recording_supported and self._record_video:
+                context_options = {"record_video_dir": self._video_dir}
+                context_options.update(self._build_emulation_context_options())
+                logger.info("Recording video in CDP mode.")
 
-            self._browser_context = await _browser.new_context(**context_options)
+            self._browser_context = None
+            # Context selection logic
+            if _browser.contexts:
+                if self.cdp_reuse_tabs:
+                    logger.info("Reusing existing browser context.")
+                    self._browser_context = _browser.contexts[0]
+
+            if not self._browser_context:
+                logger.info("Creating new browser context.")
+                self._browser_context = await _browser.new_context(**context_options)
+
+            # Page selection logic - More robust implementation to prevent continuous tab creation
             pages = self._browser_context.pages
-            if pages:
-                page = pages[0]
+
+            if pages:  # and self.cdp_reuse_tabs:
+                # First, check if there's a non-empty page we can use
+                usable_page = None
+
+                for idx, p in enumerate(pages):
+                    try:
+                        # Very quick check without a timeout parameter
+                        current_url = await p.evaluate("window.location.href")
+                        logger.info(f"Found usable page {idx} with URL: {current_url}")
+
+                        # Skip about:blank pages if there are better options
+                        if (
+                            current_url not in ["about:blank", "chrome://newtab/"]
+                            or usable_page is None
+                        ):
+                            usable_page = p
+                            # If we found a non-empty page, prefer that one
+                            if current_url not in ["about:blank", "chrome://newtab/"]:
+                                break
+                    except Exception as e:
+                        logger.debug(f"Page {idx} not usable: {e}")
+
+                if usable_page:
+                    logger.info(
+                        f"Reusing existing page with URL: {await usable_page.evaluate('window.location.href')}"
+                    )
+                    page = usable_page
+
+                    try:
+                        # Set this page as active by bringing it to focus
+                        await page.bring_to_front()
+                        logger.info("Brought reused page to front")
+                    except Exception as e:
+                        # Don't let bring_to_front failures block us
+                        logger.warning(
+                            f"Failed to bring page to front, but continuing: {e}"
+                        )
+                else:
+                    logger.info("No usable existing pages found. Creating new page.")
+                    page = await self._browser_context.new_page()
             else:
+                logger.info(
+                    "Creating new page as no existing pages found or reuse disabled."
+                )
                 page = await self._browser_context.new_page()
-            await page.goto("https://www.google.com", timeout=120000)
+
+            # Only navigate if explicitly configured to do so
+            if self.cdp_navigate_on_connect:
+                logger.info("Navigating to Google as specified in configuration.")
+                await page.goto("https://www.google.com", timeout=120000)
+            else:
+                logger.info("Skipping navigation on CDP connection as configured.")
+
+                # Only modify blank pages
+                try:
+                    current_url = await page.evaluate("window.location.href")
+                    if current_url in ["about:blank", "chrome://newtab/"]:
+                        logger.info("Setting minimal HTML content for empty tab")
+                        await page.set_content(
+                            "<html><body><h1>Connected via TestZeus Hercules</h1><p>Tab is ready for automation.</p></body></html>"
+                        )
+                        logger.info(
+                            f"Tab content set, current URL: {await page.evaluate('window.location.href')}"
+                        )
+                except Exception as e:
+                    logger.warning(f"Failed to set content for empty tab: {e}")
+                    # Don't block on this failure
 
             # Add cookies if provided
             await self._add_cookies_if_provided()
@@ -948,29 +1036,26 @@ class PlaywrightManager:
         return None
 
     async def get_current_page(self) -> Page:
+        """
+        Get the current active page, or reuse an existing one if available.
+        Only creates a new page if no pages exist or all existing pages are closed.
+
+        This is a high-level method used throughout the codebase. To ensure
+        consistency, it now uses reuse_or_create_tab internally.
+        """
         try:
             browser_context = await self.get_browser_context()
-            pages: list[Page] = [p for p in browser_context.pages if not p.is_closed()]
-            page: Optional[Page] = pages[-1] if pages else None
 
-            logger.debug(f"Current page: {page.url if page else None}")
-            if page is None:
-                logger.debug("Creating new page. No pages found.")
-                page = await browser_context.new_page()
-                await self.setup_request_response_logging(page)
-                await self.setup_console_logging(page)
-            return page
-
+            # Instead of duplicating logic, use our tab reuse method with force_new_tab=False
+            # This ensures the same tab reuse logic is used everywhere
+            return await self.reuse_or_create_tab(force_new_tab=False)
         except Exception as e:
             logger.warning(f"Error getting current page: {e}. Creating new context.")
             self._browser_context = None
             await self.ensure_browser_context()
-            browser_context = await self.get_browser_context()
-            pages = [p for p in browser_context.pages if not p.is_closed()]
-            if pages:
-                return pages[-1]
-            else:
-                return await browser_context.new_page()
+
+            # Try again with the new context
+            return await self.reuse_or_create_tab(force_new_tab=False)
 
     async def close_all_tabs(self, keep_first_tab: bool = True) -> None:
         browser_context = await self.get_browser_context()
@@ -1898,3 +1983,73 @@ class PlaywrightManager:
                 logger.info("Cookies added successfully")
             except Exception as e:
                 logger.error(f"Failed to add cookies to browser context: {e}")
+
+    async def reuse_or_create_tab(self, force_new_tab: bool = False) -> Page:
+        """
+        Reuse an existing tab or create a new one if needed.
+
+        Args:
+            force_new_tab: If True, always create a new tab regardless of existing tabs
+
+        Returns:
+            A Page object (either existing or newly created)
+        """
+        context = await self.get_browser_context()
+
+        # Get all non-closed pages
+        pages = [p for p in context.pages if not p.is_closed()]
+        logger.debug(f"Found {len(pages)} existing tabs")
+
+        # If we need to create a new tab or there are no existing tabs
+        if force_new_tab or not pages:
+            logger.info("Creating a new tab (forced or no existing tabs)")
+            page = await context.new_page()
+            await self.setup_request_response_logging(page)
+            await self.setup_console_logging(page)
+            return page
+
+        # Try to reuse existing tab (use the most recent one)
+        page = pages[-1]  # The most recently used page
+
+        # Check if the page is responsive, with a shorter timeout to avoid hanging
+        try:
+            # Simple check (the timeout is applied at a higher level)
+            await page.evaluate("1")
+            logger.info(f"Reusing existing tab with URL: {page.url}")
+
+            try:
+                # Bring the tab to the front
+                await page.bring_to_front()
+            except Exception as e:
+                # Don't let bring_to_front failures prevent tab reuse
+                logger.warning(f"Failed to bring tab to front, but continuing: {e}")
+
+            return page
+        except Exception as e:
+            # If the page isn't responsive, try the next one
+            logger.warning(f"First tab not responsive: {e}")
+
+            # Try other tabs if available, from most to least recent
+            for i in range(len(pages) - 2, -1, -1):
+                try:
+                    page = pages[i]
+                    await page.evaluate("1")
+                    logger.info(f"Reusing alternative tab with URL: {page.url}")
+
+                    try:
+                        await page.bring_to_front()
+                    except Exception as bring_err:
+                        logger.warning(
+                            f"Failed to bring tab to front, but continuing: {bring_err}"
+                        )
+
+                    return page
+                except Exception as tab_err:
+                    logger.warning(f"Alternative tab {i} not responsive: {tab_err}")
+
+        # If all tabs are unresponsive, create a new one
+        logger.info("All existing tabs unresponsive, creating a new tab")
+        page = await context.new_page()
+        await self.setup_request_response_logging(page)
+        await self.setup_console_logging(page)
+        return page

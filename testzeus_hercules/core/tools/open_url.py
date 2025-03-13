@@ -21,16 +21,76 @@ async def openurl(
         "URL to navigate to. Value must include the protocol (http:// or https://).",
     ],
     timeout: Annotated[int, "Additional wait time in seconds after initial load."] = 3,
+    force_new_tab: Annotated[
+        bool, "Force opening in a new tab instead of reusing existing ones."
+    ] = False,
 ) -> Annotated[str, "Returns the result of this request in text form"]:
-    logger.info(f"Opening URL: {url}")
+    logger.info(f"Opening URL: {url} (force_new_tab={force_new_tab})")
     browser_manager = PlaywrightManager()
     await browser_manager.get_browser_context()
-    page = await browser_manager.get_current_page()
+
+    # Use the new reuse_or_create_tab method to get a page
+    page = await browser_manager.reuse_or_create_tab(force_new_tab=force_new_tab)
+    logger.info(
+        f"{'Using new tab' if force_new_tab else 'Reusing existing tab when possible'} for navigation to {url}"
+    )
 
     # Initialize browser logger
     browser_logger = get_browser_logger(get_global_conf().get_proof_path())
 
     try:
+        # Special handling for browser-specific URLs that need special treatment
+        special_browser_urls = [
+            "about:blank",
+            "about:newtab",
+            "chrome://newtab/",
+            "edge://newtab/",
+        ]
+        if url.strip().lower() in special_browser_urls:
+            special_url = url.strip().lower()
+            logger.info(f"Navigating to special browser URL: {special_url}")
+
+            try:
+                # Handle these special URLs with JavaScript navigation instead of goto
+                await page.evaluate(f"window.location.href = '{special_url}'")
+                await page.wait_for_load_state("domcontentloaded")
+            except Exception as e:
+                logger.warning(
+                    f"JavaScript navigation to {special_url} failed: {e}. Trying alternative method."
+                )
+                # Fallback method: For about: URLs, try direct goto without adding protocol
+                try:
+                    if special_url.startswith("about:"):
+                        await page.goto(special_url, timeout=timeout * 1000)
+                    else:
+                        # For chrome:// and other browser URLs, try setting empty content first
+                        await page.set_content("<html><body></body></html>")
+                        await page.evaluate(f"window.location.href = '{special_url}'")
+                except Exception as fallback_err:
+                    logger.error(
+                        f"All navigation methods to {special_url} failed: {fallback_err}"
+                    )
+                    # Continue anyway - we'll try to get the title
+
+            title = await page.title()
+
+            # Log successful navigation
+            await browser_logger.log_browser_interaction(
+                tool_name="openurl",
+                action="navigate",
+                interaction_type="navigation",
+                success=True,
+                additional_data={
+                    "url": special_url,
+                    "title": title,
+                    "from_cache": False,
+                    "status": "loaded",
+                    "force_new_tab": force_new_tab,
+                },
+            )
+
+            return f"Navigated to {special_url}, Title: {title}"
+
         url = ensure_protocol(url)
         if page.url == url:
             logger.info(
@@ -49,6 +109,7 @@ async def openurl(
                         "title": title,
                         "from_cache": True,
                         "status": "already_loaded",
+                        "force_new_tab": force_new_tab,
                     },
                 )
                 return f"Page already loaded: {url}, Title: {title}"  # type: ignore
@@ -99,6 +160,7 @@ async def openurl(
                 "status_code": status,
                 "ok": ok,
                 "from_cache": False,
+                "force_new_tab": force_new_tab,
             },
         )
 
@@ -116,6 +178,7 @@ async def openurl(
                 "url": url,
                 "error_type": "timeout",
                 "timeout_seconds": timeout,
+                "force_new_tab": force_new_tab,
             },
         )
         logger.warning(
@@ -131,7 +194,11 @@ async def openurl(
             interaction_type="navigation",
             success=False,
             error_message=str(e),
-            additional_data={"url": url, "error_type": type(e).__name__},
+            additional_data={
+                "url": url,
+                "error_type": type(e).__name__,
+                "force_new_tab": force_new_tab,
+            },
         )
         logger.error(f"An error occurred while opening the URL: {url}. Error: {e}")
         import traceback
@@ -145,14 +212,35 @@ def ensure_protocol(url: str) -> str:
     Ensures that a URL has a protocol (http:// or https://). If it doesn't have one,
     https:// is added by default.
 
+    Special browser URLs like about:blank, chrome://, etc. are preserved as-is.
+
     Parameters:
     - url: The URL to check and modify if necessary.
 
     Returns:
     - A URL string with a protocol.
     """
+    # List of special browser URL schemes that should not be modified
+    special_schemes = [
+        "about:",
+        "chrome:",
+        "edge:",
+        "brave:",
+        "firefox:",
+        "safari:",
+        "data:",
+        "file:",
+        "view-source:",
+    ]
+
+    # Check if the URL starts with any special scheme
+    if any(url.startswith(scheme) for scheme in special_schemes):
+        logger.debug(f"URL uses a special browser scheme, preserving as-is: {url}")
+        return url
+
+    # Regular URL handling
     if not url.startswith(("http://", "https://")):
-        url = "https://" + url  # Default to http if no protocol is specified
+        url = "https://" + url  # Default to https if no protocol is specified
         logger.info(
             f"Added 'https://' protocol to URL because it was missing. New URL is: {url}"
         )
