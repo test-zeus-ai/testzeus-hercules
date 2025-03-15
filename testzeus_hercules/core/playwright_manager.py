@@ -5,7 +5,7 @@ import os
 import shutil
 import tempfile
 import time
-import traceback  # Add this import
+import traceback
 import zipfile
 import io
 import httpx
@@ -466,6 +466,8 @@ class PlaywrightManager:
             )
             logger.info(f"Tracing started for {context_type} context")
         except Exception as e:
+
+            traceback.print_exc()
             logger.error(f"Failed to start tracing for {context_type} context: {e}")
 
     async def create_browser_context(self) -> None:
@@ -557,6 +559,8 @@ class PlaywrightManager:
                             if current_url not in ["about:blank", "chrome://newtab/"]:
                                 break
                     except Exception as e:
+
+                        traceback.print_exc()
                         logger.debug(f"Page {idx} not usable: {e}")
 
                 if usable_page:
@@ -571,6 +575,8 @@ class PlaywrightManager:
                         logger.info("Brought reused page to front")
                     except Exception as e:
                         # Don't let bring_to_front failures block us
+
+                        traceback.print_exc()
                         logger.warning(
                             f"Failed to bring page to front, but continuing: {e}"
                         )
@@ -602,6 +608,8 @@ class PlaywrightManager:
                             f"Tab content set, current URL: {await page.evaluate('window.location.href')}"
                         )
                 except Exception as e:
+
+                    traceback.print_exc()
                     logger.warning(f"Failed to set content for empty tab: {e}")
                     # Don't block on this failure
 
@@ -759,6 +767,8 @@ class PlaywrightManager:
             await self._add_cookies_if_provided()
 
         except Exception as e:
+
+            traceback.print_exc()
             logger.error(f"Failed to launch browser with video recording: {e}")
             raise e
 
@@ -855,8 +865,10 @@ class PlaywrightManager:
                             f"Failed to install browser version: {stderr.decode()}"
                         )
                 except Exception as e:
+
+                    traceback.print_exc()
                     logger.error(f"Error installing browser version: {e}")
-                    raise
+                    raise e
 
             # Update browser_context_kwargs with emulation options (includes cookies if set)
             browser_context_kwargs.update(self._build_emulation_context_options())
@@ -979,11 +991,17 @@ class PlaywrightManager:
     def log_request(self, request: Any) -> None:
         try:
             post_data = request.post_data
-            try:
-                decoded_post_data = post_data.decode("utf-8")
-            except (UnicodeDecodeError, AttributeError):
-                decoded_post_data = base64.b64encode(post_data).decode("utf-8")
-        except Exception:
+            if isinstance(post_data, bytes):
+                try:
+                    decoded_post_data = post_data.decode("utf-8")
+                except (UnicodeDecodeError, AttributeError):
+                    decoded_post_data = base64.b64encode(post_data).decode("utf-8")
+            else:
+                decoded_post_data = post_data
+        except Exception as e:
+            logger.warning(
+                f"Failed to decode post data for browser API request: {e} for request {request}"
+            )
             decoded_post_data = None
 
         log_entry = {
@@ -1025,6 +1043,8 @@ class PlaywrightManager:
 
             await asyncio.to_thread(append_line, log_file, line)
         except Exception as e:
+
+            traceback.print_exc()
             logger.error(f"Failed to write request/response log to file: {e}")
 
     async def get_current_url(self) -> Optional[str]:
@@ -1032,6 +1052,8 @@ class PlaywrightManager:
             current_page: Page = await self.get_current_page()
             return current_page.url
         except Exception as e:
+
+            traceback.print_exc()
             logger.warning(f"Failed to get current URL: {e}")
         return None
 
@@ -1050,6 +1072,8 @@ class PlaywrightManager:
             # This ensures the same tab reuse logic is used everywhere
             return await self.reuse_or_create_tab(force_new_tab=False)
         except Exception as e:
+
+            traceback.print_exc()
             logger.warning(f"Error getting current page: {e}. Creating new context.")
             self._browser_context = None
             await self.ensure_browser_context()
@@ -1165,6 +1189,8 @@ class PlaywrightManager:
             self._latest_screenshot_bytes = screenshot_bytes
             logger.debug(f"Screenshot saved: {screenshot_path}")
         except Exception as e:
+
+            traceback.print_exc()
             logger.error(f"Failed to take screenshot at {screenshot_path}: {e}")
 
     async def get_latest_screenshot_stream(self) -> Optional[BytesIO]:
@@ -1220,6 +1246,8 @@ class PlaywrightManager:
                             self._latest_video_path = new_video_path
                             logger.info(f"Video recorded at {new_video_path}")
                     except Exception as e:
+
+                        traceback.print_exc()
                         logger.error(f"Could not finalize video: {e}")
 
             # Stop and save tracing before closing context
@@ -1236,8 +1264,9 @@ class PlaywrightManager:
                     else:
                         logger.error(f"Trace file was not created at: {trace_file}")
                 except Exception as e:
-                    logger.error(f"Error stopping trace: {e}")
+
                     traceback.print_exc()
+                    logger.error(f"Error stopping trace: {e}")
 
             await self._browser_context.close()
             self._browser_context = None
@@ -1392,7 +1421,9 @@ class PlaywrightManager:
 
         try:
             await self._wait_for_stable_network()
-        except Exception:
+        except Exception as e:
+
+            traceback.print_exc()
             logger.warning("Page load stable-network check failed, continuing...")
 
     async def wait_for_load_state_if_enabled(
@@ -1640,6 +1671,8 @@ class PlaywrightManager:
             )
             return result
         except Exception as e:
+
+            traceback.print_exc()
             logger.error(
                 f"Error executing JavaScript '{type_of_click}' on element with selector: {selector}. Error: {e}"
             )
@@ -1982,6 +2015,8 @@ class PlaywrightManager:
                 await self._browser_context.add_cookies(self.browser_cookies)
                 logger.info("Cookies added successfully")
             except Exception as e:
+
+                traceback.print_exc()
                 logger.error(f"Failed to add cookies to browser context: {e}")
 
     async def reuse_or_create_tab(self, force_new_tab: bool = False) -> Page:
@@ -2016,16 +2051,19 @@ class PlaywrightManager:
             # Simple check (the timeout is applied at a higher level)
             await page.evaluate("1")
             logger.info(f"Reusing existing tab with URL: {page.url}")
+            # try:
+            #     # Bring the tab to the front
+            #     await page.bring_to_front()
+            # except Exception as e:
 
-            try:
-                # Bring the tab to the front
-                await page.bring_to_front()
-            except Exception as e:
-                # Don't let bring_to_front failures prevent tab reuse
-                logger.warning(f"Failed to bring tab to front, but continuing: {e}")
+            #     traceback.print_exc()
+            #     # Don't let bring_to_front failures prevent tab reuse
+            #     logger.warning(f"Failed to bring tab to front, but continuing: {e}")
 
             return page
         except Exception as e:
+
+            traceback.print_exc()
             # If the page isn't responsive, try the next one
             logger.warning(f"First tab not responsive: {e}")
 
@@ -2039,12 +2077,16 @@ class PlaywrightManager:
                     try:
                         await page.bring_to_front()
                     except Exception as bring_err:
+
+                        traceback.print_exc()
                         logger.warning(
                             f"Failed to bring tab to front, but continuing: {bring_err}"
                         )
 
                     return page
                 except Exception as tab_err:
+
+                    traceback.print_exc()
                     logger.warning(f"Alternative tab {i} not responsive: {tab_err}")
 
         # If all tabs are unresponsive, create a new one

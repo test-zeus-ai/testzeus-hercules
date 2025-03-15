@@ -1,5 +1,5 @@
 from typing import Annotated, Any, Dict, List, Optional, Union
-
+import traceback
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 from sqlalchemy.sql import text
@@ -15,10 +15,16 @@ from testzeus_hercules.utils.logger import logger
 async def execute_select_cte_query_sql(
     connection_string: Annotated[
         str,
-        "async database connection string in SQLAlchemy format. " "E.g., 'postgresql+asyncpg://user:password@host:port/database'.",
+        "async database connection string in SQLAlchemy format. "
+        "E.g., 'postgresql+asyncpg://user:password@host:port/database'.",
     ],
-    query: Annotated[str, "SELECT SQL query to execute. Must start with 'SELECT' or 'WITH'."],
-    schema: Annotated[str, "Optional database schema to use. If not provided, assumes schema is specified in the query."] = "",
+    query: Annotated[
+        str, "SELECT SQL query to execute. Must start with 'SELECT' or 'WITH'."
+    ],
+    schema_name: Annotated[
+        str,
+        "Optional database schema_name to use. If not provided, assumes schema_name is specified in the query.",
+    ] = "",
     params: Annotated[
         dict,
         "Optional parameters to pass to the query for parameterized queries.",
@@ -37,8 +43,8 @@ async def execute_select_cte_query_sql(
         - MySQL: "mysql+aiomysql://user:password@host:port/database"
         - SQLite: "sqlite+aiosqlite:///path/to/database.db"
     - query (str): The SELECT SQL query to execute. Must start with 'SELECT' or 'WITH'.
-    - schema (Optional[str|None]): Optional database schema to use.
-      If not provided, assumes schema is specified in the query using dot notation.
+    - schema_name (Optional[str|None]): Optional database schema_name to use.
+      If not provided, assumes schema_name is specified in the query using dot notation.
     - params (Optional[Dict[str, Any]]): Optional parameters to pass to the query.
       Use this for parameterized queries to prevent SQL injection.
 
@@ -96,10 +102,10 @@ async def execute_select_cte_query_sql(
         - PostgreSQL: 'asyncpg' (install with 'pip install asyncpg')
         - MySQL: 'aiomysql' (install with 'pip install aiomysql')
         - SQLite: 'aiosqlite' (install with 'pip install aiosqlite')
-    - **Schema Selection**: If 'schema' is provided, the function will set the schema for the session.
+    - **schema_name Selection**: If 'schema_name' is provided, the function will set the schema_name for the session.
       For PostgreSQL, it uses 'SET search_path TO schema_name'.
       For MySQL/MariaDB, it uses 'USE schema_name'.
-      For SQLite, schema selection is not applicable.
+      For SQLite, schema_name selection is not applicable.
     - **Error Handling**: The function returns a dictionary with an 'error' key if an exception occurs.
       Check for this in your code to handle errors gracefully.
 
@@ -114,20 +120,24 @@ async def execute_select_cte_query_sql(
         engine: AsyncEngine = create_async_engine(connection_string, echo=False)
 
         async with engine.connect() as connection:  # type: AsyncConnection
-            if schema:
+            if schema_name:
                 if engine.dialect.name == "postgresql":
-                    await connection.execute(text(f"SET search_path TO {schema}"))
+                    await connection.execute(text(f"SET search_path TO {schema_name}"))
                 elif engine.dialect.name in ["mysql", "mariadb"]:
-                    await connection.execute(text(f"USE {schema}"))
-                # For SQLite, schema setting is not applicable
+                    await connection.execute(text(f"USE {schema_name}"))
+                # For SQLite, schema_name setting is not applicable
 
             result = await connection.execute(text(query), params or {})
             rows = [dict(row) for row in result]
             return rows
     except SQLAlchemyError as e:
+
+        traceback.print_exc()
         logger.error(f"SQLAlchemy error occurred: {e}")
         return {"error": str(e)}
     except Exception as e:
+
+        traceback.print_exc()
         logger.error(f"An unexpected error occurred: {e}")
         return {"error": str(e)}
     finally:

@@ -316,6 +316,8 @@ class SimpleHercules:
                             final_response=final_response,
                         )
             except Exception as e:
+
+                traceback.print_exc()
                 logger.error(
                     f"Failed to send notification to planner regarding action completion with last_message: {last_message} with exception {e}"
                 )

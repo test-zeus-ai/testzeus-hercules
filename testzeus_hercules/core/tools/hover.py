@@ -125,7 +125,10 @@ async def do_hover(
             logger.info(
                 f'Element with selector: "{selector}" is scrolled into view. Waiting for the element to be visible.'
             )
-        except Exception:
+        except Exception as e:
+
+            traceback.print_exc()
+            logger.exception(f"Error scrolling element into view: {e}")
             # If scrollIntoView fails, just move on
             pass
 
@@ -134,7 +137,10 @@ async def do_hover(
             logger.info(
                 f'Element with selector: "{selector}" is visible. Hovering over the element.'
             )
-        except Exception:
+        except Exception as e:
+
+            traceback.print_exc()
+            logger.exception(f"Error waiting for element to be visible: {e}")
             # If the element is not visible, try to hover over it anyway
             pass
 
@@ -182,6 +188,8 @@ async def do_hover(
             "detailed_message": f"{msg} The hovered element's outer HTML is: {element_outer_html}.",
         }
     except Exception as e:
+
+        traceback.print_exc()
         # Initialize selector logger with proof path
         selector_logger = get_browser_logger(get_global_conf().get_proof_path())
         # Log failed selector interaction
@@ -228,6 +236,8 @@ async def get_tooltip_text(page: Page) -> str:
         tooltip_text = await page.evaluate(js_code)
         return tooltip_text
     except Exception as e:
+
+        traceback.print_exc()
         logger.error(f"Error retrieving tooltip text: {e}")
         return ""
 

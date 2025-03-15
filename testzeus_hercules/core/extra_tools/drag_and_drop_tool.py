@@ -1,6 +1,6 @@
 import asyncio
 from typing import Annotated
-
+import traceback
 from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.tool_registry import tool
@@ -88,7 +88,10 @@ async def drag_and_drop(
                     target_element = element
                     logger.info(f"Found target element using selector: {selector}")
                     break
-            except Exception:
+            except Exception as e:
+
+                traceback.print_exc()
+                logger.exception(f"Error finding target element: {e}")
                 continue
 
         if target_element is None:
@@ -142,11 +145,15 @@ async def drag_and_drop(
             return f"Successfully performed drag and drop from '{selector}' to '{target_selector}'"
 
         except Exception as e:
+
+            traceback.print_exc()
             error_msg = f"Failed to perform drag and drop: {str(e)}"
             logger.error(error_msg)
             return error_msg
 
     except Exception as e:
+
+        traceback.print_exc()
         error_msg = f"Failed to perform drag and drop operation: {str(e)}"
         logger.error(error_msg)
         return error_msg

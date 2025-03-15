@@ -1,7 +1,7 @@
 import asyncio
 import inspect
 from typing import Annotated, Any
-
+import traceback
 from playwright.async_api import Page
 from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
@@ -92,6 +92,8 @@ async def click(
                 await dialog.dismiss()
 
         except Exception as e:
+
+            traceback.print_exc()
             logger.info(f"Error handling dialog: {e}")
 
     if page is None:  # type: ignore
@@ -182,7 +184,10 @@ async def do_click(
             logger.info(
                 f'Element with selector: "{selector}" is attached and scrolled into view. Waiting for the element to be visible.'
             )
-        except Exception:
+        except Exception as e:
+
+            traceback.print_exc()
+            logger.exception(f"Error scrolling element into view: {e}")
             # If scrollIntoView fails, just move on, not a big deal
             pass
 
@@ -283,7 +288,6 @@ async def do_click(
         }  # type: ignore
     except Exception as e:
         # Try a JavaScript fallback click before giving up
-        import traceback
 
         traceback.print_exc()
         try:
@@ -314,6 +318,8 @@ async def do_click(
                     "detailed_message": f"{msg}. The standard click method failed, but JavaScript click succeeded.",
                 }
         except Exception as js_error:
+
+            traceback.print_exc()
             logger.error(f"JavaScript fallback click also failed: {js_error}")
             # Both standard and fallback methods failed, proceed with original error handling
             pass

@@ -1,6 +1,6 @@
 import asyncio
 from typing import Annotated, Dict
-
+import traceback
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
 
@@ -60,6 +60,8 @@ async def wait_for_duration(
         return {"status": "success", "message": f"Waited for {duration} seconds"}
 
     except Exception as e:
+
+        traceback.print_exc()
         logger.error(f"Error during wait: {str(e)}")
         return {"status": "error", "message": f"Wait operation failed: {str(e)}"}
 

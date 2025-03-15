@@ -1,7 +1,7 @@
 import os
 import time
 from typing import Annotated, Dict, Union
-
+import traceback
 from PIL import Image
 from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
@@ -63,6 +63,8 @@ async def take_browser_screenshot(
         return f"Screenshot saved successfully to: {screenshot_file}"
 
     except Exception as e:
+
+        traceback.print_exc()
         logger.exception(f"Error taking screenshot: {e}")
         return {"error": str(e)}
 
@@ -108,5 +110,7 @@ async def capture_the_screen() -> Annotated[str, "Path to of screenshot"]:
         return screenshot_file
 
     except Exception as e:
+
+        traceback.print_exc()
         logger.exception(f"Error taking snapshot: {e}")
         return {"error": str(e)}

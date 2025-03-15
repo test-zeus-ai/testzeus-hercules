@@ -41,6 +41,9 @@ async def log_response(response: httpx.Response) -> None:
         body_bytes = await response.aread()
         body = body_bytes.decode("utf-8", errors="ignore")
     except Exception as e:
+        import traceback
+
+        traceback.print_exc()
         body = f"Failed to read response: {e}"
     log_data = {
         "timestamp": timestamp,
@@ -72,7 +75,11 @@ async def handle_error_response(e: httpx.HTTPStatusError) -> dict:
     """
     try:
         error_detail = e.response.json()
-    except Exception:
+    except Exception as e:
+        import traceback
+
+        traceback.print_exc()
+        logger.exception(f"Error extracting error details: {e}")
         error_detail = e.response.text or "No details"
     return {
         "error": str(e),
@@ -144,7 +151,11 @@ async def _send_request(
 
             try:
                 parsed_body = response.json()
-            except Exception:
+            except Exception as e:
+                import traceback
+
+                traceback.print_exc()
+                logger.exception(f"Error parsing response body: {e}")
                 parsed_body = response.text or ""
             result = {
                 "status_code": response.status_code,
@@ -162,6 +173,9 @@ async def _send_request(
         return json.dumps(error_data, separators=(",", ":")).replace('"', "'"), duration
 
     except Exception as e:
+        import traceback
+
+        traceback.print_exc()
         duration = time.perf_counter() - start_time
         logger.error(f"Unexpected error: {e}")
         error_data = {"error": str(e), "status_code": None, "status_type": "failure"}

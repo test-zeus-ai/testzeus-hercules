@@ -1,7 +1,7 @@
 import asyncio
 import inspect
 from typing import Annotated
-
+import traceback
 from playwright.async_api import Page  # type: ignore
 from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
@@ -17,7 +17,7 @@ from testzeus_hercules.utils.logger import logger
     name="press_key_combination",
 )
 async def press_key_combination(
-    key_combination: Annotated[str, "key to press, e.g., Enter, PageDown etc"]
+    key_combination: Annotated[str, "key to press, e.g., Enter, PageDown etc"],
 ) -> str:
     logger.info(f"Executing press_key_combination with key combo: {key_combination}")
     # Create and use the PlaywrightManager
@@ -101,6 +101,8 @@ async def do_press_key_combination(
             await page.keyboard.up(key)
 
     except Exception as e:
+
+        traceback.print_exc()
         logger.error(f'Error executing press_key_combination "{key_combination}": {e}')
         return False
 

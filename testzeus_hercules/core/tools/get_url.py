@@ -1,5 +1,5 @@
 from typing import Annotated
-
+import traceback
 from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.utils.js_helper import block_ads
@@ -44,6 +44,8 @@ async def geturl() -> (
             return f"Current Page: {current_url}"
 
     except Exception as e:
+
+        traceback.print_exc()
         raise ValueError(
             "No active page found. OpenURL command opens a new page."
         ) from e

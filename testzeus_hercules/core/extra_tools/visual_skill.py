@@ -3,7 +3,7 @@ import json
 import os
 import time
 from typing import Annotated, Dict, Union
-
+import traceback
 from autogen import UserProxyAgent
 from PIL import Image
 from testzeus_hercules.config import get_global_conf
@@ -160,6 +160,8 @@ async def compare_visual_screenshot(
         )
 
     except Exception as e:
+
+        traceback.print_exc()
         logger.exception(f"Error in compare_visual: {e}")
         return {"error": str(e)}
 
@@ -175,6 +177,8 @@ async def _write_comparison_to_file(comparison_data: Dict, filepath: str) -> Non
         await asyncio.to_thread(write_json, filepath, comparison_data)
         logger.info(f"Comparison data saved to: {filepath}")
     except Exception as e:
+
+        traceback.print_exc()
         logger.error(f"Failed to write comparison data to file: {e}")
 
 
@@ -295,5 +299,7 @@ async def validate_visual_feature(
         )
 
     except Exception as e:
+
+        traceback.print_exc()
         logger.exception(f"Error in validate_visual_feature: {e}")
         return {"error": str(e)}

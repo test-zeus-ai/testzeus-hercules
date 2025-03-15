@@ -1,7 +1,7 @@
 import json
 import time
 from typing import Annotated, Any, Dict, List
-
+import traceback
 from playwright.async_api import Page
 
 from testzeus_hercules.config import get_global_conf
@@ -92,6 +92,8 @@ async def test_page_accessibility(
         return json.dumps(result_dict, separators=(",", ":"))
 
     except Exception as e:
+
+        traceback.print_exc()
         # In case of error, return an error payload
         error_dict = {
             "status": "error",

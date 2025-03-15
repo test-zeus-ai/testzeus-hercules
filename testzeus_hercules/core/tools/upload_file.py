@@ -27,7 +27,7 @@ async def click_and_upload_file(
     entry: Annotated[
         List[str],
         "tuple containing 'selector' and 'file_path' in ('selector', 'file_path') format, selector is md attribute value of the dom element to interact, md is an ID and 'file_path' is the file_path to upload",
-    ]
+    ],
 ) -> Annotated[str, "Explanation of the outcome of this operation."]:
     add_event(EventType.INTERACTION, EventData(detail="UploadFile"))
     logger.info(f"Uploading file: {entry}")
@@ -166,6 +166,8 @@ async def click_and_upload(page: Page, selector: str, file_path: str) -> dict[st
         }
 
     except Exception as e:
+
+        traceback.print_exc()
         # Initialize selector logger with proof path
         selector_logger = get_browser_logger(get_global_conf().get_proof_path())
         # Log failed selector interaction

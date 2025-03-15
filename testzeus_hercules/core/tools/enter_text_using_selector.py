@@ -50,6 +50,8 @@ async def custom_fill_element(page: Page, selector: str, text_to_enter: str) -> 
         )
         logger.debug(f"custom_fill_element result: {result}")
     except Exception as e:
+
+        traceback.print_exc()
         logger.error(
             f"Error in custom_fill_element, Selector: {selector}, Text: {text_to_enter}. Error: {str(e)}"
         )
@@ -60,7 +62,7 @@ async def entertext(
     entry: Annotated[
         tuple[str, str],
         "tuple containing 'selector' and 'value_to_fill' in ('selector', 'value_to_fill') format, selector is md attribute value of the dom element to interact, md is an ID and 'value_to_fill' is the value or text of the option to select",
-    ]
+    ],
 ) -> Annotated[str, "Text entry result"]:
     add_event(EventType.INTERACTION, EventData(detail="EnterText"))
     logger.info(f"Entering text: {entry}")
@@ -235,6 +237,8 @@ async def do_entertext(
         }
 
     except Exception as e:
+
+        traceback.print_exc()
         # Initialize selector logger with proof path
         selector_logger = get_browser_logger(get_global_conf().get_proof_path())
         # Log failed selector interaction
@@ -261,7 +265,7 @@ async def bulk_enter_text(
     entries: Annotated[
         List[List[str]],
         "List of tuple containing 'selector' and 'value_to_fill' in [('selector', 'value_to_fill'), ..] format, selector is md attribute value of the dom element to interact, md is an ID and 'value_to_fill' is the value or text",
-    ]
+    ],
 ) -> Annotated[
     List[Dict[str, str]],
     "List of dictionaries, each containing 'selector' and the result of the operation.",

@@ -1,6 +1,6 @@
 import re
 from typing import Annotated
-
+import traceback
 import playwright_recaptcha
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.tool_registry import tool
@@ -28,5 +28,7 @@ async def captcha_solver(
         logger.info(await score_locator.inner_text())
         return True
     except Exception as e:
+
+        traceback.print_exc()
         logger.error(f"An unexpected error occurred during captcha solving: {e}")
         return False

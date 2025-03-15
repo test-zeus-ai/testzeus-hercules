@@ -318,6 +318,9 @@ for tag, explanation in security_terms_explanation.items():
                         duration,
                     )
             except Exception as e:
+                import traceback
+
+                traceback.print_exc()
                 logger.error(f"An unexpected error occurred: {e}")
                 file_logger(f"An unexpected error occurred: {e}")
                 end_time = time.perf_counter()

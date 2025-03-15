@@ -1,7 +1,7 @@
 import inspect
 from typing import Annotated
 import asyncio
-
+import traceback
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
@@ -55,6 +55,8 @@ async def openurl(
                 await page.evaluate(f"window.location.href = '{special_url}'")
                 await page.wait_for_load_state("domcontentloaded")
             except Exception as e:
+
+                traceback.print_exc()
                 logger.warning(
                     f"JavaScript navigation to {special_url} failed: {e}. Trying alternative method."
                 )
@@ -67,6 +69,8 @@ async def openurl(
                         await page.set_content("<html><body></body></html>")
                         await page.evaluate(f"window.location.href = '{special_url}'")
                 except Exception as fallback_err:
+
+                    traceback.print_exc()
                     logger.error(
                         f"All navigation methods to {special_url} failed: {fallback_err}"
                     )
@@ -114,6 +118,8 @@ async def openurl(
                 )
                 return f"Page already loaded: {url}, Title: {title}"  # type: ignore
             except Exception as e:
+
+                traceback.print_exc()
                 logger.error(
                     f"An error occurred while getting the page title: {e}, but will continue to load the page."
                 )
@@ -142,6 +148,8 @@ async def openurl(
             if timeout > 0:
                 await asyncio.sleep(timeout)
         except Exception as e:
+
+            traceback.print_exc()
             logger.error(f"An error occurred while waiting for the page to load: {e}")
 
         # Wait for the network to idle
@@ -187,6 +195,8 @@ async def openurl(
         return f"Timeout error opening URL: {url}"
 
     except Exception as e:
+
+        traceback.print_exc()
         # Log navigation error
         await browser_logger.log_browser_interaction(
             tool_name="openurl",
@@ -201,7 +211,6 @@ async def openurl(
             },
         )
         logger.error(f"An error occurred while opening the URL: {url}. Error: {e}")
-        import traceback
 
         traceback.print_exc()
         return f"Error opening URL: {url}"

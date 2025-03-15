@@ -112,6 +112,9 @@ class AgentsLLMConfig:
                     )
 
             except Exception as e:
+                import traceback
+
+                traceback.print_exc()
                 logger.error(f"Error loading configuration file: {e}")
                 raise e
         else:

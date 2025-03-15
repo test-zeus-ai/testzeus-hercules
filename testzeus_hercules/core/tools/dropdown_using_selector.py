@@ -23,7 +23,7 @@ async def select_option(
             "('selector', 'value_to_fill') format. Selector is the md attribute value "
             "of the DOM element and value_to_fill is the option text/value to select."
         ),
-    ]
+    ],
 ) -> Annotated[str, "Explanation of the outcome of dropdown/spinner selection."]:
     add_event(EventType.INTERACTION, EventData(detail="SelectOption"))
     logger.info(f"Selecting option: {entry}")
@@ -87,6 +87,8 @@ async def do_select_option(
         )
 
     except Exception as e:
+
+        traceback.print_exc()
         selector_logger = get_browser_logger(get_global_conf().get_proof_path())
         await selector_logger.log_selector_interaction(
             tool_name="select_option",
@@ -211,7 +213,9 @@ async def interact_with_element_select_type(
             try:
                 await element.fill(option_value)
             except Exception as e:
-                logger.debug(f"Error filling input: {str(e)}")
+
+                # traceback.print_exc()
+                logger.warning(f"Error filling input: {str(e)}, trying type instead")
                 await element.type(option_value)
 
             if "lwc" in str(element) and "placeholder" in str(element):
@@ -279,6 +283,8 @@ async def interact_with_element_select_type(
             "detailed_message": f"{success_msg}. Outer HTML: {element_outer_html}",
         }
     except Exception as e:
+
+        traceback.print_exc()
         logger.debug(f"Text-based selection failed: {str(e)}")
 
         # If all attempts fail, report failure
@@ -311,7 +317,7 @@ async def bulk_select_option(
             "List of tuples containing 'selector' and 'value_to_fill' in the format "
             "[('selector', 'value_to_fill'), ...]. 'selector' is the md attribute value and 'value_to_fill' is the option to select."
         ),
-    ]
+    ],
 ) -> Annotated[
     List[Dict[str, str]],
     "List of dictionaries, each containing 'selector' and the result of the operation.",

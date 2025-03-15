@@ -71,6 +71,8 @@ async def custom_set_slider_value(
         )
         logger.debug(f"custom_set_slider_value result: {result}")
     except Exception as e:
+
+        traceback.print_exc()
         logger.error(
             f"Error in custom_set_slider_value, Selector: {selector}, Value: {value_to_set}. Error: {str(e)}"
         )
@@ -81,7 +83,7 @@ async def setslider(
     entry: Annotated[
         tuple[str, str],
         "tuple containing 'selector' and 'value_to_fill' in ('selector', 'value_to_fill') format, selector is md attribute value of the dom element to interact, md is an ID and 'value_to_fill' is the value or text of the option to select",
-    ]
+    ],
 ) -> Annotated[str, "Explanation of the outcome of this operation."]:
     logger.info(f"Setting slider value: {entry}")
 
@@ -247,6 +249,8 @@ async def do_setslider(
         }
 
     except Exception as e:
+
+        traceback.print_exc()
         # Initialize selector logger with proof path
         selector_logger = get_browser_logger(get_global_conf().get_proof_path())
         # Log failed selector interaction
@@ -273,7 +277,7 @@ async def bulk_set_slider(
     entries: Annotated[
         List[List[str]],
         "List of tuple containing 'selector' and 'value_to_fill' in [('selector', 'value_to_fill'), ..] format, selector is md attribute value of the dom element to interact, md is an ID and 'value_to_fill' is the value or text of the option to select",
-    ]
+    ],
 ) -> Annotated[
     List[Dict[str, str]],
     "List of dictionaries, each containing 'selector' and the result of the operation.",
