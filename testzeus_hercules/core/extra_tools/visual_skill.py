@@ -26,7 +26,7 @@ image_ex_user_proxy = UserProxyAgent(
 @tool(
     agent_names=["browser_nav_agent"],
     name="compare_visual_screenshot",
-    description="Compare the current browser view with a reference image or screenshot and log results",
+    description="Compare the current screen view with a reference image or screenshot and return results",
 )
 async def compare_visual_screenshot(
     reference_image_path: Annotated[
@@ -185,7 +185,7 @@ async def _write_comparison_to_file(comparison_data: Dict, filepath: str) -> Non
 @tool(
     agent_names=["browser_nav_agent"],
     name="validate_visual_feature",
-    description="Validate if specific features or items are present in the current browser view",
+    description="Validate if specific features or items are present in the current screen",
 )
 async def validate_visual_feature(
     feature_description: Annotated[

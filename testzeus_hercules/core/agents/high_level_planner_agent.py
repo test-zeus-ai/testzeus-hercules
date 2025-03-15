@@ -223,6 +223,8 @@ Must return well-formatted JSON with:
 12. Include explicit closure nudges but let helpers decide implementation details
 13. Acknowledge platform context when mentioned by helpers with minimal nudges
 14. Always ensure next_step is a STRING, never an object or other data type
+15. IF LOGICALLY THE NEXT STEP IS NOT ACHIEVABLE, AFTER MULTIPLE ATTEMPTS, REPORT THE ISSUE AND TERMINATE with Failure.
+16. YOU CAN'T ASK TO DO ANYTHING MANUALLY, IN SUCH CASE REPORT THE ISSUE AND TERMINATE with Failure.
 
 Available Test Data: $basic_test_information
 """

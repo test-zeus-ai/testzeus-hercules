@@ -39,10 +39,10 @@ class SqlNavAgent(BaseNavAgent):
    ## Response Format
    - Task completion: 
      previous_step: <previous step assigned>
-     Summary + ##FLAG::SAVE_IN_MEM## + ##TERMINATE TASK##
+     current_output: Summary + ##FLAG::SAVE_IN_MEM## + ##TERMINATE TASK##
    - Failures: 
      previous_step: <previous step assigned>
-     Detailed explanation + ##TERMINATE TASK##
+     current_output: Detailed explanation + ##TERMINATE TASK##
 
    ## Restrictions
    - No external knowledge use

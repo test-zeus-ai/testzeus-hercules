@@ -1654,9 +1654,9 @@ class PlaywrightManager:
             if (ariaExpandedBeforeClick === 'false' && ariaExpandedAfterClick === 'true') {
                 return "Executed " + type_of_click + " on element with selector: " + selector + 
                     ". Very important: As a consequence, a menu has appeared where you may need to make further selection. " +
-                    "Very important: Get all_fields DOM to complete the action.";
+                    "Very important: Get all_fields DOM to complete the action." + " The click is best effort, so verify the outcome.";
             }
-            return "Executed " + type_of_click + " on element with selector: " + selector;
+            return "Executed " + type_of_click + " on element with selector: " + selector + " The click is best effort, so verify the outcome.";
         }"""
 
         try:

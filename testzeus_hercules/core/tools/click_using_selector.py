@@ -312,10 +312,9 @@ async def do_click(
                     additional_data={"click_type": "javascript_fallback"},
                 )
 
-                msg = f'Successfully clicked element with selector: "{selector}" using JavaScript fallback'
                 return {
                     "summary_message": msg,
-                    "detailed_message": f"{msg}. The standard click method failed, but JavaScript click succeeded.",
+                    "detailed_message": f"{msg}.",
                 }
         except Exception as js_error:
 

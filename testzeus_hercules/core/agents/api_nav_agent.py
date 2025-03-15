@@ -73,18 +73,18 @@ Use the following standardized response formats:
 
 - **Success:**
 previous_step: <previous step assigned>
-[DETAILED EXPANDED COMPLETE LOSS LESS output]
+current_output: [DETAILED EXPANDED COMPLETE LOSS LESS output]
 ##FLAG::SAVE_IN_MEM##
 ##TERMINATE TASK##
 
 - **Information Request:**
 previous_step: <previous step assigned>
-[DETAILED EXPANDED COMPLETE LOSS LESS output]
+current_output: [DETAILED EXPANDED COMPLETE LOSS LESS output]
 ##TERMINATE TASK##
 
 - **Error:**
 previous_step: <previous step assigned>
-[Issue description]
+current_output: [Issue description]
 [Required information]
 ##TERMINATE TASK##
 
