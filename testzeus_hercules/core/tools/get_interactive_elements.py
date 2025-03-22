@@ -5,8 +5,8 @@ from typing import Annotated, Any, Dict, List, Union
 
 from playwright.async_api import Page
 from testzeus_hercules.config import get_global_conf
-from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.browser_logger import get_browser_logger
+from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.dom_helper import wait_for_non_loading_dom_state
@@ -23,9 +23,7 @@ from testzeus_hercules.utils.logger import logger
 Notes: [Elements ordered as displayed, Consider ordinal/numbered item positions, List ordinal represent z-index on page]""",
     name="get_interactive_elements",
 )
-async def get_interactive_elements() -> (
-    Annotated[str, "DOM type dict giving all interactive elements on page"]
-):
+async def get_interactive_elements() -> Annotated[str, "DOM type dict giving all interactive elements on page"]:
     add_event(EventType.INTERACTION, EventData(detail="get_interactive_elements"))
     start_time = time.time()
     # Create and use the PlaywrightManager
@@ -44,9 +42,7 @@ async def get_interactive_elements() -> (
     extracted_data = await do_get_accessibility_info(page, only_input_fields=False)
 
     # Flatten the hierarchy into a list of elements
-    def flatten_elements(
-        node: dict, parent_name: str = "", parent_title: str = ""
-    ) -> list[dict]:
+    def flatten_elements(node: dict, parent_name: str = "", parent_title: str = "") -> list[dict]:
         elements = []
         interactive_roles = {
             "button",
@@ -83,8 +79,7 @@ async def get_interactive_elements() -> (
         # Include elements with interactive roles or clickable/focusable elements
         if "md" in node and (
             node.get("r", "").lower() in interactive_roles
-            or node.get("tag", "").lower()
-            in {"a", "button", "input", "select", "textarea"}
+            or node.get("tag", "").lower() in {"a", "button", "input", "select", "textarea"}
             or node.get("clickable", False)
             or node.get("focusable", False)
         ):
@@ -93,9 +88,7 @@ async def get_interactive_elements() -> (
             elements.append(new_node)
         return elements
 
-    flattened_data = (
-        flatten_elements(extracted_data) if isinstance(extracted_data, dict) else []
-    )
+    flattened_data = flatten_elements(extracted_data) if isinstance(extracted_data, dict) else []
 
     elapsed_time = time.time() - start_time
     logger.info(f"Get DOM Command executed in {elapsed_time} seconds")

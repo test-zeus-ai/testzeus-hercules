@@ -1,5 +1,6 @@
-from typing import Annotated, Dict, List, Optional, Union
 import traceback
+from typing import Annotated, Dict, List, Optional, Union
+
 from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.tool_registry import tool
@@ -26,24 +27,18 @@ async def get_current_geo_location() -> Union[str, Dict[str, str]]:
         provider = get_global_conf().get_geo_provider()
         api_key = get_global_conf().get_geo_api_key()
         if not provider or not api_key:
-            return {
-                "error": "Missing GEO_PROVIDER or GEO_API_KEY in get_global_conf()."
-            }
+            return {"error": "Missing GEO_PROVIDER or GEO_API_KEY in get_global_conf()."}
 
         # 1) Get lat/long from Playwright
         browser_manager = PlaywrightManager()
-        lat_lng = (
-            browser_manager.user_geolocation
-        )  # e.g., {"latitude": float, "longitude": float}
+        lat_lng = browser_manager.user_geolocation  # e.g., {"latitude": float, "longitude": float}
 
         if not lat_lng or "latitude" not in lat_lng or "longitude" not in lat_lng:
             return {"error": "No current geolocation set in the browser."}
 
         # 2) Reverse geocode to get address
         sdk = GeoLocationSDK(provider=provider, api_key=api_key)
-        address = sdk.geo_to_address(
-            {"lat": lat_lng["latitude"], "lng": lat_lng["longitude"]}
-        )
+        address = sdk.geo_to_address({"lat": lat_lng["latitude"], "lng": lat_lng["longitude"]})
         if not address:
             return {"error": "No matching address found for current geolocation."}
         return address
@@ -76,9 +71,7 @@ async def set_current_geo_location(
         provider = get_global_conf().get_geo_provider()
         api_key = get_global_conf().get_geo_api_key()
         if not provider or not api_key:
-            return {
-                "error": "Missing GEO_PROVIDER or GEO_API_KEY in get_global_conf()."
-            }
+            return {"error": "Missing GEO_PROVIDER or GEO_API_KEY in get_global_conf()."}
 
         # 1) Forward geocode the address
         sdk = GeoLocationSDK(provider=provider, api_key=api_key)
@@ -93,10 +86,7 @@ async def set_current_geo_location(
         browser_manager = PlaywrightManager()
         await browser_manager.set_geolocation(latitude, longitude)
 
-        success_msg = (
-            f"Set browser geolocation to '{address}' "
-            f"(lat={latitude}, lng={longitude})."
-        )
+        success_msg = f"Set browser geolocation to '{address}' " f"(lat={latitude}, lng={longitude})."
         return success_msg
 
     except Exception as e:

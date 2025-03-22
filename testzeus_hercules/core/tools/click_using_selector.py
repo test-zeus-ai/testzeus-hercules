@@ -1,11 +1,12 @@
 import asyncio
 import inspect
-from typing import Annotated, Any
 import traceback
+from typing import Annotated, Any
+
 from playwright.async_api import Page
 from testzeus_hercules.config import get_global_conf
-from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.browser_logger import get_browser_logger
+from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.dom_helper import get_element_outer_html
@@ -32,15 +33,11 @@ def get_page_data(page: Any) -> dict[str, Any]:
     name="click",
 )
 async def click(
-    selector: Annotated[
-        str, """selector using md attribute, just give the md ID value"""
-    ],
+    selector: Annotated[str, """selector using md attribute, just give the md ID value"""],
     user_input_dialog_response: Annotated[str, "Dialog input value"] = "",
     expected_message_of_dialog: Annotated[str, "Expected dialog message"] = "",
     action_on_dialog: Annotated[str, "Dialog action: 'DISMISS' or 'ACCEPT'"] = "",
-    type_of_click: Annotated[
-        str, "Click type: click/right_click/double_click/middle_click"
-    ] = "click",
+    type_of_click: Annotated[str, "Click type: click/right_click/double_click/middle_click"] = "click",
     wait_before_execution: Annotated[float, "Wait time before click"] = 0.0,
 ) -> Annotated[str, "Click action result"]:
     query_selector = selector
@@ -70,13 +67,8 @@ async def click(
             logger.info(f"Dialog message: {dialog_message}")
 
             # Check if the dialog message matches the expected message (if provided)
-            if (
-                expected_message_of_dialog
-                and dialog_message != expected_message_of_dialog
-            ):
-                logger.error(
-                    f"Dialog message does not match the expected message: {expected_message_of_dialog}"
-                )
+            if expected_message_of_dialog and dialog_message != expected_message_of_dialog:
+                logger.error(f"Dialog message does not match the expected message: {expected_message_of_dialog}")
                 if action_on_dialog == "accept":
                     if dialog.type == "prompt":
                         await dialog.accept(user_input_dialog_response)
@@ -126,9 +118,7 @@ async def click(
     page.on("dialog", handle_dialog)
     result = await do_click(page, query_selector, wait_before_execution, type_of_click)
 
-    await asyncio.sleep(
-        get_global_conf().get_delay_time()
-    )  # sleep to allow the mutation observer to detect changes
+    await asyncio.sleep(get_global_conf().get_delay_time())  # sleep to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
 
     await browser_manager.wait_for_load_state_if_enabled(page=page)
@@ -140,12 +130,8 @@ async def click(
     return result["detailed_message"]
 
 
-async def do_click(
-    page: Page, selector: str, wait_before_execution: float, type_of_click: str
-) -> dict[str, str]:
-    logger.info(
-        f'Executing ClickElement with "{selector}" as the selector. Wait time before execution: {wait_before_execution} seconds.'
-    )
+async def do_click(page: Page, selector: str, wait_before_execution: float, type_of_click: str) -> dict[str, str]:
+    logger.info(f'Executing ClickElement with "{selector}" as the selector. Wait time before execution: {wait_before_execution} seconds.')
 
     # Wait before execution if specified
     if wait_before_execution > 0:
@@ -153,15 +139,11 @@ async def do_click(
 
     # Wait for the selector to be present and ensure it's attached and visible. If timeout, try JavaScript click
     try:
-        logger.info(
-            f'Executing ClickElement with "{selector}" as the selector. Waiting for the element to be attached and visible.'
-        )
+        logger.info(f'Executing ClickElement with "{selector}" as the selector. Waiting for the element to be attached and visible.')
 
         # Attempt to find the element on the main page or in iframes
         browser_manager = PlaywrightManager()
-        element = await browser_manager.find_element(
-            selector, page, element_name="click"
-        )
+        element = await browser_manager.find_element(selector, page, element_name="click")
         if element is None:
             # Initialize selector logger with proof path
             selector_logger = get_browser_logger(get_global_conf().get_proof_path())
@@ -176,14 +158,10 @@ async def do_click(
             )
             raise ValueError(f'Element with selector: "{selector}" not found')
 
-        logger.info(
-            f'Element with selector: "{selector}" is attached. Scrolling it into view if needed.'
-        )
+        logger.info(f'Element with selector: "{selector}" is attached. Scrolling it into view if needed.')
         try:
             await element.scroll_into_view_if_needed(timeout=2000)
-            logger.info(
-                f'Element with selector: "{selector}" is attached and scrolled into view. Waiting for the element to be visible.'
-            )
+            logger.info(f'Element with selector: "{selector}" is attached and scrolled into view. Waiting for the element to be visible.')
         except Exception as e:
 
             traceback.print_exc()
@@ -197,19 +175,13 @@ async def do_click(
                 "detailed_message": f'Element with selector: "{selector}" is not visible, Try another element',
             }
 
-        element_tag_name = await element.evaluate(
-            "element => element.tagName.toLowerCase()"
-        )
-        element_outer_html = await get_element_outer_html(
-            element, page, element_tag_name
-        )
+        element_tag_name = await element.evaluate("element => element.tagName.toLowerCase()")
+        element_outer_html = await get_element_outer_html(element, page, element_tag_name)
 
         # Initialize selector logger with proof path
         selector_logger = get_browser_logger(get_global_conf().get_proof_path())
         # Get alternative selectors and element attributes for logging
-        alternative_selectors = await selector_logger.get_alternative_selectors(
-            element, page
-        )
+        alternative_selectors = await selector_logger.get_alternative_selectors(element, page)
         element_attributes = await selector_logger.get_element_attributes(element)
 
         # hack for aura component in salesforce
@@ -222,9 +194,7 @@ async def do_click(
 
         if element_tag_name == "option":
             element_value = await element.get_attribute("value")
-            parent_element = await element.evaluate_handle(
-                "element => element.parentNode"
-            )
+            parent_element = await element.evaluate_handle("element => element.parentNode")
             await parent_element.select_option(value=element_value)  # type: ignore
 
             # Log successful selector interaction for option selection
@@ -291,13 +261,9 @@ async def do_click(
 
         traceback.print_exc()
         try:
-            logger.info(
-                f'Standard click failed for "{selector}". Attempting JavaScript fallback click.'
-            )
+            logger.info(f'Standard click failed for "{selector}". Attempting JavaScript fallback click.')
 
-            msg = await browser_manager.perform_javascript_click(
-                page, selector, type_of_click
-            )
+            msg = await browser_manager.perform_javascript_click(page, selector, type_of_click)
 
             if msg:
                 # Initialize selector logger with proof path

@@ -1,6 +1,7 @@
 import re
-from typing import Annotated
 import traceback
+from typing import Annotated
+
 import playwright_recaptcha
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.tool_registry import tool

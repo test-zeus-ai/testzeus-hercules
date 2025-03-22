@@ -1,7 +1,8 @@
 import os
 import time
-from typing import Annotated, Dict, Union
 import traceback
+from typing import Annotated, Dict, Union
+
 from PIL import Image
 from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
@@ -46,13 +47,7 @@ async def take_browser_screenshot(
 
         # Create a timestamped filename
         timestamp = int(time.time())
-        base_filename = (
-            screenshot_title.replace(" ", "_")
-            .replace("/", "_")
-            .replace(":", "_")
-            .lower()
-            + f"_{timestamp}"
-        )
+        base_filename = screenshot_title.replace(" ", "_").replace("/", "_").replace(":", "_").lower() + f"_{timestamp}"
         screenshot_file = os.path.join(screenshots_dir, f"{base_filename}.png")
 
         # Save the screenshot

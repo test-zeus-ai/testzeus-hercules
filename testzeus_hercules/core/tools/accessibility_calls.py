@@ -1,9 +1,9 @@
 import json
 import time
-from typing import Annotated, Any, Dict, List
 import traceback
-from playwright.async_api import Page
+from typing import Annotated, Any, Dict, List
 
+from playwright.async_api import Page
 from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.tool_registry import (
@@ -40,9 +40,7 @@ async def test_page_accessibility(
         if not page:
             raise ValueError("No active page found. OpenURL command opens a new page.")
 
-        await browser_manager.wait_for_load_state_if_enabled(
-            page=page, state="domcontentloaded"
-        )
+        await browser_manager.wait_for_load_state_if_enabled(page=page, state="domcontentloaded")
 
         # Inject the Axe-core script
         response = await page.evaluate(

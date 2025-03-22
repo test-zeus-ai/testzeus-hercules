@@ -1,12 +1,12 @@
 import asyncio
 import inspect
 import traceback
-from typing import Annotated, List, Dict, Optional
+from typing import Annotated, Dict, List, Optional
 
 from playwright.async_api import ElementHandle, Page
 from testzeus_hercules.config import get_global_conf
-from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.browser_logger import get_browser_logger
+from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.press_key_combination import press_key_combination
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
@@ -62,18 +62,14 @@ async def select_option(
     return result["detailed_message"]
 
 
-async def do_select_option(
-    page: Page, selector: str, option_value: str
-) -> dict[str, str]:
+async def do_select_option(page: Page, selector: str, option_value: str) -> dict[str, str]:
     """
     Simplified approach to select an option in a dropdown using the element's properties.
     Uses find_element to get the element and then determines the best strategy based on
     the element's role, type, and tag name.
     """
     try:
-        logger.debug(
-            f"Looking for selector {selector} to select option: {option_value}"
-        )
+        logger.debug(f"Looking for selector {selector} to select option: {option_value}")
 
         # Part 1: Find the element and get its properties
         element, properties = await find_element_select_type(page, selector)
@@ -82,9 +78,7 @@ async def do_select_option(
             return {"summary_message": error, "detailed_message": error}
 
         # Part 2: Interact with the element to select the option
-        return await interact_with_element_select_type(
-            page, element, selector, option_value, properties
-        )
+        return await interact_with_element_select_type(page, element, selector, option_value, properties)
 
     except Exception as e:
 
@@ -103,17 +97,13 @@ async def do_select_option(
         return {"summary_message": error, "detailed_message": f"{error} Error: {e}"}
 
 
-async def find_element_select_type(
-    page: Page, selector: str
-) -> tuple[Optional[ElementHandle], dict]:
+async def find_element_select_type(page: Page, selector: str) -> tuple[Optional[ElementHandle], dict]:
     """
     Internal function to find the element and gather its properties.
     Returns the element and a dictionary of its properties.
     """
     browser_manager = PlaywrightManager()
-    element = await browser_manager.find_element(
-        selector, page, element_name="select_option"
-    )
+    element = await browser_manager.find_element(selector, page, element_name="select_option")
 
     if not element:
         selector_logger = get_browser_logger(get_global_conf().get_proof_path())
@@ -129,9 +119,7 @@ async def find_element_select_type(
 
     logger.info(f"Found selector '{selector}' to select option")
     selector_logger = get_browser_logger(get_global_conf().get_proof_path())
-    alternative_selectors = await selector_logger.get_alternative_selectors(
-        element, page
-    )
+    alternative_selectors = await selector_logger.get_alternative_selectors(element, page)
     element_attributes = await selector_logger.get_element_attributes(element)
 
     # Get element properties to determine the best selection strategy
@@ -250,9 +238,7 @@ async def interact_with_element_select_type(
     # Strategy 3: Generic click and select approach for all other elements
     # Click to open the dropdown
 
-    logger.info(
-        f"taking worst case scenario of selecting option for {element}, properties: {properties}"
-    )
+    logger.info(f"taking worst case scenario of selecting option for {element}, properties: {properties}")
     await element.click()
     await page.wait_for_timeout(300)  # Short wait for dropdown to appear
 
@@ -305,10 +291,7 @@ async def interact_with_element_select_type(
 @tool(
     agent_names=["browser_nav_agent"],
     name="bulk_select_option",
-    description=(
-        "Used to select/search an options in multiple picklist/listbox/combobox/dropdowns/spinners in a single attempt. "
-        "Each entry is a tuple of (selector, value_to_fill)."
-    ),
+    description=("Used to select/search an options in multiple picklist/listbox/combobox/dropdowns/spinners in a single attempt. " "Each entry is a tuple of (selector, value_to_fill)."),
 )
 async def bulk_select_option(
     entries: Annotated[
@@ -332,10 +315,7 @@ async def bulk_select_option(
             continue
         result = await select_option((entry[0], entry[1]))
         if isinstance(result, str):
-            if (
-                "new elements have appeared in view" in result
-                and "success" in result.lower()
-            ):
+            if "new elements have appeared in view" in result and "success" in result.lower():
                 success_part = result.split(".\nAs a consequence")[0]
                 results.append({"selector": entry[0], "result": success_part})
             else:

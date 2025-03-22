@@ -8,7 +8,7 @@
             "llm_config_params": {
                 "cache_seed": null,
                 "temperature": 0.0,
-                "top_p": 1,
+
                 "seed": 12345
             }
 		},
@@ -20,7 +20,7 @@
             "llm_config_params": {
                 "cache_seed": null,
                 "temperature": 0.0,
-                "top_p": 1,
+
                 "seed": 12345
             }
 		},
@@ -32,7 +32,7 @@
             "llm_config_params": {
                 "cache_seed": null,
                 "temperature": 0.0,
-                "top_p": 1,
+
                 "seed": 12345
             }
 		},
@@ -44,7 +44,7 @@
             "llm_config_params": {
                 "cache_seed": null,
                 "temperature": 0.0,
-                "top_p": 1,
+
                 "seed": 12345
             }
 		}
@@ -57,7 +57,7 @@
             "llm_config_params": {
                 "cache_seed": 1234,
                 "temperature": 0.0,
-                "top_p": 0.001,
+
                 "seed": 12345
             }
 		},
@@ -68,7 +68,7 @@
             "llm_config_params": {
                 "cache_seed": 1234,
                 "temperature": 0.0,
-                "top_p": 0.001,
+
                 "seed": 12345
             }
 		},
@@ -79,7 +79,7 @@
             "llm_config_params": {
                 "cache_seed": 1234,
                 "temperature": 0.0,
-                "top_p": 0.001,
+
                 "seed": 12345
             }
 		},
@@ -90,7 +90,7 @@
             "llm_config_params": {
                 "cache_seed": 1234,
                 "temperature": 0.0,
-                "top_p": 0.001,
+
                 "seed": 12345
             }
 		}
@@ -105,7 +105,7 @@
             "llm_config_params": {
                 "cache_seed": null,
                 "temperature": 0.0,
-                "top_p": 0.001,
+
                 "seed": 12345
             }
 		},
@@ -118,7 +118,7 @@
             "llm_config_params": {
                 "cache_seed": null,
                 "temperature": 0.0,
-                "top_p": 0.001,
+
                 "seed": 12345
             }
 		},
@@ -131,7 +131,7 @@
             "llm_config_params": {
                 "cache_seed": null,
                 "temperature": 0.0,
-                "top_p": 0.001,
+
                 "seed": 12345
             }
 		},
@@ -144,7 +144,7 @@
             "llm_config_params": {
                 "cache_seed": null,
                 "temperature": 0.0,
-                "top_p": 0.001,
+
                 "seed": 12345
             }
 		}
@@ -157,7 +157,7 @@
             "llm_config_params": {
                 "cache_seed": null,
                 "temperature": 0.0,
-                "top_p": 0.001,
+
                 "seed": 12345
             }
 		},
@@ -168,7 +168,7 @@
             "llm_config_params": {
                 "cache_seed": null,
                 "temperature": 0.0,
-                "top_p": 0.001,
+
                 "seed": 12345
             }
 		},
@@ -179,7 +179,7 @@
             "llm_config_params": {
                 "cache_seed": null,
                 "temperature": 0.0,
-                "top_p": 0.001,
+
                 "seed": 12345
             }
 		},
@@ -190,7 +190,7 @@
             "llm_config_params": {
                 "cache_seed": null,
                 "temperature": 0.0,
-                "top_p": 0.001,
+
                 "seed": 12345
             }
 		}
@@ -206,8 +206,7 @@
             "model_hide_tools": "if_any_run",
             "llm_config_params": {
                 "cache_seed": null,
-                "temperature": 0.0,
-                "top_p": 0.001
+                "temperature": 0.0
             }
 		},
 		"nav_agent": {
@@ -219,8 +218,7 @@
             "model_hide_tools": "if_any_run",
             "llm_config_params": {
                 "cache_seed": null,
-                "temperature": 0.0,
-                "top_p": 0.001
+                "temperature": 0.0
             }
 		},
 		"mem_agent": {
@@ -232,8 +230,7 @@
             "model_hide_tools": "if_any_run",
             "llm_config_params": {
                 "cache_seed": null,
-                "temperature": 0.0,
-                "top_p": 0.001
+                "temperature": 0.0
             }
 		},
 		"helper_agent": {
@@ -245,8 +242,7 @@
             "model_hide_tools": "if_any_run",
             "llm_config_params": {
                 "cache_seed": null,
-                "temperature": 0.0,
-                "top_p": 0.001
+                "temperature": 0.0
             }
 		}
     },
@@ -258,7 +254,7 @@
             "llm_config_params": {
                 "cache_seed": null,
                 "temperature": 0.0,
-                "top_p": 0.001,
+
                 "seed": 12345
             }
 		},
@@ -269,7 +265,7 @@
             "llm_config_params": {
                 "cache_seed": null,
                 "temperature": 0.0,
-                "top_p": 0.001,
+
                 "seed": 12345
             }
 		},
@@ -280,7 +276,7 @@
             "llm_config_params": {
                 "cache_seed": null,
                 "temperature": 0.0,
-                "top_p": 0.001,
+
                 "seed": 12345
             }
 		},
@@ -291,7 +287,7 @@
             "llm_config_params": {
                 "cache_seed": null,
                 "temperature": 0.0,
-                "top_p": 0.001,
+
                 "seed": 12345
             }
 		}
@@ -305,7 +301,7 @@
             "llm_config_params": {
                 "cache_seed": null,
                 "temperature": 0.0,
-                "top_p": 0.001,
+
                 "seed": 12345
             }
 		},
@@ -317,7 +313,7 @@
             "llm_config_params": {
                 "cache_seed": null,
                 "temperature": 0.0,
-                "top_p": 0.001,
+
                 "seed": 12345
             }
 		},
@@ -329,7 +325,7 @@
             "llm_config_params": {
                 "cache_seed": null,
                 "temperature": 0.0,
-                "top_p": 0.001,
+
                 "seed": 12345
             }
 		},
@@ -341,7 +337,7 @@
             "llm_config_params": {
                 "cache_seed": null,
                 "temperature": 0.0,
-                "top_p": 0.001,
+
                 "seed": 12345
             }
 		}
@@ -356,7 +352,7 @@
             "llm_config_params": {
                 "cache_seed": null,
                 "temperature": 0.0,
-                "top_p": 0.001,
+
                 "seed": 12345
             }
 		},
@@ -369,7 +365,7 @@
             "llm_config_params": {
                 "cache_seed": null,
                 "temperature": 0.0,
-                "top_p": 0.001,
+
                 "seed": 12345
             }
 		},
@@ -382,7 +378,7 @@
             "llm_config_params": {
                 "cache_seed": null,
                 "temperature": 0.0,
-                "top_p": 0.001,
+
                 "seed": 12345
             }
 		},
@@ -395,7 +391,7 @@
             "llm_config_params": {
                 "cache_seed": null,
                 "temperature": 0.0,
-                "top_p": 0.001,
+
                 "seed": 12345
             }
 		}
@@ -407,7 +403,7 @@
             "llm_config_params": {
                 "cache_seed": null,
                 "temperature": 0.0,
-                "top_p": 0.001,
+
                 "seed": 12345
             }
 		},
@@ -417,7 +413,7 @@
             "llm_config_params": {
                 "cache_seed": null,
                 "temperature": 0.0,
-                "top_p": 0.001,
+
                 "seed": 12345
             }
 		},
@@ -427,7 +423,7 @@
             "llm_config_params": {
                 "cache_seed": null,
                 "temperature": 0.0,
-                "top_p": 0.001,
+
                 "seed": 12345
             }
 		},
@@ -437,7 +433,7 @@
             "llm_config_params": {
                 "cache_seed": null,
                 "temperature": 0.0,
-                "top_p": 0.001,
+
                 "seed": 12345
             }
 		}
@@ -451,7 +447,7 @@
             "llm_config_params": {
                 "cache_seed": null,
                 "temperature": 0.0,
-                "top_p": 0.001,
+
                 "seed": 12345
             }
 		},
@@ -463,7 +459,7 @@
             "llm_config_params": {
                 "cache_seed": null,
                 "temperature": 0.0,
-                "top_p": 0.001,
+
                 "seed": 12345
             }
 		},
@@ -475,7 +471,7 @@
             "llm_config_params": {
                 "cache_seed": null,
                 "temperature": 0.0,
-                "top_p": 0.001,
+
                 "seed": 12345
             }
 		},
@@ -487,7 +483,7 @@
             "llm_config_params": {
                 "cache_seed": null,
                 "temperature": 0.0,
-                "top_p": 0.001,
+
                 "seed": 12345
             }
 		}

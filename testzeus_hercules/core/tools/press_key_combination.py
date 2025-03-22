@@ -1,7 +1,8 @@
 import asyncio
 import inspect
-from typing import Annotated
 import traceback
+from typing import Annotated
+
 from playwright.async_api import Page  # type: ignore
 from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
@@ -47,9 +48,7 @@ async def press_key_combination(
     # Release the modifier keys
     for key in keys[:-1]:
         await page.keyboard.up(key)
-    await asyncio.sleep(
-        get_global_conf().get_delay_time()
-    )  # sleep for 100ms to allow the mutation observer to detect changes
+    await asyncio.sleep(get_global_conf().get_delay_time())  # sleep for 100ms to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
 
     await browser_manager.wait_for_load_state_if_enabled(page=page)
@@ -61,9 +60,7 @@ async def press_key_combination(
     return f"Key {key_combination} executed successfully"
 
 
-async def do_press_key_combination(
-    browser_manager: PlaywrightManager, page: Page, key_combination: str
-) -> bool:
+async def do_press_key_combination(browser_manager: PlaywrightManager, page: Page, key_combination: str) -> bool:
     """
     Presses a key combination on the provided page.
 
@@ -88,9 +85,7 @@ async def do_press_key_combination(
         keys = key_combination.split("+")
 
         # If it's a combination, hold down the modifier keys
-        for key in keys[
-            :-1
-        ]:  # All keys except the last one are considered modifier keys
+        for key in keys[:-1]:  # All keys except the last one are considered modifier keys
             await page.keyboard.down(key)
 
         # Press the last key in the combination

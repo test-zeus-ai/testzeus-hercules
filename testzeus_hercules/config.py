@@ -3,7 +3,7 @@
 import argparse
 import json
 import os
-from typing import Optional, Literal, List, Dict, Any
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from dotenv import load_dotenv
 from testzeus_hercules.utils.logger import logger
@@ -27,6 +27,14 @@ BROWSER_CHANNELS = Literal[
     "firefox-nightly",
 ]
 
+# Add Portkey configuration types
+PORTKEY_STRATEGY_TYPE = Literal["fallback", "loadbalance"]
+
+# Type aliases for better readability
+ConfigDict = Dict[str, Any]
+PortkeyConfig = Dict[str, Any]
+PathsDict = Dict[str, str]
+
 
 class BaseConfigManager:
     """
@@ -38,20 +46,20 @@ class BaseConfigManager:
       - environment checks
     """
 
-    def __init__(self, config_dict: dict, ignore_env: bool = False):
+    def __init__(self, config_dict: ConfigDict, ignore_env: bool = False) -> None:
         """
         Initialize the config manager with config_dict as base.
 
         Args:
-            config_dict (dict): The base configuration dictionary.
-            ignore_env (bool): If True, environment variables will be ignored.
+            config_dict: The base configuration dictionary.
+            ignore_env: If True, environment variables will be ignored.
         """
-        # Add timestamp at the very beginning
-        self.timestamp = TS
-        self.paths = None
-
-        self._config = config_dict.copy()
-        self._ignore_env = ignore_env
+        # Initialize instance variables
+        self.timestamp: str = TS
+        self.paths: PathsDict = {}
+        self._config: ConfigDict = config_dict.copy()
+        self._ignore_env: bool = ignore_env
+        self._default_test_id: str = "default"
 
         # 1) Possibly load .env if not in test environment
         is_test_env = os.environ.get("IS_TEST_ENV", "false").lower() == "true"
@@ -75,23 +83,33 @@ class BaseConfigManager:
         #    (some might have been overridden by env/arguments)
         self._finalize_defaults()
 
-    # -------------------------------------------------------------------------
-    # Class methods to instantiate from dict or JSON
-    # -------------------------------------------------------------------------
+    @classmethod
+    def from_dict(cls, config_dict: ConfigDict, ignore_env: bool = False) -> "BaseConfigManager":
+        """Create a BaseConfigManager instance from a dictionary.
+
+        Args:
+            config_dict: Configuration dictionary
+            ignore_env: Whether to ignore environment variables
+
+        Returns:
+            BaseConfigManager instance
+        """
+        return cls(config_dict=config_dict, ignore_env=ignore_env)
 
     @classmethod
-    def from_dict(
-        cls, config_dict: dict, ignore_env: bool = False
-    ) -> "BaseConfigManager":
-        return cls(config_dict, ignore_env=ignore_env)
+    def from_json(cls, json_file_path: str, ignore_env: bool = False) -> "BaseConfigManager":
+        """Create a BaseConfigManager instance from a JSON file.
 
-    @classmethod
-    def from_json(
-        cls, json_file_path: str, ignore_env: bool = False
-    ) -> "BaseConfigManager":
+        Args:
+            json_file_path: Path to JSON configuration file
+            ignore_env: Whether to ignore environment variables
+
+        Returns:
+            BaseConfigManager instance
+        """
         with open(json_file_path, "r", encoding="utf-8") as f:
             config_dict = json.load(f)
-        return cls(config_dict, ignore_env=ignore_env)
+        return cls(config_dict=config_dict, ignore_env=ignore_env)
 
     # -------------------------------------------------------------------------
     # Internal Helpers
@@ -102,12 +120,9 @@ class BaseConfigManager:
         Parse Hercules-specific command-line arguments
         and place them into the environment for consistency.
         """
-        parser = argparse.ArgumentParser(
-            description="Hercules: The World's First Open-Source AI Agent for End-to-End Testing"
-        )
-        parser.add_argument(
-            "--input-file", type=str, help="Path to the input file.", required=False
-        )
+        parser = argparse.ArgumentParser(description="Hercules: The World's First Open-Source AI Agent for End-to-End Testing")
+        # Basic path configuration
+        parser.add_argument("--input-file", type=str, help="Path to the input file.", required=False)
         parser.add_argument(
             "--output-path",
             type=str,
@@ -126,6 +141,8 @@ class BaseConfigManager:
             help="Path to the project base directory.",
             required=False,
         )
+
+        # LLM Model Configuration
         parser.add_argument(
             "--llm-model",
             type=str,
@@ -139,6 +156,61 @@ class BaseConfigManager:
             required=False,
         )
         parser.add_argument(
+            "--llm-model-base-url",
+            type=str,
+            help="Base URL for the LLM API.",
+            required=False,
+        )
+        parser.add_argument(
+            "--llm-model-api-type",
+            type=str,
+            help="Type of API (openai, anthropic, azure, etc.).",
+            required=False,
+        )
+        parser.add_argument(
+            "--llm-temperature",
+            type=float,
+            help="Temperature for LLM sampling (0.0-1.0).",
+            required=False,
+        )
+
+        # LLM Configuration File
+        parser.add_argument(
+            "--agents-llm-config-file",
+            type=str,
+            help="Path to the agents LLM configuration file.",
+            required=False,
+        )
+        parser.add_argument(
+            "--agents-llm-config-file-ref-key",
+            type=str,
+            help="Reference key for the agents LLM configuration file.",
+            required=False,
+        )
+
+        # Portkey Configuration
+        parser.add_argument(
+            "--enable-portkey",
+            action="store_true",
+            help="Enable Portkey integration for LLM routing",
+            required=False,
+        )
+        parser.add_argument(
+            "--portkey-api-key",
+            type=str,
+            help="API key for Portkey",
+            required=False,
+        )
+        parser.add_argument(
+            "--portkey-strategy",
+            type=str,
+            choices=["fallback", "loadbalance"],
+            help="Portkey routing strategy (fallback or loadbalance)",
+            required=False,
+        )
+
+        # Test execution options
+        parser.add_argument(
             "--bulk",
             action="store_true",
             help="Execute tests in bulk from tests directory",
@@ -150,6 +222,8 @@ class BaseConfigManager:
             help="Reuse existing vector DB instead of creating fresh one",
             required=False,
         )
+
+        # Browser options
         parser.add_argument(
             "--browser-channel",
             type=str,
@@ -196,6 +270,7 @@ class BaseConfigManager:
         # Parse known args; ignore unknown if you have other custom arguments
         args, _ = parser.parse_known_args()
 
+        # Basic path configuration
         if args.input_file:
             os.environ["INPUT_GHERKIN_FILE_PATH"] = args.input_file
         if args.output_path:
@@ -204,14 +279,40 @@ class BaseConfigManager:
             os.environ["TEST_DATA_PATH"] = args.test_data_path
         if args.project_base:
             os.environ["PROJECT_SOURCE_ROOT"] = args.project_base
+
+        # LLM Model Configuration
         if args.llm_model:
             os.environ["LLM_MODEL_NAME"] = args.llm_model
         if args.llm_model_api_key:
             os.environ["LLM_MODEL_API_KEY"] = args.llm_model_api_key
+        if args.llm_model_base_url:
+            os.environ["LLM_MODEL_BASE_URL"] = args.llm_model_base_url
+        if args.llm_model_api_type:
+            os.environ["LLM_MODEL_API_TYPE"] = args.llm_model_api_type
+        if args.llm_temperature is not None:
+            os.environ["LLM_MODEL_TEMPERATURE"] = str(args.llm_temperature)
+
+        # LLM Configuration File
+        if args.agents_llm_config_file:
+            os.environ["AGENTS_LLM_CONFIG_FILE"] = args.agents_llm_config_file
+        if args.agents_llm_config_file_ref_key:
+            os.environ["AGENTS_LLM_CONFIG_FILE_REF_KEY"] = args.agents_llm_config_file_ref_key
+
+        # Portkey Configuration
+        if args.enable_portkey:
+            os.environ["ENABLE_PORTKEY"] = "true"
+        if args.portkey_api_key:
+            os.environ["PORTKEY_API_KEY"] = args.portkey_api_key
+        if args.portkey_strategy:
+            os.environ["PORTKEY_STRATEGY"] = args.portkey_strategy
+
+        # Test execution options
         if args.bulk:
             os.environ["EXECUTE_BULK"] = "true"
         if args.reuse_vector_db:
             os.environ["REUSE_VECTOR_DB"] = "true"
+
+        # Browser options
         if args.browser_channel:
             os.environ["BROWSER_CHANNEL"] = args.browser_channel
         if args.browser_path:
@@ -224,16 +325,13 @@ class BaseConfigManager:
             os.environ["ENABLE_UBLOCK_EXTENSION"] = "false"
         if args.auto_accept_screen_sharing:
             os.environ["AUTO_ACCEPT_SCREEN_SHARING"] = "true"
+        if args.disable_auto_accept_screen_sharing:
+            os.environ["AUTO_ACCEPT_SCREEN_SHARING"] = "false"
 
     def _merge_from_env(self) -> None:
         """
         Merge any relevant environment variables into the configuration dictionary.
-        This can be as simple or complex as you want, e.g., partial name matching.
         """
-        # A simple approach: if an env var key is in self._config, override it.
-        # We'll also add some keys if they're not in self._config at all.
-        # Extend based on your needs.
-
         # The main keys used in your original config:
         relevant_keys = [
             "MODE",
@@ -247,10 +345,35 @@ class BaseConfigManager:
             "TAKE_SCREENSHOTS",
             "CAPTURE_NETWORK",
             "CDP_ENDPOINT_URL",
+            # LLM model configuration
             "LLM_MODEL_NAME",
             "LLM_MODEL_API_KEY",
+            "LLM_MODEL_BASE_URL",
+            "LLM_MODEL_API_TYPE",
+            "LLM_MODEL_API_VERSION",
+            "LLM_MODEL_PROJECT_ID",
+            "LLM_MODEL_REGION",
+            "LLM_MODEL_CLIENT_HOST",
+            "LLM_MODEL_NATIVE_TOOL_CALLS",
+            "LLM_MODEL_HIDE_TOOLS",
+            "LLM_MODEL_AWS_REGION",
+            "LLM_MODEL_AWS_ACCESS_KEY",
+            "LLM_MODEL_AWS_SECRET_KEY",
+            "LLM_MODEL_AWS_PROFILE_NAME",
+            "LLM_MODEL_AWS_SESSION_TOKEN",
+            "LLM_MODEL_PRICING",
+            # LLM parameter configuration
+            "LLM_MODEL_TEMPERATURE",
+            "LLM_MODEL_CACHE_SEED",
+            "LLM_MODEL_SEED",
+            "LLM_MODEL_MAX_TOKENS",
+            "LLM_MODEL_PRESENCE_PENALTY",
+            "LLM_MODEL_FREQUENCY_PENALTY",
+            "LLM_MODEL_STOP",
+            # Agent configuration file
             "AGENTS_LLM_CONFIG_FILE",
             "AGENTS_LLM_CONFIG_FILE_REF_KEY",
+            # Other configuration
             "HF_HOME",
             "TOKENIZERS_PARALLELISM",
             "DONT_CLOSE_BROWSER",
@@ -277,42 +400,71 @@ class BaseConfigManager:
             "AUTO_ACCEPT_SCREEN_SHARING",
             "NO_WAIT_FOR_LOAD_STATE",
             "BROWSER_COOKIES",
+            # Portkey-related environment variables
+            "ENABLE_PORTKEY",
+            "PORTKEY_API_KEY",
+            "PORTKEY_STRATEGY",
+            "PORTKEY_CACHE_ENABLED",
+            "PORTKEY_TARGETS",
+            "PORTKEY_GUARDRAILS",
+            "PORTKEY_RETRY_COUNT",
+            "PORTKEY_TIMEOUT",
+            "PORTKEY_CACHE_TTL",
         ]
 
         for key in relevant_keys:
             if key in os.environ:
                 self._config[key] = os.environ[key]
 
-        # If there are env vars you'd like to add even if they aren't in _config:
-        # for key in relevant_keys:
-        #     if key in os.environ and key not in self._config:
-        #         self._config[key] = os.environ[key]
-        # (Adjust logic to your preference.)
-
     def _check_llm_config(self) -> None:
         """
-        Check that either (LLM_MODEL_NAME & LLM_MODEL_API_KEY) or
-        (AGENTS_LLM_CONFIG_FILE & AGENTS_LLM_CONFIG_FILE_REF_KEY) are correctly set.
+        Check LLM configuration including Portkey settings if enabled.
         """
         llm_model_name = self._config.get("LLM_MODEL_NAME")
         llm_model_api_key = self._config.get("LLM_MODEL_API_KEY")
         agents_llm_config_file = self._config.get("AGENTS_LLM_CONFIG_FILE")
-        agents_llm_config_file_ref_key = self._config.get(
-            "AGENTS_LLM_CONFIG_FILE_REF_KEY"
-        )
+        agents_llm_config_file_ref_key = self._config.get("AGENTS_LLM_CONFIG_FILE_REF_KEY")
 
-        if (llm_model_name and llm_model_api_key) and (
-            agents_llm_config_file or agents_llm_config_file_ref_key
-        ):
-            logger.error(
-                "Provide either LLM_MODEL_NAME and LLM_MODEL_API_KEY together, "
-                "or AGENTS_LLM_CONFIG_FILE and AGENTS_LLM_CONFIG_FILE_REF_KEY together, not both."
-            )
+        # Check if Portkey is enabled
+        if self._config.get("ENABLE_PORTKEY", "").lower() == "true":
+            portkey_api_key = self._config.get("PORTKEY_API_KEY")
+            if not portkey_api_key:
+                logger.error("PORTKEY_API_KEY must be set when Portkey is enabled")
+                exit(1)
+
+            # Validate Portkey strategy if provided
+            portkey_strategy = self._config.get("PORTKEY_STRATEGY")
+            if portkey_strategy and portkey_strategy not in ["fallback", "loadbalance"]:
+                logger.error("Invalid PORTKEY_STRATEGY. Must be either 'fallback' or 'loadbalance'")
+                exit(1)
+
+            # Validate JSON configurations if provided
+            for json_key in ["PORTKEY_TARGETS", "PORTKEY_GUARDRAILS"]:
+                json_value = self._config.get(json_key)
+                if json_value:
+                    try:
+                        json.loads(json_value)
+                    except json.JSONDecodeError:
+                        logger.error(f"Invalid JSON in {json_key}")
+                        exit(1)
+
+            # Validate numeric values
+            try:
+                if retry_count := self._config.get("PORTKEY_RETRY_COUNT"):
+                    int(retry_count)
+                if timeout := self._config.get("PORTKEY_TIMEOUT"):
+                    float(timeout)
+                if cache_ttl := self._config.get("PORTKEY_CACHE_TTL"):
+                    int(cache_ttl)
+            except ValueError as e:
+                logger.error(f"Invalid numeric value in Portkey configuration: {e}")
+                exit(1)
+
+        if (llm_model_name and llm_model_api_key) and (agents_llm_config_file or agents_llm_config_file_ref_key):
+            logger.error("Provide either LLM_MODEL_NAME and LLM_MODEL_API_KEY together, " "or AGENTS_LLM_CONFIG_FILE and AGENTS_LLM_CONFIG_FILE_REF_KEY together, not both.")
             exit(1)
 
-        if (not llm_model_name or not llm_model_api_key) and (
-            not agents_llm_config_file or not agents_llm_config_file_ref_key
-        ):
+        if (not llm_model_name or not llm_model_api_key) and (not agents_llm_config_file or not agents_llm_config_file_ref_key):
             logger.error(
                 "Either LLM_MODEL_NAME and LLM_MODEL_API_KEY must be set together, "
                 "or AGENTS_LLM_CONFIG_FILE and AGENTS_LLM_CONFIG_FILE_REF_KEY must be set together. "
@@ -322,8 +474,7 @@ class BaseConfigManager:
 
     def _finalize_defaults(self) -> None:
         """
-        Provide (or override) default values for keys that might not be in self._config.
-        Also handles the fallback from your original code.
+        Provide or finalize default values for configuration options.
         """
         self._config.setdefault("MODE", "prod")
         self._config.setdefault("DEFAULT_TEST_ID", "default")
@@ -336,24 +487,12 @@ class BaseConfigManager:
             "INPUT_GHERKIN_FILE_PATH",
             os.path.join(project_source_root, "input/test.feature"),
         )
-        self._config.setdefault(
-            "JUNIT_XML_BASE_PATH", os.path.join(project_source_root, "output")
-        )
-        self._config.setdefault(
-            "TEST_DATA_PATH", os.path.join(project_source_root, "test_data")
-        )
-        self._config.setdefault(
-            "SCREEN_SHOT_PATH", os.path.join(project_source_root, "proofs")
-        )
-        self._config.setdefault(
-            "PROJECT_TEMP_PATH", os.path.join(project_source_root, "temp")
-        )
-        self._config.setdefault(
-            "SOURCE_LOG_FOLDER_PATH", os.path.join(project_source_root, "log_files")
-        )
-        self._config.setdefault(
-            "TMP_GHERKIN_PATH", os.path.join(project_source_root, "gherkin_files")
-        )
+        self._config.setdefault("JUNIT_XML_BASE_PATH", os.path.join(project_source_root, "output"))
+        self._config.setdefault("TEST_DATA_PATH", os.path.join(project_source_root, "test_data"))
+        self._config.setdefault("SCREEN_SHOT_PATH", os.path.join(project_source_root, "proofs"))
+        self._config.setdefault("PROJECT_TEMP_PATH", os.path.join(project_source_root, "temp"))
+        self._config.setdefault("SOURCE_LOG_FOLDER_PATH", os.path.join(project_source_root, "log_files"))
+        self._config.setdefault("TMP_GHERKIN_PATH", os.path.join(project_source_root, "gherkin_files"))
 
         # Extra environment defaults from original code
         if "HF_HOME" not in self._config:
@@ -386,7 +525,6 @@ class BaseConfigManager:
         self._config.setdefault("USE_DYNAMIC_LTM", "false")
         self._config.setdefault("ENABLE_BROWSER_LOGS", "false")
         self._config.setdefault("ENABLE_BOUNDING_BOX_SCREENSHOTS", "false")
-        self._config.setdefault("ENABLE_UBLOCK_EXTENSION", "false")
         self._config.setdefault("AUTO_ACCEPT_SCREEN_SHARING", "true")
 
         self._config.setdefault("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python")
@@ -410,12 +548,51 @@ class BaseConfigManager:
         for key, value in defaults.items():
             self._config.setdefault(key, value)
 
+        # Add Portkey-related defaults with reasonable values
+        self._config.setdefault("ENABLE_PORTKEY", "false")
+
+        # LLM Model Configuration defaults
+        # --------------------------------------------------
+        # Core model settings
+        self._config.setdefault("LLM_MODEL_NAME", "gpt-4o")
+        self._config.setdefault("LLM_MODEL_API_KEY", None)  # No default for security
+        self._config.setdefault("LLM_MODEL_API_TYPE", "openai")
+        # self._config.setdefault("LLM_MODEL_BASE_URL", "https://api.openai.com/v1")
+        # self._config.setdefault("LLM_MODEL_API_VERSION", None)
+
+        # Cloud provider specific settings
+        # self._config.setdefault("LLM_MODEL_PROJECT_ID", None)  # For Google/GCP
+        # self._config.setdefault("LLM_MODEL_REGION", None)  # For cloud providers
+        # self._config.setdefault("LLM_MODEL_CLIENT_HOST", None)  # For custom hosting
+
+        # AWS-specific settings
+        # self._config.setdefault("LLM_MODEL_AWS_REGION", "us-east-1")
+        # self._config.setdefault("LLM_MODEL_AWS_ACCESS_KEY", None)
+        # self._config.setdefault("LLM_MODEL_AWS_SECRET_KEY", None)
+        # self._config.setdefault("LLM_MODEL_AWS_PROFILE_NAME", None)
+        # self._config.setdefault("LLM_MODEL_AWS_SESSION_TOKEN", None)
+
+        # Model behavior settings
+        # self._config.setdefault("LLM_MODEL_NATIVE_TOOL_CALLS", "true")
+        # self._config.setdefault("LLM_MODEL_HIDE_TOOLS", "false")
+        # self._config.setdefault("LLM_MODEL_PRICING", "0.0")  # Default no cost tracking
+
+        # LLM Parameters defaults (based on OpenAI recommendations)
+        # --------------------------------------------------
+        self._config.setdefault("LLM_MODEL_TEMPERATURE", "0.0")  # Default to deterministic
+        self._config.setdefault("LLM_MODEL_CACHE_SEED", None)  # No default seed
+        self._config.setdefault("LLM_MODEL_SEED", None)  # No default seed
+        self._config.setdefault("LLM_MODEL_MAX_TOKENS", "4096")  # Default reasonable output
+        # self._config.setdefault("LLM_MODEL_PRESENCE_PENALTY", "0.0")
+        # self._config.setdefault("LLM_MODEL_FREQUENCY_PENALTY", "0.0")
+        # self._config.setdefault("LLM_MODEL_STOP", None)  # No default stop sequences
+
     # -------------------------------------------------------------------------
     # Public Getters & Setters
     # -------------------------------------------------------------------------
 
-    def get_config(self) -> dict:
-        """Return the underlying config dictionary (if you need direct access)."""
+    def get_config(self) -> ConfigDict:
+        """Return the underlying config dictionary."""
         return self._config
 
     def get_mode(self) -> str:
@@ -437,10 +614,8 @@ class BaseConfigManager:
     def get_dont_close_browser(self) -> bool:
         return self._config["DONT_CLOSE_BROWSER"].lower().strip() == "true"
 
-    def get_cdp_config(self) -> Optional[dict]:
-        """
-        Return CDP config if `CDP_ENDPOINT_URL` is set.
-        """
+    def get_cdp_config(self) -> Optional[ConfigDict]:
+        """Return CDP config if `CDP_ENDPOINT_URL` is set."""
         cdp_endpoint_url = self._config.get("CDP_ENDPOINT_URL")
         if cdp_endpoint_url:
             return {"endpoint_url": cdp_endpoint_url}
@@ -527,10 +702,7 @@ class BaseConfigManager:
 
     def should_take_bounding_box_screenshots(self) -> bool:
         """Check if bounding box screenshots should be enabled"""
-        return (
-            self._config.get("ENABLE_BOUNDING_BOX_SCREENSHOTS", "false").lower()
-            == "true"
-        )
+        return self._config.get("ENABLE_BOUNDING_BOX_SCREENSHOTS", "false").lower() == "true"
 
     def should_enable_ublock_extension(self) -> bool:
         """Check if uBlock extension should be enabled"""
@@ -614,26 +786,14 @@ class BaseConfigManager:
     def get_geo_api_key(self) -> str:
         return self._config["GEO_API_KEY"]
 
-    def get_trace_path(self, stake_id: Optional[str] = None) -> dict[str, str]:
-        """Get all trace related paths for a test run. Now uses internal timestamp."""
-
+    def get_trace_path(self, stake_id: Optional[str] = None) -> PathsDict:
+        """Get all trace related paths for a test run."""
         base_path = self.get_project_source_root()
         test_id = stake_id if stake_id else self._default_test_id
 
-        # Use self.timestamp instead of taking it as parameter
-        paths = {
-            # Proofs directory - Evidence files
+        paths: PathsDict = {
             "proofs": os.path.join(base_path, "proofs", test_id, self.timestamp),
-            # "screenshots": os.path.join(base_path, "proofs", test_id, self.timestamp, "screenshots"),
-            # "videos": os.path.join(base_path, "proofs", test_id, self.timestamp, "videos"),
-            # "console_logs": os.path.join(base_path, "proofs", test_id, self.timestamp, "console_logs.json"),
-            # "network_logs": os.path.join(base_path, "proofs", test_id, self.timestamp, "network_logs.json"),
-            # "security_logs": os.path.join(base_path, "proofs", test_id, self.timestamp, "security_logs.json"),
-            # "api_logs": os.path.join(base_path, "proofs", test_id, self.timestamp, "api_logs.json"),
-            # "access_logs": os.path.join(base_path, "proofs", test_id, self.timestamp, "access_logs.json"),
-            # Output directory - Test results
             "junit_xml": os.path.join(base_path, "output", self.timestamp),
-            # Log files directory - Analysis and debug files
             "log_files": os.path.join(base_path, "log_files", test_id, self.timestamp),
         }
 
@@ -642,7 +802,6 @@ class BaseConfigManager:
             os.makedirs(path, exist_ok=True)
 
         self.paths = paths
-
         return paths
 
     def ensure_trace_dirs(self, paths: dict[str, str]) -> None:
@@ -676,11 +835,62 @@ class BaseConfigManager:
             "BROWSER_TYPE": self.get_browser_type(),
             "CAPTURE_NETWORK": self.should_capture_network(),
             "REACTION_DELAY_TIME": self.get_delay_time(),  # Changed key name in telemetry
+            "PORTKEY_ENABLED": self.is_portkey_enabled(),
         }
         add_event(
             EventType.CONFIG,
             EventData(detail="General Config", additional_data=config_brief),
         )
+
+    # Add Portkey-specific getters
+    def is_portkey_enabled(self) -> bool:
+        """Check if Portkey integration is enabled."""
+        return self._config["ENABLE_PORTKEY"].lower() == "true"
+
+    def get_portkey_api_key(self) -> Optional[str]:
+        """Get the Portkey API key if configured."""
+        return self._config.get("PORTKEY_API_KEY")
+
+    def get_portkey_config(self) -> PortkeyConfig:
+        """Get the complete Portkey configuration."""
+        config: PortkeyConfig = {}
+
+        if self.is_portkey_enabled():
+            # Add strategy if configured
+            strategy = self._config.get("PORTKEY_STRATEGY")
+            if strategy:
+                config["strategy"] = {"mode": strategy}
+
+            # Add cache settings if enabled
+            if self._config.get("PORTKEY_CACHE_ENABLED", "").lower() == "true":
+                config["cache"] = {
+                    "mode": "semantic",
+                    "ttl": int(self._config.get("PORTKEY_CACHE_TTL", "3600")),
+                }
+
+            # Add retry and timeout settings
+            config["retry"] = {
+                "count": int(self._config.get("PORTKEY_RETRY_COUNT", "3")),
+                "timeout": float(self._config.get("PORTKEY_TIMEOUT", "30.0")),
+            }
+
+            # Add targets if configured
+            targets = self._config.get("PORTKEY_TARGETS")
+            if targets:
+                try:
+                    config["targets"] = json.loads(targets)
+                except json.JSONDecodeError:
+                    logger.warning("Invalid PORTKEY_TARGETS JSON, skipping")
+
+            # Add guardrails if configured
+            guardrails = self._config.get("PORTKEY_GUARDRAILS")
+            if guardrails:
+                try:
+                    config["guardrails"] = json.loads(guardrails)
+                except json.JSONDecodeError:
+                    logger.warning("Invalid PORTKEY_GUARDRAILS JSON, skipping")
+
+        return config
 
 
 # ------------------------------------------------------------------------------
@@ -694,16 +904,16 @@ class NonSingletonConfigManager(BaseConfigManager):
     without any shared state among instances.
     """
 
-    def __init__(self, config_dict: dict, ignore_env: bool = False):
+    def __init__(self, config_dict: ConfigDict, ignore_env: bool = False):
         super().__init__(config_dict=config_dict, ignore_env=ignore_env)
 
 
 class SingletonConfigManager(BaseConfigManager):
     """Singleton configuration manager for the entire application."""
 
-    _instance = None
+    _instance: Optional["SingletonConfigManager"] = None
 
-    def __init__(self, config_dict: dict, ignore_env: bool = False):
+    def __init__(self, config_dict: ConfigDict, ignore_env: bool = False):
         if SingletonConfigManager._instance is not None:
             raise RuntimeError("Use SingletonConfigManager.instance() instead")
         super().__init__(config_dict=config_dict, ignore_env=ignore_env)
@@ -711,16 +921,16 @@ class SingletonConfigManager(BaseConfigManager):
     @classmethod
     def instance(
         cls,
-        config_dict: Optional[dict] = None,
+        config_dict: Optional[ConfigDict] = None,
         ignore_env: bool = False,
         override: bool = False,
     ) -> "SingletonConfigManager":
         if override and config_dict is not None:
             cls.reset_instance()
-            cls._instance = cls(config_dict or {}, ignore_env=ignore_env)
+            cls._instance = cls(config_dict=config_dict or {}, ignore_env=ignore_env)
             logger.info("SingletonConfigManager instance reset with new config")
         elif cls._instance is None:
-            cls._instance = cls(config_dict or {}, ignore_env=ignore_env)
+            cls._instance = cls(config_dict=config_dict or {}, ignore_env=ignore_env)
         elif config_dict is not None:
             cls._instance._config.update(config_dict)
         return cls._instance
@@ -735,11 +945,16 @@ def get_global_conf() -> SingletonConfigManager:
 
 
 def set_global_conf(
-    config_dict: Optional[dict] = None, ignore_env: bool = False, override: bool = False
+    config_dict: Optional[ConfigDict] = None,
+    ignore_env: bool = False,
+    override: bool = False,
 ) -> SingletonConfigManager:
-    return SingletonConfigManager.instance(
-        config_dict, ignore_env=ignore_env, override=override
+    res = SingletonConfigManager.instance(
+        config_dict=config_dict,
+        ignore_env=ignore_env,
+        override=override,
     )
+    return res
 
 
 set_global_conf(
@@ -753,7 +968,5 @@ set_global_conf(
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 
 logger.info("[Singleton] MODE: %s", get_global_conf().get_mode())
-logger.info(
-    "[Singleton] Project Source Root: %s", get_global_conf().get_project_source_root()
-)
+logger.info("[Singleton] Project Source Root: %s", get_global_conf().get_project_source_root())
 # Send final telemetryCONF.send_config_telemetry()

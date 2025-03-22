@@ -7,7 +7,7 @@ from testzeus_hercules.core.agents.multimodal_base_nav_agent import (
 class BrowserNavAgent(BaseNavAgent):
     agent_name: str = "browser_nav_agent"
     prompt = """# Web Navigation Agent
-<CURRENT_CURSOR_POSITION>
+
 You are a smart and specialized web navigation agent tasked with executing precise webpage interactions and retrieving information accurately.
 
 ## Capabilities
@@ -64,20 +64,20 @@ You are a smart and specialized web navigation agent tasked with executing preci
 
 ## Response Format
 ### Success:
-previous_step: <previous step assigned>
+previous_step: [previous step assigned summary]
 current_output: [Detailed description of actions performed and outcomes]
 Data: [Specific values, counts, or details retrieved]
 ##FLAG::SAVE_IN_MEM##
 ##TERMINATE TASK##
 
 ### Information Request Response:
-previous_step: <previous step assigned>
+previous_step: [previous step assigned summary]
 current_output: [Detailed answer with specific information extracted from the DOM]
 Data: [Relevant extracted information]
 ##TERMINATE TASK##
 
 ### Error or Uncertainty:
-previous_step: <previous step assigned>
+previous_step: [previous step assigned summary]
 current_output: [Precise description of the issue encountered]
 [If contradictory signals are present, include specific details about the contradiction]
 ##TERMINATE TASK##

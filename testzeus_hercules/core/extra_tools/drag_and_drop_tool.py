@@ -1,6 +1,7 @@
 import asyncio
-from typing import Annotated
 import traceback
+from typing import Annotated
+
 from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.tool_registry import tool
@@ -45,9 +46,7 @@ async def drag_and_drop(
             await asyncio.sleep(wait_before_execution)
 
         # Find source using md selector
-        source_element = await browser_manager.find_element(
-            selector, page, element_name="drag_and_drop"
-        )
+        source_element = await browser_manager.find_element(selector, page, element_name="drag_and_drop")
         if source_element is None:
             raise ValueError(f"Source element with selector: '{selector}' not found")
 
@@ -95,9 +94,7 @@ async def drag_and_drop(
                 continue
 
         if target_element is None:
-            raise ValueError(
-                f"Target element not found using any of these selectors: {selectors_to_try}"
-            )
+            raise ValueError(f"Target element not found using any of these selectors: {selectors_to_try}")
 
         # Ensure elements are visible and get their positions
         try:

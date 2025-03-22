@@ -5,8 +5,8 @@ from typing import Annotated, Any, Dict, List, Union
 
 from playwright.async_api import Page
 from testzeus_hercules.config import get_global_conf
-from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.browser_logger import get_browser_logger
+from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.dom_helper import wait_for_non_loading_dom_state
@@ -23,9 +23,7 @@ from testzeus_hercules.utils.logger import logger
 Notes: [Elements ordered as displayed, Consider ordinal/numbered item positions]""",
     name="get_input_fields",
 )
-async def get_input_fields() -> (
-    Annotated[str, "DOM type dict giving all input elements on page"]
-):
+async def get_input_fields() -> Annotated[str, "DOM type dict giving all input elements on page"]:
 
     add_event(EventType.INTERACTION, EventData(detail="get_input_fields"))
     start_time = time.time()
@@ -47,9 +45,7 @@ async def get_input_fields() -> (
         return "Could not fetch input fields. Please consider trying with content_type all_fields."
 
     # Flatten the hierarchy into a list of elements
-    def flatten_elements(
-        node: dict, parent_name: str = "", parent_title: str = ""
-    ) -> list[dict]:
+    def flatten_elements(node: dict, parent_name: str = "", parent_title: str = "") -> list[dict]:
         elements = []
         form_elements = {
             "input",

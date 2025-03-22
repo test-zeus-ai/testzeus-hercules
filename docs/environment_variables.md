@@ -4,12 +4,31 @@ This document provides a comprehensive guide to all environment variables and co
 
 ## Table of Contents
 - [Core Environment Variables](#core-environment-variables)
+  - [Mode and Project Configuration](#mode-and-project-configuration)
+  - [Directory Structure](#directory-structure)
 - [LLM Configuration](#llm-configuration)
+  - [Basic LLM Setup](#basic-llm-setup)
+  - [LLM Configuration File Structure](#llm-configuration-file-structure)
+  - [Agent Types and Their Roles](#agent-types-and-their-roles)
+  - [Supported LLM Parameters](#supported-llm-parameters)
 - [Browser Configuration](#browser-configuration)
+  - [Browser Settings](#browser-settings)
+  - [Browser Behavior](#browser-behavior)
 - [Testing Configuration](#testing-configuration)
+  - [Test Execution](#test-execution)
+  - [Test Evidence](#test-evidence)
+  - [Test Behavior](#test-behavior)
 - [Device Configuration](#device-configuration)
+  - [Device Settings](#device-settings)
+  - [Geolocation](#geolocation)
 - [Logging and Debugging](#logging-and-debugging)
+  - [Logging Configuration](#logging-configuration)
+  - [Debugging Tools](#debugging-tools)
 - [Advanced Configuration](#advanced-configuration)
+  - [Cache and Performance](#cache-and-performance)
+  - [Portkey Integration](#portkey-integration)
+  - [Telemetry and Monitoring](#telemetry-and-monitoring)
+  - [Additional Features](#additional-features)
 - [Configuration Priority](#configuration-priority)
 
 ## Core Environment Variables
@@ -56,6 +75,15 @@ LLM_MODEL_API_TYPE=<api_type>
 LLM_MODEL_API_VERSION=<api_version>
 LLM_MODEL_PROJECT_ID=<project_id>
 LLM_MODEL_REGION=<region>
+LLM_MODEL_CLIENT_HOST=<client_host>
+LLM_MODEL_NATIVE_TOOL_CALLS=<true|false>
+LLM_MODEL_HIDE_TOOLS=<true|false>
+LLM_MODEL_AWS_REGION=<aws_region>
+LLM_MODEL_AWS_ACCESS_KEY=<aws_access_key>
+LLM_MODEL_AWS_SECRET_KEY=<aws_secret_key>
+LLM_MODEL_AWS_PROFILE_NAME=<aws_profile_name>
+LLM_MODEL_AWS_SESSION_TOKEN=<aws_session_token>
+LLM_MODEL_PRICING=<pricing>
 ```
 
 2. Configuration File:
@@ -105,8 +133,12 @@ Model Configuration:
 
 LLM Parameters:
 - `temperature`: Controls randomness in responses (0.0 to 1.0)
-- `top_p`: Nucleus sampling parameter (0.0 to 1.0)
 - `seed`: Random seed for reproducibility
+- `cache_seed`: Seed for caching
+- `max_tokens`: Maximum number of tokens in response
+- `presence_penalty`: Penalty for token presence
+- `frequency_penalty`: Penalty for token frequency
+- `stop`: Custom stop sequences
 
 ## Browser Configuration
 
@@ -255,6 +287,50 @@ LLM Parameters:
   - Values: `true`, `false`
   - Default: `false`
   - Implementation: Controls tokenizer performance
+
+### Portkey Integration
+- `ENABLE_PORTKEY`: Enable Portkey LLM gateway integration
+  - Values: `true`, `false`
+  - Default: `false`
+  - Implementation: Enables Portkey for LLM request routing and management
+
+- `PORTKEY_API_KEY`: API key for Portkey
+  - Required when `ENABLE_PORTKEY=true`
+  - Implementation: Used for authentication with Portkey services
+
+- `PORTKEY_STRATEGY`: Request routing strategy
+  - Values: `fallback`, `loadbalance`
+  - Default: `fallback`
+  - Implementation: Controls how requests are routed across multiple providers
+  - Note: In fallback mode, requests try the first provider and fall back to others if it fails
+  - Note: In loadbalance mode, requests are distributed across all configured providers
+
+- `PORTKEY_CACHE_ENABLED`: Enable semantic caching for LLM requests
+  - Values: `true`, `false`
+  - Default: `false`
+  - Implementation: Caches semantically similar requests to reduce API costs
+
+- `PORTKEY_CACHE_TTL`: Time-to-live for cached responses in seconds
+  - Default: `3600` (1 hour)
+  - Implementation: Controls how long cached responses remain valid
+
+- `PORTKEY_TARGETS`: JSON-formatted list of target providers
+  - Format: JSON array of provider configurations
+  - Implementation: Defines which providers to use for routing
+  - Example: `[{"provider": "openai", "weight": 0.7}, {"provider": "anthropic", "weight": 0.3}]`
+
+- `PORTKEY_GUARDRAILS`: JSON-formatted guardrail configurations
+  - Format: JSON object with guardrail settings
+  - Implementation: Defines safety and content filtering rules
+  - Example: `{"topics": ["harmful", "illegal"], "action": "filter"}`
+
+- `PORTKEY_RETRY_COUNT`: Number of retry attempts for failed requests
+  - Default: `3`
+  - Implementation: Controls how many times Portkey retries failed requests
+
+- `PORTKEY_TIMEOUT`: Timeout for LLM requests in seconds
+  - Default: `30.0`
+  - Implementation: Controls how long Portkey waits for a response before timing out
 
 ### Telemetry and Monitoring
 - `ENABLE_TELEMETRY`: Enable usage telemetry

@@ -4,7 +4,6 @@ import json
 import os
 import signal
 import uuid
-
 from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, Optional
@@ -37,9 +36,7 @@ class EventType(Enum):
 
 class EventData(BaseModel):
     detail: Optional[str] = None
-    additional_data: Optional[Dict[str, Any]] = (
-        None  # For any extra details specific to certain events
-    )
+    additional_data: Optional[Dict[str, Any]] = None  # For any extra details specific to certain events
 
 
 def my_before_send(event: Event, hint: Hint) -> Event | None:
@@ -73,17 +70,13 @@ if ENABLE_TELEMETRY:
         send_default_pii=False,
         send_client_reports=False,
         server_name=None,
-        event_scrubber=EventScrubber(
-            denylist=denylist, pii_denylist=pii_denylist, recursive=True
-        ),
+        event_scrubber=EventScrubber(denylist=denylist, pii_denylist=pii_denylist, recursive=True),
     )
     sentry_sdk.set_extra("sys.argv", None)
     sentry_sdk.set_user(None)
 
 
-def get_installation_id(
-    file_path: str = "installation_id.txt", is_manual_run: bool = True
-) -> Dict[str, Any]:
+def get_installation_id(file_path: str = "installation_id.txt", is_manual_run: bool = True) -> Dict[str, Any]:
     """Generate or load installation data.
 
     If the file exists and contains a dict, return it.
@@ -115,12 +108,8 @@ def get_installation_id(
         installation_id = str(uuid.uuid4())
         user_email = "new_email@example.com"
         if is_manual_run:
-            print(
-                "We need your email to inform you about any urgent security patches or issues detected in testzeus-hercules."
-            )
-            n_user_email = input(
-                "Please provide your email (or press Enter to skip with empty email): "
-            )
+            print("We need your email to inform you about any urgent security patches or issues detected in testzeus-hercules.")
+            n_user_email = input("Please provide your email (or press Enter to skip with empty email): ")
             user_email = n_user_email if n_user_email else user_email
 
         data = {
@@ -133,9 +122,7 @@ def get_installation_id(
 
 
 # Initialize the installation_id
-installation_data = get_installation_id(
-    is_manual_run=os.environ.get("AUTO_MODE", "0") == "0"
-)
+installation_data = get_installation_id(is_manual_run=os.environ.get("AUTO_MODE", "0") == "0")
 
 # Global event collector with event_type buckets
 event_collector = {
@@ -191,10 +178,7 @@ def build_final_message() -> Dict[str, Any]:
         "installation_id": event_collector["installation_id"],
         "user_email": event_collector["user_email"],
         "session_start": event_collector["start_time"],
-        "buckets": {
-            event_type_s: events
-            for event_type_s, events in event_collector["buckets"].items()
-        },
+        "buckets": {event_type_s: events for event_type_s, events in event_collector["buckets"].items()},
     }
     return message
 

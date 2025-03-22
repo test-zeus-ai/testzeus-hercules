@@ -17,9 +17,7 @@ from testzeus_hercules.utils.logger import logger
     description="""Retrieve Text on the current page""",
     name="get_page_text",
 )
-async def get_page_text() -> (
-    Annotated[str, "DOM content based on type to analyze and decide"]
-):
+async def get_page_text() -> Annotated[str, "DOM content based on type to analyze and decide"]:
 
     add_event(EventType.INTERACTION, EventData(detail="get_page_text"))
     logger.info(f"Executing get_page_text")
@@ -39,9 +37,7 @@ async def get_page_text() -> (
     logger.debug("Fetching DOM for text_only")
     text_content = await get_filtered_text_content(page)
     with open(
-        os.path.join(
-            get_global_conf().get_source_log_folder_path(), "text_only_dom.txt"
-        ),
+        os.path.join(get_global_conf().get_source_log_folder_path(), "text_only_dom.txt"),
         "w",
         encoding="utf-8",
     ) as f:

@@ -6,8 +6,8 @@ from typing import Annotated, Dict, List, Tuple  # noqa: UP035
 
 from playwright.async_api import ElementHandle, Page
 from testzeus_hercules.config import get_global_conf
-from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.browser_logger import get_browser_logger
+from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.dom_helper import get_element_outer_html
@@ -58,9 +58,7 @@ async def click_and_upload_file(
     subscribe(detect_dom_changes)
 
     result = await click_and_upload(page, selector, file_path)
-    await asyncio.sleep(
-        get_global_conf().get_delay_time()
-    )  # sleep for 100ms to allow the mutation observer to detect changes
+    await asyncio.sleep(get_global_conf().get_delay_time())  # sleep for 100ms to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
 
     await browser_manager.take_screenshots(f"{function_name}_end", page)
@@ -86,9 +84,7 @@ async def click_and_upload(page: Page, selector: str, file_path: str) -> dict[st
         logger.debug(f"Looking for selector {selector} to upload file: {file_path}")
 
         browser_manager = PlaywrightManager()
-        element = await browser_manager.find_element(
-            selector, page, element_name="upload_file"
-        )
+        element = await browser_manager.find_element(selector, page, element_name="upload_file")
 
         if element is None:
             # Initialize selector logger with proof path
@@ -110,18 +106,14 @@ async def click_and_upload(page: Page, selector: str, file_path: str) -> dict[st
         # Initialize selector logger with proof path
         selector_logger = get_browser_logger(get_global_conf().get_proof_path())
         # Get alternative selectors and element attributes for logging
-        alternative_selectors = await selector_logger.get_alternative_selectors(
-            element, page
-        )
+        alternative_selectors = await selector_logger.get_alternative_selectors(element, page)
         element_attributes = await selector_logger.get_element_attributes(element)
 
         # Check if element is a file input
         element_type = await element.evaluate("el => el.type")
         if element_type != "file":
 
-            logger.info(
-                f"Element is not a file input. Found type: {element_type}, trying to click it and upload"
-            )
+            logger.info(f"Element is not a file input. Found type: {element_type}, trying to click it and upload")
 
             # Use FileChooser API
             async with page.expect_file_chooser() as fc_info:

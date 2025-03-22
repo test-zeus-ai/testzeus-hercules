@@ -557,7 +557,6 @@ For example: If you would like to run with a "Headful" browser, you can set the 
             "llm_config_params": {
                 "cache_seed": null,
                 "temperature": 0.0,
-                "top_p": 0.001,
                 "seed":12345
             }
 		},
@@ -568,7 +567,6 @@ For example: If you would like to run with a "Headful" browser, you can set the 
             "llm_config_params": {
                 "cache_seed": null,
                 "temperature": 0.0,
-                "top_p": 0.001,
                 "seed":12345
             }
 		}

@@ -6,8 +6,8 @@ from typing import Annotated
 import playwright.async_api
 from playwright.async_api import ElementHandle, Page
 from testzeus_hercules.config import get_global_conf  # Add this import
-from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.browser_logger import get_browser_logger
+from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.dom_helper import get_element_outer_html
@@ -50,9 +50,7 @@ async def hover(
 
     subscribe(detect_dom_changes)
     result = await do_hover(page, selector, wait_before_execution)
-    await asyncio.sleep(
-        get_global_conf().get_delay_time()
-    )  # sleep to allow the mutation observer to detect changes
+    await asyncio.sleep(get_global_conf().get_delay_time())  # sleep to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
 
     await browser_manager.wait_for_load_state_if_enabled(page=page)
@@ -64,9 +62,7 @@ async def hover(
     return result["detailed_message"]
 
 
-async def do_hover(
-    page: Page, selector: str, wait_before_execution: float
-) -> dict[str, str]:
+async def do_hover(page: Page, selector: str, wait_before_execution: float) -> dict[str, str]:
     """
     Executes the hover action on the element with the given selector within the provided page,
     including searching within iframes and shadow DOMs if necessary.
@@ -79,18 +75,14 @@ async def do_hover(
     Returns:
     dict[str,str] - Explanation of the outcome of this operation represented as a dictionary with 'summary_message' and 'detailed_message'.
     """
-    logger.info(
-        f'Executing HoverElement with "{selector}" as the selector. Wait time before execution: {wait_before_execution} seconds.'
-    )
+    logger.info(f'Executing HoverElement with "{selector}" as the selector. Wait time before execution: {wait_before_execution} seconds.')
 
     # Wait before execution if specified
     if wait_before_execution > 0:
         await asyncio.sleep(wait_before_execution)
 
     try:
-        logger.info(
-            f'Executing HoverElement with "{selector}" as the selector. Waiting for the element to be attached and visible.'
-        )
+        logger.info(f'Executing HoverElement with "{selector}" as the selector. Waiting for the element to be attached and visible.')
 
         # Attempt to find the element on the main page or in shadow DOMs and iframes
         browser_manager = PlaywrightManager()
@@ -117,14 +109,10 @@ async def do_hover(
             )
             raise ValueError(f'Element with selector: "{selector}" not found')
 
-        logger.info(
-            f'Element with selector: "{selector}" is found. Scrolling it into view if needed.'
-        )
+        logger.info(f'Element with selector: "{selector}" is found. Scrolling it into view if needed.')
         try:
             await element.scroll_into_view_if_needed(timeout=200)
-            logger.info(
-                f'Element with selector: "{selector}" is scrolled into view. Waiting for the element to be visible.'
-            )
+            logger.info(f'Element with selector: "{selector}" is scrolled into view. Waiting for the element to be visible.')
         except Exception as e:
 
             traceback.print_exc()
@@ -134,9 +122,7 @@ async def do_hover(
 
         try:
             await element.wait_for_element_state("visible", timeout=200)
-            logger.info(
-                f'Element with selector: "{selector}" is visible. Hovering over the element.'
-            )
+            logger.info(f'Element with selector: "{selector}" is visible. Hovering over the element.')
         except Exception as e:
 
             traceback.print_exc()
@@ -144,19 +130,13 @@ async def do_hover(
             # If the element is not visible, try to hover over it anyway
             pass
 
-        element_tag_name = await element.evaluate(
-            "element => element.tagName.toLowerCase()"
-        )
-        element_outer_html = await get_element_outer_html(
-            element, page, element_tag_name
-        )
+        element_tag_name = await element.evaluate("element => element.tagName.toLowerCase()")
+        element_outer_html = await get_element_outer_html(element, page, element_tag_name)
 
         # Initialize selector logger with proof path
         selector_logger = get_browser_logger(get_global_conf().get_proof_path())
         # Get alternative selectors and element attributes for logging
-        alternative_selectors = await selector_logger.get_alternative_selectors(
-            element, page
-        )
+        alternative_selectors = await selector_logger.get_alternative_selectors(element, page)
         element_attributes = await selector_logger.get_element_attributes(element)
 
         await perform_playwright_hover(element, selector)
@@ -202,9 +182,7 @@ async def do_hover(
             error_message=str(e),
         )
 
-        logger.error(
-            f'Unable to hover over element with selector: "{selector}". Error: {e}'
-        )
+        logger.error(f'Unable to hover over element with selector: "{selector}". Error: {e}')
         traceback.print_exc()
         msg = f'Unable to hover over element with selector: "{selector}" since the selector is invalid or the element is not interactable. Consider retrieving the DOM again.'
         return {"summary_message": msg, "detailed_message": f"{msg}. Error: {e}"}

@@ -259,9 +259,7 @@ class BrowserLogger:
             additional_data=additional_data,
         )
 
-    async def get_alternative_selectors(
-        self, element: Any, page: Any
-    ) -> Dict[str, str]:
+    async def get_alternative_selectors(self, element: Any, page: Any) -> Dict[str, str]:
         """Generate alternative selectors for an element."""
         try:
             selectors = {}
