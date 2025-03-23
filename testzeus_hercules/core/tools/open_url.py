@@ -24,6 +24,7 @@ async def openurl(
     timeout: Annotated[int, "Additional wait time in seconds after initial load."] = 3,
     force_new_tab: Annotated[bool, "Force opening in a new tab instead of reusing existing ones."] = False,
 ) -> Annotated[str, "Returns the result of this request in text form"]:
+
     logger.info(f"Opening URL: {url} (force_new_tab={force_new_tab})")
     browser_manager = PlaywrightManager()
     await browser_manager.get_browser_context()

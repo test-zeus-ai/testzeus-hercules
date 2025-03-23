@@ -975,6 +975,7 @@ class PlaywrightManager:
 
     async def set_navigation_handler(self) -> None:
         page: Page = await self.get_current_page()
+        await page.wait_for_load_state("domcontentloaded")
         page.on("domcontentloaded", handle_navigation_for_mutation_observer)
 
         async def set_iframe_navigation_handlers() -> None:
@@ -1856,6 +1857,13 @@ class PlaywrightManager:
         # Try to reuse existing tab (use the most recent one)
         page = pages[-1]  # The most recently used page
 
+        try:
+            await page.wait_for_load_state("networkidle", timeout=5000)
+        except Exception as e:
+            logger.warning(f"Failed to wait for networkidle: {e}")
+        finally:
+            await page.wait_for_load_state("domcontentloaded")
+
         # Check if the page is responsive, with a shorter timeout to avoid hanging
         try:
             # Simple check (the timeout is applied at a higher level)
@@ -1881,6 +1889,7 @@ class PlaywrightManager:
             for i in range(len(pages) - 2, -1, -1):
                 try:
                     page = pages[i]
+                    await page.wait_for_load_state("domcontentloaded")
                     await page.evaluate("1")
                     logger.info(f"Reusing alternative tab with URL: {page.url}")
 
