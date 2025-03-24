@@ -198,6 +198,8 @@ function sendKeyEvent(type, event, isChar) {
       text: isChar ? event.key : undefined
     }
   };
-
+  
   socket.send(JSON.stringify(keyParams));
 }
+
+/* END CODE */
