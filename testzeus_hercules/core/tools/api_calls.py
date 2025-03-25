@@ -19,13 +19,19 @@ async def log_request(request: httpx.Request) -> None:
     """
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     log_data = {
-        "timestamp": timestamp,
-        "method": request.method,
-        "url": str(request.url),
-        "headers": dict(request.headers),
-        "body": (request.content.decode("utf-8", errors="ignore") if request.content else None),
+        "request_data": {
+            "timestamp": timestamp,
+            "method": request.method,
+            "url": str(request.url),
+            "headers": dict(request.headers),
+            "body": (
+                request.content.decode("utf-8", errors="ignore")
+                if request.content
+                else None
+            ),
+        }
     }
-    file_logger(f"Request Data: {log_data}")
+    file_logger(json.dumps(log_data))
 
 
 async def log_response(response: httpx.Response) -> None:
@@ -42,12 +48,14 @@ async def log_response(response: httpx.Response) -> None:
         traceback.print_exc()
         body = f"Failed to read response: {e}"
     log_data = {
-        "timestamp": timestamp,
-        "status_code": response.status_code,
-        "headers": dict(response.headers),
-        "body": body,
+        "response_data": {
+            "timestamp": timestamp,
+            "status_code": response.status_code,
+            "headers": dict(response.headers),
+            "body": body,
+        }
     }
-    file_logger(f"Response Data: {log_data}")
+    file_logger(json.dumps(log_data))
 
 
 def determine_status_type(status_code: int) -> str:
@@ -71,11 +79,11 @@ async def handle_error_response(e: httpx.HTTPStatusError) -> dict:
     """
     try:
         error_detail = e.response.json()
-    except Exception as e:
+    except Exception as ex:
         import traceback
 
         traceback.print_exc()
-        logger.exception(f"Error extracting error details: {e}")
+        logger.exception(f"Error extracting error details: {ex}")
         error_detail = e.response.text or "No details"
     return {
         "error": str(e),
@@ -219,11 +227,17 @@ async def generic_http_api(
         "Body mode: multipart, urlencoded, raw, binary, or json. (Optional)",
     ] = None,
     headers: Annotated[Dict[str, str], "Additional HTTP headers."] = {},
-) -> Annotated[Tuple[str, float], "Minified JSON response and call duration (in seconds)."]:
+) -> Annotated[
+    Tuple[str, float], "Minified JSON response and call duration (in seconds)."
+]:
     # Set authentication headers based on auth_type.
     if auth_type:
         auth_type = auth_type.lower()
-        if auth_type == "basic" and isinstance(auth_value, list) and len(auth_value) == 2:
+        if (
+            auth_type == "basic"
+            and isinstance(auth_value, list)
+            and len(auth_value) == 2
+        ):
             creds = f"{auth_value[0]}:{auth_value[1]}"
             token = base64.b64encode(creds.encode()).decode()
             headers["Authorization"] = f"Basic {token}"
