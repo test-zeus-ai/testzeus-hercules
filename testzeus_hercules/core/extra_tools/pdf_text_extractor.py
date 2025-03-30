@@ -1,4 +1,5 @@
 import os
+import traceback
 from typing import Annotated
 
 import httpx
@@ -14,7 +15,9 @@ from unstructured.partition.pdf import partition_pdf
     description="""Extracts text from PDF at given URL.""",
     name="extract_text_from_pdf",
 )
-async def extract_text_from_pdf(pdf_url: Annotated[str, "URL of the PDF file to extract text from."]) -> Annotated[str, "All the text found in the PDF file."]:
+async def extract_text_from_pdf(
+    pdf_url: Annotated[str, "URL of the PDF file to extract text from."],
+) -> Annotated[str, "All the text found in the PDF file."]:
     """
     Extract text from a PDF file.
     pdf_url: str - The URL of the PDF file to extract text from.
@@ -40,6 +43,8 @@ async def extract_text_from_pdf(pdf_url: Annotated[str, "URL of the PDF file to 
         logger.error(f"An error occurred while downloading the PDF from {pdf_url}: {str(e)}")
         return f"An error occurred while downloading the PDF: {str(e)}"
     except Exception as e:
+
+        traceback.print_exc()
         logger.error(f"An error occurred while extracting text from the PDF that was downloaded from {pdf_url}: {str(e)}")
         return f"An error occurred while extracting text: {str(e)}"
     finally:
@@ -59,6 +64,8 @@ def cleanup_temp_files(*file_paths: str) -> None:
                 os.remove(file_path)
                 logger.debug(f"Cleaned file from the filesystem: {file_path}")
             except Exception as e:
+
+                traceback.print_exc()
                 logger.error(f"Failed to remove {file_path}: {str(e)}")
         else:
             logger.debug(f"File not found. Unable to clean it from the filesystem: {file_path}")
@@ -85,4 +92,6 @@ async def download_pdf(pdf_url: str, file_path: str) -> str:
     # except httpx.HTTPStatusError as e:
     #     raise e
     except Exception as e:
+
+        traceback.print_exc()
         raise e

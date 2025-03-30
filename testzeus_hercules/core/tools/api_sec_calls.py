@@ -19,12 +19,8 @@ CACHE_DIR = Path(get_global_conf().get_hf_home()) / "nuclei_tool"
 NUCLEI_BINARY = CACHE_DIR / "nuclei"
 
 
-NUCLEI_RELEASE_API_URL = (
-    "https://api.github.com/repos/projectdiscovery/nuclei/releases/latest"
-)
-NUCLEI_DOWNLOAD_URL_TEMPLATE = (
-    "https://github.com/projectdiscovery/nuclei/releases/download/{version}/{filename}"
-)
+NUCLEI_RELEASE_API_URL = "https://api.github.com/repos/projectdiscovery/nuclei/releases/latest"
+NUCLEI_DOWNLOAD_URL_TEMPLATE = "https://github.com/projectdiscovery/nuclei/releases/download/{version}/{filename}"
 
 security_terms_explanation = {
     "cve": "Common Vulnerabilities and Exposures, a standardized list of publicly disclosed security vulnerabilities.",
@@ -104,9 +100,7 @@ async def ensure_nuclei_installed() -> None:
             nuclei_filename = f"nuclei_{version_number}_linux_amd64.zip"
         binary_name = "nuclei"
 
-    nuclei_url = NUCLEI_DOWNLOAD_URL_TEMPLATE.format(
-        version=version, filename=nuclei_filename
-    )
+    nuclei_url = NUCLEI_DOWNLOAD_URL_TEMPLATE.format(version=version, filename=nuclei_filename)
 
     archive_path = CACHE_DIR / nuclei_filename
     await download_file(nuclei_url, archive_path)
@@ -153,9 +147,7 @@ async def run_nuclei_command(
         if open_api_spec_path:
             command.extend(["-l", open_api_spec_path])
         else:
-            error_message = (
-                "open_api_spec_path is required when is_open_api_spec is True"
-            )
+            error_message = "open_api_spec_path is required when is_open_api_spec is True"
             logger.error(error_message)
             file_logger(error_message)
             raise Exception(error_message)
@@ -209,9 +201,7 @@ def create_headers(
                 key, value = header.split("=", 1)
                 headers_list.append((key.strip(), value.strip()))
             else:
-                error_message = (
-                    f"Invalid header_token format: {header}. Expected 'Key=Value'."
-                )
+                error_message = f"Invalid header_token format: {header}. Expected 'Key=Value'."
                 logger.error(error_message)
                 file_logger(error_message)
                 end_time = time.perf_counter()
@@ -245,9 +235,7 @@ for tag, explanation in security_terms_explanation.items():
                 str,
                 "Path to the OpenAPI spec file (required if is_open_api_spec is True).",
             ] = "",
-            bearer_token: Annotated[
-                str, "Optional Bearer token for authentication."
-            ] = "",
+            bearer_token: Annotated[str, "Optional Bearer token for authentication."] = "",
             header_tokens: Annotated[
                 List[str],
                 "Optional list of header tokens in 'Key=Value' format.",
@@ -269,9 +257,7 @@ for tag, explanation in security_terms_explanation.items():
                 output_path = Path(OUTPUT_PATH)
                 output_path.mkdir(parents=True, exist_ok=True)
 
-                headers, error = create_headers(
-                    bearer_token, header_tokens, jwt_token, start_time
-                )
+                headers, error = create_headers(bearer_token, header_tokens, jwt_token, start_time)
                 if error:
                     return {"error": error[0]}, error[1]
 
@@ -318,6 +304,9 @@ for tag, explanation in security_terms_explanation.items():
                         duration,
                     )
             except Exception as e:
+                import traceback
+
+                traceback.print_exc()
                 logger.error(f"An unexpected error occurred: {e}")
                 file_logger(f"An unexpected error occurred: {e}")
                 end_time = time.perf_counter()

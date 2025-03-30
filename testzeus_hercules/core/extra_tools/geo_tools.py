@@ -1,3 +1,4 @@
+import traceback
 from typing import Annotated, Dict, List, Optional, Union
 
 from testzeus_hercules.config import get_global_conf
@@ -43,6 +44,8 @@ async def get_current_geo_location() -> Union[str, Dict[str, str]]:
         return address
 
     except Exception as e:
+
+        traceback.print_exc()
         logger.exception(f"Error in get_current_geo_location: {e}")
         return {"error": str(e)}
 
@@ -52,7 +55,9 @@ async def get_current_geo_location() -> Union[str, Dict[str, str]]:
     name="set_current_geo_location",
     description="Set the browser geolocation",
 )
-async def set_current_geo_location(address: Annotated[str, "address"]) -> Union[str, Dict[str, str]]:
+async def set_current_geo_location(
+    address: Annotated[str, "address"],
+) -> Union[str, Dict[str, str]]:
     """
     Convert the given address to lat/long via GeoLocationSDK, then set that geolocation
     in PlaywrightManager. The provider/api_key are read from the global CONF object.
@@ -85,5 +90,7 @@ async def set_current_geo_location(address: Annotated[str, "address"]) -> Union[
         return success_msg
 
     except Exception as e:
+
+        traceback.print_exc()
         logger.exception(f"Error in set_current_geo_location: {e}")
         return {"error": str(e)}

@@ -1,4 +1,5 @@
 import re
+import traceback
 from typing import Annotated
 
 import playwright_recaptcha
@@ -28,5 +29,7 @@ async def captcha_solver(
         logger.info(await score_locator.inner_text())
         return True
     except Exception as e:
+
+        traceback.print_exc()
         logger.error(f"An unexpected error occurred during captcha solving: {e}")
         return False

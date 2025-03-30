@@ -5,10 +5,10 @@ import os
 import shutil
 import sys
 import tempfile
+import traceback
 import uuid
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Dict, List, Optional
 
-import autogen
 from autogen import AssistantAgent
 from autogen.agentchat.contrib.retrieve_user_proxy_agent import RetrieveUserProxyAgent
 from testzeus_hercules.config import get_global_conf
@@ -116,6 +116,7 @@ class DynamicLTM:
             self.rag_agent = None
             return
 
+        logger.info(f"Using dynamic LTM: {self.use_dynamic_ltm}")
         self.reuse_vector_db = config.should_reuse_vector_db()
         self.vector_db_path = os.path.join(tempfile.gettempdir(), f"vector_db_{namespace}")
 
@@ -150,6 +151,8 @@ I work strictly with data that has been explicitly stored in my memory.""",
             try:
                 shutil.rmtree(self.vector_db_path)
             except Exception as e:
+
+                traceback.print_exc()
                 logger.error(f"Error cleaning up vector DB: {str(e)}")
 
         # Initialize RetrieveUserProxyAgent with the static data
@@ -194,13 +197,14 @@ I work strictly with data that has been explicitly stored in my memory.""",
                         self.rag_agent._vector_db.active_collection = collection
                         logger.info(f"Successfully set active collection: {collection_name}")
                     except Exception as e:
+
+                        traceback.print_exc()
                         logger.error(f"Error setting active collection: {str(e)}")
                         # Reset flags on error
                         self.rag_agent._collection = False
                         self.rag_agent._get_or_create = self.reuse_vector_db
 
         except Exception as e:
-            import traceback
 
             traceback.print_exc()
             logger.error(f"Error initializing vector DB: {str(e)}")
@@ -231,6 +235,8 @@ I work strictly with data that has been explicitly stored in my memory.""",
 
             return "\n".join(processed_text)
         except Exception as e:
+
+            traceback.print_exc()
             logger.error(f"Error processing content with unstructured.io: {str(e)}")
             return content  # Fallback to original content if processing fails
 
@@ -272,6 +278,8 @@ I work strictly with data that has been explicitly stored in my memory.""",
             logger.info(f"Successfully added document {doc_id} to vector DB")
 
         except Exception as e:
+
+            traceback.print_exc()
             logger.error(f"Error saving content to memory: {str(e)}")
 
     async def query(self, context: str) -> str:

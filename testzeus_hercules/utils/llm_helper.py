@@ -16,7 +16,7 @@ from autogen.code_utils import content_str
 # from autogen.agentchat.contrib.multimodal_conversable_agent import (
 #     MultimodalConversableAgent,
 # )
-from testzeus_hercules.core.agents_llm_config import AgentsLLMConfig
+from testzeus_hercules.core.agents_llm_config_manager import AgentsLLMConfigManager
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.response_parser import parse_response
 
@@ -139,7 +139,9 @@ class MultimodalConversableAgent(ConversableAgent):
         )
 
 
-def convert_model_config_to_autogen_format(model_config: dict[str, str]) -> list[dict[str, Any]]:
+def convert_model_config_to_autogen_format(
+    model_config: dict[str, str],
+) -> list[dict[str, Any]]:
     """Convert model configuration to Autogen format.
 
     Args:
@@ -193,7 +195,7 @@ def is_agent_planner_termination_message(x: dict[str, str], final_response_callb
 def create_multimodal_agent(
     name: str,
     system_message: str = "You are a multimodal conversable agent.",
-    llm_config: Optional[List[Dict[str, Any]]] = None,
+    llm_config: Optional[Dict[str, Any]] = None,
 ) -> MultimodalConversableAgent:
     """Create a multimodal conversable agent as a singleton.
 
@@ -205,13 +207,17 @@ def create_multimodal_agent(
     Returns:
         MultimodalConversableAgent instance
     """
+
     # Singleton instance variable
     if not hasattr(create_multimodal_agent, "_instance"):
         # Get the LLM config for the image comparison agent
-        _mca_agent_config = AgentsLLMConfig().get_helper_agent_config()
-        _llm_config = llm_config or convert_model_config_to_autogen_format(_mca_agent_config["model_config_params"])
+
+        config_manager = AgentsLLMConfigManager.get_instance()
+        _mca_agent_config = config_manager.get_agent_config("helper_agent")
+        _llm_config = [llm_config] or convert_model_config_to_autogen_format(_mca_agent_config["model_config_params"])
         if _llm_config:
             _llm_config = _llm_config[0]
+
         create_multimodal_agent._instance = MultimodalConversableAgent(
             name=name,
             max_consecutive_auto_reply=1,

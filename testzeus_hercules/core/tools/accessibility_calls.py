@@ -1,12 +1,17 @@
 import json
-from typing import Annotated
+import time
+import traceback
+from typing import Annotated, Any, Dict, List
 
+from playwright.async_api import Page
+from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.tool_registry import (
     accessibility_logger,
     accessibility_logger_json,
     tool,
 )
+from testzeus_hercules.utils.logger import logger
 
 AXE_SCRIPT_URL = "https://cdnjs.cloudflare.com/ajax/libs/axe-core/4.10.2/axe.min.js"
 
@@ -35,7 +40,7 @@ async def test_page_accessibility(
         if not page:
             raise ValueError("No active page found. OpenURL command opens a new page.")
 
-        await page.wait_for_load_state("domcontentloaded")
+        await browser_manager.wait_for_load_state_if_enabled(page=page, state="domcontentloaded")
 
         # Inject the Axe-core script
         response = await page.evaluate(
@@ -85,6 +90,8 @@ async def test_page_accessibility(
         return json.dumps(result_dict, separators=(",", ":"))
 
     except Exception as e:
+
+        traceback.print_exc()
         # In case of error, return an error payload
         error_dict = {
             "status": "error",

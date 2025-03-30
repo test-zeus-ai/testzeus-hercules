@@ -1,23 +1,26 @@
 import asyncio
 import base64
+import io
 import json
 import os
 import shutil
 import tempfile
 import time
-import traceback  # Add this import
+import traceback
 import zipfile
-import io
-import httpx
-from io import BytesIO
-from typing import Any, Dict, List, Optional, Tuple, Union, Literal
-from PIL import Image, ImageDraw, ImageFont
 from datetime import datetime
+from io import BytesIO
+from pathlib import Path
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+
+import httpx
+from PIL import Image, ImageDraw, ImageFont
 from playwright.async_api import BrowserContext, BrowserType, ElementHandle
 from playwright.async_api import Error as PlaywrightError  # for exception handling
 from playwright.async_api import Page, Playwright
 from playwright.async_api import async_playwright as playwright
 from testzeus_hercules.config import get_global_conf
+from testzeus_hercules.core.browser_logger import get_browser_logger
 from testzeus_hercules.core.notification_manager import NotificationManager
 from testzeus_hercules.utils.dom_mutation_observer import (
     dom_mutation_change_detected,
@@ -25,7 +28,6 @@ from testzeus_hercules.utils.dom_mutation_observer import (
 )
 from testzeus_hercules.utils.js_helper import get_js_with_element_finder
 from testzeus_hercules.utils.logger import logger
-from testzeus_hercules.core.browser_logger import get_browser_logger
 
 # Ensures that playwright does not wait for font loading when taking screenshots.
 # Reference: https://github.com/microsoft/playwright/issues/28995
@@ -160,6 +162,10 @@ class PlaywrightManager:
         screenshots_dir: Optional[str] = None,
         take_screenshots: Optional[bool] = None,
         cdp_config: Optional[Dict] = None,
+        cdp_reuse_tabs: Optional[bool] = False,  # New parameter to control tab reuse
+        cdp_navigate_on_connect: Optional[
+            bool
+        ] = True,  # New parameter to control navigation
         record_video: Optional[bool] = None,
         video_dir: Optional[str] = None,
         log_requests_responses: Optional[bool] = None,
@@ -188,7 +194,7 @@ class PlaywrightManager:
         viewport, etc., *unless* you explicitly override them via other parameters.
         """
         self.allow_all_permissions = allow_all_permissions
-        if self.__initialized:
+        if hasattr(self, "_PlaywrightManager__initialized") and self.__initialized:
             return  # Already inited, no-op
 
         self.__initialized = True
@@ -202,8 +208,8 @@ class PlaywrightManager:
             if record_video is not None
             else get_global_conf().should_record_video()
         )
-        self._latest_video_path = None
-        self._video_dir = None
+        self._latest_video_path: Optional[str] = None
+        self._video_dir: Optional[str] = None
 
         proof_path = get_global_conf().get_proof_path(test_id=self.stake_id)
 
@@ -226,6 +232,19 @@ class PlaywrightManager:
             else get_global_conf().should_run_headless()
         )
         self.cdp_config = cdp_config or get_global_conf().get_cdp_config()
+
+        # CDP behavior settings
+        config = get_global_conf()
+        self.cdp_reuse_tabs = (
+            cdp_reuse_tabs
+            if cdp_reuse_tabs is not None
+            else getattr(config, "cdp_reuse_tabs", True)
+        )
+        self.cdp_navigate_on_connect = (
+            cdp_navigate_on_connect
+            if cdp_navigate_on_connect is not None
+            else getattr(config, "cdp_navigate_on_connect", False)
+        )
 
         # ----------------------
         # 2) BASIC FLAGS
@@ -276,7 +295,6 @@ class PlaywrightManager:
         self._browser_context: Optional[BrowserContext] = None
         self.__async_initialize_done = False
         self._latest_screenshot_bytes: Optional[bytes] = None
-        self._latest_video_path: Optional[str] = None
 
         # Extension caching directory
         self._extension_cache_dir = os.path.join(
@@ -301,9 +319,10 @@ class PlaywrightManager:
         self.user_geolocation = (
             geolocation or get_global_conf().get_geolocation()
         )  # or None
-        self.user_color_scheme = (
-            color_scheme or get_global_conf().get_color_scheme() or "light"
-        )
+        self.user_color_scheme = color_scheme or get_global_conf().get_color_scheme()
+
+        # Get browser cookies from config
+        self.browser_cookies = get_global_conf().get_browser_cookies()
 
         # If iPhone, override browser
         if self.device_name and "iphone" in self.device_name.lower():
@@ -362,6 +381,16 @@ class PlaywrightManager:
             self._playwright = None
 
     async def prepare_extension(self) -> None:
+        """
+        Prepare browser extensions (uBlock Origin) if enabled in config.
+        """
+        # Skip if extensions are disabled in config
+        if not get_global_conf().should_enable_ublock_extension():
+            logger.info(
+                "uBlock extension is disabled in config. Skipping installation."
+            )
+            return
+
         if os.name == "nt":
             logger.info("Skipping extension preparation on Windows.")
             return
@@ -438,6 +467,8 @@ class PlaywrightManager:
             )
             logger.info(f"Tracing started for {context_type} context")
         except Exception as e:
+
+            traceback.print_exc()
             logger.error(f"Failed to start tracing for {context_type} context: {e}")
 
     async def create_browser_context(self) -> None:
@@ -488,18 +519,103 @@ class PlaywrightManager:
                     endpoint_url, timeout=120000
                 )
 
+            # Prepare context options
             context_options = {}
-            if recording_supported:
-                if self._record_video:
-                    context_options = {"record_video_dir": self._video_dir}
-                    context_options.update(self._build_emulation_context_options())
-                    logger.info("Recording video in CDP mode.")
+            if recording_supported and self._record_video:
+                context_options = {"record_video_dir": self._video_dir}
+                context_options.update(self._build_emulation_context_options())
+                logger.info("Recording video in CDP mode.")
+
+            self._browser_context = None
+            # Context selection logic
+            if _browser.contexts:
+                if self.cdp_reuse_tabs:
+                    logger.info("Reusing existing browser context.")
+                    self._browser_context = _browser.contexts[0]
+
+            if not self._browser_context:
+                logger.info("Creating new browser context.")
+                self._browser_context = await _browser.new_context(**context_options)
+
+            # Page selection logic - More robust implementation to prevent continuous tab creation
+            pages = self._browser_context.pages
+
+            if pages:  # and self.cdp_reuse_tabs:
+                # First, check if there's a non-empty page we can use
+                usable_page = None
+
+                for idx, p in enumerate(pages):
+                    try:
+                        # Very quick check without a timeout parameter
+                        current_url = await p.evaluate("window.location.href")
+                        logger.info(f"Found usable page {idx} with URL: {current_url}")
+
+                        # Skip about:blank pages if there are better options
+                        if (
+                            current_url not in ["about:blank", "chrome://newtab/"]
+                            or usable_page is None
+                        ):
+                            usable_page = p
+                            # If we found a non-empty page, prefer that one
+                            if current_url not in ["about:blank", "chrome://newtab/"]:
+                                break
+                    except Exception as e:
+
+                        traceback.print_exc()
+                        logger.debug(f"Page {idx} not usable: {e}")
+
+                if usable_page:
+                    logger.info(
+                        f"Reusing existing page with URL: {await usable_page.evaluate('window.location.href')}"
+                    )
+                    page = usable_page
+
+                    try:
+                        # Set this page as active by bringing it to focus
+                        await page.bring_to_front()
+                        logger.info("Brought reused page to front")
+                    except Exception as e:
+                        # Don't let bring_to_front failures block us
+
+                        traceback.print_exc()
+                        logger.warning(
+                            f"Failed to bring page to front, but continuing: {e}"
+                        )
+                else:
+                    logger.info("No usable existing pages found. Creating new page.")
+                    page = await self._browser_context.new_page()
             else:
-                logger.info("Recording video not supported in given CDP URL.")
-            self._browser_context = await _browser.new_context(**context_options)
-            page = await _browser.new_page()
-            # page = await self._browser_context.new_page()
-            await page.goto("https://www.testzeus.com", timeout=120000)
+                logger.info(
+                    "Creating new page as no existing pages found or reuse disabled."
+                )
+                page = await self._browser_context.new_page()
+
+            # Only navigate if explicitly configured to do so
+            if self.cdp_navigate_on_connect:
+                logger.info("Navigating to Google as specified in configuration.")
+                await page.goto("https://www.google.com", timeout=120000)
+            else:
+                logger.info("Skipping navigation on CDP connection as configured.")
+
+                # Only modify blank pages
+                try:
+                    current_url = await page.evaluate("window.location.href")
+                    if current_url in ["about:blank", "chrome://newtab/"]:
+                        logger.info("Setting minimal HTML content for empty tab")
+                        await page.set_content(
+                            "<html><body><h1>Connected via TestZeus Hercules</h1><p>Tab is ready for automation.</p></body></html>"
+                        )
+                        logger.info(
+                            f"Tab content set, current URL: {await page.evaluate('window.location.href')}"
+                        )
+                except Exception as e:
+
+                    traceback.print_exc()
+                    logger.warning(f"Failed to set content for empty tab: {e}")
+                    # Don't block on this failure
+
+            # Add cookies if provided
+            await self._add_cookies_if_provided()
 
         else:
             if self.browser_type != "chromium":
@@ -522,31 +638,27 @@ class PlaywrightManager:
 
     def _build_emulation_context_options(self) -> Dict[str, Any]:
         """
-        Combine device descriptor with user overrides (locale, timezone, geolocation,
-        color scheme, plus optional permissions).
+        Build context options for emulation based on device name and other settings.
         """
-        context_options: Dict[str, Any] = {}
+        context_options = {}
 
-        # 1) If device_name is set, retrieve from built-in devices
-        if self.device_name and self._playwright:
+        # 1) Device emulation
+        if self.device_name:
             device = self._playwright.devices.get(self.device_name)
             if device:
                 context_options.update(device)
             else:
                 logger.warning(
-                    f"Device '{self.device_name}' not found. Using custom viewport."
+                    f"Device '{self.device_name}' not found in Playwright devices."
                 )
-                context_options["viewport"] = {
-                    "width": self.user_viewport[0],
-                    "height": self.user_viewport[1],
-                }
         else:
+            # Set viewport manually if no device
             context_options["viewport"] = {
                 "width": self.user_viewport[0],
                 "height": self.user_viewport[1],
             }
 
-        # 2) Additional overrides
+        # 2) Override locale, timezone, geolocation, color scheme
         if self.user_locale:
             context_options["locale"] = self.user_locale
         if self.user_timezone:
@@ -608,11 +720,34 @@ class PlaywrightManager:
                     launch_options["channel"] = self.browser_channel
                 # Note: version is handled during installation, not at launch time
             elif self.browser_type == "firefox":
-                if self.browser_channel:
-                    launch_options["firefox_user_prefs"] = {
-                        "app.update.auto": False,
-                        "browser.shell.checkDefaultBrowser": False,
-                    }
+                firefox_prefs = {
+                    "app.update.auto": False,
+                    "browser.shell.checkDefaultBrowser": False,
+                    "media.navigator.permission.disabled": True,
+                    "permissions.default.screen": 1,
+                    "media.getusermedia.window.enabled": True,
+                }
+
+                # Auto-accept screen sharing if enabled in config
+                if get_global_conf().should_auto_accept_screen_sharing():
+                    firefox_prefs.update(
+                        {
+                            "permissions.default.camera": 1,  # 0=ask, 1=allow, 2=block
+                            "permissions.default.microphone": 1,
+                            "permissions.default.desktop-notification": 1,
+                            "media.navigator.streams.fake": True,
+                            "media.getusermedia.screensharing.enabled": True,
+                            "media.getusermedia.browser.enabled": True,
+                            "dom.disable_beforeunload": True,
+                            "media.autoplay.default": 0,
+                            "media.autoplay.enabled": True,
+                            "privacy.webrtc.legacyGlobalIndicator": False,
+                            "privacy.webrtc.hideGlobalIndicator": True,
+                            "permissions.default.desktop": 1,
+                        }
+                    )
+
+                launch_options["firefox_user_prefs"] = firefox_prefs
                 # Note: version is handled during installation, not at launch time
             elif self.browser_type == "webkit":
                 # WebKit doesn't support channels or direct version specification at launch
@@ -628,7 +763,13 @@ class PlaywrightManager:
             context_options.update(self._build_emulation_context_options())
 
             self._browser_context = await browser.new_context(**context_options)
+
+            # Add cookies if provided
+            await self._add_cookies_if_provided()
+
         except Exception as e:
+
+            traceback.print_exc()
             logger.error(f"Failed to launch browser with video recording: {e}")
             raise e
 
@@ -666,11 +807,37 @@ class PlaywrightManager:
                     browser_context_kwargs["channel"] = self.browser_channel
                 # Note: version is handled during installation, not at launch time
             elif self.browser_type == "firefox":
+                firefox_prefs = {
+                    "app.update.auto": False,
+                    "browser.shell.checkDefaultBrowser": False,
+                    "media.navigator.permission.disabled": True,
+                    "permissions.default.screen": 1,
+                    "media.getusermedia.window.enabled": True,
+                }
+
+                # Auto-accept screen sharing if enabled in config
+                if get_global_conf().should_auto_accept_screen_sharing():
+                    firefox_prefs.update(
+                        {
+                            "permissions.default.camera": 1,  # 0=ask, 1=allow, 2=block
+                            "permissions.default.microphone": 1,
+                            "permissions.default.desktop-notification": 1,
+                            "media.navigator.streams.fake": True,
+                            "media.getusermedia.screensharing.enabled": True,
+                            "media.getusermedia.browser.enabled": True,
+                            "dom.disable_beforeunload": True,
+                            "media.autoplay.default": 0,
+                            "media.autoplay.enabled": True,
+                            "privacy.webrtc.legacyGlobalIndicator": False,
+                            "privacy.webrtc.hideGlobalIndicator": True,
+                            "permissions.default.desktop": 1,
+                        }
+                    )
+
                 if self.browser_channel:
-                    browser_context_kwargs["firefox_user_prefs"] = {
-                        "app.update.auto": False,
-                        "browser.shell.checkDefaultBrowser": False,
-                    }
+                    browser_context_kwargs["firefox_user_prefs"] = firefox_prefs
+                else:
+                    browser_context_kwargs["firefox_user_prefs"] = firefox_prefs
                 # Note: version is handled during installation, not at launch time
             elif self.browser_type == "webkit":
                 # WebKit doesn't support channels or direct version specification at launch
@@ -698,13 +865,13 @@ class PlaywrightManager:
                         logger.error(
                             f"Failed to install browser version: {stderr.decode()}"
                         )
-                        raise RuntimeError(
-                            f"Failed to install {self.browser_type}@{self.browser_version}"
-                        )
                 except Exception as e:
-                    logger.error(f"Error installing browser version: {e}")
-                    raise
 
+                    traceback.print_exc()
+                    logger.error(f"Error installing browser version: {e}")
+                    raise e
+
+            # Update browser_context_kwargs with emulation options (includes cookies if set)
             browser_context_kwargs.update(self._build_emulation_context_options())
 
             if self.browser_type == "chromium" and self._extension_path is not None:
@@ -713,21 +880,32 @@ class PlaywrightManager:
                 )
                 disable_args.append(f"--load-extension={self._extension_path}")
             elif self.browser_type == "firefox" and self._extension_path is not None:
-                browser_context_kwargs["firefox_user_prefs"] = {
-                    "xpinstall.signatures.required": False,
-                    "extensions.autoDisableScopes": 0,
-                    "extensions.enabledScopes": 15,
-                    "extensions.installDistroAddons": False,
-                    "extensions.update.enabled": False,
-                    "browser.shell.checkDefaultBrowser": False,
-                    "browser.startup.homepage": "about:blank",
-                    "toolkit.telemetry.reportingpolicy.firstRun": False,
-                    "extensions.webextensions.userScripts.enabled": True,
-                }
+                # Merge with existing firefox_user_prefs if any
+                firefox_user_prefs = browser_context_kwargs.get(
+                    "firefox_user_prefs", {}
+                )
+                firefox_user_prefs.update(
+                    {
+                        "xpinstall.signatures.required": False,
+                        "extensions.autoDisableScopes": 0,
+                        "extensions.enabledScopes": 15,
+                        "extensions.installDistroAddons": False,
+                        "extensions.update.enabled": False,
+                        "browser.shell.checkDefaultBrowser": False,
+                        "browser.startup.homepage": "about:blank",
+                        "toolkit.telemetry.reportingpolicy.firstRun": False,
+                        "extensions.webextensions.userScripts.enabled": True,
+                    }
+                )
+                browser_context_kwargs["firefox_user_prefs"] = firefox_user_prefs
 
             self._browser_context = await browser_type.launch_persistent_context(
                 user_dir, **browser_context_kwargs
             )
+
+            # Add cookies if provided
+            await self._add_cookies_if_provided()
+
         except (PlaywrightError, OSError) as e:
             await self._handle_launch_exception(e, user_dir, browser_type, disable_args)
 
@@ -770,6 +948,10 @@ class PlaywrightManager:
             self._browser_context = await browser_type.launch_persistent_context(
                 new_user_dir, **launch_options
             )
+
+            # Add cookies if provided
+            await self._add_cookies_if_provided()
+
         elif any(err in str(e) for err in ["is not found", "Executable doesn't exist"]):
             channel_info = (
                 f" (channel: {self.browser_channel})" if self.browser_channel else ""
@@ -810,11 +992,17 @@ class PlaywrightManager:
     def log_request(self, request: Any) -> None:
         try:
             post_data = request.post_data
-            try:
-                decoded_post_data = post_data.decode("utf-8")
-            except (UnicodeDecodeError, AttributeError):
-                decoded_post_data = base64.b64encode(post_data).decode("utf-8")
-        except Exception:
+            if isinstance(post_data, bytes):
+                try:
+                    decoded_post_data = post_data.decode("utf-8")
+                except (UnicodeDecodeError, AttributeError):
+                    decoded_post_data = base64.b64encode(post_data).decode("utf-8")
+            else:
+                decoded_post_data = post_data
+        except Exception as e:
+            logger.warning(
+                f"Failed to decode post data for browser API request: {e} for request {request}"
+            )
             decoded_post_data = None
 
         log_entry = {
@@ -856,6 +1044,8 @@ class PlaywrightManager:
 
             await asyncio.to_thread(append_line, log_file, line)
         except Exception as e:
+
+            traceback.print_exc()
             logger.error(f"Failed to write request/response log to file: {e}")
 
     async def get_current_url(self) -> Optional[str]:
@@ -863,33 +1053,34 @@ class PlaywrightManager:
             current_page: Page = await self.get_current_page()
             return current_page.url
         except Exception as e:
+
+            traceback.print_exc()
             logger.warning(f"Failed to get current URL: {e}")
         return None
 
     async def get_current_page(self) -> Page:
+        """
+        Get the current active page, or reuse an existing one if available.
+        Only creates a new page if no pages exist or all existing pages are closed.
+
+        This is a high-level method used throughout the codebase. To ensure
+        consistency, it now uses reuse_or_create_tab internally.
+        """
         try:
             browser_context = await self.get_browser_context()
-            pages: list[Page] = [p for p in browser_context.pages if not p.is_closed()]
-            page: Optional[Page] = pages[-1] if pages else None
 
-            logger.debug(f"Current page: {page.url if page else None}")
-            if page is None:
-                logger.debug("Creating new page. No pages found.")
-                page = await browser_context.new_page()
-                await self.setup_request_response_logging(page)
-                await self.setup_console_logging(page)
-            return page
-
+            # Instead of duplicating logic, use our tab reuse method with force_new_tab=False
+            # This ensures the same tab reuse logic is used everywhere
+            return await self.reuse_or_create_tab(force_new_tab=False)
         except Exception as e:
+
+            traceback.print_exc()
             logger.warning(f"Error getting current page: {e}. Creating new context.")
             self._browser_context = None
             await self.ensure_browser_context()
-            browser_context = await self.get_browser_context()
-            pages = [p for p in browser_context.pages if not p.is_closed()]
-            if pages:
-                return pages[-1]
-            else:
-                return await browser_context.new_page()
+
+            # Try again with the new context
+            return await self.reuse_or_create_tab(force_new_tab=False)
 
     async def close_all_tabs(self, keep_first_tab: bool = True) -> None:
         browser_context = await self.get_browser_context()
@@ -913,6 +1104,7 @@ class PlaywrightManager:
 
     async def set_navigation_handler(self) -> None:
         page: Page = await self.get_current_page()
+        await page.wait_for_load_state("domcontentloaded")
         page.on("domcontentloaded", handle_navigation_for_mutation_observer)
 
         async def set_iframe_navigation_handlers() -> None:
@@ -985,8 +1177,8 @@ class PlaywrightManager:
         screenshot_path = os.path.join(self.get_screenshots_dir(), screenshot_name)
 
         try:
-            await page.wait_for_load_state(
-                state=load_state, timeout=take_snapshot_timeout
+            await self.wait_for_load_state_if_enabled(
+                page=page, state=load_state, timeout=take_snapshot_timeout
             )
             screenshot_bytes = await page.screenshot(
                 path=screenshot_path,
@@ -999,6 +1191,8 @@ class PlaywrightManager:
             self._latest_screenshot_bytes = screenshot_bytes
             logger.debug(f"Screenshot saved: {screenshot_path}")
         except Exception as e:
+
+            traceback.print_exc()
             logger.error(f"Failed to take screenshot at {screenshot_path}: {e}")
 
     async def get_latest_screenshot_stream(self) -> Optional[BytesIO]:
@@ -1054,6 +1248,8 @@ class PlaywrightManager:
                             self._latest_video_path = new_video_path
                             logger.info(f"Video recorded at {new_video_path}")
                     except Exception as e:
+
+                        traceback.print_exc()
                         logger.error(f"Could not finalize video: {e}")
 
             # Stop and save tracing before closing context
@@ -1070,8 +1266,9 @@ class PlaywrightManager:
                     else:
                         logger.error(f"Trace file was not created at: {trace_file}")
                 except Exception as e:
-                    logger.error(f"Error stopping trace: {e}")
+
                     traceback.print_exc()
+                    logger.error(f"Error stopping trace: {e}")
 
             await self._browser_context.close()
             self._browser_context = None
@@ -1221,17 +1418,32 @@ class PlaywrightManager:
     async def wait_for_page_and_frames_load(
         self, timeout_overwrite: Optional[float] = None
     ) -> None:
-        start_time = time.time()
+        """Wait for the page and all frames to load."""
+        page = await self.get_current_page()
+
         try:
             await self._wait_for_stable_network()
-        except Exception:
+        except Exception as e:
+
+            traceback.print_exc()
             logger.warning("Page load stable-network check failed, continuing...")
 
-        elapsed = time.time() - start_time
-        remaining = max((timeout_overwrite or MIN_WAIT_PAGE_LOAD_TIME) - elapsed, 0)
-        logger.debug(
-            f"Page loaded in {elapsed:.2f}s, waiting {remaining:.2f}s more for stability."
-        )
+    async def wait_for_load_state_if_enabled(
+        self,
+        page: Page,
+        state: Literal["load", "domcontentloaded", "networkidle"] = "domcontentloaded",
+        timeout: Optional[float] = None,
+    ) -> None:
+        """
+        Wait for the page to reach a specific state if wait_for_load_state is enabled.
+
+        Args:
+            page: The playwright page object
+            state: The state to wait for (load, domcontentloaded, networkidle)
+            timeout: Maximum time to wait for in milliseconds
+        """
+        if not get_global_conf().should_skip_wait_for_load_state():
+            await page.wait_for_load_state(state=state, timeout=timeout)
 
     # -------------------------------------------------------------------------
     # NEW METHODS for updating context properties on the fly
@@ -1275,6 +1487,7 @@ class PlaywrightManager:
             await self._browser_context.close()
             self._browser_context = None
         await self.create_browser_context()
+        # Note: create_browser_context already calls _add_cookies_if_provided
         await self.go_to_homepage()
 
     async def perform_javascript_click(
@@ -1301,6 +1514,16 @@ class PlaywrightManager:
             const rect = element.getBoundingClientRect();
             const centerX = rect.left + rect.width / 2;
             const centerY = rect.top + rect.height / 2;
+
+            // Check if we're in Salesforce
+            const isSalesforce = window.location.href.includes('lightning/') || 
+                                window.location.href.includes('force.com') || 
+                                document.querySelector('.slds-dropdown, lightning-base-combobox') !== null;
+                                
+            // Check if element is SVG or SVG child
+            const isSvgElement = element.tagName.toLowerCase() === 'svg' || 
+                                element.ownerSVGElement !== null ||
+                                element.namespaceURI === 'http://www.w3.org/2000/svg';
 
             // Common mouse move event
             const mouseMove = new MouseEvent('mousemove', {
@@ -1349,7 +1572,83 @@ class PlaywrightManager:
                     break;
 
                 default: // normal click
-                    element.click();
+                    // For SVG elements or Salesforce, use event sequence approach
+                    if (isSvgElement || isSalesforce) {
+                        // SVG elements need full event sequence
+                        // Create and dispatch mousedown event first
+                        const mouseDown = new MouseEvent('mousedown', {
+                            bubbles: true,
+                            cancelable: true,
+                            view: window,
+                            clientX: centerX,
+                            clientY: centerY,
+                            button: 0
+                        });
+                        element.dispatchEvent(mouseDown);
+                        
+                        const mouseUpEvent = new MouseEvent('mouseup', {
+                            bubbles: true,
+                            cancelable: true,
+                            clientX: centerX,
+                            clientY: centerY,
+                            button: 0,
+                            view: window
+                        });
+                        element.dispatchEvent(mouseUpEvent);
+
+                        const clickEvent = new MouseEvent('click', {
+                            bubbles: true,
+                            cancelable: true,
+                            clientX: centerX,
+                            clientY: centerY,
+                            button: 0,
+                            view: window
+                        });
+                        element.dispatchEvent(clickEvent);
+                    } else {
+                        // For regular HTML elements, try direct click first, fallback to event sequence
+                        try {
+                            // Try the native click method first
+                            element.click();
+                        } catch (error) {
+                            console.log('Native click failed, using event sequence');
+                            // Fallback to event sequence
+                            const mouseDown = new MouseEvent('mousedown', {
+                                bubbles: true,
+                                cancelable: true,
+                                view: window,
+                                clientX: centerX,
+                                clientY: centerY,
+                                button: 0
+                            });
+                            element.dispatchEvent(mouseDown);
+                            
+                            const mouseUpEvent = new MouseEvent('mouseup', {
+                                bubbles: true,
+                                cancelable: true,
+                                clientX: centerX,
+                                clientY: centerY,
+                                button: 0,
+                                view: window
+                            });
+                            element.dispatchEvent(mouseUpEvent);
+
+                            const clickEvent = new MouseEvent('click', {
+                                bubbles: true,
+                                cancelable: true,
+                                clientX: centerX,
+                                clientY: centerY,
+                                button: 0,
+                                view: window
+                            });
+                            element.dispatchEvent(clickEvent);
+                            
+                            // If it's a link and click wasn't prevented, handle navigation
+                            if (element.tagName.toLowerCase() === 'a' && element.href) {
+                                window.location.href = element.href;
+                            }
+                        }
+                    }
                     break;
             }
 
@@ -1357,9 +1656,9 @@ class PlaywrightManager:
             if (ariaExpandedBeforeClick === 'false' && ariaExpandedAfterClick === 'true') {
                 return "Executed " + type_of_click + " on element with selector: " + selector + 
                     ". Very important: As a consequence, a menu has appeared where you may need to make further selection. " +
-                    "Very important: Get all_fields DOM to complete the action.";
+                    "Very important: Get all_fields DOM to complete the action." + " The click is best effort, so verify the outcome.";
             }
-            return "Executed " + type_of_click + " on element with selector: " + selector;
+            return "Executed " + type_of_click + " on element with selector: " + selector + " The click is best effort, so verify the outcome.";
         }"""
 
         try:
@@ -1374,6 +1673,8 @@ class PlaywrightManager:
             )
             return result
         except Exception as e:
+
+            traceback.print_exc()
             logger.error(
                 f"Error executing JavaScript '{type_of_click}' on element with selector: {selector}. Error: {e}"
             )
@@ -1508,12 +1809,11 @@ class PlaywrightManager:
             draw = ImageDraw.Draw(image)
 
             # Draw bounding box
-            draw.rectangle(
+            draw.line(
                 [
                     (bbox["x"], bbox["y"]),
                     (bbox["x"] + bbox["width"], bbox["y"] + bbox["height"]),
                 ],
-                outline="orange",
                 width=4,
             )
 
@@ -1534,7 +1834,8 @@ class PlaywrightManager:
             # Calculate text position and size
             try:
                 font = ImageFont.truetype("Arial", 14)
-            except:
+            except Exception as e:
+                logger.error(f"Failed to load font: {e}")
                 font = ImageFont.load_default()
 
             # Increase text padding by 10%
@@ -1702,3 +2003,105 @@ class PlaywrightManager:
         asyncio.ensure_future(
             self._write_log_entry_to_file(log_entry, self.console_log_file)
         )
+
+    async def _add_cookies_if_provided(self) -> None:
+        """
+        Add cookies to the browser context if they are provided in the configuration.
+        This method should be called after the browser context is created.
+        """
+        if self.browser_cookies and self._browser_context:
+            try:
+                logger.info(
+                    f"Adding {len(self.browser_cookies)} cookies to browser context"
+                )
+                await self._browser_context.add_cookies(self.browser_cookies)
+                logger.info("Cookies added successfully")
+            except Exception as e:
+
+                traceback.print_exc()
+                logger.error(f"Failed to add cookies to browser context: {e}")
+
+    async def reuse_or_create_tab(self, force_new_tab: bool = False) -> Page:
+        """
+        Reuse an existing tab or create a new one if needed.
+
+        Args:
+            force_new_tab: If True, always create a new tab regardless of existing tabs
+
+        Returns:
+            A Page object (either existing or newly created)
+        """
+        context = await self.get_browser_context()
+
+        # Get all non-closed pages
+        pages = [p for p in context.pages if not p.is_closed()]
+        logger.debug(f"Found {len(pages)} existing tabs")
+
+        # If we need to create a new tab or there are no existing tabs
+        if force_new_tab or not pages:
+            logger.info("Creating a new tab (forced or no existing tabs)")
+            page = await context.new_page()
+            await self.setup_request_response_logging(page)
+            await self.setup_console_logging(page)
+            return page
+
+        # Try to reuse existing tab (use the most recent one)
+        page = pages[-1]  # The most recently used page
+
+        try:
+            await page.wait_for_load_state("networkidle", timeout=5000)
+        except Exception as e:
+            logger.warning(f"Failed to wait for networkidle: {e}")
+        finally:
+            await page.wait_for_load_state("domcontentloaded")
+
+        # Check if the page is responsive, with a shorter timeout to avoid hanging
+        try:
+            # Simple check (the timeout is applied at a higher level)
+            await page.evaluate("1")
+            logger.info(f"Reusing existing tab with URL: {page.url}")
+            # try:
+            #     # Bring the tab to the front
+            #     await page.bring_to_front()
+            # except Exception as e:
+
+            #     traceback.print_exc()
+            #     # Don't let bring_to_front failures prevent tab reuse
+            #     logger.warning(f"Failed to bring tab to front, but continuing: {e}")
+
+            return page
+        except Exception as e:
+
+            traceback.print_exc()
+            # If the page isn't responsive, try the next one
+            logger.warning(f"First tab not responsive: {e}")
+
+            # Try other tabs if available, from most to least recent
+            for i in range(len(pages) - 2, -1, -1):
+                try:
+                    page = pages[i]
+                    await page.wait_for_load_state("domcontentloaded")
+                    await page.evaluate("1")
+                    logger.info(f"Reusing alternative tab with URL: {page.url}")
+
+                    try:
+                        await page.bring_to_front()
+                    except Exception as bring_err:
+
+                        traceback.print_exc()
+                        logger.warning(
+                            f"Failed to bring tab to front, but continuing: {bring_err}"
+                        )
+
+                    return page
+                except Exception as tab_err:
+
+                    traceback.print_exc()
+                    logger.warning(f"Alternative tab {i} not responsive: {tab_err}")
+
+        # If all tabs are unresponsive, create a new one
+        logger.info("All existing tabs unresponsive, creating a new tab")
+        page = await context.new_page()
+        await self.setup_request_response_logging(page)
+        await self.setup_console_logging(page)
+        return page

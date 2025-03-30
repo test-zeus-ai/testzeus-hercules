@@ -1,5 +1,6 @@
 import json
 import os
+import traceback
 from typing import List, Tuple
 
 import yaml
@@ -97,6 +98,8 @@ def read_and_process_file(file_path: str, sanitized_filename: str) -> str:
                     minified_yaml = yaml.safe_dump(yaml_data, default_flow_style=True, sort_keys=True).strip()
                     new_read += f"\nfollowing is test_data from {sanitized_filename}\n" + minified_yaml + "\n"
                 except Exception as e:
+
+                    traceback.print_exc()
                     logger.warning("Failed to parse YAML: %s", e)
                     new_read += f"\nfollowing is test_data from {sanitized_filename}\n" + raw_data + "\n"
             elif file_path.endswith(".json"):
@@ -106,6 +109,8 @@ def read_and_process_file(file_path: str, sanitized_filename: str) -> str:
                     minified_json = json.dumps(json_data, separators=(",", ":"))
                     new_read += f"\nfollowing is test_data from {sanitized_filename}\n" + minified_json + "\n"
                 except Exception as e:
+
+                    traceback.print_exc()
                     logger.warning("Failed to parse JSON: %s", e)
                     new_read += f"\nfollowing is test_data from {sanitized_filename}\n" + raw_data + "\n"
             else:

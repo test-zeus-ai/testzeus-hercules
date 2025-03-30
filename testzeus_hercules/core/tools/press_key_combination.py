@@ -1,5 +1,6 @@
 import asyncio
 import inspect
+import traceback
 from typing import Annotated
 
 from playwright.async_api import Page  # type: ignore
@@ -11,8 +12,14 @@ from testzeus_hercules.utils.dom_mutation_observer import unsubscribe  # type: i
 from testzeus_hercules.utils.logger import logger
 
 
-@tool(agent_names=["browser_nav_agent"], description="""Executes key press on page (Enter, PageDown, ArrowDown, etc.).""", name="press_key_combination")
-async def press_key_combination(key_combination: Annotated[str, "key to press, e.g., Enter, PageDown etc"]) -> str:
+@tool(
+    agent_names=["browser_nav_agent"],
+    description="""Executes key press on page (Enter, PageDown, ArrowDown, etc.).""",
+    name="press_key_combination",
+)
+async def press_key_combination(
+    key_combination: Annotated[str, "key to press, e.g., Enter, PageDown etc"],
+) -> str:
     logger.info(f"Executing press_key_combination with key combo: {key_combination}")
     # Create and use the PlaywrightManager
     browser_manager = PlaywrightManager()
@@ -43,7 +50,10 @@ async def press_key_combination(key_combination: Annotated[str, "key to press, e
         await page.keyboard.up(key)
     await asyncio.sleep(get_global_conf().get_delay_time())  # sleep for 100ms to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
-    await page.wait_for_load_state()
+
+    await browser_manager.wait_for_load_state_if_enabled(page=page)
+
+    await browser_manager.take_screenshots("press_key_combination_end", page)
     if dom_changes_detected:
         return f"Key {key_combination} executed successfully.\n As a consequence of this action, new elements have appeared in view:{dom_changes_detected}. This means that the action is not yet executed and needs further interaction. Get all_fields DOM to complete the interaction."
 
@@ -86,6 +96,8 @@ async def do_press_key_combination(browser_manager: PlaywrightManager, page: Pag
             await page.keyboard.up(key)
 
     except Exception as e:
+
+        traceback.print_exc()
         logger.error(f'Error executing press_key_combination "{key_combination}": {e}')
         return False
 

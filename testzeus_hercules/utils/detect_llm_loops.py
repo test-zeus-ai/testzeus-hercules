@@ -40,7 +40,7 @@ def is_agent_stuck_in_loop(messages: list[dict[str, Any]]) -> bool:
                     logger.debug(f"Last N tool responses: {assistant_contents}")
                     if all(content == assistant_contents[0] for content in assistant_contents):
                         logger.debug(f"Last {number_of_rounds_to_check_for_loops} tool responses are identical. Terminating")
-                        logger.info("Terminating browser executor since a loop was detected...")
+                        logger.info("Terminating nav executor since a loop was detected...")
                         return True
 
     return False

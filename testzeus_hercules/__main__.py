@@ -97,9 +97,9 @@ async def sequential_process() -> None:
                             cost_metrics[ag_name][key] = cost_metrics.get(key, 0) + value
 
         execution_time = runner.execution_time
-        if runner.result and runner.result.chat_history:
-            s_rr = runner.result.chat_history[-1]["content"]
-            s_rr = runner.result.chat_history[-1]["content"]
+
+        if runner.result and runner.result.summary:
+            s_rr = runner.result.summary
             json_content = s_rr.replace("```json\n", "").replace("\n```", "").strip()
             try:
                 runner_result = json.loads(json_content)
@@ -156,7 +156,6 @@ async def process_test_directory(test_dir: str) -> None:
 
     # Update the singleton config
     set_global_conf(test_config, override=True)
-
     logger.info(f"Processing test directory: {test_dir}")
     await sequential_process()
 

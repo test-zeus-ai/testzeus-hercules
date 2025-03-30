@@ -16,8 +16,11 @@ jobs:
         os: [ubuntu-latest]
     runs-on: ${{ matrix.os }}
     env:
-      LLM_MODEL_NAME: ${{ secrets.LLM_MODEL_NAME }}
-      LLM_MODEL_API_KEY: ${{ secrets.LLM_MODEL_API_KEY }}
+      # LLM_MODEL_NAME: ${{ secrets.LLM_MODEL_NAME }}
+      # LLM_MODEL_API_KEY: ${{ secrets.LLM_MODEL_API_KEY }}
+      AGENTS_LLM_CONFIG_JSON: ${{ secrets.AGENTS_LLM_CONFIG_JSON }}
+      AGENTS_LLM_CONFIG_FILE_REF_KEY: ${{ vars.AGENTS_LLM_CONFIG_FILE_REF_KEY }}
+      AGENTS_LLM_CONFIG_FILE: ${{ vars.AGENTS_LLM_CONFIG_FILE }}
       GEO_API_KEY: ${{ secrets.GEO_API_KEY }}
       ENABLE_TELEMETRY: 0
       AUTO_MODE: 1
@@ -47,6 +50,9 @@ jobs:
         run: make install-extra
       - name: Run linter
         run: make lint
+      - name: Write AGENTS_LLM_CONFIG_JSON to file
+        run: |
+          ./helper_scripts/write_var_to_json.sh ${{ vars.AGENTS_LLM_CONFIG_FILE }}
       - name: Run tests
         run: |
           set -e  # Exit immediately if a command exits with a non-zero status

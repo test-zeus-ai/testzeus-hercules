@@ -86,9 +86,10 @@ class JUnitXMLGenerator:
         test_case = TestCase(name=scenario, classname=feature, time=execution_time)
 
         final_response = json_data.get("final_response")
+        terminate = json_data.get("terminate", "yes")
         assert_summary = json_data.get("assert_summary", "Runtime Failure")
         is_assert = json_data.get("is_assert", False)
-        is_passed = json_data.get("is_passed", True)
+        is_passed = json_data.get("is_passed", False)
 
         if is_assert:
             add_event(
@@ -106,6 +107,7 @@ class JUnitXMLGenerator:
         opt_list = []
         test_props = Properties()
         test_case.append(test_props)
+        test_props.add_property(Property(name="Terminate", value=str(terminate)))
         test_props.add_property(Property(name="Feature File", value=str(self.feature_file_path)))
         test_props.add_property(Property(name="Output File", value=str(self.output_file_path)))
         test_props.add_property(Property(name="Proofs Video", value=str(self.proofs_video_path)))

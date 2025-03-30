@@ -7,8 +7,8 @@ from typing import Annotated, Any, Optional
 
 from playwright.async_api import Page
 from testzeus_hercules.config import get_global_conf
-from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.browser_logger import get_browser_logger
+from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.logger import logger
@@ -21,11 +21,7 @@ from testzeus_hercules.utils.logger import logger
     or 'binary' for a binary object representation.""",
     name="read_clipboard",
 )
-async def read_clipboard(
-    clipboard_type: Annotated[
-        str, "Clipboard content type: 'text' or 'binary'"
-    ] = "text"
-) -> Annotated[Any, "Clipboard content read result"]:
+async def read_clipboard(clipboard_type: Annotated[str, "Clipboard content type: 'text' or 'binary'"] = "text") -> Annotated[Any, "Clipboard content read result"]:
     """
     Reads the clipboard content from the current page.
 

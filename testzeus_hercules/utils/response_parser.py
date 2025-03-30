@@ -1,4 +1,5 @@
 import json
+import traceback
 from typing import Any
 
 from testzeus_hercules.utils.logger import logger
@@ -32,6 +33,8 @@ def parse_response(message: str) -> dict[str, Any]:
     try:
         json_response: dict[str, Any] = json.loads(message)
     except Exception as e:
+
+        traceback.print_exc()
         # Rest of the error handling remains the same
         logger.warn(f'LLM response was not properly formed JSON. Will try to use it as is. LLM response: "{message}". Error: {e}')
 

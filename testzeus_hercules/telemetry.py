@@ -166,6 +166,7 @@ async def send_message_to_sentry() -> None:
             scope.set_extra("session_summary", message)
             sentry_sdk.capture_message("Program execution summary")
     except Exception as e:
+
         print(f"Error sending message to Sentry: {e}")
 
 

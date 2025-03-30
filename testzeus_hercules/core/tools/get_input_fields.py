@@ -5,8 +5,8 @@ from typing import Annotated, Any, Dict, List, Union
 
 from playwright.async_api import Page
 from testzeus_hercules.config import get_global_conf
-from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.browser_logger import get_browser_logger
+from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.dom_helper import wait_for_non_loading_dom_state
@@ -23,9 +23,7 @@ from testzeus_hercules.utils.logger import logger
 Notes: [Elements ordered as displayed, Consider ordinal/numbered item positions]""",
     name="get_input_fields",
 )
-async def get_input_fields() -> (
-    Annotated[str, "DOM type dict giving all input elements on page"]
-):
+async def get_input_fields() -> Annotated[str, "DOM type dict giving all input elements on page"]:
 
     add_event(EventType.INTERACTION, EventData(detail="get_input_fields"))
     start_time = time.time()
@@ -33,7 +31,9 @@ async def get_input_fields() -> (
     browser_manager = PlaywrightManager()
     await browser_manager.wait_for_page_and_frames_load()
     page = await browser_manager.get_current_page()
-    await page.wait_for_load_state()
+
+    await browser_manager.wait_for_load_state_if_enabled(page=page)
+
     if page is None:  # type: ignore
         raise ValueError("No active page found. OpenURL command opens a new page.")
 
@@ -45,9 +45,7 @@ async def get_input_fields() -> (
         return "Could not fetch input fields. Please consider trying with content_type all_fields."
 
     # Flatten the hierarchy into a list of elements
-    def flatten_elements(
-        node: dict, parent_name: str = "", parent_title: str = ""
-    ) -> list[dict]:
+    def flatten_elements(node: dict, parent_name: str = "", parent_title: str = "") -> list[dict]:
         elements = []
         form_elements = {
             "input",
@@ -96,18 +94,19 @@ async def get_input_fields() -> (
         EventData(detail=f"DETECTED {rr} components"),
     )
 
-    if isinstance(extracted_data, list):
-        for i, item in enumerate(extracted_data):
-            extracted_data[i] = await rename_children(item)
+    #     if isinstance(extracted_data, list):
+    #         for i, item in enumerate(extracted_data):
+    #             extracted_data[i] = await rename_children(item)
 
+    #     extracted_data = json.dumps(extracted_data, separators=(",", ":"))
+    #     extracted_data_legend = """Key legend:
+    # t: tag
+    # r: role
+    # c: children
+    # n: name
+    # tl: title
+    # Dict >>
+    # """
+    #     extracted_data = extracted_data_legend + extracted_data
     extracted_data = json.dumps(extracted_data, separators=(",", ":"))
-    extracted_data_legend = """Key legend:
-t: tag
-r: role
-c: children
-n: name
-tl: title
-Dict >>
-"""
-    extracted_data = extracted_data_legend + extracted_data
     return extracted_data or "Its Empty, try something else"  # type: ignore

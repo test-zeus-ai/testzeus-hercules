@@ -1,4 +1,5 @@
 import asyncio
+import traceback
 from typing import Annotated
 
 from testzeus_hercules.config import get_global_conf
@@ -45,9 +46,7 @@ async def drag_and_drop(
             await asyncio.sleep(wait_before_execution)
 
         # Find source using md selector
-        source_element = await browser_manager.find_element(
-            selector, page, element_name="drag_and_drop"
-        )
+        source_element = await browser_manager.find_element(selector, page, element_name="drag_and_drop")
         if source_element is None:
             raise ValueError(f"Source element with selector: '{selector}' not found")
 
@@ -88,13 +87,14 @@ async def drag_and_drop(
                     target_element = element
                     logger.info(f"Found target element using selector: {selector}")
                     break
-            except Exception:
+            except Exception as e:
+
+                traceback.print_exc()
+                logger.exception(f"Error finding target element: {e}")
                 continue
 
         if target_element is None:
-            raise ValueError(
-                f"Target element not found using any of these selectors: {selectors_to_try}"
-            )
+            raise ValueError(f"Target element not found using any of these selectors: {selectors_to_try}")
 
         # Ensure elements are visible and get their positions
         try:
@@ -142,11 +142,15 @@ async def drag_and_drop(
             return f"Successfully performed drag and drop from '{selector}' to '{target_selector}'"
 
         except Exception as e:
+
+            traceback.print_exc()
             error_msg = f"Failed to perform drag and drop: {str(e)}"
             logger.error(error_msg)
             return error_msg
 
     except Exception as e:
+
+        traceback.print_exc()
         error_msg = f"Failed to perform drag and drop operation: {str(e)}"
         logger.error(error_msg)
         return error_msg

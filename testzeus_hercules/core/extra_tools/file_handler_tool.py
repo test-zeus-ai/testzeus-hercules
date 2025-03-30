@@ -1,5 +1,6 @@
 import json
 import os
+import traceback
 from typing import Annotated, Union
 
 import yaml
@@ -33,6 +34,8 @@ def persist_findings(
             try:
                 parsed_data = json.loads(data)
             except Exception as e:
+
+                traceback.print_exc()
                 raise ValueError("Provided data is not valid JSON: " + str(e))
             if not isinstance(parsed_data, (dict, list)):
                 raise ValueError("For JSON files, data must represent a dictionary or a list.")
@@ -42,6 +45,8 @@ def persist_findings(
             try:
                 parsed_data = yaml.safe_load(data)
             except Exception as e:
+
+                traceback.print_exc()
                 raise ValueError("Provided data is not valid YAML: " + str(e))
             if not isinstance(parsed_data, (dict, list)):
                 raise ValueError("For YAML files, data must represent a dictionary or a list.")
@@ -54,6 +59,8 @@ def persist_findings(
             raise ValueError(f"Unsupported file extension: {ext}")
         return f"Successfully wrote data to {file_path}"
     except Exception as e:
+
+        traceback.print_exc()
         return f"Error writing file: {e}"
 
 
@@ -71,7 +78,9 @@ def persist_findings(
         "operation fails."
     ),
 )
-def recall_findings(file_path: Annotated[str, "The path to the file from which data should be read."]) -> Annotated[
+def recall_findings(
+    file_path: Annotated[str, "The path to the file from which data should be read."],
+) -> Annotated[
     Union[dict, list, str],
     "The file content (parsed object for JSON/YAML or string for TXT/LOG) or an error message.",
 ]:
@@ -88,6 +97,8 @@ def recall_findings(file_path: Annotated[str, "The path to the file from which d
         else:
             raise ValueError(f"Unsupported file extension: {ext}")
     except Exception as e:
+
+        traceback.print_exc()
         return f"Error reading file: {e}"
 
 
@@ -129,6 +140,8 @@ def augment_findings(
             try:
                 new_data_parsed = json.loads(data)
             except Exception as e:
+
+                traceback.print_exc()
                 raise ValueError("Provided data is not valid JSON: " + str(e))
             if not isinstance(new_data_parsed, (dict, list)):
                 raise ValueError("For JSON files, data must represent a dictionary or a list.")
@@ -160,6 +173,8 @@ def augment_findings(
             try:
                 new_data_parsed = yaml.safe_load(data)
             except Exception as e:
+
+                traceback.print_exc()
                 raise ValueError("Provided data is not valid YAML: " + str(e))
             if not isinstance(new_data_parsed, (dict, list)):
                 raise ValueError("For YAML files, data must represent a dictionary or a list.")
@@ -190,4 +205,6 @@ def augment_findings(
 
         return f"Successfully appended data to {file_path}"
     except Exception as e:
+
+        traceback.print_exc()
         return f"Error appending file: {e}"

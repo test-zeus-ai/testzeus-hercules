@@ -6,8 +6,8 @@ from typing import Annotated, Any, Dict, List, Tuple, Union
 
 from playwright.async_api import Page
 from testzeus_hercules.config import get_global_conf
-from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.browser_logger import get_browser_logger
+from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.tool_registry import tool, tool_registry
 from testzeus_hercules.utils.dom_helper import get_element_outer_html
 from testzeus_hercules.utils.dom_mutation_observer import subscribe, unsubscribe
@@ -16,9 +16,7 @@ from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
 
 
-async def custom_set_slider_value(
-    page: Page, selector: str, value_to_set: float
-) -> None:
+async def custom_set_slider_value(page: Page, selector: str, value_to_set: float) -> None:
     """
     Sets the value of a range slider input element to a specified value.
 
@@ -71,9 +69,9 @@ async def custom_set_slider_value(
         )
         logger.debug(f"custom_set_slider_value result: {result}")
     except Exception as e:
-        logger.error(
-            f"Error in custom_set_slider_value, Selector: {selector}, Value: {value_to_set}. Error: {str(e)}"
-        )
+
+        traceback.print_exc()
+        logger.error(f"Error in custom_set_slider_value, Selector: {selector}, Value: {value_to_set}. Error: {str(e)}")
         raise
 
 
@@ -81,7 +79,7 @@ async def setslider(
     entry: Annotated[
         tuple[str, str],
         "tuple containing 'selector' and 'value_to_fill' in ('selector', 'value_to_fill') format, selector is md attribute value of the dom element to interact, md is an ID and 'value_to_fill' is the value or text of the option to select",
-    ]
+    ],
 ) -> Annotated[str, "Explanation of the outcome of this operation."]:
     logger.info(f"Setting slider value: {entry}")
 
@@ -116,11 +114,11 @@ async def setslider(
     subscribe(detect_dom_changes)
 
     result = await do_setslider(page, selector, value_float)
-    await asyncio.sleep(
-        get_global_conf().get_delay_time()
-    )  # sleep to allow the mutation observer to detect changes
+    await asyncio.sleep(get_global_conf().get_delay_time())  # sleep to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
-    await page.wait_for_load_state()
+
+    await browser_manager.wait_for_load_state_if_enabled(page=page)
+
     await browser_manager.take_screenshots(f"{function_name}_end", page)
 
     if dom_changes_detected:
@@ -128,9 +126,7 @@ async def setslider(
     return result["detailed_message"]
 
 
-async def do_setslider(
-    page: Page, selector: str, value_to_set: float
-) -> dict[str, str]:
+async def do_setslider(page: Page, selector: str, value_to_set: float) -> dict[str, str]:
     """
     Performs the slider value setting operation on a DOM or Shadow DOM element.
 
@@ -149,15 +145,11 @@ async def do_setslider(
         result = await do_setslider(page, '#volume', 75)
     """
     try:
-        logger.debug(
-            f"Looking for selector {selector} to set slider value: {value_to_set}"
-        )
+        logger.debug(f"Looking for selector {selector} to set slider value: {value_to_set}")
 
         # Find the element in the DOM or Shadow DOM
         browser_manager = PlaywrightManager()
-        elem_handle = await browser_manager.find_element(
-            selector, page, element_name="setslider"
-        )
+        elem_handle = await browser_manager.find_element(selector, page, element_name="setslider")
 
         if elem_handle is None:
             # Initialize selector logger with proof path
@@ -180,9 +172,7 @@ async def do_setslider(
         # Initialize selector logger with proof path
         selector_logger = get_browser_logger(get_global_conf().get_proof_path())
         # Get alternative selectors and element attributes for logging
-        alternative_selectors = await selector_logger.get_alternative_selectors(
-            elem_handle, page
-        )
+        alternative_selectors = await selector_logger.get_alternative_selectors(elem_handle, page)
         element_attributes = await selector_logger.get_element_attributes(elem_handle)
 
         # Get slider properties before setting value
@@ -234,10 +224,8 @@ async def do_setslider(
         )
 
         await elem_handle.focus()
-        await page.wait_for_load_state()
-        logger.info(
-            f"Success. Slider value {value_to_set} set successfully in the element with selector {selector}"
-        )
+        await browser_manager.wait_for_load_state_if_enabled(page=page)
+        logger.info(f"Success. Slider value {value_to_set} set successfully in the element with selector {selector}")
         success_msg = f"Success. Slider value {value_to_set} set successfully in the element with selector {selector}"
         return {
             "summary_message": success_msg,
@@ -245,6 +233,8 @@ async def do_setslider(
         }
 
     except Exception as e:
+
+        traceback.print_exc()
         # Initialize selector logger with proof path
         selector_logger = get_browser_logger(get_global_conf().get_proof_path())
         # Log failed selector interaction
@@ -271,7 +261,7 @@ async def bulk_set_slider(
     entries: Annotated[
         List[List[str]],
         "List of tuple containing 'selector' and 'value_to_fill' in [('selector', 'value_to_fill'), ..] format, selector is md attribute value of the dom element to interact, md is an ID and 'value_to_fill' is the value or text of the option to select",
-    ]
+    ],
 ) -> Annotated[
     List[Dict[str, str]],
     "List of dictionaries, each containing 'selector' and the result of the operation.",
@@ -282,9 +272,7 @@ async def bulk_set_slider(
         if len(entry) != 2:
             logger.error(f"Invalid entry format: {entry}. Expected [selector, value]")
             continue
-        result = await setslider(
-            (entry[0], entry[1])
-        )  # Create tuple with explicit values
+        result = await setslider((entry[0], entry[1]))  # Create tuple with explicit values
         results.append({"selector": entry[0], "result": result})
 
     return results

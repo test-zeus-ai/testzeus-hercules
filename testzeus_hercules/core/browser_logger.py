@@ -1,6 +1,7 @@
 import json
 import os
 import time
+import traceback
 from typing import Any, Dict, List, Optional, Union
 
 from testzeus_hercules.config import get_global_conf
@@ -123,6 +124,8 @@ class BrowserLogger:
                 file.write(line)
 
         except Exception as e:
+
+            traceback.print_exc()
             logger.error(f"Failed to write interaction log: {e}")
 
     async def log_browser_interaction(
@@ -256,9 +259,7 @@ class BrowserLogger:
             additional_data=additional_data,
         )
 
-    async def get_alternative_selectors(
-        self, element: Any, page: Any
-    ) -> Dict[str, str]:
+    async def get_alternative_selectors(self, element: Any, page: Any) -> Dict[str, str]:
         """Generate alternative selectors for an element."""
         try:
             selectors = {}
@@ -323,6 +324,8 @@ class BrowserLogger:
 
             return selectors
         except Exception as e:
+
+            traceback.print_exc()
             logger.error(f"Failed to generate alternative selectors: {e}")
             return {}
 
@@ -344,6 +347,8 @@ class BrowserLogger:
 
             return attributes
         except Exception as e:
+
+            traceback.print_exc()
             logger.error(f"Failed to get element attributes: {e}")
             return {}
 

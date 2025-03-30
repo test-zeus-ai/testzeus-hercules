@@ -60,7 +60,7 @@ def set_log_level(level: str) -> None:
 # Set default log levels for other libraries
 # logging.getLogger("httpcore").setLevel(logging.DEBUG)
 # logging.getLogger("httpx").setLevel(logging.DEBUG)
-# logging.getLogger("openai").setLevel(logging.DEBUG)
+logging.getLogger("openai").setLevel(logging.INFO)
 # logging.getLogger("autogen").setLevel(logging.DEBUG)
 logging.getLogger("matplotlib.pyplot").setLevel(logging.WARNING)
 logging.getLogger("PIL.PngImagePlugin").setLevel(logging.WARNING)

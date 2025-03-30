@@ -2,11 +2,12 @@ import asyncio
 import json
 import os
 import time
-from typing import Any
+from datetime import datetime
+from typing import Any, Dict, List, Optional, cast
 
 import aiofiles
 from testzeus_hercules.config import get_global_conf
-from testzeus_hercules.core.agents_llm_config import AgentsLLMConfig
+from testzeus_hercules.core.agents_llm_config_manager import AgentsLLMConfigManager
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.simple_hercules import SimpleHercules
 from testzeus_hercules.utils.cli_helper import async_input  # type: ignore
@@ -32,8 +33,8 @@ class BaseRunner:
     ):
         self.planner_number_of_rounds = planner_max_chat_round
         self.nav_agent_number_of_rounds = browser_nav_max_chat_round
-        self.browser_manager = None
-        self.simple_hercules = None
+        self.browser_manager: PlaywrightManager | None = None
+        self.simple_hercules: SimpleHercules | None = None
         self.is_running = False
         self.stake_id = stake_id
         self.dont_terminate_browser_after_run = dont_terminate_browser_after_run
@@ -43,15 +44,36 @@ class BaseRunner:
         self.planner_agent_name = "planner_agent"
         self.shutdown_event = asyncio.Event()
 
+        # Agent configurations
+        self.planner_agent_config: Dict[str, Any] | None = None
+        self.nav_agent_config: Dict[str, Any] | None = None
+        self.mem_agent_config: Dict[str, Any] | None = None
+        self.helper_config: Dict[str, Any] | None = None
+
     async def initialize(self) -> None:
         """
         Initializes components for the system, including the Autogen wrapper and the Playwright manager.
         """
-        llm_config = AgentsLLMConfig()
-        self.planner_agent_config = llm_config.get_planner_agent_config()
-        self.nav_agent_config = llm_config.get_nav_agent_config()
-        self.mem_agent_config = llm_config.get_mem_agent_config()
-        self.helper_config = llm_config.get_helper_agent_config()
+        if not self.stake_id:
+            raise ValueError("stake_id is required")
+
+        config_manager = AgentsLLMConfigManager.get_instance()
+        config_manager.initialize()
+
+        # Get configurations and convert to Dict[str, Any]
+        planner_config = config_manager.get_agent_config("planner_agent")
+        nav_config = config_manager.get_agent_config("nav_agent")
+        mem_config = config_manager.get_agent_config("mem_agent")
+        helper_config = config_manager.get_agent_config("helper_agent")
+
+        if not all([planner_config, nav_config, mem_config, helper_config]):
+            raise ValueError("Failed to get required agent configurations")
+
+        # Convert TypedDict to Dict[str, Any]
+        self.planner_agent_config = dict(planner_config)
+        self.nav_agent_config = dict(nav_config)
+        self.mem_agent_config = dict(mem_config)
+        self.helper_config = dict(helper_config)
 
         self.simple_hercules = await SimpleHercules.create(
             self.stake_id,
@@ -67,11 +89,65 @@ class BaseRunner:
         self.browser_manager = PlaywrightManager(gui_input_mode=False, stake_id=self.stake_id)
         await self.browser_manager.async_initialize()
 
-    async def clean_up_plan(self) -> None:
-        """
-        Clean up the plan after each command is processed.
-        """
-        await self.simple_hercules.clean_up_plan()
+    async def clean_up(self) -> None:
+        """Clean up resources."""
+        if self.simple_hercules:
+            await self.simple_hercules.clean_up_plan()
+        if self.browser_manager:
+            await self.browser_manager.stop_playwright()
+
+    def get_agents_map(self) -> Dict[str, Any]:
+        """Get the agents map from SimpleHercules."""
+        if not self.simple_hercules or not self.simple_hercules.agents_map:
+            return {}
+        agents_map = cast(Dict[str, Any], self.simple_hercules.agents_map)
+        return agents_map
+
+    async def save_chat_logs(self, agents_map: Dict[str, Any]) -> None:
+        """Save chat logs to files."""
+        if not self.planner_agent_name in agents_map:
+            return
+
+        messages = agents_map[self.planner_agent_name].chat_messages
+        messages_str_keys: Dict[str, List[Dict[str, Any]]] = {str(key): value for key, value in messages.items()}
+        res_output_thoughts_logs_di: Dict[str, List[Dict[str, Any]]] = {}
+
+        for key, value in messages_str_keys.items():
+            if self.planner_agent_name in res_output_thoughts_logs_di:
+                res_output_thoughts_logs_di[self.planner_agent_name].extend(value)
+            else:
+                res_output_thoughts_logs_di[self.planner_agent_name] = value.copy()
+
+        for key, vals in res_output_thoughts_logs_di.items():
+            # logger.debug(f"Planner chat log: {key} : {vals}")
+            for idx, val in enumerate(vals):
+                logger.debug(f"Planner chat log: {val}")
+                content = val["content"]
+                content = content.replace("```json", "").replace("```", "").strip()
+                res_content = None
+                try:
+                    res_content = json.loads(content)
+                except json.JSONDecodeError:
+                    logger.debug(f"Failed to decode JSON: {content}, keeping as multiline string")
+                    res_content = content
+                res_output_thoughts_logs_di[key][idx]["content"] = res_content
+
+        if self.save_chat_logs_to_files:
+            async with aiofiles.open(
+                os.path.join(
+                    get_global_conf().get_source_log_folder_path(self.stake_id),
+                    "agent_inner_thoughts.json",
+                ),
+                "w",
+                encoding="utf-8",
+            ) as f:
+                await f.write(json.dumps(res_output_thoughts_logs_di, ensure_ascii=False, indent=4))
+            logger.debug("Chat messages saved")
+        else:
+            logger.info(
+                "Planner chat log: ",
+                extra={"planner_chat_log": res_output_thoughts_logs_di},
+            )
 
     async def process_command(self, command: str) -> tuple[Any, float]:
         """
@@ -82,10 +158,10 @@ class BaseRunner:
 
         Returns:
             Any: The result of processing the command, if any.
-            int: The elapsed time for processing the command.
+            float: The elapsed time for processing the command.
         """
         result = None
-        elapsed_time = 0
+        elapsed_time: float = 0.0
         logger.info(f"Received command: {command}")
         if command.lower() == "exit":
             await self.shutdown()
@@ -121,45 +197,7 @@ class BaseRunner:
         """
         Saves chat messages to a file or logs them based on configuration.
         """
-        messages = self.simple_hercules.agents_map[self.planner_agent_name].chat_messages
-        messages_str_keys = {str(key): value for key, value in messages.items()}
-        res_output_thoughts_logs_di = {}
-        for key, value in messages_str_keys.items():
-            if res_output_thoughts_logs_di.get(self.planner_agent_name):
-                res_output_thoughts_logs_di[self.planner_agent_name] += value
-            else:
-                res_output_thoughts_logs_di[self.planner_agent_name] = value
-
-        for key, vals in res_output_thoughts_logs_di.items():
-            # logger.debug(f"Planner chat log: {key} : {vals}")
-            for idx, val in enumerate(vals):
-                logger.debug(f"Planner chat log: {val}")
-                content = val["content"]
-                content = content.replace("```json", "").replace("```", "").strip()
-                res_content = None
-                try:
-                    res_content = json.loads(content)
-                except json.JSONDecodeError:
-                    logger.debug(f"Failed to decode JSON: {content}, keeping as multiline string")
-                    res_content = content
-                res_output_thoughts_logs_di[key][idx]["content"] = res_content
-
-        if self.save_chat_logs_to_files:
-            async with aiofiles.open(
-                os.path.join(
-                    get_global_conf().get_source_log_folder_path(self.stake_id),
-                    "agent_inner_thoughts.json",
-                ),
-                "w",
-                encoding="utf-8",
-            ) as f:
-                await f.write(json.dumps(res_output_thoughts_logs_di, ensure_ascii=False, indent=4))
-            logger.debug("Chat messages saved")
-        else:
-            logger.info(
-                "Planner chat log: ",
-                extra={"planner_chat_log": res_output_thoughts_logs_di},
-            )
+        await self.save_chat_logs(self.get_agents_map())
 
     async def shutdown(self) -> None:
         """
@@ -183,6 +221,22 @@ class BaseRunner:
         """
         raise NotImplementedError("Subclasses should implement this method.")
 
+    async def run_planner_agent(self) -> None:
+        """Run the planner agent."""
+        start_time = time.time()
+        # ... existing code ...
+        elapsed_time = time.time() - start_time
+        self.planner_number_of_rounds = max(1, round(elapsed_time))
+        # ... existing code ...
+
+    async def run_browser_nav_agent(self) -> None:
+        """Run the browser navigation agent."""
+        start_time = time.time()
+        # ... existing code ...
+        elapsed_time = time.time() - start_time
+        self.nav_agent_number_of_rounds = max(1, round(elapsed_time))
+        # ... existing code ...
+
 
 class CommandPromptRunner(BaseRunner):
     """
@@ -197,7 +251,7 @@ class CommandPromptRunner(BaseRunner):
         while not self.is_running:
             command: str = await async_input("Enter your command (or type 'exit' to quit): ")
             await self.process_command(command)
-            await self.clean_up_plan()
+            await self.clean_up()
             if self.shutdown_event.is_set():
                 break
         await self.wait_for_exit()
@@ -217,7 +271,7 @@ class SingleCommandInputRunner(BaseRunner):
         super().__init__(*args, **kwargs)
         self.command = command
         self.result = None
-        self.execution_time = 0
+        self.execution_time: float = 0
 
     async def start(self) -> None:
         """

@@ -31,7 +31,7 @@ class SecNavAgent(BaseNavAgent):
    - Record observed issues
 
    2. Response Protocol:
-   - For all responses, start with previous_step: <previous step assigned>
+   - For all responses, start with previous_step: [previous step assigned summary]
    - Terminate unclear tests with + ##TERMINATE TASK##
    - For successful tests: ##FLAG::SAVE_IN_MEM## + ##TERMINATE TASK##
    - Explain termination reason

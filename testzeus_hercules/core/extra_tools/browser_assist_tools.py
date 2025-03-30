@@ -1,5 +1,6 @@
 import os
 import time
+import traceback
 from typing import Annotated, Dict, Union
 
 from PIL import Image
@@ -46,13 +47,7 @@ async def take_browser_screenshot(
 
         # Create a timestamped filename
         timestamp = int(time.time())
-        base_filename = (
-            screenshot_title.replace(" ", "_")
-            .replace("/", "_")
-            .replace(":", "_")
-            .lower()
-            + f"_{timestamp}"
-        )
+        base_filename = screenshot_title.replace(" ", "_").replace("/", "_").replace(":", "_").lower() + f"_{timestamp}"
         screenshot_file = os.path.join(screenshots_dir, f"{base_filename}.png")
 
         # Save the screenshot
@@ -63,6 +58,8 @@ async def take_browser_screenshot(
         return f"Screenshot saved successfully to: {screenshot_file}"
 
     except Exception as e:
+
+        traceback.print_exc()
         logger.exception(f"Error taking screenshot: {e}")
         return {"error": str(e)}
 
@@ -108,5 +105,7 @@ async def capture_the_screen() -> Annotated[str, "Path to of screenshot"]:
         return screenshot_file
 
     except Exception as e:
+
+        traceback.print_exc()
         logger.exception(f"Error taking snapshot: {e}")
         return {"error": str(e)}

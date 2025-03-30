@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import time
+import traceback
 from typing import Annotated, Dict, Union
 
 from autogen import UserProxyAgent
@@ -11,7 +12,6 @@ from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.llm_helper import create_multimodal_agent
 from testzeus_hercules.utils.logger import logger
-
 
 # Create a UserProxyAgent for the image comparison agent
 image_ex_user_proxy = UserProxyAgent(
@@ -26,7 +26,7 @@ image_ex_user_proxy = UserProxyAgent(
 @tool(
     agent_names=["browser_nav_agent"],
     name="compare_visual_screenshot",
-    description="Compare the current browser view with a reference image or screenshot and log results",
+    description="Compare the current screen view with a reference image or screenshot and return results",
 )
 async def compare_visual_screenshot(
     reference_image_path: Annotated[
@@ -47,7 +47,7 @@ async def compare_visual_screenshot(
     # Initialize the image comparison agent
     image_agent = create_multimodal_agent(
         name="image-comparer",
-        system_message="You are a visual comparison agent. You can compare images and provide feedback. Your only purpose is to do visual comparison of images",
+        system_message="You are a visual comparison agent compare screen with reference image. Your only purpose is to do visual comparison of screen and image",
     )
     try:
         if not os.path.exists(reference_image_path):
@@ -160,6 +160,8 @@ async def compare_visual_screenshot(
         )
 
     except Exception as e:
+
+        traceback.print_exc()
         logger.exception(f"Error in compare_visual: {e}")
         return {"error": str(e)}
 
@@ -175,13 +177,15 @@ async def _write_comparison_to_file(comparison_data: Dict, filepath: str) -> Non
         await asyncio.to_thread(write_json, filepath, comparison_data)
         logger.info(f"Comparison data saved to: {filepath}")
     except Exception as e:
+
+        traceback.print_exc()
         logger.error(f"Failed to write comparison data to file: {e}")
 
 
 @tool(
     agent_names=["browser_nav_agent"],
     name="validate_visual_feature",
-    description="Validate if specific features or items are present in the current browser view",
+    description="Validate if specific features or items are present in the current screen",
 )
 async def validate_visual_feature(
     feature_description: Annotated[
@@ -203,7 +207,7 @@ async def validate_visual_feature(
     # Initialize the image comparison agent
     image_agent = create_multimodal_agent(
         name="image-comparer",
-        system_message="You are a visual comparison agent. You can compare images and provide feedback. Your only purpose is to do visual comparison of images",
+        system_message="You are a visual validation agent. You can look into current screen and provide feedback. Your only purpose is to do visual analysis of screen",
     )
     try:
         # Get current screenshot
@@ -295,5 +299,7 @@ async def validate_visual_feature(
         )
 
     except Exception as e:
+
+        traceback.print_exc()
         logger.exception(f"Error in validate_visual_feature: {e}")
         return {"error": str(e)}

@@ -72,19 +72,19 @@ You are an API Navigation Agent responsible for executing API calls and handling
 Use the following standardized response formats:
 
 - **Success:**
-previous_step: <previous step assigned>
-[DETAILED EXPANDED COMPLETE LOSS LESS output]
+previous_step: [previous step assigned summary]
+current_output: [DETAILED EXPANDED COMPLETE LOSS LESS output]
 ##FLAG::SAVE_IN_MEM##
 ##TERMINATE TASK##
 
 - **Information Request:**
-previous_step: <previous step assigned>
-[DETAILED EXPANDED COMPLETE LOSS LESS output]
+previous_step: [previous step assigned summary]
+current_output: [DETAILED EXPANDED COMPLETE LOSS LESS output]
 ##TERMINATE TASK##
 
 - **Error:**
-previous_step: <previous step assigned>
-[Issue description]
+previous_step: [previous step assigned summary]
+current_output: [Issue description]
 [Required information]
 ##TERMINATE TASK##
 

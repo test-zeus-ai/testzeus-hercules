@@ -72,7 +72,6 @@ class SimpleHercules:
         browser_nav_max_chat_round: int = 10,
     ):
         self.timestamp = get_timestamp_str()
-        oai.Completion.set_cache(5, cache_path_root=".cache")
         self.planner_number_of_rounds = planner_max_chat_round
         self.nav_agent_number_of_rounds = browser_nav_max_chat_round
 
@@ -129,8 +128,7 @@ class SimpleHercules:
                     "system_prompt": ["optional prompt unless you want to use the built in"],
                     "llm_config_params": { #all name value pairs here will go to the llm config of autogen verbatim
                         "cache_seed": null,
-                        "temperature": 0.001,
-                        "top_p": 0.001
+                        "temperature": 0.001
                     }
                 }
             nav_agent_config: dict[str, Any]: A dictionary containing the configuration parameters for the browser navigation agent. Same format as planner_agent_config.
@@ -170,6 +168,7 @@ class SimpleHercules:
         self.time_keeper_nav_agent_model_config = convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
         self.mem_agent_model_config = convert_model_config_to_autogen_format(self.mem_agent_config["model_config_params"])
         self.helper_agent_model_config = convert_model_config_to_autogen_format(self.helper_agent_config["model_config_params"])
+
         self.agents_map = await self.__initialize_agents()
 
         def trigger_nested_chat(manager: autogen.ConversableAgent) -> bool:  # type: ignore
@@ -252,6 +251,7 @@ class SimpleHercules:
                 if last_message and do_we_need_get_url:
                     last_message += " " + get_url()
                 if "##FLAG::SAVE_IN_MEM##" in last_message:
+                    last_message = last_message.replace("##FLAG::SAVE_IN_MEM##", "")  # type: ignore
                     mem = "Context from execution of previous steps: " + last_message + "\n"
                     self.save_to_memory(mem)
                     store_run_data(mem)
@@ -280,6 +280,8 @@ class SimpleHercules:
                             final_response=final_response,
                         )
             except Exception as e:
+
+                traceback.print_exc()
                 logger.error(f"Failed to send notification to planner regarding action completion with last_message: {last_message} with exception {e}")
             return last_message
 
@@ -302,11 +304,13 @@ class SimpleHercules:
                     next_step = next_step.strip() + " " + url + f" ##target_helper: {target_helper}##"  # type: ignore
                     # Query memory using abstract method
                     mem_fetch = asyncio.run(self._query_memory(next_step))
-                    next_step = "\n\nTASK FOR HELPER: " + next_step + "\n\nSOME EXTRA INFORMATION FOR FUNCTION CALL from previous step runs: " + mem_fetch
-                    return next_step  # type: ignore
+                    actual_response = "\n\nTASK FOR HELPER: " + next_step
+                    if mem_fetch:
+                        actual_response += "\n\nSOME EXTRA INFORMATION FOR FUNCTION CALL from previous step runs: " + mem_fetch
+                    return actual_response  # type: ignore
                 else:
                     logger.error("Target helper not found in the response")
-                    return "skip this step and return only JSON"  # type: ignore
+                    return "skip this step and return only JSON, Also return the valid target helper in the JSON"  # type: ignore
 
         # Updated logic to handle agent names with underscores
         nav_agents_names = list(
@@ -839,10 +843,10 @@ class SimpleHercules:
         Returns:
             autogen.ConversableAgent: An instance of ConversableAgent for providing assistance.
         """
-        # llm_config = {
-        #     "config_list": self.helper_agent_model_config,
-        #     **self.helper_agent_config["llm_config_params"],  # type: ignore
-        # }
+        llm_config = {
+            "config_list": self.helper_agent_model_config,
+            **self.helper_agent_config["llm_config_params"],  # type: ignore
+        }
 
         # helper_agent = autogen.ConversableAgent(
         #     name="helper_agent",
@@ -855,6 +859,7 @@ class SimpleHercules:
         helper_agent = create_multimodal_agent(
             name="image-comparer",
             system_message="You are a visual comparison agent. You can compare images and provide feedback. Your only purpose is to do visual comparison of images",
+            llm_config=llm_config,
         )
 
         return helper_agent

@@ -24,9 +24,10 @@ async def get_page_text() -> Annotated[str, "DOM content based on type to analyz
     start_time = time.time()
     # Create and use the PlaywrightManager
     browser_manager = PlaywrightManager()
-    await browser_manager.wait_for_page_and_frames_load()
     page = await browser_manager.get_current_page()
-    await page.wait_for_load_state()
+
+    await browser_manager.wait_for_load_state_if_enabled(page=page)
+
     if page is None:  # type: ignore
         raise ValueError("No active page found. OpenURL command opens a new page.")
 
@@ -160,7 +161,7 @@ async def get_filtered_text_content(page: Page) -> str:
             while (walker.nextNode()) {
             const node = walker.currentNode;
             
-            // If it’s a text node, accumulate text
+            // If it's a text node, accumulate text
             if (node.nodeType === Node.TEXT_NODE) {
                 textContent += node.nodeValue;
             }

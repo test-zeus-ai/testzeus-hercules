@@ -40,7 +40,7 @@ class BaseNavAgent:
                 system_message = system_prompt
             logger.info(f"Using custom system prompt for BaseNavAgent: {system_message}")
 
-        system_message = system_message + "\n" + f"Today's date is {datetime.now().strftime('%d %B %Y')}"
+        system_message = system_message + "\n" + f"Current timestamp is {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         config = get_global_conf()
 
         if not config.should_use_dynamic_ltm() and user_ltm:  # Use static LTM when dynamic is disabled
