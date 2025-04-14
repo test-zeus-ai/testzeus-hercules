@@ -818,7 +818,24 @@ class BaseConfigManager:
         """Get path to log folder, optionally including test_id"""
         paths = self.get_trace_path(stake_id=test_id)
         return paths["log_files"]
-
+    
+    def get_output_code_dir(self) -> str:
+        output_code_dir = self._config.get("OUTPUT_CODE_DIR", os.path.join(self._config["PROJECT_SOURCE_ROOT"], "output", "generated_code"))
+        if not os.path.exists(output_code_dir):
+            os.makedirs(output_code_dir)
+            self._config["OUTPUT_CODE_DIR"] = output_code_dir
+        return output_code_dir
+    
+    def get_current_script_dir(self) -> str:
+        generated_code_dir = self._config.get("CURRENT_GENERATED_SCRIPT_DIR", None)
+        if generated_code_dir and not os.path.exists(generated_code_dir):
+            os.makedirs(generated_code_dir)
+            self._config["CURRENT_GENERATED_SCRIPT_DIR"] = generated_code_dir
+        return generated_code_dir
+    
+    def get_staked_id(self) -> str:
+        return self._config["STAKED_ID"]
+    
     # -------------------------------------------------------------------------
     # Telemetry
     # -------------------------------------------------------------------------

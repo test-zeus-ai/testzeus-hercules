@@ -12,7 +12,7 @@ from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.simple_hercules import SimpleHercules
 from testzeus_hercules.utils.cli_helper import async_input  # type: ignore
 from testzeus_hercules.utils.logger import logger
-
+from testzeus_hercules.core.playwright_manager import generate_playwright_test_file
 
 class BaseRunner:
     """
@@ -279,6 +279,11 @@ class SingleCommandInputRunner(BaseRunner):
         """
         await self.initialize()
         self.result, self.execution_time = await self.process_command(self.command)
+        now = datetime.now()
+        timestamp = now.strftime("%Y%m%d_%H%M%S")
+        _file_name = f"{get_global_conf().get_staked_id()}_{timestamp}.py"
+        gen_code_dir = os.path.join(get_global_conf().get_current_script_dir(), _file_name)
+        generate_playwright_test_file(gen_code_dir)
         if not self.dont_terminate_browser_after_run:
             _ = await self.process_command("exit")
             await self.wait_for_exit()

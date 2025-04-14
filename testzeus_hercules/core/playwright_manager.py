@@ -75,6 +75,7 @@ BROWSER_CHANNELS = Literal[
     "firefox-nightly",
 ]
 
+browser_config : Dict[str, Any] = {}
 
 class PlaywrightManager:
     """
@@ -194,6 +195,7 @@ class PlaywrightManager:
         viewport, etc., *unless* you explicitly override them via other parameters.
         """
         self.allow_all_permissions = allow_all_permissions
+        browser_config["allow_all_permissions"] = self.allow_all_permissions
         if hasattr(self, "_PlaywrightManager__initialized") and self.__initialized:
             return  # Already inited, no-op
 
@@ -208,6 +210,7 @@ class PlaywrightManager:
             if record_video is not None
             else get_global_conf().should_record_video()
         )
+        browser_config["record_video"] = self._record_video
         self._latest_video_path: Optional[str] = None
         self._video_dir: Optional[str] = None
 
@@ -218,20 +221,26 @@ class PlaywrightManager:
         # ----------------------
         self.browser_type = (
             browser_type or get_global_conf().get_browser_type() or "chromium"
-        )
+        ) 
+        browser_config["browser_type"] = self.browser_type
         self.browser_channel = (
             browser_channel or get_global_conf().get_browser_channel()
         )
+        browser_config["browser_channel"] = self.browser_channel
         self.browser_path = browser_path or get_global_conf().get_browser_path()
+        browser_config["browser_path"] = self.browser_path
         self.browser_version = (
             browser_version or get_global_conf().get_browser_version()
         )
+        browser_config["browser_version"] = self.browser_version
         self.isheadless = (
             headless
             if headless is not None
             else get_global_conf().should_run_headless()
         )
+        browser_config["headless"] = self.isheadless
         self.cdp_config = cdp_config or get_global_conf().get_cdp_config()
+        browser_config["cdp_config"] = self.cdp_config
 
         # CDP behavior settings
         config = get_global_conf()
@@ -245,6 +254,8 @@ class PlaywrightManager:
             if cdp_navigate_on_connect is not None
             else getattr(config, "cdp_navigate_on_connect", False)
         )
+        browser_config["cdp_reuse_tabs"] = self.cdp_reuse_tabs
+        browser_config["cdp_navigate_on_connect"] = self.cdp_navigate_on_connect
 
         # ----------------------
         # 2) BASIC FLAGS
@@ -261,6 +272,7 @@ class PlaywrightManager:
             if take_bounding_box_screenshots is not None
             else get_global_conf().should_take_bounding_box_screenshots()
         )
+        browser_config["take_bounding_box_screenshots"] = self._take_bounding_box_screenshots
         self.stake_id = stake_id
 
         # ----------------------
@@ -268,8 +280,12 @@ class PlaywrightManager:
         # ----------------------
         self._screenshots_dir = proof_path + "/screenshots"
         self._video_dir = proof_path + "/videos"
+        browser_config["screenshots_dir"] = self._screenshots_dir
+        browser_config["video_dir"] = self._video_dir
         self.request_response_log_file = proof_path + "/network_logs.json"
+        browser_config["request_response_log_file"] = self.request_response_log_file
         self.console_log_file = proof_path + "/console_logs.json"
+        browser_config["console_log_file"] = self.console_log_file
         # Add trace directory path
         self._enable_tracing = get_global_conf().should_enable_tracing()
         self._trace_dir = None
@@ -286,6 +302,7 @@ class PlaywrightManager:
             if log_requests_responses is not None
             else get_global_conf().should_capture_network()
         )
+        browser_config["log_requests_responses"] = self.log_requests_responses
         self.request_response_logs: List[Dict] = []
 
         # ----------------------
@@ -300,6 +317,7 @@ class PlaywrightManager:
         self._extension_cache_dir = os.path.join(
             ".", ".cache", "browser", self.browser_type, "extension"
         )
+        browser_config["extension_cache_dir"] = self._extension_cache_dir
         self._extension_path: Optional[str] = None
 
         # ----------------------
@@ -308,19 +326,24 @@ class PlaywrightManager:
         # If device_name is None, try from CONF
         device_name = device_name or get_global_conf().get_run_device()
         self.device_name = device_name
+        browser_config["device_name"] = self.device_name
         # If no device or device doesn't override viewport, fallback to conf
         conf_res_str = get_global_conf().get_resolution() or "1280,720"
         cw, ch = conf_res_str.split(",")
         conf_viewport = (int(cw), int(ch))
         self.user_viewport = viewport or conf_viewport
+        browser_config["viewport"] = self.user_viewport
 
         self.user_locale = locale or get_global_conf().get_locale()  # or None
+        browser_config["locale"] = self.user_locale
         self.user_timezone = timezone or get_global_conf().get_timezone()  # or None
+        browser_config["timezone"] = self.user_timezone
         self.user_geolocation = (
             geolocation or get_global_conf().get_geolocation()
         )  # or None
+        browser_config["geolocation"] = self.user_geolocation
         self.user_color_scheme = color_scheme or get_global_conf().get_color_scheme()
-
+        browser_config["color_scheme"] = self.user_color_scheme
         # Get browser cookies from config
         self.browser_cookies = get_global_conf().get_browser_cookies()
 
@@ -333,7 +356,7 @@ class PlaywrightManager:
 
         # logging console messages
         self.log_console = log_console if log_console is not None else True
-
+        browser_config["log_console"] = self.log_console
         logger.debug(
             f"PlaywrightManager init - "
             f"browser_type={self.browser_type}, headless={self.isheadless}, "
@@ -341,6 +364,12 @@ class PlaywrightManager:
             f"locale={self.user_locale}, timezone={self.user_timezone}, "
             f"geolocation={self.user_geolocation}, color_scheme={self.user_color_scheme}"
         )
+        browser_config_dir = os.path.join(get_global_conf().get_current_script_dir(),  "config")
+        os.makedirs(browser_config_dir, exist_ok=True)
+        browser_config_path = os.path.join(browser_config_path, "browser_config.json")
+        with open(browser_config_path, "w") as f:
+            json.dump(browser_config, f)
+
 
     async def async_initialize(self) -> None:
         if self.__async_initialize_done:
@@ -2105,3 +2134,132 @@ class PlaywrightManager:
         await self.setup_request_response_logging(page)
         await self.setup_console_logging(page)
         return page
+
+
+def generate_playwright_test_file(file_path):
+    # Template for the Playwright test file
+    template = """
+import asyncio
+import os
+from datetime import datetime
+from pathlib import Path
+from typing import Optional
+
+from playwright.async_api import async_playwright, Browser, Page, BrowserContext
+
+class PlaywrightTest:
+    def __init__(
+        self,
+        headless: bool = False,
+        browser_type: str = 'chromium',
+        viewport: tuple = (1920, 1080),
+        screenshots_dir: str = 'screenshots',
+        videos_dir: str = 'videos'
+    ):
+        
+        self.headless = headless
+        self.browser_type = browser_type
+        self.viewport = viewport
+        self.screenshots_dir = screenshots_dir
+        self.videos_dir = videos_dir
+        
+        # Create directories if they don't exist
+        Path(screenshots_dir).mkdir(parents=True, exist_ok=True)
+        Path(videos_dir).mkdir(parents=True, exist_ok=True)
+        
+        # Initialize browser and context
+        self.browser: Optional[Browser] = None
+        self.context: Optional[BrowserContext] = None
+        self.page: Optional[Page] = None
+
+    async def setup(self):
+      
+        playwright = await async_playwright().start()
+        
+        # Launch browser based on type
+        if self.browser_type == 'chromium':
+            self.browser = await playwright.chromium.launch(headless=self.headless)
+        elif self.browser_type == 'firefox':
+            self.browser = await playwright.firefox.launch(headless=self.headless)
+        elif self.browser_type == 'webkit':
+            self.browser = await playwright.webkit.launch(headless=self.headless)
+        else:
+            raise ValueError(f"Unsupported browser type: {self.browser_type}")
+
+        # Create context with video recording
+        self.context = await self.browser.new_context(
+            viewport={'width': self.viewport[0], 'height': self.viewport[1]},
+            record_video_dir=self.videos_dir
+        )
+        
+        # Create new page
+        self.page = await self.context.new_page()
+
+    async def take_screenshot(self, name: str, full_page: bool = True):
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        screenshot_path = os.path.join(
+            self.screenshots_dir,
+            f"{name}_{timestamp}.png"
+        )
+        await self.page.screenshot(path=screenshot_path, full_page=full_page)
+        return screenshot_path
+
+    async def navigate_to(self, url: str):
+        await self.page.goto(url)
+        await self.page.wait_for_load_state("networkidle")
+
+    async def click(self, selector: str):
+        await self.page.click(selector)
+
+    async def fill(self, selector: str, value: str):
+        await self.page.fill(selector, value)
+
+    async def wait_for_selector(self, selector: str, timeout: int = 5000):
+        await self.page.wait_for_selector(selector, timeout=timeout)
+
+    async def get_text(self, selector: str) -> str:
+        return await self.page.text_content(selector)
+
+    async def cleanup(self):
+        if self.context:
+            await self.context.close()
+        if self.browser:
+            await self.browser.close()
+
+    async def run_test(self):
+        try:
+            # Setup browser
+            await self.setup()
+            
+            # Add the test steps here
+            
+        except Exception as e:
+            print(f"Test failed: {str(e)}")
+            # Take screenshot on failure
+            await self.take_screenshot("error_state")
+            raise
+        finally:
+            # Cleanup
+            await self.cleanup()
+
+async def main():
+    # Create test instance
+    test = PlaywrightTest(
+        headless=False,
+        browser_type={{browser_type}},
+        viewport=(1920, 1080),
+        screenshots_dir={{screenshots_directory}},
+        videos_dir={{videos_directory}}
+    )
+    
+    # Run the test
+    await test.run_test()
+
+if __name__ == "__main__":
+    asyncio.run(main())
+"""
+
+    # Write the template to a new file
+    with open(file_path, 'w') as f:
+        f.write(template)
+

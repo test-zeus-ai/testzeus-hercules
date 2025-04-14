@@ -13,7 +13,8 @@ from testzeus_hercules.utils.gherkin_helper import (
 )
 from testzeus_hercules.utils.junit_helper import JUnitXMLGenerator, build_junit_xml
 from testzeus_hercules.utils.logger import logger
-
+from datetime import datetime
+from testzeus_hercules.config import set_global_conf
 
 async def sequential_process() -> None:
     """
@@ -51,6 +52,15 @@ async def sequential_process() -> None:
         scenario = feat["scenario"]
         # sanatise stake_id
         stake_id = scenario.replace(" ", "_").replace(":", "_").replace("/", "_").replace("\\", "_").replace(".", "_")
+        
+        # Create a code generation dir named with the feature and current timestamp
+        folder_name = feature_name.replace(" ", "_")
+        folder_dir = os.path.join(get_global_conf().get_output_code_dir(), folder_name)
+        os.makedirs(folder_dir, exist_ok=True)
+        if not get_global_conf().get_current_script_dir():
+            set_global_conf({"CURRENT_GENERATED_SCRIPT_DIR": folder_dir})
+        set_global_conf({"STAKED_ID": stake_id})
+
 
         # TODO: remove the following set default hack later.
         get_global_conf().set_default_test_id(stake_id)
@@ -59,6 +69,7 @@ async def sequential_process() -> None:
 
         logger.info(f"Running testcase: {stake_id}")
         logger.info(f"testcase details: {cmd}")
+
         runner = SingleCommandInputRunner(
             stake_id=stake_id,
             command=cmd,
@@ -253,6 +264,12 @@ async def a_main() -> None:
     else:
         # Single test case execution
         logger.info("Single test execution mode")
+        project_base = get_global_conf().get_project_source_root()
+        gen_code_dir = os.path.join(project_base, "output", "generated_code")
+        if not os.path.isdir(gen_code_dir):
+            os.makedirs(gen_code_dir)
+            set_global_conf({"OUTPUT_CODE_DIR": gen_code_dir})
+
         await sequential_process()
 
 
