@@ -12,6 +12,7 @@ from testzeus_hercules.utils.gherkin_helper import (
     serialize_feature_file,
 )
 from testzeus_hercules.utils.junit_helper import JUnitXMLGenerator, build_junit_xml
+from testzeus_hercules.utils.html_helper import generate_html_report
 from testzeus_hercules.utils.logger import logger
 from datetime import datetime
 from testzeus_hercules.config import set_global_conf
@@ -146,7 +147,8 @@ async def sequential_process() -> None:
 
     # building html from junitxml
     final_result_html_file_name = f"{get_global_conf().get_junit_xml_base_path()}/{feature_file_name}_result.html"
-    prepare_html([final_result_file_name, final_result_html_file_name])
+
+    await generate_html_report(final_result_file_name, final_result_html_file_name)
     logger.info(f"Results published in html file: {final_result_html_file_name}")
 
 
