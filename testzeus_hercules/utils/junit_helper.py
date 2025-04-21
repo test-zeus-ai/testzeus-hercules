@@ -280,8 +280,8 @@ async def build_junit_xml(
     Returns:
         str: The path to the generated JUnit XML file.
     """
-    feature_r = feature.replace(" ", "_").replace(":", "")
-    scenario_r = scenario.replace(" ", "_").replace(":", "")
+    feature_r = feature.replace(" ", "_").replace(":", "").replace("/", "").replace('"', '')
+    scenario_r = scenario.replace(" ", "_").replace(":", "").replace("/", "").replace('"', '')
 
     file_path = f"{get_global_conf().get_junit_xml_base_path()}/{feature_r}_{scenario_r}_results.xml"
 
