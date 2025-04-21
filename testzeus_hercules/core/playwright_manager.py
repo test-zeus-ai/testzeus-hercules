@@ -288,10 +288,12 @@ class PlaywrightManager:
         browser_config["console_log_file"] = self.console_log_file
         # Add trace directory path
         self._enable_tracing = get_global_conf().should_enable_tracing()
+        browser_config["enable_tracing"] = self._enable_tracing
         self._trace_dir = None
         if self._enable_tracing:
             proof_path = get_global_conf().get_proof_path(test_id=self.stake_id)
             self._trace_dir = os.path.join(proof_path, "traces")
+            browser_config["trace_dir"] = self._trace_dir
             logger.info(f"Tracing enabled. Traces will be saved to: {self._trace_dir}")
 
         # ----------------------
@@ -357,6 +359,9 @@ class PlaywrightManager:
         # logging console messages
         self.log_console = log_console if log_console is not None else True
         browser_config["log_console"] = self.log_console
+        browser_config["should_enable_ublock_extension"] = get_global_conf().should_enable_ublock_extension()
+        browser_config["should_auto_accept_screen_sharing"] = get_global_conf().should_auto_accept_screen_sharing()
+        browser_config["should_skip_wait_for_load_state"] = get_global_conf().should_skip_wait_for_load_state()
         logger.debug(
             f"PlaywrightManager init - "
             f"browser_type={self.browser_type}, headless={self.isheadless}, "
@@ -366,7 +371,7 @@ class PlaywrightManager:
         )
         browser_config_dir = os.path.join(get_global_conf().get_current_script_dir(),  "config")
         os.makedirs(browser_config_dir, exist_ok=True)
-        browser_config_path = os.path.join(browser_config_path, "browser_config.json")
+        browser_config_path = os.path.join(browser_config_dir, "browser_config.json")
         with open(browser_config_path, "w") as f:
             json.dump(browser_config, f)
 
@@ -1135,7 +1140,7 @@ class PlaywrightManager:
         page: Page = await self.get_current_page()
         await page.wait_for_load_state("domcontentloaded")
         page.on("domcontentloaded", handle_navigation_for_mutation_observer)
-
+        browser_config["handle_navigation_for_mutation_observer"] = handle_navigation_for_mutation_observer
         async def set_iframe_navigation_handlers() -> None:
             for frame in page.frames:
                 if frame != page.main_frame:
@@ -1145,6 +1150,7 @@ class PlaywrightManager:
 
         await set_iframe_navigation_handlers()
 
+        browser_config["dom_mutation_change_detected"] = dom_mutation_change_detected
         await page.expose_function(
             "dom_mutation_change_detected", dom_mutation_change_detected
         )
