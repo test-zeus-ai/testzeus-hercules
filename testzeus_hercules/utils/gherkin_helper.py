@@ -28,7 +28,7 @@ async def split_feature_file(input_file: str, output_dir: str, dont_append_heade
 
     async with aiofiles.open(input_file, "r") as f:
         feature_content = await f.read()
-
+    feature_content = re.sub(r'@\w+\s*', '', feature_content)
     scenario_pattern = re.compile(r"\b[Ss]cenario\b.*:")
     all_scenarios = scenario_pattern.findall(feature_content)
     parts = scenario_pattern.split(feature_content)

@@ -44,7 +44,6 @@ async def sequential_process() -> None:
     feature_file_name = os.path.basename(input_gherkin_file_path)
 
     result_of_tests = []
-
     add_event(EventType.RUN, EventData(detail="Total Runs: " + str(len(list_of_feats))))
     for feat in list_of_feats:
         file_path = feat["output_file"]
