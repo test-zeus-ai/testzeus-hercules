@@ -24,6 +24,9 @@ Notes: [Elements ordered as displayed, Consider ordinal/numbered item positions,
     name="get_interactive_elements",
 )
 async def get_interactive_elements() -> Annotated[str, "DOM type dict giving all interactive elements on page"]:
+    print('__-------____-----____-----__---')
+    print("Tool used get_interactive_elements.")
+    
     add_event(EventType.INTERACTION, EventData(detail="get_interactive_elements"))
     start_time = time.time()
     # Create and use the PlaywrightManager
@@ -117,3 +120,85 @@ async def get_interactive_elements() -> Annotated[str, "DOM type dict giving all
     #     extracted_data = extracted_data_legend + extracted_data
     extracted_data = json.dumps(extracted_data, separators=(",", ":"))
     return extracted_data or "Its Empty, try something else"  # type: ignore
+
+
+
+async def save_method():
+    code = '''
+async def get_interactive_elements():
+    browser_manager = PlaywrightManager()
+    await browser_manager.wait_for_page_and_frames_load()
+    page = await browser_manager.get_current_page()
+
+    await browser_manager.wait_for_load_state_if_enabled(page=page)
+
+    if page is None:  # type: ignore
+        raise ValueError("No active page found. OpenURL command opens a new page.")
+
+    extracted_data = ""
+    await wait_for_non_loading_dom_state(page, 1)
+
+    extracted_data = await do_get_accessibility_info(page, only_input_fields=False)
+
+    # Flatten the hierarchy into a list of elements
+    def flatten_elements(node: dict, parent_name: str = "", parent_title: str = "") -> list[dict]:
+        elements = []
+        interactive_roles = {
+            "button",
+            "link",
+            "checkbox",
+            "radio",
+            "textbox",
+            "combobox",
+            "listbox",
+            "menuitem",
+            "menuitemcheckbox",
+            "menuitemradio",
+            "option",
+            "slider",
+            "spinbutton",
+            "switch",
+            "tab",
+            "treeitem",
+        }
+
+        if "children" in node:
+            # Get current node's name and title for passing to children
+            current_name = node.get("name", parent_name)
+            current_title = node.get("title", parent_title)
+
+            for child in node["children"]:
+                # If child doesn't have name/title, it will use parent's values
+                if "name" not in child and current_name:
+                    child["name"] = current_name
+                if "title" not in child and current_title:
+                    child["title"] = current_title
+                elements.extend(flatten_elements(child, current_name, current_title))
+
+        # Include elements with interactive roles or clickable/focusable elements
+        if "md" in node and (
+            node.get("r", "").lower() in interactive_roles
+            or node.get("tag", "").lower() in {"a", "button", "input", "select", "textarea"}
+            or node.get("clickable", False)
+            or node.get("focusable", False)
+        ):
+            new_node = node.copy()
+            new_node.pop("children", None)
+            elements.append(new_node)
+        return elements
+
+    flattened_data = flatten_elements(extracted_data) if isinstance(extracted_data, dict) else []
+    # Count elements
+    rr = 0
+    if isinstance(extracted_data, (dict, list)):
+        rr = len(extracted_data)
+    add_event(
+        EventType.DETECTION,
+        EventData(detail=f"DETECTED {rr} components"),
+    )
+    extracted_data = json.dumps(extracted_data, separators=(",", ":"))
+    return extracted_data or "Its Empty, try something else"  # type: ignore
+'''
+    file_path = get_global_conf().get_current_script_dir() + "/all_tools.py"
+    with open(file_path, "a") as f:
+        f.write(code)

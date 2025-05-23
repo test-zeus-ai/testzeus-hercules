@@ -7,7 +7,8 @@ import httpx
 from testzeus_hercules.core.tools.tool_registry import api_logger as file_logger
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
-
+from testzeus_hercules.config import get_global_conf
+from testzeus_hercules.utils.automation.add_item import add_method
 # ------------------------------------------------------------------------------
 # Logging and Utility Functions
 # ------------------------------------------------------------------------------
@@ -230,6 +231,9 @@ async def generic_http_api(
 ) -> Annotated[
     Tuple[str, float], "Minified JSON response and call duration (in seconds)."
 ]:
+    print('__-------____-----____-----__---')
+    print("Tool used test_page_accessibility.")
+    add_method("test_page_accessibility", str([method, url, auth_type, auth_value, query_params, body, body_mode, headers]))
     # Set authentication headers based on auth_type.
     if auth_type:
         auth_type = auth_type.lower()
@@ -249,7 +253,7 @@ async def generic_http_api(
             headers["Authorization"] = f"Bearer {auth_value}"
         elif auth_type == "api_key":
             headers["x-api-key"] = auth_value
-
+            
     return await _send_request(
         method,
         url,

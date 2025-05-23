@@ -28,6 +28,8 @@ async def take_browser_screenshot(
         str: Path to saved screenshot
         dict: Error message if something fails
     """
+    print('__-------____-----____-----__---')
+    print("Tool used take_browser_screenshot.")
     try:
         # Get current screenshot
         browser_manager = PlaywrightManager()
@@ -77,6 +79,8 @@ async def capture_the_screen() -> Annotated[str, "Path to of screenshot"]:
         str: Path to saved screenshot
         dict: Error message if something fails
     """
+    print('__-------____-----____-----__---')
+    print("Tool used capture_the_screen.")
     try:
 
         # Get current screenshot

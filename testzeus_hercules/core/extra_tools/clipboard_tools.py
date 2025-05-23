@@ -12,7 +12,7 @@ from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.logger import logger
-
+from testzeus_hercules.utils.automation.add_item import add_method
 
 @tool(
     agent_names=["browser_nav_agent"],
@@ -33,9 +33,11 @@ async def read_clipboard(clipboard_type: Annotated[str, "Clipboard content type:
     The clipboard content. For 'text', returns a string.
     For 'binary', returns the result of navigator.clipboard.read() (typically a list of ClipboardItem objects).
     """
+    print('__-------____-----____-----__---')
+    print("Tool used capture_the_screen.")
     logger.info(f"Executing read_clipboard with type: {clipboard_type}")
     add_event(EventType.INTERACTION, EventData(detail="read_clipboard"))
-
+    add_method("read_clipboard", clipboard_type)
     # Initialize PlaywrightManager and get the active browser page
     browser_manager = PlaywrightManager()
     page = await browser_manager.get_current_page()

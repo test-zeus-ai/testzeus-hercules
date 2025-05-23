@@ -15,6 +15,10 @@ from testzeus_hercules.utils.js_helper import get_js_with_element_finder
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
 
+from testzeus_hercules.utils.automation.add_item import add_method
+from testzeus_hercules.utils.automation.html_element import generate_xpath
+
+elem_with_locator = []
 
 async def custom_set_slider_value(page: Page, selector: str, value_to_set: float) -> None:
     """
@@ -50,12 +54,11 @@ async def custom_set_slider_value(page: Page, selector: str, value_to_set: float
                 const min = parseFloat(element.min) || 0;
                 const max = parseFloat(element.max) || 100;
                 const step = parseFloat(element.step) || 1;
-                // Clamp the value within the allowed range
-                value_to_set = Math.max(min, Math.min(max, value_to_set));
-                // Adjust value to the nearest step
-                value_to_set = min + Math.round((value_to_set - min) / step) * step;
+                // Clamp the value within the allowed range and adjust to nearest step
+                let adjustedValue = Math.max(min, Math.min(max, value_to_set));
+                adjustedValue = min + Math.round((adjustedValue - min) / step) * step;
                 // Set the value
-                element.value = value_to_set;
+                element.value = adjustedValue;
                 // Dispatch input and change events to simulate user interaction
                 const inputEvent = new Event('input', { bubbles: true });
                 const changeEvent = new Event('change', { bubbles: true });
@@ -150,6 +153,17 @@ async def do_setslider(page: Page, selector: str, value_to_set: float) -> dict[s
         # Find the element in the DOM or Shadow DOM
         browser_manager = PlaywrightManager()
         elem_handle = await browser_manager.find_element(selector, page, element_name="setslider")
+        attributes = await elem_handle.evaluate("""(element) => {
+                    const attrs = {
+                        'tagName': element.tagName.toLowerCase()
+                    };
+                    for (const attr of element.attributes) {
+                        attrs[attr.name] = attr.value;
+                    }
+                    return attrs;
+                }""")
+        element_xpath = f"xpath={generate_xpath(attributes)}"
+        elem_with_locator.append([element_xpath, value_to_set])
 
         if elem_handle is None:
             # Initialize selector logger with proof path
@@ -266,6 +280,10 @@ async def bulk_set_slider(
     List[Dict[str, str]],
     "List of dictionaries, each containing 'selector' and the result of the operation.",
 ]:
+    
+    print('__-------____-----____-----__---')
+    print("Tool used bulk_set_slider.")
+    
     results: List[Dict[str, str]] = []
     logger.info("Executing bulk Set Slider Command")
     for entry in entries:
@@ -274,5 +292,5 @@ async def bulk_set_slider(
             continue
         result = await setslider((entry[0], entry[1]))  # Create tuple with explicit values
         results.append({"selector": entry[0], "result": result})
-
+    add_method("bulk_set_slider", str([elem_with_locator]))
     return results

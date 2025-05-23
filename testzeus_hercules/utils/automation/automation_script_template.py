@@ -72,6 +72,17 @@ BROWSER_CHANNELS = Literal[
 MAX_WAIT_PAGE_LOAD_TIME = 0.6
 WAIT_FOR_NETWORK_IDLE = 2
 
+def browser_config() -> Dict[str, Any]:
+    file_path = "./config/browser_config.json"
+    if os.path.exists(file_path):
+        with open(file_path, "r") as file:
+            return json.load(file)
+    else:
+        logger.error(f"Configuration file {file_path} not found.")
+        return {}
+    
+    
+   
 class PlaywrightTest:
 
     _instances: Dict[str, "PlaywrightTest"] = {}
@@ -145,58 +156,48 @@ class PlaywrightTest:
     def __init__(
         self,
         stake_id: Optional[str] = None,
-        browser_type: Optional[str] = None,
-        browser_channel = None,
-        browser_path: Optional[str] = None,
-        browser_version: Optional[str] = None,  # New parameter for browser version
-        headless: Optional[bool] = None,
-        screenshots_dir: Optional[str] = None,
-        take_screenshots: Optional[bool] = None,
-        cdp_config: Optional[Dict] = None,
-        cdp_reuse_tabs: Optional[bool] = False,  # New parameter to control tab reuse
-        cdp_navigate_on_connect: Optional[bool] = True,  # New parameter to control navigation
-        record_video: Optional[bool] = None,
-        video_dir: Optional[str] = None,
-        log_requests_responses: Optional[bool] = None,
-        # --- Emulation-specific args ---
-        device_name: Optional[str] = None,
-        viewport: Optional[Tuple[int, int]] = None,
-        locale: Optional[str] = None,
-        timezone: Optional[str] = None,  # e.g. "America/New_York"
-        geolocation: Optional[Dict[str, float]] = None,  # {"latitude": 51.5, "longitude": -0.13}
-        color_scheme: Optional[str] = None,  # "light", "dark", "no-preference"
         allow_all_permissions: bool = True,
-        take_bounding_box_screenshots: Optional[bool] = None, 
+       
     ):
         self.allow_all_permissions = allow_all_permissions
         if hasattr(self, "_PlaywrightManager__initialized") and self.__initialized:
             return  # Already inited, no-op
-        browser_config = get_the_global_configs()
         self.__initialized = True
-        self.browser_type = browser_config["browser_type"]
-        self.browser_channel = browser_config["browser_channel"]
-        self.browser_path = browser_config["browser_path"]
-        self.browser_version = browser_config["browser_version"]
-        self.headless = browser_config["headless"]
-        self.screenshots_dir = browser_config["screenshots_dir"]
-        self.take_screenshots = browser_config["take_screenshots"]    
-        self.cdp_config = browser_config["cdp_config"]
-        self.cdp_reuse_tabs = browser_config["cdp_reuse_tabs"]
-        self.cdp_navigate_on_connect = browser_config["cdp_navigate_on_connect"]
-        self.record_video = browser_config["record_video"]
-        self.video_dir = browser_config["video_dir"]
-        self.log_requests_responses = browser_config["log_requests_responses"]
-        self.device_name = browser_config["device_name"]
-        self.viewport = browser_config["viewport"]
-        self.locale = browser_config["locale"]
-        self.timezone = browser_config["timezone"]
-        self.geolocation = browser_config["geolocation"]
-        self.color_scheme = browser_config["color_scheme"]
-        self.allow_all_permissions = browser_config["allow_all_permissions"]
-        self.take_bounding_box_screenshots = browser_config["take_bounding_box_screenshots"]  
+        self.browser_config = browser_config()
+        self.browser_type = self.browser_config.get("browser_type", None)
+        self.browser_channel = self.browser_config.get("browser_channel", None)
+        self.browser_path = self.browser_config.get("browser_path", None)
+        self.browser_version = self.browser_config.get("browser_version", None)
+        self.isheadless = self.browser_config.get("headless", None)
+        self.screenshots_dir = self.browser_config.get("screenshots_dir", None)
+        # self.take_screenshots = self.browser_config.get("take_screenshots", None)
+        self.cdp_config = self.browser_config.get("cdp_config", None)
+        self.cdp_reuse_tabs = self.browser_config.get("cdp_reuse_tabs", None)
+        self.cdp_navigate_on_connect = self.browser_config.get("cdp_navigate_on_connect", None)
+        self.record_video = self.browser_config.get("record_video", None)
+        self.video_dir = self.browser_config.get("video_dir", None)
+        self.log_requests_responses = self.browser_config.get("log_requests_responses", None)
+        self.device_name = self.browser_config.get("device_name", None)
+        self.viewport = self.browser_config.get("viewport", None)
+        self.user_locale = self.browser_config.get("locale", None)
+        self.user_timezone = self.browser_config.get("timezone", None)
+        self.user_geolocation  = self.browser_config.get("geolocation", None)
+        self.user_color_scheme = self.browser_config.get("color_scheme", None)
+        self.allow_all_permissions = self.browser_config.get("allow_all_permissions", None)
+        self._take_screenshots = self.browser_config.get("take_screenshots", False)
+        self._take_bounding_box_screenshots = self.browser_config.get("take_bounding_box_screenshots", None) 
         self.stake_id = stake_id or "0"
-        self.enable_tracing = browser_config["enable_tracing"]
-        self.trace_dir = browser_config["trace_dir"]
+        self.enable_tracing = self.browser_config.get("enable_tracing", None)
+        self.trace_dir = self.browser_config.get("trace_dir", None)
+        self.browser_cookies =  self.browser_config.get("browser_cookies", None)
+        self._playwright: Optional[Playwright] = None
+        self._browser_context: Optional[BrowserContext] = None
+        self.__async_initialize_done = False
+        self._latest_screenshot_bytes: Optional[bytes] = None
+        self._extension_cache_dir = os.path.join(
+            ".", ".cache", "browser", self.browser_type, "extension"
+        )
+    
     
     async def async_initialize(self) -> None:
         if self.__async_initialize_done:
@@ -239,7 +240,7 @@ class PlaywrightTest:
         Prepare browser extensions (uBlock Origin) if enabled in config.
         """
         # Skip if extensions are disabled in config
-        if not get_global_conf().should_enable_ublock_extension():
+        if not self.browser_config.get("should_enable_ublock_extension", False):
             logger.info(
                 "uBlock extension is disabled in config. Skipping installation."
             )
@@ -310,7 +311,7 @@ class PlaywrightTest:
     
     async def _start_tracing(self, context_type: str = "browser") -> None:
         """Helper method to start tracing for a browser context."""
-        if not self._enable_tracing:
+        if not self.enable_tracing:
             return
 
         try:
@@ -478,7 +479,7 @@ class PlaywrightTest:
             browser_type = getattr(self._playwright, self.browser_type)
             await self.prepare_extension()
 
-            if self._record_video:
+            if self.record_video:
                 await self._launch_browser_with_video(
                     browser_type, user_dir, disable_args
                 )
@@ -499,6 +500,9 @@ class PlaywrightTest:
         # 1) Device emulation
         if self.device_name:
             device = self._playwright.devices.get(self.device_name)
+            print("########### Device #########")
+            print(device)
+            print("$$$$$$$$$$$$$$$")
             if device:
                 context_options.update(device)
             else:
@@ -583,7 +587,7 @@ class PlaywrightTest:
                 }
 
                 # Auto-accept screen sharing if enabled in config
-                if get_global_conf().should_auto_accept_screen_sharing():
+                if self.browser_config["should_auto_accept_screen_sharing"]:
                     firefox_prefs.update(
                         {
                             "permissions.default.camera": 1,  # 0=ask, 1=allow, 2=block
@@ -670,7 +674,7 @@ class PlaywrightTest:
                 }
 
                 # Auto-accept screen sharing if enabled in config
-                if get_global_conf().should_auto_accept_screen_sharing():
+                if self.browser_config["should_auto_accept_screen_sharing"]:
                     firefox_prefs.update(
                         {
                             "permissions.default.camera": 1,  # 0=ask, 1=allow, 2=block
@@ -943,7 +947,7 @@ class PlaywrightTest:
         self._screenshots_dir = screenshots_dir
 
     def get_screenshots_dir(self) -> str:
-        return self._screenshots_dir
+        return self.screenshots_dir
     
     async def take_screenshots(
         self,
@@ -1231,7 +1235,7 @@ class PlaywrightTest:
             state: The state to wait for (load, domcontentloaded, networkidle)
             timeout: Maximum time to wait for in milliseconds
         """
-        if not get_global_conf().should_skip_wait_for_load_state():
+        if not self.browser_config.get("should_skip_wait_for_load_state", False):
             await page.wait_for_load_state(state=state, timeout=timeout)
 
     # -------------------------------------------------------------------------

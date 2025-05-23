@@ -7,7 +7,6 @@ from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.geo_handler import GeoLocationSDK
 from testzeus_hercules.utils.logger import logger
 
-
 @tool(
     agent_names=["browser_nav_agent", "api_nav_agent"],
     name="get_current_geo_location",
@@ -23,6 +22,8 @@ async def get_current_geo_location() -> Union[str, Dict[str, str]]:
     - dict with 'error': If something fails or no location is set.
     """
     try:
+        print('__-------____-----____-----__---')
+        print("Tool used get_current_geo_location.")
         # Read provider/api_key from global CONF
         provider = get_global_conf().get_geo_provider()
         api_key = get_global_conf().get_geo_api_key()
@@ -67,6 +68,8 @@ async def set_current_geo_location(
     - dict with 'error': If something fails or the address can't be geocoded.
     """
     try:
+        print('__-------____-----____-----__---')
+        print("Tool used get_current_geo_location.")
         # Read provider/api_key from global CONF
         provider = get_global_conf().get_geo_provider()
         api_key = get_global_conf().get_geo_api_key()

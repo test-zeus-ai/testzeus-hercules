@@ -2,6 +2,9 @@ import asyncio
 import inspect
 import traceback
 from typing import Annotated
+import os
+import json
+import uuid
 
 import playwright.async_api
 from playwright.async_api import ElementHandle, Page
@@ -15,6 +18,8 @@ from testzeus_hercules.utils.dom_mutation_observer import subscribe  # type: ign
 from testzeus_hercules.utils.dom_mutation_observer import unsubscribe  # type: ignore
 from testzeus_hercules.utils.logger import logger
 
+from testzeus_hercules.utils.automation.add_item import add_method
+from testzeus_hercules.utils.automation.html_element import generate_xpath
 
 @tool(
     agent_names=["browser_nav_agent"],
@@ -25,9 +30,13 @@ async def hover(
     selector: Annotated[str, "selector using md attribute, just give the md ID value"],
     wait_before_execution: Annotated[float, "Wait time in seconds before hover"] = 0.0,
 ) -> Annotated[str, "Result of hover action with tooltip text"]:
+    
     logger.info(f'Executing HoverElement with "{selector}" as the selector')
     if "md=" not in selector:
         selector = f"[md='{selector}']"
+    print('__-------____-----____-----__---')
+    print("Tool used hover.")
+
     add_event(EventType.INTERACTION, EventData(detail="hover"))
     # Initialize PlaywrightManager and get the active browser page
     browser_manager = PlaywrightManager()
@@ -95,6 +104,19 @@ async def do_hover(page: Page, selector: str, wait_before_execution: float) -> d
 
         # Find the element
         element = await page.query_selector(selector)
+        attributes = await element.evaluate("""(element) => {
+                const attrs = {
+                    'tagName': element.tagName.toLowerCase()
+                };
+                for (const attr of element.attributes) {
+                    attrs[attr.name] = attr.value;
+                }
+                return attrs;
+            }""")
+        element_xpath = f"xpath={generate_xpath(attributes)}"
+        ###Adding Method to the DataBase 
+        add_method("hover", str([element_xpath, wait_before_execution]))
+
         if not element:
             # Initialize selector logger with proof path
             selector_logger = get_browser_logger(get_global_conf().get_proof_path())

@@ -18,7 +18,11 @@ from testzeus_hercules.utils.dom_mutation_observer import subscribe, unsubscribe
 from testzeus_hercules.utils.js_helper import block_ads, get_js_with_element_finder
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
+from testzeus_hercules.utils.automation.add_item import add_method
+from testzeus_hercules.utils.automation.html_element import generate_xpath
 
+
+elemt_with_locator = []
 
 async def custom_fill_element(page: Page, selector: str, text_to_enter: str) -> None:
     selector = f"{selector}"  # Ensures the selector is treated as a string
@@ -128,6 +132,17 @@ async def do_entertext(page: Page, selector: str, text_to_enter: str, use_keyboa
 
         browser_manager = PlaywrightManager()
         elem = await browser_manager.find_element(selector, page, element_name="entertext")
+        attributes = await elem.evaluate("""(element) => {
+                const attrs = {
+                    'tagName': element.tagName.toLowerCase()
+                };
+                for (const attr of element.attributes) {
+                    attrs[attr.name] = attr.value;
+                }
+                return attrs;
+            }""")
+        element_xpath = f"xpath={generate_xpath(attributes)}"
+        elemt_with_locator.append([element_xpath, text_to_enter])
 
         # Initialize selector logger with proof path
         selector_logger = get_browser_logger(get_global_conf().get_proof_path())
@@ -252,6 +267,8 @@ async def bulk_enter_text(
     List[Dict[str, str]],
     "List of dictionaries, each containing 'selector' and the result of the operation.",
 ]:
+    print('__-------____-----____-----__---')
+    print("Tool used bulk_enter_text.")
     add_event(EventType.INTERACTION, EventData(detail="BulkSetInputValue"))
     results: List[Dict[str, str]] = []
     logger.info("Executing bulk set input value command")
@@ -261,5 +278,7 @@ async def bulk_enter_text(
             continue
         result = await entertext((entry[0], entry[1]))  # Create tuple with explicit values
         results.append({"selector": entry[0], "result": result})
-
+    ###Adding Method to the DataBase 
+    add_method("bulk_enter_text", str([elemt_with_locator]))
     return results
+

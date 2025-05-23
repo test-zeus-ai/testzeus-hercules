@@ -37,15 +37,6 @@ PathsDict = Dict[str, str]
 
 
 class BaseConfigManager:
-    """
-    The base class that contains the common logic for:
-      - argument parsing
-      - loading from dict/JSON
-      - optional env variable merging
-      - directory creation
-      - environment checks
-    """
-
     def __init__(self, config_dict: ConfigDict, ignore_env: bool = False) -> None:
         """
         Initialize the config manager with config_dict as base.
@@ -715,6 +706,12 @@ class BaseConfigManager:
     def should_skip_wait_for_load_state(self) -> bool:
         """Return whether to skip wait_for_load_state calls."""
         return self._config["NO_WAIT_FOR_LOAD_STATE"].lower().strip() == "true"
+    
+    def add_browser_config(self, config: ConfigDict) -> None:
+        """
+        Add browser-specific configuration to the config dictionary.
+        This is useful for adding any additional browser settings.
+        """
 
     # -------------------------------------------------------------------------
     # Directory creation logic (mirroring your original code)
@@ -987,3 +984,34 @@ from testzeus_hercules.telemetry import EventData, EventType, add_event
 logger.info("[Singleton] MODE: %s", get_global_conf().get_mode())
 logger.info("[Singleton] Project Source Root: %s", get_global_conf().get_project_source_root())
 # Send final telemetryCONF.send_config_telemetry()
+
+
+class Browserconfig:
+    """
+    Class to handle browser-specific configurations.
+    """
+
+    def __init__(self):
+        self.config = {}
+    
+    def set_broswer_config(self, config: ConfigDict) -> None:
+        """
+        Set browser-specific configuration.
+        This is useful for adding any additional browser settings.
+        """
+        self.config.update(config)
+        
+    def get_browser_type(self, config_key) -> str:
+        return self.config.get(config_key, None)
+    
+    def save_browser_config(self) -> None:
+        parent_path = get_global_conf().get_current_script_dir()
+        saving_path = os.path.join(parent_path, "config")
+        os.makedirs(saving_path, exist_ok=True)
+        for k, v in self.config.items():
+            if callable(v):
+                print(f"[ERROR] Cannot serialize key '{k}': it is a function ({v})")
+
+        with open(os.path.join(saving_path, "browser_config.json"), "w") as f:
+            json.dump(self.config, f, indent=4)
+        logger.info(f"Browser configuration saved to {os.path.join(saving_path, 'browser_config.json')}")

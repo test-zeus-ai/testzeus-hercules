@@ -9,6 +9,7 @@ from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
 from unstructured.partition.pdf import partition_pdf
 
+from testzeus_hercules.utils.automation.add_item import add_method
 
 @tool(
     agent_names=["browser_nav_agent"],
@@ -24,6 +25,9 @@ async def extract_text_from_pdf(
     returns: str - All the text found in the PDF.
     """
     file_path = os.path.join(get_global_conf().get_project_temp_path(), "downloaded_file.pdf")  # fixed file path for downloading the PDF
+    print('__-------____-----____-----__---')
+    print("Tool used extract_text_from_pdf.")
+    add_method("extract_text_from_pdf", str([pdf_url]))
 
     try:
         # Create and use the PlaywrightManager

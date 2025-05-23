@@ -13,6 +13,7 @@ from testzeus_hercules.core.simple_hercules import SimpleHercules
 from testzeus_hercules.utils.cli_helper import async_input  # type: ignore
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.core.playwright_manager import generate_playwright_test_file
+from testzeus_hercules.config import Browserconfig
 
 class BaseRunner:
     """
@@ -50,7 +51,7 @@ class BaseRunner:
         self.mem_agent_config: Dict[str, Any] | None = None
         self.helper_config: Dict[str, Any] | None = None
 
-    async def initialize(self) -> None:
+    async def initialize(self, browserc_onfig) -> None:
         """
         Initializes components for the system, including the Autogen wrapper and the Playwright manager.
         """
@@ -86,7 +87,7 @@ class BaseRunner:
             browser_nav_max_chat_round=self.nav_agent_number_of_rounds,
         )
 
-        self.browser_manager = PlaywrightManager(gui_input_mode=False, stake_id=self.stake_id)
+        self.browser_manager = PlaywrightManager(gui_input_mode=False, stake_id=self.stake_id, brw_config = browserc_onfig)
         await self.browser_manager.async_initialize()
 
     async def clean_up(self) -> None:
@@ -273,17 +274,13 @@ class SingleCommandInputRunner(BaseRunner):
         self.result = None
         self.execution_time: float = 0
 
-    async def start(self) -> None:
+    async def start(self, browserc_onfig) -> None:
         """
         Processes commands from a file.
         """
-        await self.initialize()
+        await self.initialize(browserc_onfig)
         self.result, self.execution_time = await self.process_command(self.command)
-        now = datetime.now()
-        timestamp = now.strftime("%Y%m%d_%H%M%S")
-        _file_name = f"{get_global_conf().get_staked_id()}_{timestamp}.py"
-        gen_code_dir = os.path.join(get_global_conf().get_current_script_dir(), _file_name)
-        generate_playwright_test_file(gen_code_dir)
         if not self.dont_terminate_browser_after_run:
             _ = await self.process_command("exit")
+            browserc_onfig.save_browser_config()
             await self.wait_for_exit()

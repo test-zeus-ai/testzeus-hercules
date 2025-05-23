@@ -24,7 +24,8 @@ Notes: [Elements ordered as displayed, Consider ordinal/numbered item positions]
     name="get_input_fields",
 )
 async def get_input_fields() -> Annotated[str, "DOM type dict giving all input elements on page"]:
-
+    print('__-------____-----____-----__---')
+    print("Tool used get_input_fields.")
     add_event(EventType.INTERACTION, EventData(detail="get_input_fields"))
     start_time = time.time()
     # Create and use the PlaywrightManager

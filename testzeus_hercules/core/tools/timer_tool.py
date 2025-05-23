@@ -4,7 +4,8 @@ from typing import Annotated, Dict
 
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
-
+from testzeus_hercules.config import get_global_conf
+from testzeus_hercules.utils.automation.add_item import add_method
 
 @tool(
     agent_names=["time_keeper_nav_agent"],
@@ -42,6 +43,9 @@ async def wait_for_duration(
     - Negative values will be rejected
     """
     try:
+        print('__-------____-----____-----__---')
+        print("Tool used wait_for_duration.")
+        add_method("wait_for_duration", str([duration]))
         # Validate input
         if not isinstance(duration, (int, float)):
             return {"status": "error", "message": "Duration must be a number"}
@@ -67,6 +71,7 @@ async def wait_for_duration(
         return {"status": "error", "message": f"Wait operation failed: {str(e)}"}
 
 
+
 @tool(
     agent_names=["time_keeper_nav_agent"],
     description="Get the current timestamp in string format.",
@@ -89,7 +94,9 @@ async def get_current_timestamp() -> Annotated[
     ```
     """
     from datetime import datetime
-
+    print('__-------____-----____-----__---')
+    print("Tool used get_current_timestamp.")
+    
     # Get current timestamp
     current_timestamp = datetime.now().isoformat()
     return {"timestamp": current_timestamp}

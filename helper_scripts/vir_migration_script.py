@@ -16,6 +16,7 @@ from openai import OpenAI
 ###############################################################################
 
 def generate_ui_spec_from_virtuoso(virtuoso_data: dict) -> str:
+    print(f"######### Tool used: generate_ui_spec_from_virtuoso ###############")
     """
     Takes a JSON (Virtuoso-like) structure and produces a text-based UI spec:
       - 'journeys' -> '=== FEATURE #x: Title ==='

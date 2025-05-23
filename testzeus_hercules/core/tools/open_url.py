@@ -9,7 +9,7 @@ from testzeus_hercules.core.browser_logger import get_browser_logger
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
-
+from testzeus_hercules.utils.automation.add_item import add_method
 
 @tool(
     agent_names=["browser_nav_agent"],
@@ -24,6 +24,14 @@ async def openurl(
     timeout: Annotated[int, "Additional wait time in seconds after initial load."] = 3,
     force_new_tab: Annotated[bool, "Force opening in a new tab instead of reusing existing ones."] = False,
 ) -> Annotated[str, "Returns the result of this request in text form"]:
+    if isinstance(timeout, str):
+        timeout = int(timeout)
+    if isinstance(force_new_tab, str):
+        force_new_tab = False if force_new_tab is 'False' else True
+    print('__-------____-----____-----__---')
+    print("Tool used openurl.")
+    ##Adding the Method in the Database
+    add_method("openurl", str([url, timeout, force_new_tab]))
 
     logger.info(f"Opening URL: {url} (force_new_tab={force_new_tab})")
     browser_manager = PlaywrightManager()
@@ -202,6 +210,7 @@ async def openurl(
         return f"Error opening URL: {url}"
 
 
+
 def ensure_protocol(url: str) -> str:
     """
     Ensures that a URL has a protocol (http:// or https://). If it doesn't have one,
@@ -238,3 +247,5 @@ def ensure_protocol(url: str) -> str:
         url = "https://" + url  # Default to https if no protocol is specified
         logger.info(f"Added 'https://' protocol to URL because it was missing. New URL is: {url}")
     return url
+
+

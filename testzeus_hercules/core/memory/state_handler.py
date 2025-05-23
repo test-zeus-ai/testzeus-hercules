@@ -6,6 +6,7 @@ from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.memory.dynamic_ltm import DynamicLTM
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
+from testzeus_hercules.utils.automation.add_item import add_method
 
 # Module-level state string
 _state_string: Dict[str, str] = defaultdict(str)
@@ -27,6 +28,9 @@ def store_data(
     Dict[str, Union[str, None]],
     "A dictionary containing a 'message' key with a success confirmation or an 'error' key with an error message.",
 ]:
+    print('__-------____-----____-----__---')
+    print("Tool used store_data.")
+    add_method("store_data", str([text]))
     global _state_string
     try:
 

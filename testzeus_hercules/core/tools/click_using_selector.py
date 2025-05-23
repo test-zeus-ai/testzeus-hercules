@@ -2,6 +2,9 @@ import asyncio
 import inspect
 import traceback
 from typing import Annotated, Any
+import os 
+import json
+import uuid
 
 from playwright.async_api import Page
 from testzeus_hercules.config import get_global_conf
@@ -12,6 +15,10 @@ from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.dom_helper import get_element_outer_html
 from testzeus_hercules.utils.dom_mutation_observer import subscribe, unsubscribe
 from testzeus_hercules.utils.logger import logger
+
+from testzeus_hercules.utils.automation.add_item import add_method
+from testzeus_hercules.utils.automation.html_element import generate_xpath
+
 
 page_data_store = {}
 
@@ -40,11 +47,12 @@ async def click(
     type_of_click: Annotated[str, "Click type: click/right_click/double_click/middle_click"] = "click",
     wait_before_execution: Annotated[float, "Wait time before click"] = 0.0,
 ) -> Annotated[str, "Click action result"]:
+    print('__-------____-----____-----__---')
+    print("Tool used click.")
     query_selector = selector
-
     if "md=" not in query_selector:
         query_selector = f"[md='{query_selector}']"
-
+    
     logger.info(f'Executing ClickElement with "{query_selector}" as the selector')
     add_event(EventType.INTERACTION, EventData(detail="click"))
     # Initialize PlaywrightManager and get the active browser page
@@ -116,7 +124,8 @@ async def click(
 
     page = await browser_manager.get_current_page()
     page.on("dialog", handle_dialog)
-    result = await do_click(page, query_selector, wait_before_execution, type_of_click)
+    result = await do_click(page, query_selector, user_input_dialog_response, expected_message_of_dialog, 
+                            action_on_dialog, type_of_click, wait_before_execution)
 
     await asyncio.sleep(get_global_conf().get_delay_time())  # sleep to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
@@ -130,7 +139,14 @@ async def click(
     return result["detailed_message"]
 
 
-async def do_click(page: Page, selector: str, wait_before_execution: float, type_of_click: str) -> dict[str, str]:
+async def do_click(
+        page: Page, 
+        selector: str, 
+        user_input_dialog_response: str, 
+        expected_message_of_dialog: str, 
+        action_on_dialog: str, 
+        type_of_click: str, 
+        wait_before_execution: float) -> dict[str, str]:
     logger.info(f'Executing ClickElement with "{selector}" as the selector. Wait time before execution: {wait_before_execution} seconds.')
 
     # Wait before execution if specified
@@ -144,6 +160,20 @@ async def do_click(page: Page, selector: str, wait_before_execution: float, type
         # Attempt to find the element on the main page or in iframes
         browser_manager = PlaywrightManager()
         element = await browser_manager.find_element(selector, page, element_name="click")
+        attributes = await element.evaluate("""(element) => {
+                const attrs = {
+                    'tagName': element.tagName.toLowerCase()
+                };
+                for (const attr of element.attributes) {
+                    attrs[attr.name] = attr.value;
+                }
+                return attrs;
+            }""")
+        xpath = generate_xpath(attributes).replace("'", "\"")
+        element_xpath = f"xpath={xpath}"
+        ###Adding Method to the DataBase 
+        add_method("click", str([element_xpath, user_input_dialog_response, expected_message_of_dialog, action_on_dialog, type_of_click, wait_before_execution]), 
+                   str(["asyncio" , "inspect", "traceback"]))
         if element is None:
             # Initialize selector logger with proof path
             selector_logger = get_browser_logger(get_global_conf().get_proof_path())

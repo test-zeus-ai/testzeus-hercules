@@ -13,8 +13,11 @@ from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.dom_helper import get_element_outer_html
 from testzeus_hercules.utils.dom_mutation_observer import subscribe, unsubscribe
 from testzeus_hercules.utils.logger import logger
+from testzeus_hercules.utils.automation.add_item import add_method
+from testzeus_hercules.utils.automation.html_element import generate_xpath
 
 
+element_locators = []
 async def select_option(
     entry: Annotated[
         tuple[str, str],
@@ -76,7 +79,19 @@ async def do_select_option(page: Page, selector: str, option_value: str) -> dict
         if not element:
             error = f"Error: Selector '{selector}' not found. Unable to continue."
             return {"summary_message": error, "detailed_message": error}
-
+        
+        attributes = await element.evaluate("""(element) => {
+                const attrs = {
+                    'tagName': element.tagName.toLowerCase()
+                };
+                for (const attr of element.attributes) {
+                    attrs[attr.name] = attr.value;
+                }
+                return attrs;
+            }""")
+        element_xpath = f"xpath={generate_xpath(attributes)}"
+        element_locators.append([element_xpath, option_value])
+    
         # Part 2: Interact with the element to select the option
         return await interact_with_element_select_type(page, element, selector, option_value, properties)
 
@@ -104,7 +119,8 @@ async def find_element_select_type(page: Page, selector: str) -> tuple[Optional[
     """
     browser_manager = PlaywrightManager()
     element = await browser_manager.find_element(selector, page, element_name="select_option")
-
+ 
+    
     if not element:
         selector_logger = get_browser_logger(get_global_conf().get_proof_path())
         await selector_logger.log_selector_interaction(
@@ -305,6 +321,8 @@ async def bulk_select_option(
     List[Dict[str, str]],
     "List of dictionaries, each containing 'selector' and the result of the operation.",
 ]:
+    print('__-------____-----____-----__---')
+    print("Tool used bulk_select_option.")
     add_event(EventType.INTERACTION, EventData(detail="BulkSelectOption"))
     results: List[Dict[str, str]] = []
     logger.info("Executing bulk select option command")
@@ -314,6 +332,7 @@ async def bulk_select_option(
             logger.error(f"Invalid entry format: {entry}. Expected [selector, value]")
             continue
         result = await select_option((entry[0], entry[1]))
+        add_method("bulk_select_option", str([element_locators]))
         if isinstance(result, str):
             if "new elements have appeared in view" in result and "success" in result.lower():
                 success_part = result.split(".\nAs a consequence")[0]
@@ -323,3 +342,4 @@ async def bulk_select_option(
         else:
             results.append({"selector": entry[0], "result": str(result)})
     return results
+

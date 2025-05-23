@@ -1,13 +1,17 @@
 import asyncio
 import traceback
 from typing import Annotated
+import os
+import json
+import uuid
 
 from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.logger import logger
-
+from testzeus_hercules.utils.automation.add_item import add_method
+from testzeus_hercules.utils.automation.html_element import generate_xpath
 
 @tool(
     agent_names=["browser_nav_agent"],
@@ -25,11 +29,11 @@ async def drag_and_drop(
     ],
     wait_before_execution: Annotated[float, "Wait time before drag and drop"] = 0.0,
 ) -> Annotated[str, "Drag and drop operation result"]:
-
+    print('__-------____-----____-----__---')
+    print("Tool Used Drag_and_drop")
     selector = source_selector
     if "md=" not in selector:
         selector = f"[md='{selector}']"
-
     logger.info(f"Executing drag and drop from '{selector}' to '{target_selector}'")
     add_event(EventType.INTERACTION, EventData(detail="drag_and_drop"))
 
@@ -49,7 +53,22 @@ async def drag_and_drop(
         source_element = await browser_manager.find_element(selector, page, element_name="drag_and_drop")
         if source_element is None:
             raise ValueError(f"Source element with selector: '{selector}' not found")
-
+        
+        attributes = await element.evaluate("""(element) => {
+                const attrs = {
+                    'tagName': element.tagName.toLowerCase()
+                };
+                for (const attr of element.attributes) {
+                    attrs[attr.name] = attr.value;
+                }
+                return attrs;
+            }""")
+        xpath = generate_xpath(attributes).replace("'", "\"")
+        element_xpath = f"xpath={xpath}"
+        ###Adding Method to the DataBase 
+        add_method("drag_and_drop", str([element_xpath, target_selector, wait_before_execution]), 
+                   str(["asyncio" , "inspect", "traceback"]))
+        
         # Find target using multiple selector strategies
         target_element = None
         selectors_to_try = []

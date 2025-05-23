@@ -19,6 +19,8 @@ from testzeus_hercules.utils.logger import logger
 )
 async def get_page_text() -> Annotated[str, "DOM content based on type to analyze and decide"]:
 
+    print('__-------____-----____-----__---')
+    print("Tool used get_page_text.")
     add_event(EventType.INTERACTION, EventData(detail="get_page_text"))
     logger.info(f"Executing get_page_text")
     start_time = time.time()

@@ -14,8 +14,11 @@ from testzeus_hercules.utils.dom_mutation_observer import subscribe, unsubscribe
 from testzeus_hercules.utils.js_helper import get_js_with_element_finder
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
+from testzeus_hercules.utils.automation.add_item import add_method
+from testzeus_hercules.utils.automation.html_element import generate_xpath
 
 
+element_with_locators = []
 async def set_date_time_value(
     entry: Annotated[
         tuple,
@@ -85,6 +88,17 @@ async def do_set_date_time_value(page: Page, selector: str, input_value: str) ->
         logger.debug(f"Looking for selector {selector} to set input value: {input_value}")
         browser_manager = PlaywrightManager()
         element = await browser_manager.find_element(selector, page, element_name="enter_date_time")
+        attributes = await element.evaluate("""(element) => {
+                const attrs = {
+                    'tagName': element.tagName.toLowerCase()
+                };
+                for (const attr of element.attributes) {
+                    attrs[attr.name] = attr.value;
+                }
+                return attrs;
+            }""")
+        element_xpath = f"xpath={generate_xpath(attributes)}"
+        element_with_locators.append([element_xpath, input_value])
         if element is None:
             error = f"Error: Selector '{selector}' not found. Unable to continue."
             return {"summary_message": error, "detailed_message": error}
@@ -127,11 +141,14 @@ async def bulk_set_date_time_value(
     List[dict],
     "List of dictionaries, each containing 'selector' and the result of the operation.",
 ]:  # noqa: UP006
+    print('__-------____-----____-----__---')
+    print("Tool used bulk_set_date_time_value.")
+    
     add_event(EventType.INTERACTION, EventData(detail="BulkSetInputValue"))
     results: List[dict[str, str]] = []  # noqa: UP006
     logger.info("Executing bulk set input value command")
     for entry in entries:
         result = await set_date_time_value(entry)  # Use dictionary directly
         results.append({"selector": entry[0], "result": result})
-
+    add_method(str([element_with_locators]))
     return results

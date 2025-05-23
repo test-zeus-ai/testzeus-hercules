@@ -6,7 +6,8 @@ import playwright_recaptcha
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
-
+from testzeus_hercules.config import get_global_conf
+from testzeus_hercules.utils.automation.add_item import add_method
 
 @tool(
     agent_names=["browser_nav_agent"],
@@ -17,6 +18,10 @@ async def captcha_solver(
     captcha_type: Annotated[str, "Captcha type: recaptchav2/recaptchav3"],
 ) -> Annotated[bool, "Solve status: True=solved, False=failed"]:
     try:
+        print('__-------____-----____-----__---')
+        print("Tool used captcha_solver.")
+        add_method("captcha_solver", str([captcha_type]))
+    
         browser_manager = PlaywrightManager()
         page = await browser_manager.get_current_page()
         captcha_solver = getattr(playwright_recaptcha, captcha_type)

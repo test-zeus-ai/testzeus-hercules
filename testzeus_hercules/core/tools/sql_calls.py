@@ -6,7 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_en
 from sqlalchemy.sql import text
 from testzeus_hercules.core.tools.tool_registry import tool, tool_registry
 from testzeus_hercules.utils.logger import logger
-
+from testzeus_hercules.config import get_global_conf
+from testzeus_hercules.utils.automation.add_item import add_method
 
 @tool(
     agent_names=["sql_nav_agent"],
@@ -109,6 +110,9 @@ async def execute_select_cte_query_sql(
 
     """
     try:
+        print('__-------____-----____-----__---')
+        print("Tool used execute_select_cte_query_sql.")
+        add_method("execute_select_cte_query_sql", str([connection_string, query, schema_name, params]))
         # Ensure only SELECT queries are allowed
         query_lower = query.strip().lower()
         if not (query_lower.startswith("select") or query_lower.startswith("with")):

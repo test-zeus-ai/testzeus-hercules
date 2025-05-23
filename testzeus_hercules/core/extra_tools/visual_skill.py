@@ -13,6 +13,8 @@ from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.llm_helper import create_multimodal_agent
 from testzeus_hercules.utils.logger import logger
 
+from testzeus_hercules.utils.automation.add_item import add_method
+
 # Create a UserProxyAgent for the image comparison agent
 image_ex_user_proxy = UserProxyAgent(
     name="image_ex_user_proxy",
@@ -44,6 +46,9 @@ async def compare_visual_screenshot(
         str: Comparison results
         dict: Error message if something fails
     """
+    print('__-------____-----____-----__---')
+    print("Tool used compare_visual_screenshot.")
+    add_method("compare_visual_screenshot", str([reference_image_path, comparison_title]))
     # Initialize the image comparison agent
     image_agent = create_multimodal_agent(
         name="image-comparer",
@@ -204,7 +209,11 @@ async def validate_visual_feature(
         str: Validation results
         dict: Error message if something fails
     """
+    print('__-------____-----____-----__---')
+    print("Tool used validate_visual_feature.")
+    add_method("validate_visual_feature", str([feature_description, search_title]))
     # Initialize the image comparison agent
+    
     image_agent = create_multimodal_agent(
         name="image-comparer",
         system_message="You are a visual validation agent. You can look into current screen and provide feedback. Your only purpose is to do visual analysis of screen",

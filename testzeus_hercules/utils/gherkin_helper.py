@@ -60,9 +60,25 @@ async def split_feature_file(input_file: str, output_dir: str, dont_append_heade
             else:
                 skip_line -= 1
 
-        scenario_title = scenario.strip().split("\n")[0]
-        o_scenario_title = scenario_title
-        scenario_filename = f"{scenario_title.replace(' ', '_')}.feature"
+        # Get the first line and truncate to 100 characters
+        scenario_title = scenario.strip().split("\n", 1)[0][:100]
+
+        # Remove all characters except alphanumeric and underscore
+        clean_title = re.sub(r'[^\w]', '', scenario_title)
+        
+        # Enforce a stricter length limit (50 characters) to prevent OS filename length issues
+        # If the title is too long, truncate it and add a hash of the original title
+        if len(clean_title) > 50:
+            import hashlib
+            # Create a hash of the original title
+            title_hash = hashlib.md5(clean_title.encode()).hexdigest()[:8]
+            # Truncate the title and append the hash
+            truncated_title = f"{clean_title[:42]}_{title_hash}"
+        else:
+            truncated_title = clean_title
+            
+        scenario_filename = f"{truncated_title}.feature"
+        o_scenario_title = scenario_filename
         output_file = os.path.join(output_dir, scenario_filename)
         f_scenario = scenario.strip()
 
@@ -70,8 +86,8 @@ async def split_feature_file(input_file: str, output_dir: str, dont_append_heade
             f_scenario = f_scenario.replace(comment_line, "")
 
         if already_visited_scenarios[o_scenario_title] > 0:
-
-            scenario_filename = f"{scenario_title.replace(' ', '_')}_{already_visited_scenarios[o_scenario_title]}.feature"
+            # Add a unique number to the filename while keeping it under the length limit
+            scenario_filename = f"{truncated_title}_{already_visited_scenarios[o_scenario_title]}.feature"
             scenario_title = f"{scenario_title} - {already_visited_scenarios[o_scenario_title]}"
             output_file = os.path.join(output_dir, scenario_filename)
         already_visited_scenarios[o_scenario_title] += 1

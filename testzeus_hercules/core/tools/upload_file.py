@@ -14,9 +14,14 @@ from testzeus_hercules.utils.dom_helper import get_element_outer_html
 from testzeus_hercules.utils.dom_mutation_observer import subscribe, unsubscribe
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
+from testzeus_hercules.config import get_global_conf
+
+from testzeus_hercules.utils.automation.add_item import add_method
+from testzeus_hercules.utils.automation.html_element import generate_xpath
 
 # Remove UploadFileEntry TypedDict class
 
+elem_with_locator = []
 
 @tool(
     agent_names=["browser_nav_agent"],
@@ -31,7 +36,9 @@ async def click_and_upload_file(
 ) -> Annotated[str, "Explanation of the outcome of this operation."]:
     add_event(EventType.INTERACTION, EventData(detail="UploadFile"))
     logger.info(f"Uploading file: {entry}")
-
+    print('__-------____-----____-----__---')
+    print("Tool used click_and_upload_file.")
+    
     selector: str = entry[0]
     file_path: str = entry[1]
 
@@ -58,6 +65,8 @@ async def click_and_upload_file(
     subscribe(detect_dom_changes)
 
     result = await click_and_upload(page, selector, file_path)
+    add_method("click_and_upload_file", str([elem_with_locator]))
+    
     await asyncio.sleep(get_global_conf().get_delay_time())  # sleep for 100ms to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
 
@@ -66,7 +75,6 @@ async def click_and_upload_file(
     if dom_changes_detected:
         return f"{result['detailed_message']}.\nAs a consequence of this action, new elements have appeared in view: {dom_changes_detected}. This means that the action of uploading file '{file_path}' is not yet executed and needs further interaction. Get all_fields DOM to complete the interaction."
     return result["detailed_message"]
-
 
 async def click_and_upload(page: Page, selector: str, file_path: str) -> dict[str, str]:
     """
@@ -85,6 +93,17 @@ async def click_and_upload(page: Page, selector: str, file_path: str) -> dict[st
 
         browser_manager = PlaywrightManager()
         element = await browser_manager.find_element(selector, page, element_name="upload_file")
+        attributes = await element.evaluate("""(element) => {
+                const attrs = {
+                    'tagName': element.tagName.toLowerCase()
+                };
+                for (const attr of element.attributes) {
+                    attrs[attr.name] = attr.value;
+                }
+                return attrs;
+            }""")
+        element_xpath = f"xpath={generate_xpath(attributes)}"
+        elem_with_locator.append([element_xpath, file_path])
 
         if element is None:
             # Initialize selector logger with proof path

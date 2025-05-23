@@ -10,6 +10,7 @@ from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.dom_mutation_observer import subscribe  # type: ignore
 from testzeus_hercules.utils.dom_mutation_observer import unsubscribe  # type: ignore
 from testzeus_hercules.utils.logger import logger
+from testzeus_hercules.utils.automation.add_item import add_method
 
 
 @tool(
@@ -20,6 +21,11 @@ from testzeus_hercules.utils.logger import logger
 async def press_key_combination(
     key_combination: Annotated[str, "key to press, e.g., Enter, PageDown etc"],
 ) -> str:
+    
+    print('__-------____-----____-----__---')
+    print("Tool used press_key_combination.")
+    add_method("press_key_combination", str([key_combination]))
+
     logger.info(f"Executing press_key_combination with key combo: {key_combination}")
     # Create and use the PlaywrightManager
     browser_manager = PlaywrightManager()

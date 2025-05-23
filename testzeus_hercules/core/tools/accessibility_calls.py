@@ -12,6 +12,7 @@ from testzeus_hercules.core.tools.tool_registry import (
     tool,
 )
 from testzeus_hercules.utils.logger import logger
+from testzeus_hercules.utils.automation.add_item import add_method
 
 AXE_SCRIPT_URL = "https://cdnjs.cloudflare.com/ajax/libs/axe-core/4.10.2/axe.min.js"
 
@@ -32,6 +33,9 @@ async def test_page_accessibility(
     Returns:
     - A **string** with the Axe-core accessibility test results in minified JSON format.
     """
+    print('__-------____-----____-----__---')
+    print("Tool used test_page_accessibility.")
+    add_method("test_page_accessibility", str([page_path]))
     try:
         # Create and use the PlaywrightManager
         browser_manager = PlaywrightManager()
@@ -58,7 +62,7 @@ async def test_page_accessibility(
             }
             """
         )
-
+        
         # Output summary of violations
         violations = axe_results.get("violations", [])
         incomplete = axe_results.get("incomplete", [])
