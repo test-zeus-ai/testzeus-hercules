@@ -434,7 +434,7 @@ To run tests with a visible browser while using Docker:
 1. Set up a Chrome instance with remote debugging enabled
 2. Add to your `.env` file:
 ```bash
-CDP_ENDPOINT_URL=ws://your-chrome-host:9222
+CDP_ENDPOINT_URL=wss://your-chrome-host:9222
 ```
 
 This allows Hercules running in Docker to connect to an external browser instance, enabling visible test execution even when running in a container.
