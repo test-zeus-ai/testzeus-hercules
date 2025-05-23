@@ -32,7 +32,7 @@ playwright-recaptcha = "^0.5.1"
 junit2html = "^31.0.2"
 aiohttp = "^3.11.7"
 inflection = "^0.5.1"
-ag2 = {extras = ["retrievechat", "ollama", "anthropic", "openai", "groq", "gemini", "lmm", "mistral", "bedrock", "gemini"], version = "0.8.1"}
+ag2 = {extras = ["retrievechat", "ollama", "anthropic", "openai", "groq", "gemini", "lmm", "mistral", "bedrock", "gemini", "openai"], version = "^0.9.1"}
 aiofiles = "^24.1.0"
 chromadb = "^0.6.3"
 sentence-transformers = "^3.4.1"
