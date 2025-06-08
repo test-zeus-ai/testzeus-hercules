@@ -1,0 +1,237 @@
+---
+title: "Memory System"
+description: "Understanding TestZeus Hercules' memory and context management system"
+---
+
+# Memory System
+
+TestZeus Hercules implements a sophisticated memory system that enables agents to maintain context across test execution sessions and learn from previous interactions.
+
+## Overview
+
+The memory system consists of several components that work together to provide intelligent context management:
+
+- **Session Memory**: Short-term memory for current test execution
+- **Knowledge Base**: Long-term storage of learned patterns and solutions
+- **Context Management**: Intelligent context switching and relevance scoring
+- **Memory Persistence**: Saving and loading memory states across sessions
+
+## Session Memory
+
+Session memory maintains context during a single test execution:
+
+```python
+# Example of session memory usage
+session_memory = {
+    "current_page": "login",
+    "user_credentials": {"username": "test_user"},
+    "navigation_history": ["home", "login"],
+    "element_cache": {
+        "login_button": {"selector": "#login-btn", "confidence": 0.95}
+    }
+}
+```
+
+### Key Features
+
+- **Element Recognition Cache**: Stores successful element identifications
+- **Navigation Context**: Tracks user journey through the application
+- **Error Recovery**: Maintains state for intelligent retry mechanisms
+- **Dynamic Updates**: Real-time context updates during test execution
+
+## Knowledge Base
+
+The knowledge base stores learned patterns and solutions:
+
+### Pattern Recognition
+
+```gherkin
+# The system learns from successful interactions
+Given I am on the login page
+When I enter valid credentials
+Then I should be redirected to dashboard
+# System remembers: login_page -> credentials -> dashboard_redirect
+```
+
+### Solution Storage
+
+- **Element Selectors**: Successful element identification strategies
+- **Workflow Patterns**: Common user interaction sequences
+- **Error Solutions**: Proven fixes for common issues
+- **Performance Metrics**: Response times and optimization data
+
+## Context Management
+
+Intelligent context switching ensures relevant information is available:
+
+### Context Scoring
+
+```python
+# Context relevance scoring
+context_score = calculate_relevance(
+    current_action="click_button",
+    historical_context=session_memory,
+    similarity_threshold=0.8
+)
+```
+
+### Context Types
+
+1. **UI Context**: Current page state and element information
+2. **Data Context**: Test data and variable states
+3. **Workflow Context**: Current position in test scenario
+4. **Error Context**: Recent errors and recovery attempts
+
+## Memory Persistence
+
+### Saving Memory State
+
+```python
+# Memory persistence configuration
+memory_config = {
+    "save_session_memory": True,
+    "knowledge_base_path": "./memory/knowledge_base.json",
+    "context_retention_days": 30,
+    "max_memory_size_mb": 100
+}
+```
+
+### Loading Previous Context
+
+The system can restore context from previous sessions:
+
+- **Partial Context**: Load relevant portions based on current test
+- **Full Restoration**: Complete session state recovery
+- **Selective Loading**: Choose specific memory components
+
+## Configuration
+
+### Environment Variables
+
+```bash
+# Memory system configuration
+HERCULES_MEMORY_ENABLED=true
+HERCULES_MEMORY_PATH=./memory
+HERCULES_CONTEXT_RETENTION_DAYS=30
+HERCULES_MAX_MEMORY_SIZE_MB=100
+HERCULES_KNOWLEDGE_BASE_SYNC=true
+```
+
+### Memory Settings
+
+```json
+{
+  "memory": {
+    "enabled": true,
+    "session_memory": {
+      "max_size_mb": 50,
+      "cleanup_interval_minutes": 30
+    },
+    "knowledge_base": {
+      "auto_save": true,
+      "backup_frequency_hours": 24,
+      "compression_enabled": true
+    },
+    "context_management": {
+      "relevance_threshold": 0.7,
+      "max_context_age_hours": 72,
+      "context_merge_strategy": "weighted"
+    }
+  }
+}
+```
+
+## Best Practices
+
+### Memory Optimization
+
+1. **Regular Cleanup**: Remove outdated context data
+2. **Selective Storage**: Only store relevant information
+3. **Compression**: Use efficient storage formats
+4. **Backup Strategy**: Regular knowledge base backups
+
+### Context Management
+
+1. **Relevance Scoring**: Implement proper context scoring
+2. **Memory Limits**: Set appropriate size limits
+3. **Performance Monitoring**: Track memory usage impact
+4. **Privacy Considerations**: Avoid storing sensitive data
+
+## Troubleshooting
+
+### Common Issues
+
+**Memory Not Persisting**
+```bash
+# Check memory configuration
+echo $HERCULES_MEMORY_ENABLED
+ls -la ./memory/
+```
+
+**Context Not Loading**
+```bash
+# Verify memory file permissions
+chmod 644 ./memory/*.json
+```
+
+**High Memory Usage**
+```bash
+# Clean up old memory files
+find ./memory -name "*.json" -mtime +30 -delete
+```
+
+### Performance Optimization
+
+- **Memory Profiling**: Monitor memory usage patterns
+- **Context Pruning**: Remove irrelevant context data
+- **Efficient Serialization**: Use optimized storage formats
+- **Lazy Loading**: Load context data on demand
+
+## Integration with Agents
+
+The memory system integrates seamlessly with all TestZeus Hercules agents:
+
+### PlannerAgent Integration
+
+```python
+# Planner uses memory for strategy optimization
+strategy = planner_agent.create_strategy(
+    scenario=current_scenario,
+    memory_context=session_memory.get_relevant_context(),
+    knowledge_base=knowledge_base.get_patterns()
+)
+```
+
+### BrowserNavAgent Integration
+
+```python
+# Browser agent leverages element memory
+element = browser_agent.find_element(
+    description="login button",
+    memory_cache=session_memory.element_cache,
+    learning_enabled=True
+)
+```
+
+## Advanced Features
+
+### Machine Learning Integration
+
+- **Pattern Recognition**: ML-based pattern identification
+- **Predictive Context**: Anticipate needed context
+- **Adaptive Learning**: Improve over time
+- **Anomaly Detection**: Identify unusual patterns
+
+### Distributed Memory
+
+- **Shared Knowledge**: Team-wide knowledge sharing
+- **Cloud Sync**: Remote memory synchronization
+- **Conflict Resolution**: Handle concurrent updates
+- **Version Control**: Track memory evolution
+
+## Related Documentation
+
+- [Architecture Overview](/architecture/overview)
+- [Agent System](/architecture/agents)
+- [Tools Library](/architecture/tools)
+- [Configuration Guide](/configuration/llm-setup)

@@ -69,6 +69,7 @@
     {
       "group": "Configuration",
       "pages": [
+        "configuration/overview",
         "configuration/llm-setup",
         "configuration/environment-variables",
         "configuration/project-structure"
