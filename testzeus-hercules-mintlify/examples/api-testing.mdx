@@ -1,0 +1,671 @@
+---
+title: 'API Testing Examples'
+description: 'Comprehensive examples of REST API testing using TestZeus Hercules'
+---
+
+## Basic API Testing
+
+### Simple GET Request
+
+```gherkin
+Feature: User API Testing
+
+  Scenario: Get user information
+    Given I have the API endpoint "https://api.example.com/users/123"
+    When I send a GET request
+    Then the response status should be 200
+    And the response should contain user data
+    And the response time should be less than 2 seconds
+```
+
+### POST Request with Data
+
+```gherkin
+Feature: User Creation API
+
+  Scenario: Create new user via API
+    Given I have the user creation endpoint
+    When I send a POST request with the following data:
+      """
+      {
+        "name": "John Doe",
+        "email": "john.doe@example.com",
+        "role": "user"
+      }
+      """
+    Then the response status should be 201
+    And the response should contain the user ID
+    And the user should be created in the database
+```
+
+## Authentication Testing
+
+### Bearer Token Authentication
+
+```gherkin
+Feature: API Authentication
+
+  Scenario: Access protected endpoint with valid token
+    Given I have a valid bearer token
+    When I send a GET request to "/api/protected/profile"
+    With the authorization header "Bearer {token}"
+    Then the response status should be 200
+    And the response should contain my profile data
+
+  Scenario: Access protected endpoint without token
+    Given I do not have an authentication token
+    When I send a GET request to "/api/protected/profile"
+    Then the response status should be 401
+    And the response should contain "Unauthorized"
+```
+
+### API Key Authentication
+
+```gherkin
+Feature: API Key Authentication
+
+  Scenario: Use API key in header
+    Given I have a valid API key
+    When I send a GET request to "/api/data"
+    With the header "X-API-Key: {api_key}"
+    Then the response status should be 200
+    And the response should contain the requested data
+
+  Scenario: Use API key in query parameter
+    Given I have a valid API key
+    When I send a GET request to "/api/data?api_key={api_key}"
+    Then the response status should be 200
+    And the response should contain the requested data
+```
+
+### OAuth 2.0 Flow
+
+```gherkin
+Feature: OAuth 2.0 Authentication
+
+  Scenario: Complete OAuth flow
+    Given I have OAuth client credentials
+    When I request an access token with:
+      | grant_type    | client_credentials           |
+      | client_id     | my_client_id                |
+      | client_secret | my_client_secret            |
+      | scope         | read write                  |
+    Then I should receive an access token
+    And the token should have the correct scope
+    When I use the token to access protected resources
+    Then I should have access to the requested data
+```
+
+## CRUD Operations
+
+### Complete User Management
+
+```gherkin
+Feature: User CRUD Operations
+
+  Scenario: Complete user lifecycle
+    # Create user
+    Given I have the users API endpoint
+    When I create a user with:
+      | name     | Jane Smith              |
+      | email    | jane.smith@example.com  |
+      | role     | admin                   |
+    Then the user should be created successfully
+    And I should receive the user ID
+
+    # Read user
+    When I retrieve the user by ID
+    Then I should get the user details
+    And the name should be "Jane Smith"
+    And the role should be "admin"
+
+    # Update user
+    When I update the user with:
+      | name | Jane Doe |
+      | role | user     |
+    Then the user should be updated successfully
+    And the name should be "Jane Doe"
+    And the role should be "user"
+
+    # Delete user
+    When I delete the user
+    Then the user should be deleted successfully
+    When I try to retrieve the deleted user
+    Then I should get a 404 error
+```
+
+### Bulk Operations
+
+```gherkin
+Feature: Bulk API Operations
+
+  Scenario: Create multiple users
+    Given I have the bulk users endpoint
+    When I send a POST request with multiple users:
+      """
+      {
+        "users": [
+          {
+            "name": "User 1",
+            "email": "user1@example.com"
+          },
+          {
+            "name": "User 2",
+            "email": "user2@example.com"
+          },
+          {
+            "name": "User 3",
+            "email": "user3@example.com"
+          }
+        ]
+      }
+      """
+    Then all users should be created successfully
+    And I should receive all user IDs
+    And each user should exist in the database
+```
+
+## Data Validation
+
+### Request Validation
+
+```gherkin
+Feature: API Request Validation
+
+  Scenario: Validate required fields
+    Given I have the user creation endpoint
+    When I send a POST request with missing required fields:
+      """
+      {
+        "name": "John Doe"
+      }
+      """
+    Then the response status should be 400
+    And the response should contain validation errors
+    And the error should mention "email is required"
+
+  Scenario: Validate email format
+    Given I have the user creation endpoint
+    When I send a POST request with invalid email:
+      """
+      {
+        "name": "John Doe",
+        "email": "invalid-email"
+      }
+      """
+    Then the response status should be 400
+    And the response should contain "Invalid email format"
+```
+
+### Response Schema Validation
+
+```gherkin
+Feature: API Response Schema Validation
+
+  Scenario: Validate user response schema
+    Given I have the user endpoint
+    When I send a GET request for user details
+    Then the response should match the user schema:
+      """
+      {
+        "type": "object",
+        "properties": {
+          "id": {"type": "integer"},
+          "name": {"type": "string"},
+          "email": {"type": "string", "format": "email"},
+          "created_at": {"type": "string", "format": "date-time"},
+          "updated_at": {"type": "string", "format": "date-time"}
+        },
+        "required": ["id", "name", "email", "created_at", "updated_at"]
+      }
+      """
+```
+
+## Error Handling
+
+### HTTP Status Codes
+
+```gherkin
+Feature: API Error Handling
+
+  Scenario Outline: Test various error conditions
+    Given I have the API endpoint
+    When I send a request that triggers "<error_condition>"
+    Then the response status should be <status_code>
+    And the response should contain "<error_message>"
+
+    Examples:
+      | error_condition    | status_code | error_message        |
+      | resource not found | 404         | Resource not found   |
+      | unauthorized       | 401         | Unauthorized         |
+      | forbidden          | 403         | Forbidden            |
+      | bad request        | 400         | Bad request          |
+      | server error       | 500         | Internal server error|
+```
+
+### Rate Limiting
+
+```gherkin
+Feature: API Rate Limiting
+
+  Scenario: Test rate limiting
+    Given I have an API with rate limiting of 100 requests per minute
+    When I send 101 requests within 1 minute
+    Then the first 100 requests should succeed
+    And the 101st request should return status 429
+    And the response should contain "Rate limit exceeded"
+    And the response should include retry-after header
+```
+
+## Pagination
+
+### Offset-based Pagination
+
+```gherkin
+Feature: API Pagination
+
+  Scenario: Test offset-based pagination
+    Given I have an API endpoint with 250 total records
+    When I request the first page with limit 50
+    Then I should receive 50 records
+    And the response should include pagination metadata:
+      | total  | 250 |
+      | limit  | 50  |
+      | offset | 0   |
+      | pages  | 5   |
+
+  Scenario: Navigate through pages
+    Given I have paginated data
+    When I request page 2 with limit 50
+    Then I should receive records 51-100
+    And the pagination should show:
+      | current_page | 2  |
+      | total_pages  | 5  |
+      | has_next     | true |
+      | has_previous | true |
+```
+
+### Cursor-based Pagination
+
+```gherkin
+Feature: Cursor-based Pagination
+
+  Scenario: Test cursor pagination
+    Given I have an API with cursor-based pagination
+    When I request the first page
+    Then I should receive a page of results
+    And I should receive a next_cursor
+    When I request the next page using the cursor
+    Then I should receive the next set of results
+    And the results should not overlap with the previous page
+```
+
+## File Upload API
+
+### Single File Upload
+
+```gherkin
+Feature: File Upload API
+
+  Scenario: Upload single file
+    Given I have a file upload endpoint
+    When I upload a file "test_document.pdf"
+    With the content type "application/pdf"
+    Then the file should be uploaded successfully
+    And I should receive a file ID
+    And the file should be accessible via the file URL
+
+  Scenario: Upload file with metadata
+    Given I have a file upload endpoint
+    When I upload a file with metadata:
+      | file        | test_image.jpg    |
+      | title       | Test Image        |
+      | description | A test image file |
+      | category    | images            |
+    Then the file should be uploaded with metadata
+    And the metadata should be retrievable
+```
+
+### Multiple File Upload
+
+```gherkin
+Feature: Multiple File Upload
+
+  Scenario: Upload multiple files
+    Given I have a batch upload endpoint
+    When I upload multiple files:
+      | file1.jpg |
+      | file2.png |
+      | file3.pdf |
+    Then all files should be uploaded successfully
+    And I should receive file IDs for each file
+    And each file should be accessible
+```
+
+## Integration Testing
+
+### Cross-Service Communication
+
+```gherkin
+Feature: Service Integration
+
+  Scenario: User creation triggers email service
+    Given I have user and email services running
+    When I create a user via the user API
+    Then the user should be created successfully
+    And an email should be sent via the email service
+    And the email should contain welcome information
+    And the email status should be "sent"
+
+  Scenario: Order processing workflow
+    Given I have order, inventory, and payment services
+    When I create an order via API:
+      """
+      {
+        "user_id": 123,
+        "items": [
+          {"product_id": 456, "quantity": 2}
+        ],
+        "payment_method": "credit_card"
+      }
+      """
+    Then the order should be created
+    And the inventory should be updated
+    And the payment should be processed
+    And the order status should be "confirmed"
+```
+
+### Database Integration
+
+```gherkin
+Feature: API Database Integration
+
+  Scenario: Verify data persistence
+    Given I have a clean database
+    When I create a user via API
+    Then the user should exist in the database
+    And the database record should match the API response
+    When I update the user via API
+    Then the database should reflect the changes
+    And the updated_at timestamp should be recent
+```
+
+## Performance Testing
+
+### Response Time Testing
+
+```gherkin
+Feature: API Performance
+
+  Scenario: Test response times
+    Given I have the API endpoint
+    When I send 100 concurrent requests
+    Then the average response time should be less than 500ms
+    And the 95th percentile should be less than 1000ms
+    And no requests should timeout
+
+  Scenario: Test with large payload
+    Given I have an endpoint that accepts large data
+    When I send a request with 1MB of data
+    Then the request should complete within 5 seconds
+    And the response should confirm data receipt
+```
+
+### Load Testing
+
+```gherkin
+Feature: API Load Testing
+
+  Scenario: Sustained load test
+    Given I have the API endpoint
+    When I send 1000 requests over 10 minutes
+    Then all requests should succeed
+    And the response times should remain stable
+    And the error rate should be less than 1%
+```
+
+## Security Testing
+
+### Input Sanitization
+
+```gherkin
+Feature: API Security Testing
+
+  Scenario: Test SQL injection protection
+    Given I have a search API endpoint
+    When I send a request with SQL injection payload:
+      """
+      {
+        "query": "'; DROP TABLE users; --"
+      }
+      """
+    Then the request should be handled safely
+    And the database should remain intact
+    And I should receive a safe response
+
+  Scenario: Test XSS protection
+    Given I have a comment API endpoint
+    When I send a comment with XSS payload:
+      """
+      {
+        "comment": "<script>alert('xss')</script>"
+      }
+      """
+    Then the script should be sanitized
+    And the stored comment should be safe
+```
+
+### Authorization Testing
+
+```gherkin
+Feature: API Authorization
+
+  Scenario: Test role-based access
+    Given I have users with different roles
+    When a "user" role tries to access admin endpoints
+    Then the request should be denied with 403
+    When an "admin" role accesses admin endpoints
+    Then the request should succeed
+
+  Scenario: Test resource ownership
+    Given I have user A and user B
+    And user A owns resource X
+    When user B tries to access resource X
+    Then the request should be denied
+    When user A accesses resource X
+    Then the request should succeed
+```
+
+## API Versioning
+
+### Version Compatibility
+
+```gherkin
+Feature: API Versioning
+
+  Scenario: Test API version compatibility
+    Given I have API versions v1 and v2
+    When I send a request to v1 endpoint
+    Then I should receive v1 format response
+    When I send a request to v2 endpoint
+    Then I should receive v2 format response
+    And both versions should work correctly
+
+  Scenario: Test deprecated version warnings
+    Given API v1 is deprecated
+    When I send a request to v1 endpoint
+    Then I should receive a deprecation warning
+    And the response should include migration information
+```
+
+## Webhook Testing
+
+### Webhook Delivery
+
+```gherkin
+Feature: Webhook Testing
+
+  Scenario: Test webhook delivery
+    Given I have configured a webhook endpoint
+    When an event occurs that triggers the webhook
+    Then the webhook should be delivered
+    And the payload should contain event data
+    And the delivery should be within 30 seconds
+
+  Scenario: Test webhook retry mechanism
+    Given I have a webhook endpoint that returns 500
+    When an event triggers the webhook
+    Then the system should retry the webhook
+    And it should retry with exponential backoff
+    And it should eventually mark as failed after max retries
+```
+
+## GraphQL API Testing
+
+### GraphQL Queries
+
+```gherkin
+Feature: GraphQL API Testing
+
+  Scenario: Test GraphQL query
+    Given I have a GraphQL endpoint
+    When I send a query:
+      """
+      query {
+        user(id: "123") {
+          name
+          email
+          posts {
+            title
+            content
+          }
+        }
+      }
+      """
+    Then I should receive the requested data
+    And the response should match the query structure
+
+  Scenario: Test GraphQL mutation
+    Given I have a GraphQL endpoint
+    When I send a mutation:
+      """
+      mutation {
+        createUser(input: {
+          name: "John Doe"
+          email: "john@example.com"
+        }) {
+          id
+          name
+          email
+        }
+      }
+      """
+    Then the user should be created
+    And I should receive the user data
+```
+
+## API Documentation Testing
+
+### OpenAPI Specification
+
+```gherkin
+Feature: API Documentation Validation
+
+  Scenario: Validate API against OpenAPI spec
+    Given I have an OpenAPI specification
+    When I test all documented endpoints
+    Then all endpoints should respond as documented
+    And all response schemas should match the spec
+    And all required parameters should be enforced
+
+  Scenario: Test example requests from documentation
+    Given I have API documentation with examples
+    When I execute each example request
+    Then all examples should work correctly
+    And the responses should match documented examples
+```
+
+## Monitoring and Observability
+
+### Health Checks
+
+```gherkin
+Feature: API Health Monitoring
+
+  Scenario: Test health check endpoint
+    Given I have a health check endpoint
+    When I send a GET request to "/health"
+    Then the response status should be 200
+    And the response should contain system status
+    And all dependencies should be healthy
+
+  Scenario: Test readiness probe
+    Given I have a readiness endpoint
+    When the service is starting up
+    Then the readiness check should return 503
+    When the service is fully ready
+    Then the readiness check should return 200
+```
+
+### Metrics Collection
+
+```gherkin
+Feature: API Metrics
+
+  Scenario: Verify metrics collection
+    Given I have metrics collection enabled
+    When I send requests to various endpoints
+    Then metrics should be collected for:
+      | request_count     |
+      | response_time     |
+      | error_rate        |
+      | active_connections|
+    And metrics should be accessible via metrics endpoint
+```
+
+## Best Practices Examples
+
+### Idempotency Testing
+
+```gherkin
+Feature: API Idempotency
+
+  Scenario: Test idempotent operations
+    Given I have an idempotent endpoint
+    When I send the same request multiple times
+    Then only the first request should create the resource
+    And subsequent requests should return the same result
+    And no duplicate resources should be created
+
+  Scenario: Test with idempotency key
+    Given I have an endpoint that supports idempotency keys
+    When I send requests with the same idempotency key
+    Then the operation should only execute once
+    And all requests should return the same response
+```
+
+### Content Negotiation
+
+```gherkin
+Feature: Content Negotiation
+
+  Scenario: Test different content types
+    Given I have an API endpoint
+    When I request JSON format with "Accept: application/json"
+    Then I should receive JSON response
+    When I request XML format with "Accept: application/xml"
+    Then I should receive XML response
+    When I request an unsupported format
+    Then I should receive 406 Not Acceptable
+```
+
+## Next Steps
+
+After exploring API testing examples:
+
+1. [Learn about security testing](/examples/security-testing)
+2. [Explore accessibility testing](/examples/accessibility-testing)
+3. [Check out visual testing](/examples/visual-testing)
+4. [Understand mobile automation](/examples/mobile-automation)
+
+Ready to implement API testing? Join our [Slack community](https://join.slack.com/t/testzeuscommunityhq/shared_invite/zt-2v2br8wog-FAmo_76xRHx~k~1oNaGQ0Q) to share your API testing experiences!

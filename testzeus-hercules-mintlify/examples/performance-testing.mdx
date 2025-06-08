@@ -1,0 +1,724 @@
+---
+title: 'Performance Testing Examples'
+description: 'Comprehensive performance testing strategies using TestZeus Hercules for web applications and APIs'
+---
+
+## Overview
+
+Performance testing ensures your applications can handle expected load and provide good user experience under various conditions. TestZeus Hercules provides comprehensive performance testing capabilities for web applications, APIs, and mobile apps.
+
+## Web Performance Testing
+
+### Page Load Performance
+
+```gherkin
+Feature: Web Page Performance Testing
+
+  Scenario: Test page load performance metrics
+    Given I am testing the homepage performance
+    When I navigate to the homepage
+    Then the First Contentful Paint should be under 1.5 seconds
+    And the Largest Contentful Paint should be under 2.5 seconds
+    And the Cumulative Layout Shift should be under 0.1
+    And the First Input Delay should be under 100 milliseconds
+    And the Time to Interactive should be under 3.5 seconds
+
+  Scenario: Test performance under different network conditions
+    Given I am testing page performance
+    When I simulate a slow 3G connection
+    And I navigate to the homepage
+    Then the page should still load within acceptable time limits
+    And critical content should be prioritized
+    And the user should see loading indicators
+    When I simulate a fast 4G connection
+    Then performance should be significantly better
+    And all resources should load quickly
+
+  Scenario: Test performance with large datasets
+    Given I am on a page that displays large amounts of data
+    When I load a page with 1000 items
+    Then the initial page load should be under 3 seconds
+    And pagination or virtual scrolling should be implemented
+    And scrolling should remain smooth
+    When I filter or sort the data
+    Then the operation should complete within 1 second
+    And the UI should remain responsive
+
+  Scenario: Test image loading performance
+    Given I am on a page with many images
+    When I scroll through the page
+    Then images should load progressively
+    And lazy loading should be implemented
+    And placeholder images should be shown while loading
+    And the page should not jump as images load
+    When I'm on a slow connection
+    Then images should be optimized for the connection speed
+    And WebP format should be used when supported
+```
+
+### JavaScript Performance
+
+```gherkin
+Feature: JavaScript Performance Testing
+
+  Scenario: Test JavaScript execution performance
+    Given I am testing JavaScript-heavy pages
+    When I interact with dynamic content
+    Then JavaScript execution should not block the UI
+    And animations should run at 60 FPS
+    And user interactions should respond within 100ms
+    When I perform complex calculations
+    Then they should be done in web workers when possible
+    And the main thread should remain responsive
+
+  Scenario: Test memory usage and leaks
+    Given I am using a single-page application
+    When I navigate between different views
+    Then memory usage should remain stable
+    And old views should be properly cleaned up
+    When I use the app for extended periods
+    Then memory leaks should not occur
+    And performance should not degrade over time
+
+  Scenario: Test bundle size and loading
+    Given I am testing the application bundle
+    When I analyze the JavaScript bundle size
+    Then the main bundle should be under 250KB gzipped
+    And code splitting should be implemented
+    And unused code should be tree-shaken
+    When I load the application
+    Then critical JavaScript should load first
+    And non-critical code should be loaded on demand
+```
+
+### CSS and Rendering Performance
+
+```gherkin
+Feature: CSS and Rendering Performance
+
+  Scenario: Test CSS rendering performance
+    Given I am testing page rendering
+    When I load pages with complex CSS
+    Then the initial render should be fast
+    And CSS should not block rendering
+    And critical CSS should be inlined
+    When I resize the browser window
+    Then layout recalculations should be minimal
+    And the page should remain responsive
+
+  Scenario: Test animation performance
+    Given I am testing CSS animations
+    When animations are running
+    Then they should maintain 60 FPS
+    And GPU acceleration should be used when appropriate
+    And animations should not cause layout thrashing
+    When multiple animations run simultaneously
+    Then performance should remain smooth
+    And the browser should not become unresponsive
+
+  Scenario: Test font loading performance
+    Given I am testing font loading
+    When I load pages with custom fonts
+    Then font loading should not block rendering
+    And fallback fonts should be displayed immediately
+    And font swapping should be smooth
+    When fonts fail to load
+    Then the page should remain readable
+    And performance should not be affected
+```
+
+## API Performance Testing
+
+### Response Time Testing
+
+```gherkin
+Feature: API Response Time Testing
+
+  Scenario: Test API response times under normal load
+    Given I am testing the user API
+    When I send a GET request to "/api/users"
+    Then the response should be received within 200ms
+    And the response should contain valid data
+    When I send a POST request to create a user
+    Then the response should be received within 500ms
+    And the user should be created successfully
+
+  Scenario: Test API response times with large payloads
+    Given I am testing API performance with large data
+    When I request a list of 1000 users
+    Then the response should be received within 1 second
+    And pagination should be implemented
+    And the response should be properly formatted
+    When I upload a large file via API
+    Then the upload should complete within reasonable time
+    And progress should be trackable
+
+  Scenario: Test API caching performance
+    Given I am testing API caching
+    When I make the same API request twice
+    Then the second request should be faster
+    And cached responses should be used when appropriate
+    When I make requests with different parameters
+    Then each unique request should be cached separately
+    And cache invalidation should work correctly
+```
+
+### Load Testing
+
+```gherkin
+Feature: API Load Testing
+
+  Scenario: Test API under concurrent load
+    Given I am load testing the API
+    When I send 100 concurrent requests to "/api/products"
+    Then all requests should complete successfully
+    And average response time should remain under 500ms
+    And no requests should timeout
+    And error rate should be under 1%
+
+  Scenario: Test API scalability
+    Given I am testing API scalability
+    When I gradually increase load from 10 to 1000 concurrent users
+    Then the API should scale gracefully
+    And response times should increase linearly
+    And the system should not crash
+    When load exceeds capacity
+    Then appropriate error responses should be returned
+    And the system should recover when load decreases
+
+  Scenario: Test API under stress conditions
+    Given I am stress testing the API
+    When I send requests at maximum capacity
+    Then the API should handle the load without crashing
+    And error responses should be meaningful
+    And the system should remain stable
+    When stress testing completes
+    Then the system should return to normal operation
+    And no data corruption should occur
+```
+
+### Database Performance
+
+```gherkin
+Feature: Database Performance Testing
+
+  Scenario: Test database query performance
+    Given I am testing database-backed APIs
+    When I request data that requires complex queries
+    Then queries should execute within 100ms
+    And proper indexing should be used
+    And query optimization should be implemented
+    When I request large datasets
+    Then pagination should be used
+    And queries should remain efficient
+
+  Scenario: Test database connection pooling
+    Given I am testing database connections
+    When multiple API requests are made simultaneously
+    Then connection pooling should be used efficiently
+    And connections should be reused appropriately
+    And connection limits should not be exceeded
+    When database load is high
+    Then connection timeouts should be handled gracefully
+    And the system should remain responsive
+
+  Scenario: Test database transaction performance
+    Given I am testing database transactions
+    When I perform operations that require transactions
+    Then transactions should complete quickly
+    And deadlocks should be avoided
+    And rollbacks should work correctly
+    When concurrent transactions occur
+    Then isolation levels should be maintained
+    And performance should remain acceptable
+```
+
+## Mobile Performance Testing
+
+### App Performance
+
+```gherkin
+Feature: Mobile App Performance Testing
+
+  Scenario: Test mobile app startup performance
+    Given I am testing mobile app performance
+    When I launch the app from cold start
+    Then the app should start within 3 seconds
+    And the splash screen should appear immediately
+    And the main interface should load quickly
+    When I launch the app from warm start
+    Then startup should be under 1 second
+    And previous state should be restored
+
+  Scenario: Test mobile app memory usage
+    Given I am testing mobile app memory
+    When I use the app normally
+    Then memory usage should remain stable
+    And memory warnings should not occur
+    When I navigate between screens
+    Then memory should be released appropriately
+    And the app should not crash due to memory issues
+
+  Scenario: Test mobile app battery usage
+    Given I am testing battery performance
+    When I use the app for 1 hour
+    Then battery drain should be reasonable
+    And the app should not cause excessive battery usage
+    When the app is in the background
+    Then battery usage should be minimal
+    And background processing should be optimized
+```
+
+### Network Performance on Mobile
+
+```gherkin
+Feature: Mobile Network Performance
+
+  Scenario: Test mobile app on different network conditions
+    Given I am testing mobile network performance
+    When I use the app on WiFi
+    Then all features should work optimally
+    And data usage should be reasonable
+    When I switch to cellular data
+    Then the app should adapt to slower speeds
+    And data usage should be optimized
+
+  Scenario: Test offline performance
+    Given I am testing offline capabilities
+    When I go offline while using the app
+    Then cached content should remain available
+    And the app should handle offline gracefully
+    When I come back online
+    Then data should sync automatically
+    And conflicts should be resolved appropriately
+
+  Scenario: Test data usage optimization
+    Given I am testing data usage
+    When I use the app on a limited data plan
+    Then data usage should be minimized
+    And unnecessary requests should be avoided
+    When images are loaded
+    Then they should be optimized for mobile
+    And progressive loading should be used
+```
+
+## Performance Monitoring and Alerting
+
+### Real User Monitoring
+
+```gherkin
+Feature: Real User Monitoring
+
+  Scenario: Monitor real user performance metrics
+    Given I have real user monitoring enabled
+    When users interact with the application
+    Then performance metrics should be collected
+    And user experience should be tracked
+    And performance issues should be detected
+    When performance degrades
+    Then alerts should be triggered
+    And the team should be notified
+
+  Scenario: Track Core Web Vitals
+    Given I am monitoring Core Web Vitals
+    When users visit the website
+    Then LCP, FID, and CLS should be measured
+    And metrics should be within acceptable thresholds
+    And trends should be tracked over time
+    When metrics exceed thresholds
+    Then investigations should be triggered
+    And improvements should be prioritized
+
+  Scenario: Monitor performance across different user segments
+    Given I am segmenting performance data
+    When I analyze performance by user type
+    Then different user segments should be compared
+    And performance variations should be identified
+    And targeted optimizations should be planned
+    When certain segments perform poorly
+    Then specific improvements should be implemented
+    And results should be measured
+```
+
+### Performance Budgets
+
+```gherkin
+Feature: Performance Budget Management
+
+  Scenario: Enforce performance budgets
+    Given I have defined performance budgets
+    When new code is deployed
+    Then performance should be measured against budgets
+    And budget violations should be flagged
+    And deployments should be blocked if budgets are exceeded
+    When budgets are consistently met
+    Then they should be reviewed and potentially tightened
+
+  Scenario: Track performance budget trends
+    Given I am tracking performance budgets over time
+    When performance data is collected
+    Then trends should be analyzed
+    And improvements should be celebrated
+    And regressions should be investigated
+    When budgets need adjustment
+    Then they should be updated based on data
+    And stakeholders should be informed
+
+  Scenario: Optimize based on performance budgets
+    Given performance budgets are in place
+    When budget violations occur
+    Then root causes should be identified
+    And optimization strategies should be implemented
+    And results should be measured
+    When optimizations are successful
+    Then best practices should be documented
+    And knowledge should be shared with the team
+```
+
+## Performance Testing Tools Integration
+
+### Lighthouse Integration
+
+```gherkin
+Feature: Lighthouse Performance Testing
+
+  Scenario: Run Lighthouse performance audits
+    Given I am using Lighthouse for performance testing
+    When I audit the homepage
+    Then the Performance score should be above 90
+    And the Accessibility score should be above 95
+    And the Best Practices score should be above 90
+    And the SEO score should be above 90
+    When I audit on mobile
+    Then mobile-specific metrics should be measured
+    And mobile performance should be optimized
+
+  Scenario: Automate Lighthouse in CI/CD
+    Given Lighthouse is integrated in the CI/CD pipeline
+    When code is pushed to the repository
+    Then Lighthouse audits should run automatically
+    And performance regressions should be detected
+    And the build should fail if scores drop significantly
+    When performance improves
+    Then the improvements should be documented
+    And the team should be notified
+
+  Scenario: Track Lighthouse metrics over time
+    Given I am tracking Lighthouse metrics
+    When audits are run regularly
+    Then performance trends should be visible
+    And improvements should be tracked
+    And regressions should be identified quickly
+    When metrics change significantly
+    Then investigations should be triggered
+    And corrective actions should be taken
+```
+
+### WebPageTest Integration
+
+```gherkin
+Feature: WebPageTest Performance Analysis
+
+  Scenario: Analyze performance with WebPageTest
+    Given I am using WebPageTest for detailed analysis
+    When I test the application
+    Then waterfall charts should show resource loading
+    And bottlenecks should be identified
+    And optimization opportunities should be highlighted
+    When testing from different locations
+    Then geographic performance variations should be measured
+    And CDN effectiveness should be evaluated
+
+  Scenario: Test performance on real devices
+    Given I am testing on real devices via WebPageTest
+    When I run tests on various devices
+    Then device-specific performance should be measured
+    And hardware limitations should be considered
+    And optimization strategies should be device-aware
+    When performance varies by device
+    Then device-specific optimizations should be implemented
+    And results should be validated
+
+  Scenario: Compare performance across competitors
+    Given I am benchmarking against competitors
+    When I test similar pages across different sites
+    Then performance should be compared
+    And competitive advantages should be identified
+    And improvement opportunities should be prioritized
+    When competitors perform better
+    Then their strategies should be analyzed
+    And improvements should be implemented
+```
+
+## Performance Optimization Strategies
+
+### Frontend Optimization
+
+```gherkin
+Feature: Frontend Performance Optimization
+
+  Scenario: Implement code splitting
+    Given I am optimizing JavaScript performance
+    When I implement code splitting
+    Then bundle sizes should be reduced
+    And initial load time should improve
+    And unused code should not be loaded
+    When users navigate to different sections
+    Then code should be loaded on demand
+    And the user experience should remain smooth
+
+  Scenario: Optimize images and media
+    Given I am optimizing media performance
+    When I implement responsive images
+    Then appropriate image sizes should be served
+    And modern formats should be used when supported
+    And lazy loading should be implemented
+    When images are loaded
+    Then they should not cause layout shifts
+    And loading should be progressive
+
+  Scenario: Implement caching strategies
+    Given I am implementing caching
+    When I set up browser caching
+    Then static resources should be cached appropriately
+    And cache headers should be optimized
+    And cache invalidation should work correctly
+    When content updates
+    Then caches should be invalidated properly
+    And users should receive updated content
+```
+
+### Backend Optimization
+
+```gherkin
+Feature: Backend Performance Optimization
+
+  Scenario: Optimize database queries
+    Given I am optimizing database performance
+    When I analyze slow queries
+    Then query optimization should be implemented
+    And proper indexing should be added
+    And query execution plans should be reviewed
+    When database load is high
+    Then connection pooling should be optimized
+    And query caching should be implemented
+
+  Scenario: Implement API caching
+    Given I am implementing API caching
+    When I add caching to API endpoints
+    Then response times should improve
+    And database load should be reduced
+    And cache hit rates should be monitored
+    When data changes
+    Then caches should be invalidated appropriately
+    And data consistency should be maintained
+
+  Scenario: Optimize server resources
+    Given I am optimizing server performance
+    When I monitor resource usage
+    Then CPU and memory usage should be optimized
+    And bottlenecks should be identified
+    And scaling strategies should be implemented
+    When load increases
+    Then auto-scaling should work effectively
+    And performance should remain stable
+```
+
+## Performance Testing in CI/CD
+
+### Automated Performance Testing
+
+```gherkin
+Feature: Automated Performance Testing in CI/CD
+
+  Scenario: Run performance tests in CI pipeline
+    Given performance tests are integrated in CI
+    When code is pushed to the repository
+    Then performance tests should run automatically
+    And performance regressions should be detected
+    And the build should fail if performance degrades
+    When performance improves
+    Then the improvements should be documented
+    And the team should be notified
+
+  Scenario: Performance testing in staging environment
+    Given I am testing in staging environment
+    When new features are deployed to staging
+    Then performance should be tested before production
+    And performance should match production expectations
+    And any issues should be identified early
+    When performance is acceptable
+    Then deployment to production should be approved
+    And monitoring should be enhanced
+
+  Scenario: Performance testing with feature flags
+    Given I am using feature flags
+    When new features are enabled via flags
+    Then performance impact should be measured
+    And A/B testing should include performance metrics
+    And feature rollout should consider performance
+    When features negatively impact performance
+    Then they should be disabled or optimized
+    And alternatives should be considered
+```
+
+### Performance Regression Detection
+
+```gherkin
+Feature: Performance Regression Detection
+
+  Scenario: Detect performance regressions automatically
+    Given I have baseline performance metrics
+    When new code is deployed
+    Then performance should be compared to baseline
+    And regressions should be detected automatically
+    And alerts should be sent when regressions occur
+    When regressions are detected
+    Then rollback procedures should be initiated
+    And root cause analysis should begin
+
+  Scenario: Track performance trends
+    Given I am tracking performance over time
+    When performance data is collected
+    Then trends should be analyzed
+    And gradual degradations should be detected
+    And proactive optimizations should be planned
+    When trends indicate problems
+    Then investigations should be triggered
+    And preventive measures should be taken
+
+  Scenario: Performance impact analysis
+    Given I am analyzing performance impact
+    When changes are made to the system
+    Then performance impact should be measured
+    And cost-benefit analysis should be performed
+    And optimization priorities should be set
+    When optimizations are implemented
+    Then results should be measured and validated
+    And lessons learned should be documented
+```
+
+## Integration with TestZeus Hercules
+
+### AI-Powered Performance Analysis
+
+```gherkin
+Feature: AI-Powered Performance Testing
+
+  Scenario: Intelligent performance test generation
+    Given TestZeus is analyzing my application
+    When I request performance test scenarios
+    Then TestZeus should generate relevant performance tests
+    And tests should cover critical user journeys
+    And performance bottlenecks should be identified
+    When performance issues are found
+    Then TestZeus should suggest optimization strategies
+    And provide actionable recommendations
+
+  Scenario: Adaptive performance testing
+    Given TestZeus is monitoring application performance
+    When performance patterns change
+    Then test strategies should adapt automatically
+    And new test scenarios should be generated
+    And testing focus should shift to problem areas
+    When optimizations are implemented
+    Then TestZeus should validate the improvements
+    And update testing strategies accordingly
+
+  Scenario: Performance anomaly detection
+    Given TestZeus is monitoring performance metrics
+    When unusual performance patterns occur
+    Then anomalies should be detected automatically
+    And root cause analysis should be initiated
+    And recommendations should be provided
+    When anomalies are resolved
+    Then normal patterns should be re-established
+    And prevention strategies should be implemented
+```
+
+### Performance Configuration
+
+```bash
+# Enable performance testing
+export PERFORMANCE_TESTING_ENABLED="true"
+export LIGHTHOUSE_ENABLED="true"
+export PERFORMANCE_BUDGET_FILE="performance-budget.json"
+
+# Configure performance thresholds
+export PERFORMANCE_THRESHOLD="90"
+export LCP_THRESHOLD="2500"
+export FID_THRESHOLD="100"
+export CLS_THRESHOLD="0.1"
+
+# Run performance tests
+hercules performance-tests.feature
+```
+
+## Best Practices for Performance Testing
+
+### Test Strategy
+
+1. **Define Clear Objectives**: Know what you're testing and why
+2. **Set Realistic Baselines**: Use real-world conditions and data
+3. **Test Early and Often**: Integrate performance testing into development
+4. **Monitor Continuously**: Track performance in production
+5. **Optimize Iteratively**: Make incremental improvements
+
+### Test Environment
+
+1. **Use Production-Like Environment**: Mirror production as closely as possible
+2. **Control Variables**: Ensure consistent testing conditions
+3. **Isolate Performance Tests**: Run performance tests separately from functional tests
+4. **Use Real Data**: Test with realistic data volumes and patterns
+5. **Consider Geographic Distribution**: Test from multiple locations
+
+### Metrics and Monitoring
+
+1. **Focus on User Experience**: Prioritize user-centric metrics
+2. **Track Business Metrics**: Connect performance to business outcomes
+3. **Set Performance Budgets**: Define and enforce performance limits
+4. **Monitor Trends**: Track performance over time
+5. **Alert on Regressions**: Detect and respond to performance issues quickly
+
+### Optimization Approach
+
+1. **Measure First**: Always measure before optimizing
+2. **Focus on Biggest Impact**: Prioritize optimizations with highest ROI
+3. **Test Optimizations**: Validate that optimizations actually improve performance
+4. **Document Changes**: Keep track of what works and what doesn't
+5. **Share Knowledge**: Spread performance best practices across the team
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Security Testing"
+    icon="shield"
+    href="/examples/security-testing"
+  >
+    Learn security testing strategies and techniques
+  </Card>
+  <Card
+    title="Visual Testing"
+    icon="eye"
+    href="/examples/visual-testing"
+  >
+    Explore visual regression testing approaches
+  </Card>
+  <Card
+    title="API Testing"
+    icon="plug"
+    href="/examples/api-testing"
+  >
+    Master API testing and validation techniques
+  </Card>
+  <Card
+    title="Architecture"
+    icon="sitemap"
+    href="/architecture/overview"
+  >
+    Understand TestZeus Hercules architecture
+  </Card>
+</CardGroup>
+
+Ready to ensure your applications perform excellently under all conditions? Join our [Slack community](https://join.slack.com/t/testzeuscommunityhq/shared_invite/zt-2v2br8wog-FAmo_76xRHx~k~1oNaGQ0Q) to share performance testing strategies and get help with complex performance optimization challenges! 🚀

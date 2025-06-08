@@ -1,0 +1,443 @@
+---
+title: 'Accessibility Testing Examples'
+description: 'Comprehensive accessibility testing examples using TestZeus Hercules'
+---
+
+## WCAG Compliance Testing
+
+### Basic Accessibility Checks
+
+```gherkin
+Feature: Basic Accessibility Compliance
+
+  Scenario: Test page structure and headings
+    Given I am on the homepage
+    When I analyze the page structure
+    Then the page should have a proper heading hierarchy
+    And there should be only one h1 element
+    And headings should not skip levels
+    And all content should be organized under appropriate headings
+
+  Scenario: Test alt text for images
+    Given I am on a page with images
+    When I check all images on the page
+    Then every informative image should have descriptive alt text
+    And decorative images should have empty alt attributes
+    And complex images should have detailed descriptions
+    And no image should be missing alt attributes
+```
+
+### Color and Contrast
+
+```gherkin
+Feature: Color and Contrast Accessibility
+
+  Scenario: Test color contrast ratios
+    Given I am on any page of the application
+    When I check the color contrast of all text elements
+    Then normal text should have a contrast ratio of at least 4.5:1
+    And large text should have a contrast ratio of at least 3:1
+    And interactive elements should meet contrast requirements
+    And no text should rely solely on color to convey information
+
+  Scenario: Test color-blind accessibility
+    Given I am viewing the application
+    When I simulate different types of color blindness
+    Then all information should still be accessible
+    And interactive elements should be distinguishable
+    And error messages should not rely only on color
+    And charts and graphs should use patterns or labels
+```
+
+## Keyboard Navigation
+
+### Tab Navigation
+
+```gherkin
+Feature: Keyboard Navigation
+
+  Scenario: Test tab order and focus management
+    Given I am on the homepage
+    When I navigate using only the Tab key
+    Then the focus should move in a logical order
+    And all interactive elements should be reachable
+    And the focus indicator should be clearly visible
+    And no elements should trap the keyboard focus
+
+  Scenario: Test skip links
+    Given I am on any page with navigation
+    When I press Tab as the first action
+    Then I should see a "Skip to main content" link
+    When I activate the skip link
+    Then the focus should move to the main content area
+    And I should bypass the navigation menu
+```
+
+### Keyboard Shortcuts
+
+```gherkin
+Feature: Keyboard Shortcuts
+
+  Scenario: Test form navigation with keyboard
+    Given I am on a form page
+    When I use keyboard navigation
+    Then I should be able to move between form fields with Tab
+    And I should be able to select options with arrow keys
+    And I should be able to submit the form with Enter
+    And I should be able to cancel with Escape
+
+  Scenario: Test modal dialog keyboard interaction
+    Given I open a modal dialog
+    When I use keyboard navigation
+    Then the focus should be trapped within the modal
+    And I should be able to close the modal with Escape
+    And Tab should cycle through modal elements only
+    And focus should return to the trigger element when closed
+```
+
+## Screen Reader Compatibility
+
+### ARIA Labels and Roles
+
+```gherkin
+Feature: Screen Reader Accessibility
+
+  Scenario: Test ARIA labels and descriptions
+    Given I am using a screen reader
+    When I navigate through form elements
+    Then each form field should have a clear label
+    And complex fields should have aria-describedby attributes
+    And error messages should be associated with fields
+    And instructions should be programmatically linked
+
+  Scenario: Test landmark roles
+    Given I am using a screen reader
+    When I navigate the page using landmarks
+    Then I should find clearly defined regions:
+      | banner     | Site header        |
+      | navigation | Main navigation    |
+      | main       | Main content       |
+      | aside      | Sidebar content    |
+      | footer     | Site footer        |
+    And each landmark should have appropriate labels
+```
+
+### Dynamic Content Announcements
+
+```gherkin
+Feature: Dynamic Content Accessibility
+
+  Scenario: Test live region announcements
+    Given I am using a screen reader
+    When dynamic content updates on the page
+    Then important changes should be announced
+    And status messages should use aria-live="polite"
+    And urgent alerts should use aria-live="assertive"
+    And the announcements should be clear and helpful
+
+  Scenario: Test loading state announcements
+    Given I am using a screen reader
+    When I trigger an action that loads content
+    Then I should hear "Loading" or similar announcement
+    When the content finishes loading
+    Then I should hear confirmation of completion
+    And the new content should be accessible
+```
+
+## Form Accessibility
+
+### Form Labels and Instructions
+
+```gherkin
+Feature: Form Accessibility
+
+  Scenario: Test form field labeling
+    Given I am on a registration form
+    When I check each form field
+    Then every field should have a clear, descriptive label
+    And labels should be programmatically associated with fields
+    And required fields should be clearly marked
+    And field format requirements should be explained
+
+  Scenario: Test error handling accessibility
+    Given I am on a form with validation
+    When I submit the form with errors
+    Then error messages should be clearly announced
+    And errors should be associated with specific fields
+    And I should be guided to the first error
+    And error messages should explain how to fix issues
+```
+
+### Complex Form Controls
+
+```gherkin
+Feature: Complex Form Controls
+
+  Scenario: Test custom dropdown accessibility
+    Given I have a custom dropdown component
+    When I interact with it using keyboard and screen reader
+    Then it should behave like a native select element
+    And I should be able to open it with Enter or Space
+    And I should navigate options with arrow keys
+    And the selected option should be announced
+
+  Scenario: Test date picker accessibility
+    Given I have a date picker component
+    When I use it with keyboard and screen reader
+    Then I should be able to navigate the calendar with arrow keys
+    And the current date should be announced
+    And I should be able to select a date with Enter
+    And the selected date should be clearly communicated
+```
+
+## Media Accessibility
+
+### Video and Audio Content
+
+```gherkin
+Feature: Media Accessibility
+
+  Scenario: Test video captions
+    Given I am watching a video with audio content
+    When I enable captions
+    Then accurate captions should be displayed
+    And captions should be synchronized with audio
+    And speaker identification should be included when relevant
+    And sound effects should be described in captions
+
+  Scenario: Test audio descriptions
+    Given I am watching a video with visual content
+    When I enable audio descriptions
+    Then important visual information should be described
+    And descriptions should not overlap with dialogue
+    And the timing should be appropriate
+    And the descriptions should be clear and concise
+
+  Scenario: Test media player controls
+    Given I am using a media player
+    When I navigate with keyboard only
+    Then all controls should be keyboard accessible
+    And control functions should be clearly labeled
+    And the current playback state should be announced
+    And volume and progress should be adjustable with keyboard
+```
+
+## Mobile Accessibility
+
+### Touch Target Accessibility
+
+```gherkin
+Feature: Mobile Accessibility
+
+  Scenario: Test touch target sizes
+    Given I am using the application on a mobile device
+    When I check interactive elements
+    Then all touch targets should be at least 44x44 pixels
+    And there should be adequate spacing between targets
+    And small targets should have larger touch areas
+    And overlapping targets should be avoided
+
+  Scenario: Test mobile screen reader navigation
+    Given I am using a mobile screen reader
+    When I navigate the mobile interface
+    Then all content should be accessible via swipe gestures
+    And the reading order should be logical
+    And interactive elements should be clearly identified
+    And mobile-specific gestures should work properly
+```
+
+## Data Tables Accessibility
+
+### Table Structure and Navigation
+
+```gherkin
+Feature: Data Table Accessibility
+
+  Scenario: Test table headers and structure
+    Given I have a data table on the page
+    When I examine the table structure
+    Then the table should have proper th elements for headers
+    And complex tables should use scope attributes
+    And column and row headers should be clearly identified
+    And the table should have a descriptive caption
+
+  Scenario: Test table navigation with screen reader
+    Given I am using a screen reader on a data table
+    When I navigate through the table
+    Then I should be able to move between cells efficiently
+    And header information should be announced with each cell
+    And I should understand the table structure and relationships
+    And sorting and filtering should be accessible
+```
+
+## Error Prevention and Recovery
+
+### Accessible Error Handling
+
+```gherkin
+Feature: Accessible Error Handling
+
+  Scenario: Test error prevention
+    Given I am filling out a form
+    When I enter data in an incorrect format
+    Then I should receive immediate, helpful feedback
+    And suggestions should be provided when possible
+    And the error should be announced to screen readers
+    And I should be able to easily correct the mistake
+
+  Scenario: Test session timeout accessibility
+    Given I am logged into the application
+    When my session is about to expire
+    Then I should receive an accessible warning
+    And I should be able to extend the session
+    And the warning should be announced to screen readers
+    And I should have sufficient time to respond
+```
+
+## Cognitive Accessibility
+
+### Clear Communication and Navigation
+
+```gherkin
+Feature: Cognitive Accessibility
+
+  Scenario: Test clear and simple language
+    Given I am reading content on the site
+    When I check the language and terminology
+    Then the language should be clear and simple
+    And technical terms should be explained
+    And instructions should be easy to follow
+    And content should be well-organized
+
+  Scenario: Test consistent navigation
+    Given I am navigating through the application
+    When I move between different pages
+    Then navigation should be consistent across pages
+    And similar functions should work the same way
+    And the layout should be predictable
+    And help should be available when needed
+
+  Scenario: Test timeout and time limits
+    Given I am completing a task with time limits
+    When I need more time to complete the task
+    Then I should be warned before time expires
+    And I should be able to request more time
+    And essential tasks should not have arbitrary time limits
+    And progress should be saved automatically when possible
+```
+
+## Automated Accessibility Testing
+
+### Comprehensive Accessibility Audit
+
+```gherkin
+Feature: Automated Accessibility Testing
+
+  Scenario: Run automated accessibility scan
+    Given I am on any page of the application
+    When I run an automated accessibility audit
+    Then the page should pass WCAG 2.1 AA standards
+    And no critical accessibility violations should be found
+    And any warnings should be reviewed and addressed
+    And the audit should cover:
+      | Color contrast        |
+      | Keyboard navigation   |
+      | ARIA implementation   |
+      | Form accessibility    |
+      | Image alt text        |
+
+  Scenario: Test with multiple accessibility tools
+    Given I want comprehensive accessibility coverage
+    When I run multiple accessibility testing tools
+    Then I should use tools like:
+      | axe-core              |
+      | WAVE                  |
+      | Lighthouse            |
+      | Pa11y                 |
+    And results should be consistent across tools
+    And any discrepancies should be investigated
+```
+
+## User Testing with Assistive Technologies
+
+### Real User Scenarios
+
+```gherkin
+Feature: Assistive Technology Testing
+
+  Scenario: Test with actual screen reader users
+    Given I have users who rely on screen readers
+    When they attempt to complete common tasks
+    Then they should be able to:
+      | Register for an account    |
+      | Login to the application   |
+      | Navigate the main features |
+      | Complete forms             |
+      | Access help and support    |
+    And their experience should be efficient and pleasant
+
+  Scenario: Test with keyboard-only users
+    Given I have users who can only use keyboard navigation
+    When they use the application
+    Then they should be able to access all functionality
+    And the experience should be comparable to mouse users
+    And no features should be keyboard-inaccessible
+```
+
+## Accessibility Documentation and Training
+
+### Accessibility Guidelines
+
+```gherkin
+Feature: Accessibility Documentation
+
+  Scenario: Verify accessibility documentation
+    Given I am a developer working on the application
+    When I need to implement accessible features
+    Then I should have clear accessibility guidelines
+    And code examples should be provided
+    And testing procedures should be documented
+    And accessibility requirements should be part of definition of done
+
+  Scenario: Test accessibility training effectiveness
+    Given team members have received accessibility training
+    When they implement new features
+    Then accessibility should be considered from the start
+    And common accessibility issues should be avoided
+    And accessibility testing should be part of the development process
+```
+
+## Performance and Accessibility
+
+### Accessible Performance
+
+```gherkin
+Feature: Performance Impact on Accessibility
+
+  Scenario: Test page load impact on accessibility
+    Given I am using assistive technology
+    When pages load slowly or progressively
+    Then I should still be able to access available content
+    And loading states should be announced
+    And I should not lose my place during updates
+    And the experience should remain usable throughout loading
+
+  Scenario: Test animation and accessibility
+    Given I have vestibular disorders or motion sensitivity
+    When I encounter animations on the site
+    Then I should be able to disable or reduce motion
+    And essential information should not rely on animation
+    And animations should not trigger seizures or vestibular disorders
+    And prefers-reduced-motion should be respected
+```
+
+## Next Steps
+
+After exploring accessibility testing examples:
+
+1. [Learn about visual testing](/examples/visual-testing)
+2. [Explore mobile automation](/examples/mobile-automation)
+3. [Check out the architecture](/architecture/overview)
+4. [Join the community](/community/slack)
+
+Ready to implement accessibility testing? Join our [Slack community](https://join.slack.com/t/testzeuscommunityhq/shared_invite/zt-2v2br8wog-FAmo_76xRHx~k~1oNaGQ0Q) to share your accessibility testing experiences!

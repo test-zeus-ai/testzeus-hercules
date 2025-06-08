@@ -1,0 +1,337 @@
+---
+title: 'Architecture Overview'
+description: 'Understanding the multi-agent architecture of TestZeus Hercules'
+---
+
+## System Architecture
+
+TestZeus Hercules employs a sophisticated multi-agent architecture where specialized AI agents collaborate to understand, plan, and execute complex test scenarios. This design enables the system to handle diverse testing requirements while maintaining flexibility and scalability.
+
+<img
+  src="/images/hercules-architecture.jpg"
+  alt="Hercules Architecture Diagram"
+  className="rounded-lg shadow-lg"
+/>
+
+## Core Components
+
+### 1. Planner and Assert Agent
+
+The **Planner Agent** serves as the central orchestrator of the entire testing process:
+
+- **Test Analysis**: Parses Gherkin feature files and understands test requirements
+- **Execution Planning**: Creates detailed step-by-step execution plans
+- **Agent Coordination**: Delegates tasks to appropriate specialized agents
+- **Result Validation**: Performs assertions and validates test outcomes
+- **Flow Control**: Manages the overall test execution flow and error handling
+
+```python
+# Example of Planner Agent coordination
+{
+  "plan": "1. Navigate to login page\n2. Enter credentials\n3. Validate dashboard access",
+  "next_step": "Navigate to the login page and verify it loads correctly",
+  "target_helper": "browser",
+  "is_assert": false
+}
+```
+
+### 2. Specialized Navigation Agents
+
+#### Browser Navigation Agent
+Handles all web browser interactions:
+- **Page Navigation**: URL navigation and page transitions
+- **Element Interaction**: Clicking, typing, form submission
+- **Visual Validation**: Screenshot comparison and visual assertions
+- **State Management**: Browser state and session handling
+
+#### API Navigation Agent
+Manages REST API testing:
+- **HTTP Operations**: GET, POST, PUT, DELETE requests
+- **Authentication**: Bearer tokens, API keys, OAuth
+- **Response Validation**: Status codes, headers, body content
+- **Data Transformation**: JSON/XML parsing and manipulation
+
+#### Security Navigation Agent
+Performs security testing:
+- **Vulnerability Scanning**: SQL injection, XSS, CSRF testing
+- **Authentication Testing**: Login bypass, session management
+- **Authorization Testing**: Role-based access control
+- **Input Validation**: Boundary testing and malicious input
+
+#### SQL Navigation Agent
+Handles database operations:
+- **Query Execution**: SELECT, INSERT, UPDATE, DELETE operations
+- **Data Validation**: Database state verification
+- **Transaction Management**: Rollback and commit operations
+- **Schema Validation**: Table structure and constraint checking
+
+#### TimeKeeper Agent
+Manages timing and synchronization:
+- **Wait Operations**: Explicit and implicit waits
+- **Timeout Management**: Operation timeout handling
+- **Performance Monitoring**: Execution time tracking
+- **Scheduling**: Test execution timing coordination
+
+## Tool Library
+
+### Sensing Tools
+Tools for gathering information from the application:
+
+- **Screenshot**: Capture visual state of the application
+- **Accessibility Tree**: Extract accessibility information
+- **Get DOM**: Retrieve HTML document structure
+- **REST APIs**: Fetch data from API endpoints
+- **File Handlers**: Read and process files
+- **Time Handlers**: Manage timing operations
+
+### Action Tools
+Tools for interacting with the application:
+
+- **Playwright-Based Interactions**: Browser automation
+  - Click elements using selectors
+  - Enter text in input fields
+  - Navigate between pages
+  - Handle dropdowns and forms
+- **REST API Libraries**: HTTP request handling
+- **RDBMS Libraries**: Database operations
+- **Nuclei/Axe-Core**: Security and accessibility testing
+
+## Memory System
+
+### Long-Term Memory (LTM)
+Hercules implements both static and dynamic memory systems:
+
+#### Static LTM
+- **Test Data Storage**: Persistent test data and configurations
+- **User Preferences**: Stored user settings and preferences
+- **Historical Results**: Previous test execution results
+
+#### Dynamic LTM
+- **Context Awareness**: Maintains context across test steps
+- **Learning Capabilities**: Adapts based on previous executions
+- **State Management**: Tracks application state changes
+
+### Short-Term Memory
+- **Step Context**: Current test step information
+- **Intermediate Results**: Temporary data between steps
+- **Error States**: Current error conditions and recovery actions
+
+## Data Flow
+
+### 1. Test Ingestion
+```
+Gherkin Feature File → Planner Agent → Execution Plan
+```
+
+### 2. Plan Execution
+```
+Execution Plan → Target Agent → Tool Selection → Action Execution
+```
+
+### 3. Result Processing
+```
+Action Results → Planner Agent → Assertion Validation → Next Step
+```
+
+### 4. Reporting
+```
+Test Results → Report Generation → Output Files
+```
+
+## Agent Communication
+
+### Message Passing
+Agents communicate through structured JSON messages:
+
+```json
+{
+  "agent": "browser_nav_agent",
+  "action": "click_element",
+  "parameters": {
+    "selector": "#login-button",
+    "wait_for": "navigation"
+  },
+  "context": {
+    "current_url": "https://app.example.com/login",
+    "step_number": 3
+  }
+}
+```
+
+### Response Format
+```json
+{
+  "success": true,
+  "result": "Element clicked successfully",
+  "screenshot": "path/to/screenshot.png",
+  "next_state": {
+    "url": "https://app.example.com/dashboard",
+    "page_title": "Dashboard"
+  }
+}
+```
+
+## Configuration Management
+
+### LLM Configuration
+Each agent can be configured with different LLM providers:
+
+```json
+{
+  "planner_agent": {
+    "provider": "openai",
+    "model": "gpt-4o",
+    "temperature": 0.1
+  },
+  "browser_nav_agent": {
+    "provider": "anthropic",
+    "model": "claude-3-5-haiku-20241022",
+    "temperature": 0.0
+  }
+}
+```
+
+### Tool Configuration
+Tools can be customized for specific environments:
+
+```json
+{
+  "browser_config": {
+    "type": "chromium",
+    "headless": true,
+    "viewport": {"width": 1920, "height": 1080}
+  },
+  "api_config": {
+    "base_url": "https://api.example.com",
+    "timeout": 30,
+    "retry_attempts": 3
+  }
+}
+```
+
+## Execution Modes
+
+### Single Test Mode
+- **Detailed Logging**: Comprehensive step-by-step output
+- **Interactive Debugging**: Ability to pause and inspect
+- **Full Screenshots**: Complete visual documentation
+
+### Bulk Test Mode
+- **Parallel Execution**: Multiple tests running simultaneously
+- **Optimized Reporting**: Summary-focused output
+- **Resource Management**: Efficient memory and CPU usage
+
+## Error Handling and Recovery
+
+### Failure Detection
+- **Assertion Failures**: Expected vs actual result mismatches
+- **Technical Failures**: Browser crashes, network issues
+- **Timeout Failures**: Operations exceeding time limits
+
+### Recovery Strategies
+- **Automatic Retry**: Configurable retry attempts
+- **Fallback Actions**: Alternative execution paths
+- **Graceful Degradation**: Partial test completion
+
+### Error Reporting
+- **Detailed Logs**: Comprehensive error information
+- **Screenshots**: Visual context at failure point
+- **Stack Traces**: Technical debugging information
+
+## Scalability Features
+
+### Horizontal Scaling
+- **Parallel Agent Execution**: Multiple agents working simultaneously
+- **Distributed Testing**: Tests across multiple environments
+- **Load Balancing**: Efficient resource distribution
+
+### Vertical Scaling
+- **Memory Management**: Efficient memory usage patterns
+- **CPU Optimization**: Optimized processing algorithms
+- **Storage Efficiency**: Compressed logs and results
+
+## Security Architecture
+
+### Data Protection
+- **Credential Management**: Secure API key handling
+- **Data Encryption**: Sensitive data protection
+- **Access Control**: Role-based permissions
+
+### Network Security
+- **SSL/TLS**: Encrypted communications
+- **Proxy Support**: Corporate network compatibility
+- **Firewall Compatibility**: Enterprise security compliance
+
+## Integration Points
+
+### CI/CD Integration
+- **GitHub Actions**: Automated test execution
+- **GitLab CI**: Pipeline integration
+- **Jenkins**: Build system compatibility
+
+### External Tools
+- **BrowserStack**: Remote browser testing
+- **LambdaTest**: Cloud testing platforms
+- **OWASP ZAP**: Security testing integration
+
+### Monitoring and Observability
+- **Portkey Integration**: LLM request monitoring
+- **Performance Metrics**: Execution time tracking
+- **Resource Monitoring**: Memory and CPU usage
+
+## Extensibility
+
+### Custom Agents
+Developers can create custom agents for specific needs:
+
+```python
+class CustomAgent(BaseNavAgent):
+    agent_name = "custom_agent"
+    
+    def execute_action(self, action, parameters):
+        # Custom implementation
+        pass
+```
+
+### Custom Tools
+Add domain-specific tools:
+
+```python
+@register_tool
+def custom_validation_tool(data, schema):
+    # Custom validation logic
+    return validation_result
+```
+
+### Plugin System
+- **Tool Plugins**: Extend available tools
+- **Agent Plugins**: Add new agent types
+- **Reporter Plugins**: Custom reporting formats
+
+## Performance Characteristics
+
+### Throughput
+- **Single Test**: 1-5 minutes typical execution
+- **Parallel Tests**: 4x improvement with 4 workers
+- **Bulk Execution**: 100+ tests per hour
+
+### Resource Usage
+- **Memory**: 2-4GB typical usage
+- **CPU**: Moderate usage, scales with parallelism
+- **Storage**: Configurable result retention
+
+### Optimization Strategies
+- **Caching**: Reuse of browser sessions
+- **Connection Pooling**: Efficient API connections
+- **Lazy Loading**: On-demand resource allocation
+
+## Next Steps
+
+To dive deeper into the architecture:
+
+1. [Explore individual agents](/architecture/agents)
+2. [Learn about the tool library](/architecture/tools)
+3. [Understand the memory system](/architecture/memory-system)
+4. [See practical examples](/examples/ui-automation)
+
+Want to contribute to the architecture? Join our [Slack community](https://join.slack.com/t/testzeuscommunityhq/shared_invite/zt-2v2br8wog-FAmo_76xRHx~k~1oNaGQ0Q) to discuss enhancements and extensions!

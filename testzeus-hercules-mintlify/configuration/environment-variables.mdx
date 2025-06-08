@@ -1,0 +1,688 @@
+---
+title: 'Environment Variables'
+description: 'Complete reference for configuring TestZeus Hercules through environment variables'
+---
+
+## Overview
+
+TestZeus Hercules uses environment variables for configuration, allowing you to customize behavior without modifying code. Variables can be set in your shell, `.env` files, or CI/CD systems.
+
+## LLM Configuration
+
+### Primary LLM Provider
+
+Configure your main LLM provider for the planner agent:
+
+```bash
+# OpenAI
+OPENAI_API_KEY=your-api-key-here
+OPENAI_MODEL=gpt-4o
+OPENAI_BASE_URL=https://api.openai.com/v1  # Optional
+
+# Anthropic
+ANTHROPIC_API_KEY=your-api-key-here
+ANTHROPIC_MODEL=claude-3-5-haiku-20241022
+ANTHROPIC_BASE_URL=https://api.anthropic.com  # Optional
+
+# Groq
+GROQ_API_KEY=your-api-key-here
+GROQ_MODEL=llama-3.1-70b-versatile
+GROQ_BASE_URL=https://api.groq.com/openai/v1  # Optional
+
+# Mistral
+MISTRAL_API_KEY=your-api-key-here
+MISTRAL_MODEL=mistral-large-latest
+MISTRAL_BASE_URL=https://api.mistral.ai/v1  # Optional
+```
+
+### Agent-Specific LLM Configuration
+
+Configure different models for specific agents:
+
+```bash
+# Planner Agent (main orchestrator)
+PLANNER_AGENT_MODEL=gpt-4o
+PLANNER_AGENT_PROVIDER=openai
+PLANNER_AGENT_TEMPERATURE=0.1
+
+# Browser Navigation Agent
+BROWSER_NAV_AGENT_MODEL=claude-3-5-haiku-20241022
+BROWSER_NAV_AGENT_PROVIDER=anthropic
+BROWSER_NAV_AGENT_TEMPERATURE=0.0
+
+# API Navigation Agent
+API_NAV_AGENT_MODEL=llama-3.1-70b-versatile
+API_NAV_AGENT_PROVIDER=groq
+API_NAV_AGENT_TEMPERATURE=0.1
+
+# Security Agent
+SEC_NAV_AGENT_MODEL=gpt-4o
+SEC_NAV_AGENT_PROVIDER=openai
+SEC_NAV_AGENT_TEMPERATURE=0.0
+
+# SQL Agent
+SQL_NAV_AGENT_MODEL=claude-3-5-haiku-20241022
+SQL_NAV_AGENT_PROVIDER=anthropic
+SQL_NAV_AGENT_TEMPERATURE=0.0
+```
+
+### LLM Parameters
+
+Fine-tune LLM behavior:
+
+```bash
+# Temperature (0.0-1.0, lower = more deterministic)
+LLM_TEMPERATURE=0.1
+
+# Maximum tokens per request
+LLM_MAX_TOKENS=4000
+
+# Request timeout in seconds
+LLM_TIMEOUT=120
+
+# Number of retries for failed requests
+LLM_MAX_RETRIES=3
+
+# Backoff factor for retries
+LLM_BACKOFF_FACTOR=2
+```
+
+## Browser Configuration
+
+### Basic Browser Settings
+
+```bash
+# Browser type: chromium, firefox, webkit
+BROWSER_TYPE=chromium
+
+# Run browser in headless mode
+HEADLESS=true
+
+# Browser timeout in milliseconds
+BROWSER_TIMEOUT=30000
+
+# Page load timeout in milliseconds
+PAGE_LOAD_TIMEOUT=30000
+
+# Element wait timeout in milliseconds
+ELEMENT_TIMEOUT=10000
+```
+
+### Browser Arguments
+
+Customize browser launch arguments:
+
+```bash
+# Additional browser arguments (space-separated)
+BROWSER_ARGS="--no-sandbox --disable-dev-shm-usage --disable-gpu"
+
+# User agent string
+USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+
+# Window size for browser
+WINDOW_WIDTH=1920
+WINDOW_HEIGHT=1080
+
+# Viewport size
+VIEWPORT_WIDTH=1920
+VIEWPORT_HEIGHT=1080
+```
+
+### Remote Browser Testing
+
+Configure remote browser platforms:
+
+```bash
+# BrowserStack
+BROWSERSTACK_USERNAME=your-username
+BROWSERSTACK_ACCESS_KEY=your-access-key
+BROWSERSTACK_BUILD_NAME="Hercules Test Run"
+BROWSERSTACK_PROJECT_NAME="Test Automation"
+
+# LambdaTest
+LAMBDATEST_USERNAME=your-username
+LAMBDATEST_ACCESS_KEY=your-access-key
+LAMBDATEST_BUILD_NAME="Hercules Test Run"
+
+# AnchorBrowser
+ANCHOR_BROWSER_API_KEY=your-api-key
+ANCHOR_BROWSER_PROJECT_ID=your-project-id
+
+# Custom CDP URL for remote browsers
+CDP_URL=wss://your-browser-provider.com/session
+```
+
+### Browser Capabilities
+
+Configure specific browser capabilities:
+
+```bash
+# Chrome/Chromium specific
+CHROME_BINARY_PATH=/usr/bin/google-chrome
+CHROME_DRIVER_PATH=/usr/local/bin/chromedriver
+
+# Firefox specific
+FIREFOX_BINARY_PATH=/usr/bin/firefox
+GECKO_DRIVER_PATH=/usr/local/bin/geckodriver
+
+# WebKit specific
+WEBKIT_BINARY_PATH=/usr/bin/webkit
+```
+
+## Test Execution Configuration
+
+### Basic Test Settings
+
+```bash
+# Maximum number of retries for failed tests
+MAX_RETRIES=3
+
+# Parallel test execution
+PARALLEL_TESTS=1
+
+# Test timeout in seconds
+TEST_TIMEOUT=300
+
+# Step timeout in seconds
+STEP_TIMEOUT=30
+
+# Wait timeout for elements
+WAIT_TIMEOUT=10
+```
+
+### Test Data and Results
+
+```bash
+# Test data directory
+TEST_DATA_DIR=./test_data
+
+# Results output directory
+RESULTS_DIR=./results
+
+# Screenshots directory
+SCREENSHOTS_DIR=./results/screenshots
+
+# Logs directory
+LOGS_DIR=./results/logs
+
+# Reports directory
+REPORTS_DIR=./results/reports
+```
+
+### Test Behavior
+
+```bash
+# Take screenshot on test failure
+SCREENSHOT_ON_FAILURE=true
+
+# Take screenshot on test success
+SCREENSHOT_ON_SUCCESS=false
+
+# Record video of test execution
+RECORD_VIDEO=false
+
+# Video directory
+VIDEO_DIR=./results/videos
+
+# Continue execution after failure
+CONTINUE_ON_FAILURE=false
+
+# Cleanup test data after execution
+CLEANUP_AFTER_TEST=true
+```
+
+## Debugging and Logging
+
+### Log Configuration
+
+```bash
+# Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+LOG_LEVEL=INFO
+
+# Enable debug mode
+DEBUG=false
+
+# Verbose output
+VERBOSE=false
+
+# Log format
+LOG_FORMAT="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+# Log file path
+LOG_FILE=./logs/hercules.log
+
+# Maximum log file size in MB
+MAX_LOG_SIZE=100
+
+# Number of log files to keep
+LOG_BACKUP_COUNT=5
+```
+
+### Debug Settings
+
+```bash
+# Enable browser developer tools
+ENABLE_DEV_TOOLS=false
+
+# Browser debugging port
+DEBUG_PORT=9222
+
+# Slow down execution for debugging (milliseconds)
+SLOW_MO=0
+
+# Pause on failure for debugging
+PAUSE_ON_FAILURE=false
+
+# Enable trace collection
+ENABLE_TRACE=false
+
+# Trace directory
+TRACE_DIR=./results/traces
+```
+
+## Security and API Configuration
+
+### API Testing
+
+```bash
+# Default API base URL
+API_BASE_URL=https://api.example.com
+
+# API timeout in seconds
+API_TIMEOUT=30
+
+# API retry attempts
+API_MAX_RETRIES=3
+
+# API authentication
+API_AUTH_TYPE=bearer  # bearer, basic, api_key
+API_TOKEN=your-api-token
+API_USERNAME=your-username
+API_PASSWORD=your-password
+API_KEY=your-api-key
+
+# SSL verification
+VERIFY_SSL=true
+
+# Custom CA bundle path
+CA_BUNDLE_PATH=/etc/ssl/certs/ca-certificates.crt
+```
+
+### Security Testing
+
+```bash
+# Security scan timeout
+SECURITY_SCAN_TIMEOUT=300
+
+# Enable vulnerability scanning
+ENABLE_VULN_SCAN=true
+
+# Security report format
+SECURITY_REPORT_FORMAT=json
+
+# OWASP ZAP configuration
+ZAP_PROXY_HOST=localhost
+ZAP_PROXY_PORT=8080
+ZAP_API_KEY=your-zap-api-key
+```
+
+## Database Configuration
+
+### SQL Database Settings
+
+```bash
+# Database connection string
+DATABASE_URL=postgresql://user:password@localhost:5432/testdb
+
+# Database type: postgresql, mysql, sqlite, oracle, mssql
+DATABASE_TYPE=postgresql
+
+# Database host
+DB_HOST=localhost
+
+# Database port
+DB_PORT=5432
+
+# Database name
+DB_NAME=testdb
+
+# Database username
+DB_USERNAME=testuser
+
+# Database password
+DB_PASSWORD=testpass
+
+# Connection timeout
+DB_TIMEOUT=30
+
+# Maximum connections
+DB_MAX_CONNECTIONS=10
+```
+
+## Performance and Optimization
+
+### Performance Settings
+
+```bash
+# Enable performance monitoring
+ENABLE_PERFORMANCE_MONITORING=false
+
+# Performance budget (milliseconds)
+PERFORMANCE_BUDGET=5000
+
+# Memory limit (MB)
+MEMORY_LIMIT=2048
+
+# CPU limit (percentage)
+CPU_LIMIT=80
+
+# Network throttling
+NETWORK_THROTTLING=false
+
+# Network speed: slow3g, fast3g, offline
+NETWORK_SPEED=fast3g
+```
+
+### Caching Configuration
+
+```bash
+# Enable caching
+ENABLE_CACHE=true
+
+# Cache directory
+CACHE_DIR=./.cache
+
+# Cache timeout (seconds)
+CACHE_TIMEOUT=3600
+
+# Clear cache on startup
+CLEAR_CACHE_ON_START=false
+```
+
+## CI/CD Integration
+
+### Continuous Integration
+
+```bash
+# CI mode (disables interactive features)
+CI_MODE=false
+
+# CI provider: github, gitlab, jenkins, azure, circleci
+CI_PROVIDER=github
+
+# Build number
+BUILD_NUMBER=${GITHUB_RUN_NUMBER}
+
+# Build URL
+BUILD_URL=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+
+# Git branch
+GIT_BRANCH=${GITHUB_REF_NAME}
+
+# Git commit
+GIT_COMMIT=${GITHUB_SHA}
+```
+
+### Reporting Integration
+
+```bash
+# Report format: html, json, xml, junit
+REPORT_FORMAT=html
+
+# Upload results to cloud
+UPLOAD_RESULTS=false
+
+# Cloud storage configuration
+CLOUD_STORAGE_PROVIDER=s3  # s3, gcs, azure
+CLOUD_STORAGE_BUCKET=test-results
+CLOUD_STORAGE_PATH=hercules-results
+
+# Notification settings
+ENABLE_NOTIFICATIONS=false
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+TEAMS_WEBHOOK_URL=https://outlook.office.com/webhook/...
+EMAIL_SMTP_SERVER=smtp.gmail.com
+EMAIL_SMTP_PORT=587
+EMAIL_USERNAME=your-email@example.com
+EMAIL_PASSWORD=your-email-password
+```
+
+## Advanced Configuration
+
+### Memory Management
+
+```bash
+# Enable dynamic long-term memory
+ENABLE_DYNAMIC_LTM=true
+
+# Memory storage type: file, redis, mongodb
+MEMORY_STORAGE_TYPE=file
+
+# Memory storage path
+MEMORY_STORAGE_PATH=./memory
+
+# Redis configuration (if using Redis)
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=your-redis-password
+REDIS_DB=0
+
+# MongoDB configuration (if using MongoDB)
+MONGODB_URI=mongodb://localhost:27017/hercules_memory
+```
+
+### Custom Tools and Extensions
+
+```bash
+# Custom tools directory
+CUSTOM_TOOLS_DIR=./custom_tools
+
+# Enable custom tools
+ENABLE_CUSTOM_TOOLS=true
+
+# Plugin directory
+PLUGIN_DIR=./plugins
+
+# Enable plugins
+ENABLE_PLUGINS=true
+```
+
+### Portkey Integration
+
+```bash
+# Portkey API configuration
+PORTKEY_API_KEY=your-portkey-api-key
+PORTKEY_VIRTUAL_KEY=your-virtual-key
+PORTKEY_CONFIG_ID=your-config-id
+PORTKEY_WORKSPACE_ID=your-workspace-id
+
+# Portkey features
+PORTKEY_ENABLE_LOGGING=true
+PORTKEY_ENABLE_CACHING=true
+PORTKEY_ENABLE_RETRIES=true
+```
+
+## Environment File Examples
+
+### Development Environment
+
+```bash .env.dev
+# Development configuration
+DEBUG=true
+LOG_LEVEL=DEBUG
+HEADLESS=false
+SCREENSHOT_ON_FAILURE=true
+SCREENSHOT_ON_SUCCESS=true
+
+# LLM configuration
+OPENAI_API_KEY=your-dev-api-key
+OPENAI_MODEL=gpt-4o-mini
+
+# Browser configuration
+BROWSER_TYPE=chromium
+BROWSER_TIMEOUT=60000
+SLOW_MO=1000
+
+# Test configuration
+MAX_RETRIES=1
+PARALLEL_TESTS=1
+CONTINUE_ON_FAILURE=true
+```
+
+### Production Environment
+
+```bash .env.prod
+# Production configuration
+DEBUG=false
+LOG_LEVEL=INFO
+HEADLESS=true
+CI_MODE=true
+
+# LLM configuration
+OPENAI_API_KEY=your-prod-api-key
+OPENAI_MODEL=gpt-4o
+
+# Browser configuration
+BROWSER_TYPE=chromium
+BROWSER_TIMEOUT=30000
+
+# Test configuration
+MAX_RETRIES=3
+PARALLEL_TESTS=4
+SCREENSHOT_ON_FAILURE=true
+UPLOAD_RESULTS=true
+```
+
+### CI/CD Environment
+
+```bash .env.ci
+# CI/CD configuration
+CI_MODE=true
+DEBUG=false
+LOG_LEVEL=WARNING
+HEADLESS=true
+
+# LLM configuration
+OPENAI_API_KEY=${OPENAI_API_KEY}
+OPENAI_MODEL=gpt-4o
+
+# Browser configuration
+BROWSER_TYPE=chromium
+BROWSER_ARGS="--no-sandbox --disable-dev-shm-usage"
+
+# Test configuration
+MAX_RETRIES=2
+PARALLEL_TESTS=2
+REPORT_FORMAT=junit
+UPLOAD_RESULTS=true
+```
+
+## Loading Environment Variables
+
+### From .env File
+
+```bash
+# Load from default .env file
+hercules test.feature
+
+# Load from specific .env file
+hercules --env-file .env.prod test.feature
+```
+
+### From Shell
+
+```bash
+# Export variables in shell
+export OPENAI_API_KEY="your-api-key"
+export BROWSER_TYPE="chromium"
+hercules test.feature
+
+# Set variables for single command
+HEADLESS=false hercules test.feature
+```
+
+### From Configuration File
+
+```json config.json
+{
+  "environment": {
+    "OPENAI_API_KEY": "your-api-key",
+    "BROWSER_TYPE": "chromium",
+    "HEADLESS": true
+  }
+}
+```
+
+```bash
+hercules --config config.json test.feature
+```
+
+## Validation and Testing
+
+### Validate Configuration
+
+```bash
+# Check environment variables
+hercules --check-env
+
+# Validate configuration
+hercules --validate-config
+
+# Test LLM connectivity
+hercules --test-llm
+
+# Test browser setup
+hercules --test-browser
+```
+
+### Environment Debugging
+
+```bash
+# Print all environment variables
+hercules --print-env
+
+# Print specific variable
+echo $OPENAI_API_KEY
+
+# Check variable precedence
+hercules --debug-config
+```
+
+## Security Considerations
+
+### Sensitive Data Protection
+
+```bash
+# Use environment variables for secrets
+export OPENAI_API_KEY="$(cat ~/.secrets/openai_key)"
+
+# Avoid logging sensitive data
+export LOG_SENSITIVE_DATA=false
+
+# Use secure storage for API keys
+export USE_KEYRING=true
+```
+
+### Network Security
+
+```bash
+# Enable SSL verification
+export VERIFY_SSL=true
+
+# Use secure protocols only
+export FORCE_HTTPS=true
+
+# Configure proxy for secure networks
+export HTTPS_PROXY="https://proxy.company.com:8080"
+```
+
+## Next Steps
+
+After configuring environment variables:
+
+1. [Set up your project structure](/configuration/project-structure)
+2. [Write your first test](/testing/writing-first-test)
+3. [Explore testing examples](/examples/ui-automation)
+4. [Learn about the architecture](/architecture/overview)
+
+Need help with configuration? Join our [Slack community](https://join.slack.com/t/testzeuscommunityhq/shared_invite/zt-2v2br8wog-FAmo_76xRHx~k~1oNaGQ0Q) for support!

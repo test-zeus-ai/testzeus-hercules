@@ -1,0 +1,554 @@
+---
+title: 'UI Automation Examples'
+description: 'Comprehensive examples of web UI automation using TestZeus Hercules'
+---
+
+## Basic UI Automation
+
+### Simple Navigation Test
+
+```gherkin
+Feature: Basic Website Navigation
+
+  Scenario: Navigate to homepage and verify content
+    Given I have a web browser open
+    When I navigate to "https://example.com"
+    Then I should see "Welcome to Example.com"
+    And the page title should be "Example Domain"
+    And the page should load within 5 seconds
+```
+
+### Form Interaction
+
+```gherkin
+Feature: Contact Form Submission
+
+  Scenario: Submit contact form with valid data
+    Given I am on the contact page "https://example.com/contact"
+    When I fill in the contact form:
+      | Field    | Value                    |
+      | Name     | John Doe                |
+      | Email    | john.doe@example.com    |
+      | Subject  | General Inquiry         |
+      | Message  | This is a test message  |
+    And I click the "Submit" button
+    Then I should see "Thank you for your message"
+    And I should be redirected to the confirmation page
+```
+
+## Authentication Flows
+
+### User Login
+
+```gherkin
+Feature: User Authentication
+
+  Scenario: Successful login with valid credentials
+    Given I am on the login page
+    When I enter "testuser@example.com" in the email field
+    And I enter "SecurePassword123!" in the password field
+    And I click the "Login" button
+    Then I should be redirected to the dashboard
+    And I should see "Welcome back, Test User"
+    And the logout button should be visible
+
+  Scenario: Failed login with invalid credentials
+    Given I am on the login page
+    When I enter "invalid@example.com" in the email field
+    And I enter "wrongpassword" in the password field
+    And I click the "Login" button
+    Then I should see "Invalid email or password"
+    And I should remain on the login page
+    And the password field should be cleared
+```
+
+### Multi-Factor Authentication
+
+```gherkin
+Feature: Multi-Factor Authentication
+
+  Scenario: Login with 2FA enabled
+    Given I am on the login page
+    And I have 2FA enabled on my account
+    When I enter valid credentials
+    And I click the "Login" button
+    Then I should see the 2FA verification page
+    When I enter the correct 2FA code
+    And I click "Verify"
+    Then I should be logged in successfully
+    And I should see the dashboard
+```
+
+### Password Reset Flow
+
+```gherkin
+Feature: Password Reset
+
+  Scenario: Request password reset
+    Given I am on the login page
+    When I click "Forgot Password?"
+    And I enter "user@example.com" in the email field
+    And I click "Send Reset Link"
+    Then I should see "Password reset link sent"
+    And I should receive a password reset email
+
+  Scenario: Complete password reset
+    Given I have received a password reset email
+    When I click the reset link in the email
+    And I enter a new password "NewSecurePass456!"
+    And I confirm the new password
+    And I click "Reset Password"
+    Then I should see "Password reset successful"
+    And I should be able to login with the new password
+```
+
+## E-commerce Testing
+
+### Product Catalog
+
+```gherkin
+Feature: Product Catalog
+
+  Scenario: Browse product categories
+    Given I am on the homepage
+    When I click on "Electronics" in the main menu
+    Then I should see a list of electronic products
+    And the page URL should contain "/electronics"
+    And I should see product filters on the left side
+
+  Scenario: Search for products
+    Given I am on the homepage
+    When I enter "laptop" in the search box
+    And I click the search button
+    Then I should see search results for "laptop"
+    And each result should contain the word "laptop"
+    And I should see the number of results displayed
+```
+
+### Shopping Cart
+
+```gherkin
+Feature: Shopping Cart Management
+
+  Scenario: Add single item to cart
+    Given I am viewing the "MacBook Pro" product page
+    And the product is in stock
+    When I select quantity "1"
+    And I click "Add to Cart"
+    Then the cart icon should show "1" item
+    And I should see a confirmation message
+    And the cart total should be "$2,499.00"
+
+  Scenario: Add multiple items to cart
+    Given I am on the products page
+    When I add the following items to cart:
+      | Product        | Quantity | Price    |
+      | MacBook Pro    | 1        | $2,499   |
+      | Magic Mouse    | 1        | $79      |
+      | USB-C Cable    | 2        | $19      |
+    Then the cart should contain 4 items
+    And the cart subtotal should be "$2,616.00"
+
+  Scenario: Update cart quantities
+    Given I have items in my cart
+    When I view my cart
+    And I change the quantity of "MacBook Pro" to "2"
+    And I click "Update Cart"
+    Then the cart should be updated
+    And the total should reflect the new quantity
+```
+
+### Checkout Process
+
+```gherkin
+Feature: Checkout Process
+
+  Scenario: Complete checkout as guest
+    Given I have items in my cart
+    When I proceed to checkout
+    And I choose "Checkout as Guest"
+    And I fill in shipping information:
+      | Field     | Value           |
+      | Name      | John Doe        |
+      | Address   | 123 Main St     |
+      | City      | Anytown         |
+      | State     | CA              |
+      | ZIP       | 12345           |
+      | Phone     | 555-123-4567    |
+    And I select "Standard Shipping ($9.99)"
+    And I fill in payment information:
+      | Field      | Value           |
+      | Card       | 4111111111111111|
+      | Expiry     | 12/25           |
+      | CVV        | 123             |
+      | Name       | John Doe        |
+    And I click "Place Order"
+    Then I should see "Order Confirmation"
+    And I should receive an order confirmation email
+    And the order should appear in the order tracking system
+```
+
+## Form Validation
+
+### Input Validation
+
+```gherkin
+Feature: Form Input Validation
+
+  Scenario: Email field validation
+    Given I am on the registration form
+    When I enter invalid email formats:
+      | Email           | Expected Error              |
+      | invalid-email   | Please enter a valid email  |
+      | @domain.com     | Please enter a valid email  |
+      | user@           | Please enter a valid email  |
+      | user@domain     | Please enter a valid email  |
+    Then I should see the appropriate error messages
+    And the form should not be submitted
+
+  Scenario: Required field validation
+    Given I am on the contact form
+    When I click "Submit" without filling any fields
+    Then I should see validation errors:
+      | Field   | Error                |
+      | Name    | Name is required     |
+      | Email   | Email is required    |
+      | Message | Message is required  |
+    And the form should not be submitted
+```
+
+### File Upload Validation
+
+```gherkin
+Feature: File Upload Validation
+
+  Scenario: Upload valid image file
+    Given I am on the profile page
+    When I click "Upload Profile Picture"
+    And I select a valid image file "profile.jpg"
+    And I click "Upload"
+    Then the image should be uploaded successfully
+    And I should see a preview of the uploaded image
+
+  Scenario: Upload invalid file type
+    Given I am on the profile page
+    When I click "Upload Profile Picture"
+    And I select an invalid file "document.pdf"
+    And I click "Upload"
+    Then I should see "Invalid file type. Please upload an image."
+    And the file should not be uploaded
+
+  Scenario: Upload file exceeding size limit
+    Given I am on the profile page
+    When I click "Upload Profile Picture"
+    And I select a large image file "large_image.jpg" (>5MB)
+    And I click "Upload"
+    Then I should see "File size exceeds 5MB limit"
+    And the file should not be uploaded
+```
+
+## Dynamic Content Testing
+
+### AJAX and Dynamic Loading
+
+```gherkin
+Feature: Dynamic Content Loading
+
+  Scenario: Load more content with infinite scroll
+    Given I am on the news feed page
+    When I scroll to the bottom of the page
+    Then more articles should load automatically
+    And I should see a loading indicator
+    And the new articles should appear below existing ones
+
+  Scenario: Real-time notifications
+    Given I am logged into the application
+    When a new notification is triggered
+    Then I should see the notification appear in real-time
+    And the notification counter should update
+    And I should be able to click on the notification
+```
+
+### Modal and Popup Handling
+
+```gherkin
+Feature: Modal and Popup Interactions
+
+  Scenario: Open and close modal dialog
+    Given I am on the dashboard
+    When I click "Create New Project"
+    Then a modal dialog should appear
+    And the background should be dimmed
+    When I click the "X" button
+    Then the modal should close
+    And I should return to the dashboard
+
+  Scenario: Handle browser popup windows
+    Given I am on the payment page
+    When I click "Pay with PayPal"
+    Then a PayPal popup window should open
+    When I complete the PayPal authentication
+    And I close the popup window
+    Then I should return to the original page
+    And the payment should be processed
+```
+
+## Responsive Design Testing
+
+### Mobile Viewport Testing
+
+```gherkin
+Feature: Mobile Responsive Design
+
+  Scenario: Test mobile navigation menu
+    Given I am viewing the site on a mobile device
+    When I am on the homepage
+    Then I should see a hamburger menu icon
+    When I click the hamburger menu
+    Then the navigation menu should slide out
+    And all menu items should be accessible
+
+  Scenario: Test mobile form layout
+    Given I am viewing the contact form on a mobile device
+    When I fill out the form
+    Then all form fields should be easily accessible
+    And the form should be properly formatted for mobile
+    And the submit button should be easily tappable
+```
+
+### Cross-Browser Testing
+
+```gherkin
+Feature: Cross-Browser Compatibility
+
+  Scenario Outline: Test login across browsers
+    Given I am using "<browser>"
+    When I navigate to the login page
+    And I enter valid credentials
+    And I click login
+    Then I should be logged in successfully
+    And the page should display correctly
+
+    Examples:
+      | browser  |
+      | chromium |
+      | firefox  |
+      | webkit   |
+```
+
+## Advanced UI Interactions
+
+### Drag and Drop
+
+```gherkin
+Feature: Drag and Drop Functionality
+
+  Scenario: Reorder items in a list
+    Given I am on the task management page
+    And I have multiple tasks in my list
+    When I drag "Task 1" and drop it after "Task 3"
+    Then "Task 1" should appear after "Task 3"
+    And the order should be saved automatically
+
+  Scenario: Upload files via drag and drop
+    Given I am on the file upload page
+    When I drag a file from my desktop to the upload area
+    Then the file should be uploaded automatically
+    And I should see the upload progress
+    And the file should appear in the file list
+```
+
+### Keyboard Navigation
+
+```gherkin
+Feature: Keyboard Navigation
+
+  Scenario: Navigate form using Tab key
+    Given I am on the registration form
+    When I press Tab to navigate through fields
+    Then the focus should move to each field in order
+    And the focused field should be clearly highlighted
+    When I press Shift+Tab
+    Then the focus should move to the previous field
+
+  Scenario: Use keyboard shortcuts
+    Given I am in the text editor
+    When I press Ctrl+B
+    Then the selected text should become bold
+    When I press Ctrl+Z
+    Then the last action should be undone
+```
+
+### Complex Workflows
+
+```gherkin
+Feature: Multi-Step Workflow
+
+  Scenario: Complete user onboarding process
+    Given I am a new user
+    When I start the onboarding process
+    And I complete step 1: Personal Information
+      | Field      | Value              |
+      | First Name | John               |
+      | Last Name  | Doe                |
+      | Email      | john@example.com   |
+    And I complete step 2: Account Preferences
+      | Setting      | Value    |
+      | Theme        | Dark     |
+      | Language     | English  |
+      | Timezone     | PST      |
+    And I complete step 3: Email Verification
+    And I complete step 4: Profile Setup
+    Then I should see "Welcome to the platform!"
+    And my account should be fully activated
+    And I should have access to all features
+```
+
+## Error Handling and Edge Cases
+
+### Network Error Handling
+
+```gherkin
+Feature: Network Error Handling
+
+  Scenario: Handle slow network connection
+    Given I have a slow network connection
+    When I submit a large form
+    Then I should see a loading indicator
+    And the form should eventually submit successfully
+    And I should not see timeout errors
+
+  Scenario: Handle network disconnection
+    Given I am filling out a form
+    When the network connection is lost
+    And I try to submit the form
+    Then I should see "Network connection lost"
+    And my form data should be preserved
+    When the connection is restored
+    And I resubmit the form
+    Then it should submit successfully
+```
+
+### Browser Compatibility Issues
+
+```gherkin
+Feature: Browser Compatibility
+
+  Scenario: Handle unsupported browser features
+    Given I am using an older browser
+    When I access a page with modern features
+    Then I should see appropriate fallback content
+    And the core functionality should still work
+    And I should not see JavaScript errors
+```
+
+## Performance Testing
+
+### Page Load Performance
+
+```gherkin
+Feature: Page Load Performance
+
+  Scenario: Verify page load times
+    Given I am testing page performance
+    When I navigate to the homepage
+    Then the page should load within 3 seconds
+    And all images should load within 5 seconds
+    And the page should be interactive within 2 seconds
+
+  Scenario: Test with large datasets
+    Given the database contains 10,000 products
+    When I search for products
+    Then the search results should load within 2 seconds
+    And pagination should work smoothly
+    And the page should remain responsive
+```
+
+## Integration with Backend
+
+### Real-time Data Updates
+
+```gherkin
+Feature: Real-time Data Synchronization
+
+  Scenario: Live chat functionality
+    Given I am in a chat room
+    When another user sends a message
+    Then I should see the message appear immediately
+    And the message should be properly formatted
+    And the timestamp should be accurate
+
+  Scenario: Live dashboard updates
+    Given I am viewing the analytics dashboard
+    When new data is available
+    Then the charts should update automatically
+    And the new data should be highlighted
+    And the update should be smooth without page refresh
+```
+
+## Best Practices Examples
+
+### Maintainable Test Structure
+
+```gherkin
+Feature: User Profile Management
+  As a registered user
+  I want to manage my profile information
+  So that I can keep my account up to date
+
+  Background:
+    Given I am logged in as a standard user
+    And I am on my profile page
+
+  Scenario: Update basic information
+    When I update my profile with:
+      | Field      | Value           |
+      | First Name | John            |
+      | Last Name  | Smith           |
+      | Phone      | 555-123-4567    |
+    And I save the changes
+    Then I should see "Profile updated successfully"
+    And the changes should be reflected in my profile
+
+  Scenario: Change email address
+    When I change my email to "john.smith@example.com"
+    And I save the changes
+    Then I should see "Email verification required"
+    And I should receive a verification email
+    When I verify the new email address
+    Then my email should be updated to "john.smith@example.com"
+```
+
+### Data-Driven Testing
+
+```gherkin
+Feature: Form Validation Testing
+
+  Scenario Outline: Test various input validations
+    Given I am on the registration form
+    When I enter "<input>" in the "<field>" field
+    Then I should see "<validation_message>"
+
+    Examples: Valid inputs
+      | field    | input                | validation_message |
+      | email    | user@example.com     | Valid email        |
+      | phone    | +1-555-123-4567      | Valid phone        |
+      | password | SecurePass123!       | Strong password    |
+
+    Examples: Invalid inputs
+      | field    | input           | validation_message           |
+      | email    | invalid-email   | Please enter a valid email   |
+      | phone    | 123             | Please enter a valid phone   |
+      | password | weak            | Password too weak            |
+```
+
+## Next Steps
+
+After exploring UI automation examples:
+
+1. [Learn about API testing](/examples/api-testing)
+2. [Explore security testing](/examples/security-testing)
+3. [Check out accessibility testing](/examples/accessibility-testing)
+4. [Understand visual testing](/examples/visual-testing)
+
+Ready to implement these patterns? Join our [Slack community](https://join.slack.com/t/testzeuscommunityhq/shared_invite/zt-2v2br8wog-FAmo_76xRHx~k~1oNaGQ0Q) to share your UI automation experiences!

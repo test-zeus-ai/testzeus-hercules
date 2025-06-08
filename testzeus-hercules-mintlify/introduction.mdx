@@ -1,0 +1,145 @@
+---
+title: Introduction
+description: 'Welcome to TestZeus Hercules - AI-powered test automation that democratizes testing for everyone'
+---
+
+<img
+  className="block dark:hidden"
+  src="/images/hercules-hero-light.svg"
+  alt="Hero Light"
+/>
+<img
+  className="hidden dark:block"
+  src="/images/hercules-hero-dark.svg"
+  alt="Hero Dark"
+/>
+
+## What is TestZeus Hercules?
+
+TestZeus Hercules is an AI-powered test automation framework that transforms natural language test descriptions into executable test automation. Using advanced multi-agent architecture, Hercules can understand, plan, and execute complex test scenarios across web applications, APIs, databases, and security testing.
+
+<CardGroup cols={2}>
+  <Card
+    title="Natural Language Testing"
+    icon="comments"
+    href="/testing/writing-first-test"
+  >
+    Write tests in plain English using Gherkin syntax. No complex scripting required.
+  </Card>
+  <Card
+    title="Multi-Agent Architecture"
+    icon="robot"
+    href="/architecture/overview"
+  >
+    Specialized AI agents handle different aspects of testing - browser automation, API testing, security, and more.
+  </Card>
+  <Card
+    title="Cross-Platform Support"
+    icon="globe"
+    href="/installation/overview"
+  >
+    Works on Windows, macOS, and Linux with multiple installation options.
+  </Card>
+  <Card
+    title="Comprehensive Testing"
+    icon="shield-check"
+    href="/examples/ui-automation"
+  >
+    Supports UI, API, security, accessibility, visual, and mobile testing scenarios.
+  </Card>
+</CardGroup>
+
+## Key Features
+
+### 🤖 AI-Powered Test Execution
+Hercules uses large language models to understand test requirements and automatically generate execution plans. The system can adapt to different UI states and handle complex scenarios without manual intervention.
+
+### 🎯 Multi-Agent Architecture
+- **Planner Agent**: Analyzes test cases and creates detailed execution plans
+- **Browser Agent**: Handles web UI interactions and validations
+- **API Agent**: Manages REST API testing and validations
+- **Security Agent**: Performs security testing and vulnerability assessments
+- **SQL Agent**: Executes database operations and validations
+- **TimeKeeper Agent**: Manages timing and wait operations
+
+### 🔧 Flexible Configuration
+- Support for multiple LLM providers (OpenAI, Anthropic, Groq, Mistral, Ollama, Gemini)
+- Configurable browser settings and remote testing platforms
+- Environment-based configuration management
+- Custom tool integration capabilities
+
+### 📊 Comprehensive Reporting
+- Detailed test execution reports
+- Screenshot capture for visual validation
+- Performance metrics and timing data
+- Integration with CI/CD pipelines
+
+## Quick Example
+
+Here's how simple it is to create a test with Hercules:
+
+```gherkin
+Feature: User Login Validation
+
+  Scenario: Successful user login
+    Given I am on the login page
+    When I enter valid credentials
+    And I click the login button
+    Then I should be redirected to the dashboard
+    And I should see a welcome message
+```
+
+That's it! Hercules will automatically:
+1. Navigate to the login page
+2. Find and fill the credential fields
+3. Click the login button
+4. Verify the redirect and welcome message
+5. Generate a detailed test report
+
+## Getting Started
+
+<CardGroup cols={2}>
+  <Card
+    title="Quick Start"
+    icon="rocket"
+    href="/quickstart"
+  >
+    Get up and running with Hercules in under 5 minutes
+  </Card>
+  <Card
+    title="Installation Guide"
+    icon="download"
+    href="/installation/overview"
+  >
+    Choose your preferred installation method
+  </Card>
+  <Card
+    title="Write Your First Test"
+    icon="pen"
+    href="/testing/writing-first-test"
+  >
+    Learn how to create effective test scenarios
+  </Card>
+  <Card
+    title="Configuration Setup"
+    icon="gear"
+    href="/configuration/llm-setup"
+  >
+    Configure LLM providers and environment settings
+  </Card>
+</CardGroup>
+
+## Why Choose Hercules?
+
+At [TestZeus](https://www.testzeus.com), we believe that **trustworthy and open-source code** is the backbone of innovation. Hercules is built to be transparent, reliable, and community-driven.
+
+Our mission is to **democratize and disrupt test automation**, making top-tier testing accessible to everyone, not just the elite few. No more gatekeeping—everyone deserves a hero on their testing team!
+
+### Community-Driven Development
+Hercules is developed by the community, for the community. We welcome contributions of all kinds:
+- Technical contributions and code reviews
+- Documentation improvements
+- Bug reports and feature requests
+- Community support and knowledge sharing
+
+Join our [Slack community](https://join.slack.com/t/testzeuscommunityhq/shared_invite/zt-2v2br8wog-FAmo_76xRHx~k~1oNaGQ0Q) to connect with other users, get support, and contribute to the project's growth.

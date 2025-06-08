@@ -1,0 +1,530 @@
+---
+title: 'LLM Setup'
+description: 'Configure Large Language Model providers for TestZeus Hercules'
+---
+
+## Overview
+
+TestZeus Hercules requires a Large Language Model (LLM) provider to understand and execute test scenarios. The system supports multiple providers with different models and capabilities.
+
+<Note>
+  Ensure your chosen model supports function calling and agentic activities. Larger models (70B+ parameters) generally perform better for complex test scenarios.
+</Note>
+
+## Supported Providers
+
+### OpenAI (Recommended)
+
+OpenAI provides the most reliable and well-tested experience with Hercules.
+
+<Tabs>
+  <Tab title="Environment Variables">
+    ```bash
+    export OPENAI_API_KEY="your-api-key-here"
+    export OPENAI_MODEL="gpt-4o"
+    export OPENAI_BASE_URL="https://api.openai.com/v1"  # Optional
+    ```
+  </Tab>
+  <Tab title="Configuration File">
+    ```json config.json
+    {
+      "llm_config": {
+        "provider": "openai",
+        "model": "gpt-4o",
+        "api_key": "your-api-key-here",
+        "temperature": 0.1,
+        "max_tokens": 4000
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+**Supported Models:**
+- `gpt-4o` - Recommended for production use
+- `gpt-4o-mini` - Supported for sub-agents only
+- `gpt-4-turbo` - Alternative high-performance option
+
+### Anthropic
+
+Claude models provide excellent reasoning capabilities for complex test scenarios.
+
+<Tabs>
+  <Tab title="Environment Variables">
+    ```bash
+    export ANTHROPIC_API_KEY="your-api-key-here"
+    export ANTHROPIC_MODEL="claude-3-5-haiku-20241022"
+    export ANTHROPIC_BASE_URL="https://api.anthropic.com"  # Optional
+    ```
+  </Tab>
+  <Tab title="Configuration File">
+    ```json config.json
+    {
+      "llm_config": {
+        "provider": "anthropic",
+        "model": "claude-3-5-haiku-20241022",
+        "api_key": "your-api-key-here",
+        "temperature": 0.1,
+        "max_tokens": 4000
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+**Supported Models:**
+- `claude-3-5-haiku-20241022` - Fast and efficient
+- `claude-3-5-sonnet-20241022` - Balanced performance
+- `claude-3-opus-20240229` - Highest capability
+
+### Groq
+
+Groq provides fast inference with open-source models.
+
+<Tabs>
+  <Tab title="Environment Variables">
+    ```bash
+    export GROQ_API_KEY="your-api-key-here"
+    export GROQ_MODEL="llama-3.1-70b-versatile"
+    export GROQ_BASE_URL="https://api.groq.com/openai/v1"  # Optional
+    ```
+  </Tab>
+  <Tab title="Configuration File">
+    ```json config.json
+    {
+      "llm_config": {
+        "provider": "groq",
+        "model": "llama-3.1-70b-versatile",
+        "api_key": "your-api-key-here",
+        "temperature": 0.1,
+        "max_tokens": 4000
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+**Supported Models:**
+- `llama-3.1-70b-versatile` - Recommended
+- `mixtral-8x7b-32768` - Alternative option
+
+### Mistral
+
+European-based provider with strong models for compliance-sensitive environments.
+
+<Tabs>
+  <Tab title="Environment Variables">
+    ```bash
+    export MISTRAL_API_KEY="your-api-key-here"
+    export MISTRAL_MODEL="mistral-large-latest"
+    export MISTRAL_BASE_URL="https://api.mistral.ai/v1"  # Optional
+    ```
+  </Tab>
+  <Tab title="Configuration File">
+    ```json config.json
+    {
+      "llm_config": {
+        "provider": "mistral",
+        "model": "mistral-large-latest",
+        "api_key": "your-api-key-here",
+        "temperature": 0.1,
+        "max_tokens": 4000
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+**Supported Models:**
+- `mistral-large-latest` - Recommended
+- `mistral-medium-latest` - Alternative option
+
+### Ollama (Local Models)
+
+Run models locally for privacy and cost control.
+
+<Tabs>
+  <Tab title="Environment Variables">
+    ```bash
+    export OLLAMA_BASE_URL="http://localhost:11434"
+    export OLLAMA_MODEL="llama3.1:70b"
+    ```
+  </Tab>
+  <Tab title="Configuration File">
+    ```json config.json
+    {
+      "llm_config": {
+        "provider": "ollama",
+        "model": "llama3.1:70b",
+        "base_url": "http://localhost:11434",
+        "temperature": 0.1
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+**Setup Instructions:**
+```bash
+# Install Ollama
+curl -fsSL https://ollama.ai/install.sh | sh
+
+# Pull a model (requires significant disk space)
+ollama pull llama3.1:70b
+
+# Start Ollama server
+ollama serve
+```
+
+**Recommended Models:**
+- `llama3.1:70b` - Best performance
+- `codellama:70b` - Code-focused
+- `mixtral:8x7b` - Balanced option
+
+## Cloud Provider Integration
+
+### AWS Bedrock
+
+<Tabs>
+  <Tab title="Environment Variables">
+    ```bash
+    export AWS_ACCESS_KEY_ID="your-access-key"
+    export AWS_SECRET_ACCESS_KEY="your-secret-key"
+    export AWS_REGION="us-east-1"
+    export BEDROCK_MODEL="anthropic.claude-3-sonnet-20240229-v1:0"
+    ```
+  </Tab>
+  <Tab title="Configuration File">
+    ```json config.json
+    {
+      "llm_config": {
+        "provider": "bedrock",
+        "model": "anthropic.claude-3-sonnet-20240229-v1:0",
+        "region": "us-east-1",
+        "temperature": 0.1
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### Google Cloud Vertex AI
+
+<Tabs>
+  <Tab title="Environment Variables">
+    ```bash
+    export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account.json"
+    export VERTEX_PROJECT_ID="your-project-id"
+    export VERTEX_LOCATION="us-central1"
+    export VERTEX_MODEL="gemini-1.5-pro"
+    ```
+  </Tab>
+  <Tab title="Configuration File">
+    ```json config.json
+    {
+      "llm_config": {
+        "provider": "vertex",
+        "model": "gemini-1.5-pro",
+        "project_id": "your-project-id",
+        "location": "us-central1"
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### Azure OpenAI
+
+<Tabs>
+  <Tab title="Environment Variables">
+    ```bash
+    export AZURE_OPENAI_API_KEY="your-api-key"
+    export AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com"
+    export AZURE_OPENAI_DEPLOYMENT="gpt-4o"
+    export AZURE_OPENAI_API_VERSION="2024-02-15-preview"
+    ```
+  </Tab>
+  <Tab title="Configuration File">
+    ```json config.json
+    {
+      "llm_config": {
+        "provider": "azure_openai",
+        "deployment": "gpt-4o",
+        "api_key": "your-api-key",
+        "endpoint": "https://your-resource.openai.azure.com",
+        "api_version": "2024-02-15-preview"
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Advanced Configuration
+
+### Multi-Agent Configuration
+
+Configure different models for different agents:
+
+```json config.json
+{
+  "agent_configs": {
+    "planner_agent": {
+      "provider": "openai",
+      "model": "gpt-4o",
+      "temperature": 0.1
+    },
+    "browser_nav_agent": {
+      "provider": "anthropic",
+      "model": "claude-3-5-haiku-20241022",
+      "temperature": 0.0
+    },
+    "api_nav_agent": {
+      "provider": "groq",
+      "model": "llama-3.1-70b-versatile",
+      "temperature": 0.1
+    }
+  }
+}
+```
+
+### Portkey Integration
+
+Use Portkey for intelligent LLM request routing and monitoring:
+
+```bash
+# Environment variables
+export PORTKEY_API_KEY="your-portkey-api-key"
+export PORTKEY_VIRTUAL_KEY="your-virtual-key"
+export PORTKEY_CONFIG_ID="your-config-id"
+```
+
+```json portkey-config.json
+{
+  "strategy": {
+    "mode": "fallback"
+  },
+  "targets": [
+    {
+      "provider": "openai",
+      "api_key": "{{OPENAI_API_KEY}}",
+      "weight": 1
+    },
+    {
+      "provider": "anthropic",
+      "api_key": "{{ANTHROPIC_API_KEY}}",
+      "weight": 0.5
+    }
+  ]
+}
+```
+
+### Rate Limiting and Retry Configuration
+
+```json config.json
+{
+  "llm_config": {
+    "provider": "openai",
+    "model": "gpt-4o",
+    "rate_limit": {
+      "requests_per_minute": 60,
+      "tokens_per_minute": 150000
+    },
+    "retry_config": {
+      "max_retries": 3,
+      "backoff_factor": 2,
+      "retry_on": ["rate_limit", "timeout", "server_error"]
+    },
+    "timeout": 120
+  }
+}
+```
+
+## Configuration Methods
+
+### 1. Environment Variables (Recommended)
+
+Set environment variables in your shell or `.env` file:
+
+```bash .env
+# Primary LLM provider
+OPENAI_API_KEY=your-api-key-here
+OPENAI_MODEL=gpt-4o
+
+# Fallback provider
+ANTHROPIC_API_KEY=your-fallback-key
+ANTHROPIC_MODEL=claude-3-5-haiku-20241022
+
+# Configuration options
+LLM_TEMPERATURE=0.1
+LLM_MAX_TOKENS=4000
+LLM_TIMEOUT=120
+```
+
+### 2. Configuration File
+
+Create a `config.json` file in your project root:
+
+```json config.json
+{
+  "llm_config": {
+    "provider": "openai",
+    "model": "gpt-4o",
+    "api_key": "your-api-key-here",
+    "temperature": 0.1,
+    "max_tokens": 4000,
+    "timeout": 120
+  },
+  "fallback_config": {
+    "provider": "anthropic",
+    "model": "claude-3-5-haiku-20241022",
+    "api_key": "your-fallback-key"
+  }
+}
+```
+
+### 3. Command Line Arguments
+
+Override configuration via command line:
+
+```bash
+hercules test.feature \
+  --llm-provider openai \
+  --llm-model gpt-4o \
+  --llm-temperature 0.1
+```
+
+## Testing Your Configuration
+
+Verify your LLM setup:
+
+```bash
+# Test basic connectivity
+hercules --test-llm
+
+# Run a simple test to verify functionality
+echo 'Feature: LLM Test
+  Scenario: Test LLM connectivity
+    Given I have configured my LLM provider
+    When I run a simple test
+    Then the LLM should respond correctly' > llm-test.feature
+
+hercules llm-test.feature
+```
+
+## Cost Optimization
+
+### Model Selection Strategy
+
+| Use Case | Recommended Model | Cost Level |
+|----------|------------------|------------|
+| Development/Testing | GPT-4o-mini, Claude Haiku | Low |
+| Production | GPT-4o, Claude Sonnet | Medium |
+| Complex Scenarios | GPT-4o, Claude Opus | High |
+| Local/Privacy | Ollama (Llama 3.1 70B) | Hardware |
+
+### Cost Control Settings
+
+```json config.json
+{
+  "cost_control": {
+    "max_tokens_per_request": 4000,
+    "max_requests_per_hour": 100,
+    "budget_alert_threshold": 50.00,
+    "auto_fallback_on_limit": true
+  }
+}
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="API Key Issues">
+    Common API key problems:
+    ```bash
+    # Verify API key is set
+    echo $OPENAI_API_KEY
+    
+    # Test API connectivity
+    curl -H "Authorization: Bearer $OPENAI_API_KEY" \
+         https://api.openai.com/v1/models
+    
+    # Check for special characters
+    echo $OPENAI_API_KEY | wc -c  # Should be 51 characters for OpenAI
+    ```
+  </Accordion>
+
+  <Accordion title="Model Not Found">
+    Resolve model availability issues:
+    ```bash
+    # List available models
+    curl -H "Authorization: Bearer $OPENAI_API_KEY" \
+         https://api.openai.com/v1/models
+    
+    # Check model name spelling
+    # Ensure you have access to the model
+    # Verify your account tier supports the model
+    ```
+  </Accordion>
+
+  <Accordion title="Rate Limiting">
+    Handle rate limit errors:
+    ```json config.json
+    {
+      "llm_config": {
+        "rate_limit": {
+          "requests_per_minute": 30,
+          "backoff_factor": 2
+        }
+      }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Timeout Issues">
+    Resolve timeout problems:
+    ```bash
+    # Increase timeout
+    export LLM_TIMEOUT=300
+    
+    # Use faster model for sub-agents
+    export BROWSER_NAV_AGENT_MODEL="gpt-4o-mini"
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Security Best Practices
+
+### API Key Management
+
+```bash
+# Use environment variables, not hardcoded keys
+export OPENAI_API_KEY="$(cat ~/.secrets/openai_key)"
+
+# Rotate keys regularly
+# Use different keys for different environments
+# Monitor API usage for anomalies
+```
+
+### Network Security
+
+```bash
+# Use HTTPS endpoints only
+export OPENAI_BASE_URL="https://api.openai.com/v1"
+
+# Configure proxy if needed
+export HTTPS_PROXY="https://proxy.company.com:8080"
+
+# Validate SSL certificates
+export CURL_CA_BUNDLE="/etc/ssl/certs/ca-certificates.crt"
+```
+
+## Next Steps
+
+After configuring your LLM provider:
+
+1. [Set up environment variables](/configuration/environment-variables)
+2. [Configure your project structure](/configuration/project-structure)
+3. [Write your first test](/testing/writing-first-test)
+4. [Explore advanced testing scenarios](/examples/ui-automation)
+
+Need help with LLM configuration? Join our [Slack community](https://join.slack.com/t/testzeuscommunityhq/shared_invite/zt-2v2br8wog-FAmo_76xRHx~k~1oNaGQ0Q) for support!

@@ -1,0 +1,428 @@
+---
+title: 'Source Installation'
+description: 'Build TestZeus Hercules from source code for development and customization'
+---
+
+## Prerequisites
+
+Before building from source, ensure you have:
+
+- **Python 3.8+** (3.10+ recommended)
+- **Git** for cloning the repository
+- **Node.js** (for some development tools)
+- **Build tools** for your platform
+
+### Platform-Specific Build Tools
+
+<Tabs>
+  <Tab title="Windows">
+    ```bash
+    # Install Visual Studio Build Tools
+    # Download from: https://visualstudio.microsoft.com/visual-cpp-build-tools/
+    
+    # Or install via chocolatey
+    choco install visualstudio2019buildtools
+    ```
+  </Tab>
+  <Tab title="macOS">
+    ```bash
+    # Install Xcode Command Line Tools
+    xcode-select --install
+    
+    # Install Homebrew (if not already installed)
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    ```
+  </Tab>
+  <Tab title="Linux">
+    ```bash
+    # Ubuntu/Debian
+    sudo apt-get update
+    sudo apt-get install -y build-essential python3-dev git
+    
+    # CentOS/RHEL
+    sudo yum groupinstall "Development Tools"
+    sudo yum install python3-devel git
+    ```
+  </Tab>
+</Tabs>
+
+## Clone the Repository
+
+Clone the Hercules repository from GitHub:
+
+```bash
+git clone https://github.com/test-zeus-ai/testzeus-hercules.git
+cd testzeus-hercules
+```
+
+## Development Setup
+
+### 1. Create Virtual Environment
+
+Create an isolated development environment:
+
+```bash
+# Create virtual environment
+python -m venv venv
+
+# Activate virtual environment
+# Windows
+venv\Scripts\activate
+# macOS/Linux
+source venv/bin/activate
+```
+
+### 2. Install Dependencies
+
+Install development dependencies:
+
+```bash
+# Install in development mode
+pip install -e .
+
+# Install development dependencies
+pip install -r requirements-dev.txt
+
+# Install pre-commit hooks
+pre-commit install
+```
+
+### 3. Install Browser Dependencies
+
+Install Playwright browsers for testing:
+
+```bash
+playwright install
+```
+
+## Build Configuration
+
+### Poetry Setup (Alternative)
+
+If you prefer using Poetry for dependency management:
+
+```bash
+# Install Poetry
+curl -sSL https://install.python-poetry.org | python3 -
+
+# Install dependencies
+poetry install
+
+# Activate virtual environment
+poetry shell
+```
+
+### Environment Configuration
+
+Create a development configuration file:
+
+```bash .env.dev
+# Development settings
+DEBUG=true
+LOG_LEVEL=DEBUG
+
+# LLM Configuration
+OPENAI_API_KEY=your-dev-api-key
+OPENAI_MODEL=gpt-4o
+
+# Browser Configuration
+BROWSER_TYPE=chromium
+HEADLESS=false
+BROWSER_TIMEOUT=60000
+
+# Development paths
+RESULTS_DIR=./dev-results
+LOGS_DIR=./dev-logs
+```
+
+## Running Tests
+
+### Unit Tests
+
+Run the test suite to verify your installation:
+
+```bash
+# Run all tests
+pytest
+
+# Run with coverage
+pytest --cov=testzeus_hercules
+
+# Run specific test categories
+pytest tests/unit/
+pytest tests/integration/
+```
+
+### Integration Tests
+
+Run integration tests with real browsers:
+
+```bash
+# Run browser tests
+pytest tests/integration/browser/
+
+# Run API tests
+pytest tests/integration/api/
+
+# Run with specific browser
+BROWSER_TYPE=firefox pytest tests/integration/browser/
+```
+
+## Development Workflow
+
+### Code Quality Tools
+
+The project uses several code quality tools:
+
+```bash
+# Format code
+black testzeus_hercules/
+isort testzeus_hercules/
+
+# Lint code
+flake8 testzeus_hercules/
+pylint testzeus_hercules/
+
+# Type checking
+mypy testzeus_hercules/
+
+# Run all checks
+pre-commit run --all-files
+```
+
+### Building Documentation
+
+Build the documentation locally:
+
+```bash
+# Install documentation dependencies
+pip install -r docs/requirements.txt
+
+# Build documentation
+cd docs/
+make html
+
+# Serve documentation locally
+python -m http.server 8000 -d _build/html/
+```
+
+## Custom Builds
+
+### Building Distribution Packages
+
+Create distribution packages:
+
+```bash
+# Build source and wheel distributions
+python -m build
+
+# Check distribution
+twine check dist/*
+
+# Install from local build
+pip install dist/testzeus_hercules-*.whl
+```
+
+### Custom Agent Development
+
+Create custom agents by extending base classes:
+
+```python custom_agent.py
+from testzeus_hercules.core.agents.base_nav_agent import BaseNavAgent
+
+class CustomAgent(BaseNavAgent):
+    agent_name: str = "custom_agent"
+    prompt = """# Custom Agent
+    
+    You are a custom agent that handles specific testing scenarios.
+    """
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Custom initialization
+```
+
+### Custom Tool Development
+
+Add custom tools to extend functionality:
+
+```python custom_tool.py
+from testzeus_hercules.core.tools.tool_registry import register_tool
+
+@register_tool
+def custom_validation_tool(page, expected_value):
+    """Custom validation tool for specific use cases."""
+    # Implementation
+    return {"success": True, "message": "Validation passed"}
+```
+
+## IDE Configuration
+
+### VS Code Setup
+
+Create `.vscode/settings.json`:
+
+```json
+{
+  "python.defaultInterpreterPath": "./venv/bin/python",
+  "python.linting.enabled": true,
+  "python.linting.pylintEnabled": true,
+  "python.formatting.provider": "black",
+  "python.testing.pytestEnabled": true,
+  "python.testing.pytestArgs": ["tests/"]
+}
+```
+
+### PyCharm Setup
+
+1. Open the project in PyCharm
+2. Configure Python interpreter to use the virtual environment
+3. Enable pytest as the test runner
+4. Configure code style to use Black formatter
+
+## Debugging
+
+### Debug Configuration
+
+Set up debugging for development:
+
+```python debug_config.py
+import logging
+import os
+
+# Enable debug logging
+logging.basicConfig(level=logging.DEBUG)
+
+# Set debug environment variables
+os.environ['DEBUG'] = 'true'
+os.environ['HEADLESS'] = 'false'
+os.environ['BROWSER_TIMEOUT'] = '120000'
+```
+
+### Browser Debugging
+
+Debug browser interactions:
+
+```bash
+# Run with visible browser
+HEADLESS=false hercules test.feature
+
+# Enable browser developer tools
+BROWSER_ARGS="--auto-open-devtools-for-tabs" hercules test.feature
+
+# Connect to browser debugging port
+BROWSER_ARGS="--remote-debugging-port=9222" hercules test.feature
+```
+
+## Contributing
+
+### Setting Up for Contributions
+
+1. Fork the repository on GitHub
+2. Clone your fork locally
+3. Create a feature branch
+4. Make your changes
+5. Run tests and quality checks
+6. Submit a pull request
+
+```bash
+# Create feature branch
+git checkout -b feature/my-new-feature
+
+# Make changes and commit
+git add .
+git commit -m "Add new feature"
+
+# Push to your fork
+git push origin feature/my-new-feature
+```
+
+### Code Style Guidelines
+
+Follow the project's coding standards:
+
+- Use Black for code formatting
+- Follow PEP 8 style guidelines
+- Add type hints for all functions
+- Write comprehensive docstrings
+- Include unit tests for new features
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Build Failures">
+    Common build issues and solutions:
+    ```bash
+    # Clear pip cache
+    pip cache purge
+    
+    # Reinstall dependencies
+    pip install --force-reinstall -r requirements.txt
+    
+    # Update build tools
+    pip install --upgrade pip setuptools wheel
+    ```
+  </Accordion>
+
+  <Accordion title="Import Errors">
+    Fix Python path issues:
+    ```bash
+    # Install in development mode
+    pip install -e .
+    
+    # Check Python path
+    python -c "import sys; print(sys.path)"
+    ```
+  </Accordion>
+
+  <Accordion title="Browser Issues">
+    Resolve browser-related problems:
+    ```bash
+    # Reinstall browsers
+    playwright uninstall --all
+    playwright install
+    
+    # Check browser installation
+    playwright install --dry-run
+    ```
+  </Accordion>
+
+  <Accordion title="Permission Issues">
+    Fix file permission problems:
+    ```bash
+    # Fix permissions on Unix systems
+    chmod +x scripts/*.sh
+    
+    # Run as administrator on Windows
+    # Right-click Command Prompt -> "Run as administrator"
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Performance Optimization
+
+### Development Performance
+
+Optimize development environment:
+
+```bash
+# Use faster dependency resolution
+pip install --use-feature=fast-deps
+
+# Enable parallel testing
+pytest -n auto
+
+# Use incremental type checking
+mypy --incremental testzeus_hercules/
+```
+
+## Next Steps
+
+After successful source installation:
+
+1. [Explore the codebase architecture](/architecture/overview)
+2. [Set up your development environment](/configuration/environment-variables)
+3. [Write and run tests](/testing/writing-first-test)
+4. [Contribute to the project](/community/contributing)
+
+Need help with development? Join our [Slack community](https://join.slack.com/t/testzeuscommunityhq/shared_invite/zt-2v2br8wog-FAmo_76xRHx~k~1oNaGQ0Q) for developer support!

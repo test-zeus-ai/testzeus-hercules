@@ -1,0 +1,805 @@
+---
+title: 'Tools Library'
+description: 'Comprehensive guide to the tools available in TestZeus Hercules'
+---
+
+## Tools Overview
+
+TestZeus Hercules provides a comprehensive library of tools that agents use to interact with applications, gather information, and perform various testing operations. These tools are the building blocks that enable agents to execute complex test scenarios.
+
+## Tool Categories
+
+### Sensing Tools
+
+Tools for gathering information from applications and environments:
+
+#### Screenshot Tool
+Captures visual state of applications:
+
+```python
+# Screenshot capabilities
+- Full page screenshots
+- Element-specific screenshots
+- Mobile device screenshots
+- Cross-browser screenshots
+- High-resolution captures
+```
+
+**Usage Examples:**
+```gherkin
+When I take a screenshot of the current page
+Then I should see the login form
+And I take a screenshot of the "header" element
+```
+
+#### Accessibility Tree Tool
+Extracts accessibility information:
+
+```python
+# Accessibility data extraction
+- ARIA labels and roles
+- Semantic structure
+- Focus order
+- Screen reader compatibility
+- WCAG compliance checks
+```
+
+**Usage Examples:**
+```gherkin
+When I analyze the accessibility tree
+Then all images should have alt text
+And form fields should have proper labels
+```
+
+#### DOM Extraction Tool
+Retrieves HTML document structure:
+
+```python
+# DOM analysis capabilities
+- Element hierarchy
+- Attribute extraction
+- Text content analysis
+- CSS selector validation
+- Dynamic content detection
+```
+
+**Usage Examples:**
+```gherkin
+When I extract the DOM structure
+Then I should find element with id "login-form"
+And the page should have proper heading hierarchy
+```
+
+#### Network Monitoring Tool
+Monitors network activity:
+
+```python
+# Network monitoring features
+- HTTP request/response logging
+- Performance timing
+- Resource loading analysis
+- API call tracking
+- Error detection
+```
+
+**Usage Examples:**
+```gherkin
+Given I start network monitoring
+When I submit the form
+Then I should see a POST request to "/api/users"
+And the response time should be less than 2 seconds
+```
+
+### Action Tools
+
+Tools for interacting with applications and performing operations:
+
+#### Playwright Browser Tools
+Comprehensive browser automation:
+
+**Element Interaction:**
+```python
+# Click operations
+- Single click
+- Double click
+- Right click
+- Click and hold
+- Click with modifiers
+
+# Text input
+- Type text
+- Clear fields
+- Select all text
+- Keyboard shortcuts
+- Special key combinations
+
+# Form interactions
+- Fill forms
+- Select dropdowns
+- Check/uncheck boxes
+- Radio button selection
+- File uploads
+```
+
+**Navigation:**
+```python
+# Page navigation
+- URL navigation
+- Forward/back navigation
+- Refresh page
+- New tab/window
+- Frame switching
+
+# Waiting strategies
+- Wait for element
+- Wait for navigation
+- Wait for network idle
+- Wait for load state
+- Custom wait conditions
+```
+
+**Advanced Interactions:**
+```python
+# Drag and drop
+- Element to element
+- Element to coordinates
+- File drag and drop
+- Custom drag paths
+
+# Mobile gestures
+- Swipe gestures
+- Pinch/zoom
+- Tap and hold
+- Multi-touch
+```
+
+#### REST API Tools
+HTTP request handling and API testing:
+
+**Request Types:**
+```python
+# HTTP methods
+- GET requests
+- POST requests
+- PUT requests
+- DELETE requests
+- PATCH requests
+- HEAD requests
+- OPTIONS requests
+```
+
+**Authentication:**
+```python
+# Auth methods
+- Bearer token
+- Basic authentication
+- API key authentication
+- OAuth 2.0
+- Custom headers
+- Certificate authentication
+```
+
+**Data Handling:**
+```python
+# Request/response processing
+- JSON serialization/deserialization
+- XML processing
+- Form data encoding
+- File uploads
+- Binary data handling
+- Custom content types
+```
+
+#### Database Tools
+Database operations and validation:
+
+**Query Operations:**
+```python
+# SQL operations
+- SELECT queries
+- INSERT operations
+- UPDATE statements
+- DELETE operations
+- Stored procedures
+- Transactions
+
+# NoSQL operations
+- Document queries
+- Collection operations
+- Aggregation pipelines
+- Index management
+```
+
+**Data Validation:**
+```python
+# Validation capabilities
+- Schema validation
+- Data integrity checks
+- Constraint verification
+- Performance monitoring
+- Connection pooling
+```
+
+#### File System Tools
+File and directory operations:
+
+```python
+# File operations
+- Read files
+- Write files
+- Copy files
+- Move files
+- Delete files
+- File permissions
+
+# Directory operations
+- Create directories
+- List contents
+- Directory traversal
+- Path manipulation
+- Archive operations
+```
+
+### Security Tools
+
+Specialized tools for security testing:
+
+#### OWASP ZAP Integration
+Automated security scanning:
+
+```python
+# ZAP capabilities
+- Passive scanning
+- Active scanning
+- Spider crawling
+- Authentication handling
+- Custom scan policies
+- Report generation
+```
+
+**Usage Examples:**
+```gherkin
+Given I start a security scan
+When I crawl the application
+Then I should find no high-risk vulnerabilities
+And all forms should be protected against CSRF
+```
+
+#### Nuclei Scanner
+Vulnerability detection:
+
+```python
+# Nuclei features
+- Template-based scanning
+- Custom vulnerability checks
+- CVE detection
+- Misconfiguration identification
+- Technology fingerprinting
+```
+
+#### Custom Security Tools
+Application-specific security testing:
+
+```python
+# Custom security checks
+- SQL injection testing
+- XSS payload injection
+- Authentication bypass
+- Session management testing
+- Input validation testing
+```
+
+### Performance Tools
+
+Tools for performance testing and monitoring:
+
+#### Performance Monitoring
+Application performance analysis:
+
+```python
+# Performance metrics
+- Page load times
+- Resource loading
+- JavaScript execution
+- Memory usage
+- CPU utilization
+- Network performance
+```
+
+#### Load Testing Tools
+Stress and load testing capabilities:
+
+```python
+# Load testing features
+- Concurrent user simulation
+- Request rate control
+- Response time monitoring
+- Error rate tracking
+- Resource utilization
+```
+
+## Tool Configuration
+
+### Global Tool Settings
+
+```json
+{
+  "tools": {
+    "browser": {
+      "timeout": 30000,
+      "screenshot_quality": "high",
+      "enable_trace": true
+    },
+    "api": {
+      "timeout": 30,
+      "retry_attempts": 3,
+      "verify_ssl": true
+    },
+    "database": {
+      "connection_timeout": 10,
+      "query_timeout": 30,
+      "pool_size": 5
+    },
+    "security": {
+      "scan_depth": "medium",
+      "include_passive": true,
+      "custom_payloads": true
+    }
+  }
+}
+```
+
+### Tool-Specific Configuration
+
+#### Browser Tool Configuration
+
+```json
+{
+  "browser_tools": {
+    "screenshot": {
+      "format": "png",
+      "quality": 90,
+      "full_page": true,
+      "clip": null
+    },
+    "interaction": {
+      "click_timeout": 5000,
+      "type_delay": 50,
+      "wait_for_navigation": true
+    },
+    "mobile": {
+      "device_emulation": true,
+      "touch_events": true,
+      "orientation": "portrait"
+    }
+  }
+}
+```
+
+#### API Tool Configuration
+
+```json
+{
+  "api_tools": {
+    "requests": {
+      "timeout": 30,
+      "verify_ssl": true,
+      "follow_redirects": true,
+      "max_redirects": 5
+    },
+    "authentication": {
+      "token_refresh": true,
+      "cache_tokens": true,
+      "token_expiry_buffer": 300
+    },
+    "validation": {
+      "schema_validation": true,
+      "response_time_check": true,
+      "status_code_validation": true
+    }
+  }
+}
+```
+
+## Custom Tool Development
+
+### Creating Custom Tools
+
+Developers can create custom tools for specific needs:
+
+```python
+from testzeus_hercules.core.tools.base_tool import BaseTool
+
+class CustomValidationTool(BaseTool):
+    name = "custom_validation_tool"
+    description = "Performs custom business logic validation"
+    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.validation_rules = kwargs.get('validation_rules', {})
+    
+    def execute(self, data: dict, rules: list = None) -> dict:
+        """Execute custom validation logic"""
+        rules = rules or self.validation_rules
+        results = {
+            "valid": True,
+            "errors": [],
+            "warnings": []
+        }
+        
+        for rule in rules:
+            validation_result = self.apply_rule(data, rule)
+            if not validation_result.valid:
+                results["valid"] = False
+                results["errors"].extend(validation_result.errors)
+        
+        return results
+    
+    def apply_rule(self, data: dict, rule: dict) -> dict:
+        """Apply a specific validation rule"""
+        # Custom validation logic here
+        pass
+```
+
+### Tool Registration
+
+```python
+from testzeus_hercules.core.tool_registry import register_tool
+
+@register_tool
+class EmailValidationTool(BaseTool):
+    name = "email_validation_tool"
+    description = "Validates email functionality"
+    
+    def execute(self, email_address: str, expected_content: str = None) -> dict:
+        """Validate email was sent and contains expected content"""
+        # Email validation logic
+        return {
+            "email_found": True,
+            "content_match": True,
+            "delivery_time": 2.5
+        }
+```
+
+### Tool Plugin System
+
+```python
+class ToolPlugin:
+    def before_execution(self, tool, parameters):
+        """Called before tool execution"""
+        self.log_tool_usage(tool.name, parameters)
+    
+    def after_execution(self, tool, result):
+        """Called after tool execution"""
+        self.record_metrics(tool.name, result)
+    
+    def on_error(self, tool, error):
+        """Called when tool execution fails"""
+        self.handle_tool_error(tool.name, error)
+```
+
+## Tool Integration Patterns
+
+### Tool Chaining
+
+Tools can be chained together for complex operations:
+
+```python
+# Example tool chain
+1. Screenshot tool captures current state
+2. DOM extraction tool analyzes structure
+3. Accessibility tool validates compliance
+4. Performance tool measures metrics
+5. Validation tool confirms results
+```
+
+### Conditional Tool Usage
+
+Tools can be used conditionally based on context:
+
+```gherkin
+Feature: Adaptive Testing
+
+  Scenario: Use appropriate tools based on context
+    Given I am testing a web application
+    When I need to validate the interface
+    Then I should use browser tools for UI validation
+    And I should use API tools for backend validation
+    But if the application is mobile-only
+    Then I should use mobile-specific tools
+```
+
+### Tool Composition
+
+Complex tools can be composed from simpler ones:
+
+```python
+class CompositeValidationTool(BaseTool):
+    def __init__(self):
+        self.ui_tool = BrowserTool()
+        self.api_tool = APITool()
+        self.db_tool = DatabaseTool()
+    
+    def execute(self, validation_type: str) -> dict:
+        if validation_type == "full_stack":
+            ui_result = self.ui_tool.validate_interface()
+            api_result = self.api_tool.validate_endpoints()
+            db_result = self.db_tool.validate_data()
+            
+            return self.combine_results([ui_result, api_result, db_result])
+```
+
+## Tool Performance and Optimization
+
+### Performance Monitoring
+
+```python
+# Tool performance metrics
+{
+  "tool_metrics": {
+    "screenshot_tool": {
+      "average_execution_time": 1.2,
+      "success_rate": 99.8,
+      "memory_usage": "45MB",
+      "cache_hit_rate": 85
+    },
+    "api_tool": {
+      "average_execution_time": 0.8,
+      "success_rate": 100.0,
+      "memory_usage": "12MB",
+      "connection_pool_usage": 60
+    }
+  }
+}
+```
+
+### Optimization Strategies
+
+```python
+# Tool optimization techniques
+1. Connection pooling for database tools
+2. Caching for API responses
+3. Lazy loading of browser resources
+4. Parallel tool execution
+5. Resource cleanup and management
+```
+
+### Resource Management
+
+```python
+class ResourceManagedTool(BaseTool):
+    def __enter__(self):
+        self.acquire_resources()
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.release_resources()
+    
+    def acquire_resources(self):
+        """Acquire necessary resources"""
+        pass
+    
+    def release_resources(self):
+        """Clean up resources"""
+        pass
+```
+
+## Tool Error Handling
+
+### Error Recovery
+
+```python
+class ResilientTool(BaseTool):
+    def execute_with_retry(self, *args, **kwargs):
+        max_retries = kwargs.get('max_retries', 3)
+        
+        for attempt in range(max_retries):
+            try:
+                return self.execute(*args, **kwargs)
+            except RetryableError as e:
+                if attempt == max_retries - 1:
+                    raise
+                self.wait_before_retry(attempt)
+            except FatalError:
+                raise
+    
+    def wait_before_retry(self, attempt):
+        """Exponential backoff"""
+        time.sleep(2 ** attempt)
+```
+
+### Error Reporting
+
+```python
+class ToolErrorReporter:
+    def report_error(self, tool_name: str, error: Exception, context: dict):
+        error_report = {
+            "tool": tool_name,
+            "error_type": type(error).__name__,
+            "error_message": str(error),
+            "context": context,
+            "timestamp": datetime.utcnow().isoformat(),
+            "stack_trace": traceback.format_exc()
+        }
+        
+        self.send_to_monitoring_system(error_report)
+```
+
+## Tool Security
+
+### Secure Tool Execution
+
+```python
+class SecureTool(BaseTool):
+    def validate_input(self, parameters: dict) -> bool:
+        """Validate input parameters for security"""
+        for key, value in parameters.items():
+            if not self.is_safe_parameter(key, value):
+                raise SecurityError(f"Unsafe parameter: {key}")
+        return True
+    
+    def sanitize_output(self, result: dict) -> dict:
+        """Remove sensitive information from output"""
+        sanitized = result.copy()
+        for sensitive_key in ['password', 'token', 'secret']:
+            if sensitive_key in sanitized:
+                sanitized[sensitive_key] = '[REDACTED]'
+        return sanitized
+```
+
+### Access Control
+
+```python
+class AccessControlledTool(BaseTool):
+    required_permissions = ['read', 'write']
+    
+    def check_permissions(self, user_context: dict) -> bool:
+        user_permissions = user_context.get('permissions', [])
+        return all(perm in user_permissions for perm in self.required_permissions)
+    
+    def execute(self, *args, **kwargs):
+        user_context = kwargs.get('user_context', {})
+        if not self.check_permissions(user_context):
+            raise PermissionError("Insufficient permissions")
+        
+        return super().execute(*args, **kwargs)
+```
+
+## Tool Documentation and Discovery
+
+### Tool Registry
+
+```python
+class ToolRegistry:
+    def __init__(self):
+        self.tools = {}
+    
+    def register(self, tool_class):
+        self.tools[tool_class.name] = tool_class
+    
+    def get_tool(self, name: str):
+        return self.tools.get(name)
+    
+    def list_tools(self) -> list:
+        return list(self.tools.keys())
+    
+    def get_tool_info(self, name: str) -> dict:
+        tool_class = self.tools.get(name)
+        if tool_class:
+            return {
+                "name": tool_class.name,
+                "description": tool_class.description,
+                "parameters": tool_class.get_parameters(),
+                "examples": tool_class.get_examples()
+            }
+```
+
+### Tool Documentation
+
+```python
+class DocumentedTool(BaseTool):
+    name = "example_tool"
+    description = "Example tool for demonstration"
+    
+    @classmethod
+    def get_parameters(cls) -> dict:
+        return {
+            "required": ["input_data"],
+            "optional": ["timeout", "retry_count"],
+            "types": {
+                "input_data": "string",
+                "timeout": "integer",
+                "retry_count": "integer"
+            }
+        }
+    
+    @classmethod
+    def get_examples(cls) -> list:
+        return [
+            {
+                "description": "Basic usage",
+                "parameters": {"input_data": "test"},
+                "expected_result": {"status": "success"}
+            }
+        ]
+```
+
+## Tool Testing and Validation
+
+### Tool Unit Testing
+
+```python
+import unittest
+from unittest.mock import Mock, patch
+
+class TestCustomTool(unittest.TestCase):
+    def setUp(self):
+        self.tool = CustomTool()
+    
+    def test_successful_execution(self):
+        result = self.tool.execute({"test": "data"})
+        self.assertTrue(result["success"])
+    
+    def test_error_handling(self):
+        with self.assertRaises(ValidationError):
+            self.tool.execute({"invalid": "data"})
+    
+    @patch('external_service.call')
+    def test_external_dependency(self, mock_call):
+        mock_call.return_value = {"status": "ok"}
+        result = self.tool.execute({"test": "data"})
+        self.assertEqual(result["external_status"], "ok")
+```
+
+### Integration Testing
+
+```python
+class ToolIntegrationTest:
+    def test_tool_chain(self):
+        """Test multiple tools working together"""
+        screenshot_result = self.screenshot_tool.execute()
+        dom_result = self.dom_tool.execute()
+        validation_result = self.validation_tool.execute({
+            "screenshot": screenshot_result,
+            "dom": dom_result
+        })
+        
+        assert validation_result["valid"]
+```
+
+## Best Practices
+
+### Tool Design Principles
+
+1. **Single Responsibility**: Each tool should have one clear purpose
+2. **Idempotency**: Tools should produce consistent results
+3. **Error Handling**: Robust error handling and recovery
+4. **Resource Management**: Proper cleanup and resource management
+5. **Documentation**: Clear documentation and examples
+
+### Performance Guidelines
+
+1. **Lazy Loading**: Load resources only when needed
+2. **Caching**: Cache expensive operations
+3. **Connection Pooling**: Reuse connections where possible
+4. **Parallel Execution**: Execute independent operations in parallel
+5. **Resource Limits**: Implement appropriate timeouts and limits
+
+### Security Considerations
+
+1. **Input Validation**: Always validate input parameters
+2. **Output Sanitization**: Remove sensitive data from outputs
+3. **Access Control**: Implement proper permission checks
+4. **Audit Logging**: Log all tool usage for security audits
+5. **Secure Defaults**: Use secure default configurations
+
+## Next Steps
+
+To learn more about tools:
+
+1. [Understand the memory system](/architecture/memory-system)
+2. [Explore agent interactions](/architecture/agents)
+3. [See practical examples](/examples/ui-automation)
+4. [Learn about custom development](/installation/source)
+
+Ready to work with tools? Join our [Slack community](https://join.slack.com/t/testzeuscommunityhq/shared_invite/zt-2v2br8wog-FAmo_76xRHx~k~1oNaGQ0Q) to discuss tool development and share experiences!

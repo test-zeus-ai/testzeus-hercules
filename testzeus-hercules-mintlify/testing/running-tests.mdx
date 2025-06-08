@@ -1,0 +1,780 @@
+---
+title: 'Running Tests'
+description: 'Learn how to execute tests in different modes and configurations with TestZeus Hercules'
+---
+
+## Basic Test Execution
+
+### Single Test Execution
+
+Run individual test files for detailed feedback and debugging:
+
+```bash
+# Run a single feature file
+hercules test.feature
+
+# Run with visible browser for debugging
+HEADLESS=false hercules test.feature
+
+# Run with debug output
+DEBUG=true hercules test.feature
+
+# Run with custom configuration
+hercules --config custom-config.json test.feature
+```
+
+### Multiple Test Execution
+
+Execute multiple tests or entire test suites:
+
+```bash
+# Run all tests in a directory
+hercules tests/
+
+# Run all feature files in current directory
+hercules *.feature
+
+# Run specific test files
+hercules login.feature registration.feature checkout.feature
+
+# Run tests matching a pattern
+hercules tests/smoke/*.feature
+```
+
+## Execution Modes
+
+### Single Test Mode
+
+Provides detailed output and debugging information:
+
+```bash
+# Default single test mode
+hercules login.feature
+
+# Features of single test mode:
+# - Detailed step-by-step output
+# - Screenshots on failure (and success if enabled)
+# - Full error messages and stack traces
+# - Interactive debugging capabilities
+# - Complete logs and traces
+```
+
+Example output:
+```
+🏛️ TestZeus Hercules - AI-Powered Test Automation
+
+📁 Running: login.feature
+🎯 Feature: User Authentication
+
+📋 Scenario: Successful login with valid credentials
+  ✅ Given I am on the login page
+  ✅ When I enter "user@example.com" in the email field
+  ✅ And I enter "password123" in the password field
+  ✅ And I click the "Login" button
+  ✅ Then I should be redirected to the dashboard
+  ✅ And I should see "Welcome back, User"
+
+✅ Scenario passed in 15.3 seconds
+📊 Results: 1 passed, 0 failed
+```
+
+### Bulk Test Mode
+
+Optimized for running multiple tests efficiently:
+
+```bash
+# Enable bulk mode explicitly
+hercules --bulk tests/
+
+# Bulk mode features:
+# - Parallel execution support
+# - Optimized resource usage
+# - Summary-focused reporting
+# - Faster execution
+# - Reduced memory footprint
+```
+
+Example output:
+```
+🏛️ TestZeus Hercules - Bulk Test Execution
+
+📊 Executing 25 test scenarios across 8 feature files
+🔄 Running with 4 parallel workers
+
+Progress: ████████████████████████████████ 100%
+
+📈 Results Summary:
+✅ Passed: 23 scenarios
+❌ Failed: 2 scenarios
+⏱️  Total time: 3m 45s
+📁 Results saved to: ./results/
+```
+
+## Command Line Options
+
+### Basic Options
+
+```bash
+# Show help
+hercules --help
+
+# Show version
+hercules --version
+
+# Verbose output
+hercules --verbose test.feature
+
+# Quiet mode (minimal output)
+hercules --quiet test.feature
+
+# Dry run (validate without executing)
+hercules --dry-run test.feature
+```
+
+### Configuration Options
+
+```bash
+# Use specific configuration file
+hercules --config config.json test.feature
+
+# Set environment file
+hercules --env-file .env.staging test.feature
+
+# Override environment variables
+hercules --env HEADLESS=false test.feature
+
+# Set results directory
+hercules --results-dir ./custom-results test.feature
+```
+
+### Execution Control
+
+```bash
+# Set maximum retries
+hercules --max-retries 5 test.feature
+
+# Set test timeout
+hercules --timeout 300 test.feature
+
+# Enable parallel execution
+hercules --parallel 4 tests/
+
+# Continue on failure
+hercules --continue-on-failure tests/
+
+# Stop on first failure
+hercules --fail-fast tests/
+```
+
+## Tag-Based Execution
+
+### Using Tags
+
+Tags help organize and filter tests:
+
+```gherkin
+@smoke @critical
+Feature: Core Authentication
+
+  @positive @quick
+  Scenario: Valid login
+    Given I have valid credentials
+    When I log in
+    Then I should access the dashboard
+
+  @negative @security
+  Scenario: Invalid login
+    Given I have invalid credentials
+    When I attempt to log in
+    Then I should see an error message
+```
+
+### Running Tagged Tests
+
+```bash
+# Run tests with specific tags
+hercules --tags @smoke tests/
+
+# Run tests with multiple tags (AND)
+hercules --tags "@smoke and @critical" tests/
+
+# Run tests with any of the tags (OR)
+hercules --tags "@smoke or @regression" tests/
+
+# Exclude tests with specific tags
+hercules --tags "not @slow" tests/
+
+# Complex tag expressions
+hercules --tags "@smoke and not @wip" tests/
+```
+
+### Common Tag Categories
+
+```bash
+# Test types
+hercules --tags @smoke tests/        # Quick smoke tests
+hercules --tags @regression tests/   # Full regression suite
+hercules --tags @integration tests/  # Integration tests
+
+# Priority levels
+hercules --tags @critical tests/     # Critical functionality
+hercules --tags @high tests/         # High priority
+hercules --tags @medium tests/       # Medium priority
+
+# Test status
+hercules --tags @stable tests/       # Stable tests
+hercules --tags "not @wip" tests/    # Exclude work-in-progress
+hercules --tags "not @skip" tests/   # Exclude skipped tests
+
+# Functional areas
+hercules --tags @auth tests/         # Authentication tests
+hercules --tags @api tests/          # API tests
+hercules --tags @ui tests/           # UI tests
+```
+
+## Environment-Specific Execution
+
+### Development Environment
+
+```bash
+# Development configuration
+export HEADLESS=false
+export DEBUG=true
+export SCREENSHOT_ON_SUCCESS=true
+export SLOW_MO=1000
+
+hercules test.feature
+```
+
+### Staging Environment
+
+```bash
+# Staging configuration
+export TEST_ENV=staging
+export BASE_URL=https://staging.example.com
+export HEADLESS=true
+export MAX_RETRIES=3
+
+hercules --tags "@smoke or @critical" tests/
+```
+
+### Production Environment
+
+```bash
+# Production configuration (smoke tests only)
+export TEST_ENV=production
+export BASE_URL=https://example.com
+export HEADLESS=true
+export PARALLEL_TESTS=1
+export MAX_RETRIES=5
+
+hercules --tags @smoke tests/
+```
+
+### Using Environment Files
+
+```bash
+# Development
+hercules --env-file .env.dev tests/
+
+# Staging
+hercules --env-file .env.staging tests/
+
+# Production
+hercules --env-file .env.prod --tags @smoke tests/
+```
+
+## Parallel Execution
+
+### Enabling Parallel Tests
+
+```bash
+# Run with 4 parallel workers
+hercules --parallel 4 tests/
+
+# Set via environment variable
+export PARALLEL_TESTS=4
+hercules tests/
+
+# Auto-detect optimal worker count
+hercules --parallel auto tests/
+```
+
+### Parallel Execution Considerations
+
+```bash
+# Factors affecting parallel execution:
+# - Available CPU cores
+# - Memory constraints
+# - LLM API rate limits
+# - Test dependencies
+# - Shared resources
+
+# Recommended settings:
+# Development: 1-2 workers
+export PARALLEL_TESTS=2
+
+# CI/CD: 2-4 workers
+export PARALLEL_TESTS=4
+
+# Production monitoring: 1 worker
+export PARALLEL_TESTS=1
+```
+
+### Managing Parallel Test Data
+
+```gherkin
+Feature: Parallel-Safe User Management
+
+  Scenario: Create user with unique identifier
+    Given I generate a unique user identifier
+    When I create a user with email "user-{timestamp}@example.com"
+    Then the user should be created successfully
+    And I can clean up the test user
+```
+
+## Results and Reporting
+
+### Default Results Structure
+
+```
+results/
+├── test-results.json          # Detailed test results
+├── test-results.html          # HTML report
+├── test-results.xml           # JUnit XML format
+├── screenshots/               # Test screenshots
+│   ├── success/              # Successful test screenshots
+│   └── failures/             # Failure screenshots
+├── logs/                     # Execution logs
+│   ├── hercules.log          # Main log file
+│   └── agent-logs/           # Individual agent logs
+└── traces/                   # Execution traces
+    └── scenario-traces/      # Per-scenario traces
+```
+
+### Customizing Results
+
+```bash
+# Custom results directory
+hercules --results-dir ./custom-results tests/
+
+# Specific report formats
+hercules --report-format html,json,xml tests/
+
+# Include additional data
+hercules --include-screenshots --include-traces tests/
+
+# Compress results
+hercules --compress-results tests/
+```
+
+### Report Formats
+
+```bash
+# HTML report (default)
+hercules --report-format html tests/
+
+# JSON for programmatic processing
+hercules --report-format json tests/
+
+# JUnit XML for CI integration
+hercules --report-format junit tests/
+
+# Multiple formats
+hercules --report-format html,json,junit tests/
+```
+
+## Debugging Test Execution
+
+### Debug Mode
+
+```bash
+# Enable comprehensive debugging
+export DEBUG=true
+export LOG_LEVEL=DEBUG
+export VERBOSE=true
+
+hercules test.feature
+```
+
+### Visual Debugging
+
+```bash
+# Run with visible browser
+export HEADLESS=false
+
+# Slow down execution
+export SLOW_MO=2000
+
+# Take screenshots at each step
+export SCREENSHOT_ON_SUCCESS=true
+
+# Enable browser developer tools
+export ENABLE_DEV_TOOLS=true
+
+hercules test.feature
+```
+
+### Step-by-Step Debugging
+
+```bash
+# Pause on failure
+export PAUSE_ON_FAILURE=true
+
+# Interactive debugging
+hercules --interactive test.feature
+
+# Debug specific scenario
+hercules --debug-scenario "Login with valid credentials" test.feature
+```
+
+### Log Analysis
+
+```bash
+# View real-time logs
+tail -f results/logs/hercules.log
+
+# Filter logs by level
+grep "ERROR" results/logs/hercules.log
+
+# View agent-specific logs
+cat results/logs/agent-logs/browser_nav_agent.log
+
+# Search for specific patterns
+grep -r "timeout" results/logs/
+```
+
+## Performance Monitoring
+
+### Execution Metrics
+
+```bash
+# Enable performance monitoring
+export ENABLE_PERFORMANCE_MONITORING=true
+
+# Set performance budgets
+export PERFORMANCE_BUDGET=5000  # milliseconds
+
+# Monitor resource usage
+export MONITOR_RESOURCES=true
+
+hercules tests/
+```
+
+### Performance Reports
+
+```json
+{
+  "performance_metrics": {
+    "total_execution_time": "245.6s",
+    "average_scenario_time": "12.3s",
+    "slowest_scenario": {
+      "name": "Complex checkout process",
+      "duration": "45.2s"
+    },
+    "resource_usage": {
+      "peak_memory": "2.1GB",
+      "average_cpu": "45%"
+    }
+  }
+}
+```
+
+## CI/CD Integration
+
+### GitHub Actions
+
+```yaml
+name: Test Execution
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: Install Hercules
+      run: |
+        pip install testzeus-hercules
+        playwright install
+    
+    - name: Run Smoke Tests
+      env:
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        HEADLESS: true
+        CI_MODE: true
+      run: |
+        hercules --tags @smoke --report-format junit tests/
+    
+    - name: Upload Results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: test-results
+        path: results/
+```
+
+### GitLab CI
+
+```yaml
+test:
+  stage: test
+  image: python:3.10
+  before_script:
+    - pip install testzeus-hercules
+    - playwright install --with-deps
+  script:
+    - hercules --tags @smoke --report-format junit tests/
+  artifacts:
+    when: always
+    reports:
+      junit: results/test-results.xml
+    paths:
+      - results/
+  variables:
+    HEADLESS: "true"
+    CI_MODE: "true"
+```
+
+### Jenkins Pipeline
+
+```groovy
+pipeline {
+    agent any
+    
+    environment {
+        OPENAI_API_KEY = credentials('openai-api-key')
+        HEADLESS = 'true'
+        CI_MODE = 'true'
+    }
+    
+    stages {
+        stage('Setup') {
+            steps {
+                sh 'pip install testzeus-hercules'
+                sh 'playwright install'
+            }
+        }
+        
+        stage('Smoke Tests') {
+            steps {
+                sh 'hercules --tags @smoke --report-format junit tests/'
+            }
+        }
+        
+        stage('Regression Tests') {
+            when {
+                branch 'main'
+            }
+            steps {
+                sh 'hercules --tags @regression --parallel 4 tests/'
+            }
+        }
+    }
+    
+    post {
+        always {
+            publishTestResults testResultsPattern: 'results/test-results.xml'
+            archiveArtifacts artifacts: 'results/**/*'
+        }
+    }
+}
+```
+
+## Error Handling and Recovery
+
+### Retry Mechanisms
+
+```bash
+# Set retry attempts
+export MAX_RETRIES=3
+
+# Configure retry backoff
+export RETRY_BACKOFF_FACTOR=2
+
+# Retry specific scenarios only
+hercules --retry-failed tests/
+
+# Retry with different configuration
+hercules --retry-failed --env-file .env.retry tests/
+```
+
+### Failure Recovery
+
+```bash
+# Continue execution after failures
+hercules --continue-on-failure tests/
+
+# Stop on first failure
+hercules --fail-fast tests/
+
+# Skip known failing tests
+hercules --tags "not @known_failure" tests/
+
+# Run only previously failed tests
+hercules --rerun-failures tests/
+```
+
+### Cleanup and Recovery
+
+```gherkin
+Feature: Test Cleanup
+
+  Background:
+    Given I start with a clean test environment
+
+  Scenario: User registration with cleanup
+    Given I generate test user data
+    When I register a new user
+    Then the registration should succeed
+    And I clean up the test user
+
+  @cleanup
+  Scenario: Cleanup orphaned test data
+    Given there may be leftover test data
+    When I run the cleanup process
+    Then all test data should be removed
+```
+
+## Advanced Execution Patterns
+
+### Conditional Execution
+
+```bash
+# Run tests based on environment
+if [ "$ENV" = "production" ]; then
+  hercules --tags @smoke tests/
+else
+  hercules --tags "@smoke or @regression" tests/
+fi
+
+# Run tests based on time
+if [ "$(date +%H)" -lt 6 ]; then
+  hercules --tags @maintenance tests/
+else
+  hercules --tags @business_hours tests/
+fi
+```
+
+### Scheduled Execution
+
+```bash
+# Cron job for nightly regression tests
+0 2 * * * cd /path/to/tests && hercules --tags @regression tests/
+
+# Hourly smoke tests
+0 * * * * cd /path/to/tests && hercules --tags @smoke tests/
+
+# Weekly full test suite
+0 0 * * 0 cd /path/to/tests && hercules tests/
+```
+
+### Load Testing Simulation
+
+```bash
+# Simulate multiple users
+for i in {1..10}; do
+  hercules --parallel 1 --user-id "user_$i" tests/user_journey.feature &
+done
+wait
+
+# Stress testing
+hercules --parallel 20 --stress-mode tests/
+```
+
+## Monitoring and Observability
+
+### Real-time Monitoring
+
+```bash
+# Monitor test execution
+watch -n 5 'ps aux | grep hercules'
+
+# Monitor resource usage
+htop
+
+# Monitor network activity
+netstat -an | grep :443
+
+# Monitor disk usage
+df -h
+```
+
+### Integration with Monitoring Tools
+
+```bash
+# Send metrics to monitoring system
+export METRICS_ENDPOINT=https://metrics.example.com/api/v1/metrics
+export ENABLE_METRICS=true
+
+hercules tests/
+
+# Integration with observability platforms
+export JAEGER_ENDPOINT=http://jaeger:14268/api/traces
+export ENABLE_TRACING=true
+
+hercules tests/
+```
+
+## Best Practices
+
+### Test Execution Strategy
+
+1. **Start Small**: Begin with smoke tests, then expand
+2. **Use Tags**: Organize tests by priority and functionality
+3. **Parallel Execution**: Use parallel workers for faster feedback
+4. **Environment Separation**: Use different configs for different environments
+5. **Monitoring**: Track execution metrics and performance
+
+### Performance Optimization
+
+```bash
+# Optimize for speed
+export HEADLESS=true
+export SCREENSHOT_ON_SUCCESS=false
+export PARALLEL_TESTS=4
+
+# Optimize for reliability
+export MAX_RETRIES=3
+export ELEMENT_TIMEOUT=30000
+export PARALLEL_TESTS=1
+
+# Optimize for debugging
+export HEADLESS=false
+export DEBUG=true
+export SLOW_MO=1000
+```
+
+### Resource Management
+
+```bash
+# Limit resource usage
+export MEMORY_LIMIT=4096
+export CPU_LIMIT=80
+export DISK_LIMIT=10240
+
+# Clean up resources
+hercules --cleanup-after-run tests/
+
+# Monitor resource usage
+hercules --monitor-resources tests/
+```
+
+## Next Steps
+
+After mastering test execution:
+
+1. [Learn about test data management](/testing/test-data)
+2. [Explore Gherkin syntax in detail](/testing/gherkin-syntax)
+3. [Check out comprehensive examples](/examples/ui-automation)
+4. [Understand the architecture](/architecture/overview)
+
+Need help with test execution? Join our [Slack community](https://join.slack.com/t/testzeuscommunityhq/shared_invite/zt-2v2br8wog-FAmo_76xRHx~k~1oNaGQ0Q) for support and best practices!

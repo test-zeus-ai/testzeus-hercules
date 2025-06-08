@@ -1,0 +1,159 @@
+---
+title: 'Installation Overview'
+description: 'Choose the best installation method for your environment'
+---
+
+## Installation Methods
+
+TestZeus Hercules offers multiple installation options to suit different environments and use cases:
+
+<CardGroup cols={2}>
+  <Card
+    title="PyPI Installation"
+    icon="python"
+    href="/installation/pypi"
+  >
+    Quick installation using pip package manager
+  </Card>
+  <Card
+    title="Docker Installation"
+    icon="docker"
+    href="/installation/docker"
+  >
+    Containerized deployment with all dependencies included
+  </Card>
+  <Card
+    title="Source Installation"
+    icon="code"
+    href="/installation/source"
+  >
+    Build from source for development and customization
+  </Card>
+  <Card
+    title="Helper Scripts"
+    icon="terminal"
+    href="/installation/windows-setup"
+  >
+    Automated setup scripts for Windows, Linux, and macOS
+  </Card>
+</CardGroup>
+
+## System Requirements
+
+### Minimum Requirements
+- **Operating System**: Windows 10+, macOS 10.14+, or Linux (Ubuntu 18.04+)
+- **Python**: 3.8 or higher
+- **Memory**: 4GB RAM minimum, 8GB recommended
+- **Storage**: 2GB free space for installation and test artifacts
+
+### Recommended Requirements
+- **Python**: 3.10 or higher
+- **Memory**: 16GB RAM for complex test scenarios
+- **Storage**: 10GB+ for extensive test suites and results
+- **Network**: Stable internet connection for LLM API calls
+
+## Browser Dependencies
+
+Hercules supports multiple browsers and will automatically download browser binaries:
+
+<Tabs>
+  <Tab title="Chromium">
+    Default browser, automatically installed with Playwright
+    ```bash
+    playwright install chromium
+    ```
+  </Tab>
+  <Tab title="Firefox">
+    Alternative browser option
+    ```bash
+    playwright install firefox
+    ```
+  </Tab>
+  <Tab title="WebKit">
+    Safari-based browser for cross-platform testing
+    ```bash
+    playwright install webkit
+    ```
+  </Tab>
+</Tabs>
+
+## LLM Provider Setup
+
+Before using Hercules, you'll need access to at least one LLM provider:
+
+### Supported Providers
+
+| Provider | Models | Function Calling | Recommended For |
+|----------|--------|------------------|-----------------|
+| **OpenAI** | GPT-4o, GPT-4o-mini | ✅ | Production use |
+| **Anthropic** | Claude 3.5 Haiku+ | ✅ | High-quality reasoning |
+| **Groq** | Llama, Mixtral | ✅ | Fast inference |
+| **Mistral** | Mistral Large/Medium | ✅ | European compliance |
+| **Ollama** | Local models 70B+ | ✅ | Privacy-focused |
+| **Gemini** | Gemini Pro | ⚠️ | Deprecated |
+
+<Warning>
+  Ensure your chosen model supports function calling and agentic activities. Larger models (70B+ parameters) generally perform better for complex test scenarios.
+</Warning>
+
+## Quick Start Recommendations
+
+### For Beginners
+1. Start with [PyPI installation](/installation/pypi)
+2. Use OpenAI GPT-4o for reliable results
+3. Begin with simple UI tests
+
+### For Teams
+1. Use [Docker installation](/installation/docker) for consistency
+2. Set up environment variables for team sharing
+3. Implement CI/CD integration
+
+### For Developers
+1. Install from [source](/installation/source) for customization
+2. Set up development environment with hot reloading
+3. Contribute to the open-source project
+
+## Platform-Specific Guides
+
+<CardGroup cols={2}>
+  <Card
+    title="Windows Setup"
+    icon="windows"
+    href="/installation/windows-setup"
+  >
+    PowerShell script for automated Windows installation
+  </Card>
+  <Card
+    title="Linux & macOS Setup"
+    icon="linux"
+    href="/installation/linux-mac-setup"
+  >
+    Shell script for Unix-based systems
+  </Card>
+</CardGroup>
+
+## Verification
+
+After installation, verify Hercules is working correctly:
+
+```bash
+# Check installation
+hercules --version
+
+# Run a simple test
+echo 'Feature: Test
+  Scenario: Check Google
+    Given I navigate to "https://google.com"
+    Then I should see "Google"' > test.feature
+
+hercules test.feature
+```
+
+## Next Steps
+
+Once installed, proceed to:
+1. [Configure your LLM provider](/configuration/llm-setup)
+2. [Set up environment variables](/configuration/environment-variables)
+3. [Write your first test](/testing/writing-first-test)
+
+Need help? Join our [Slack community](https://join.slack.com/t/testzeuscommunityhq/shared_invite/zt-2v2br8wog-FAmo_76xRHx~k~1oNaGQ0Q) for support!

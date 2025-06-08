@@ -1,0 +1,532 @@
+---
+title: 'Linux & macOS Setup'
+description: 'Automated installation using shell scripts for Unix-based systems'
+---
+
+## Automated Setup Script
+
+Hercules provides a shell script for automated installation on Linux and macOS systems. This script handles all dependencies and configuration automatically.
+
+## Prerequisites
+
+### Linux (Ubuntu/Debian)
+- **Ubuntu 18.04+** or **Debian 10+**
+- **Bash 4.0+**
+- **sudo privileges** for package installation
+- **Internet connection**
+
+### macOS
+- **macOS 10.14+** (Mojave or later)
+- **Homebrew** (recommended)
+- **Xcode Command Line Tools**
+- **Internet connection**
+
+## Quick Setup
+
+### 1. Download and Run Setup Script
+
+```bash
+# Download the setup script
+curl -fsSL https://raw.githubusercontent.com/test-zeus-ai/testzeus-hercules/main/helper_scripts/hercules_setup.sh -o hercules_setup.sh
+
+# Make executable
+chmod +x hercules_setup.sh
+
+# Run the setup script
+./hercules_setup.sh
+```
+
+### 2. Alternative: Clone Repository First
+
+```bash
+# Clone the repository
+git clone https://github.com/test-zeus-ai/testzeus-hercules.git
+cd testzeus-hercules
+
+# Run the setup script
+./helper_scripts/hercules_setup.sh
+```
+
+## What the Script Does
+
+The setup script automatically:
+
+1. **Detects Operating System**
+   - Identifies Linux distribution or macOS
+   - Checks system architecture (x86_64, arm64)
+   - Validates system requirements
+
+2. **Installs System Dependencies**
+   - Updates package manager
+   - Installs Python 3.8+ if not present
+   - Installs build tools and libraries
+   - Installs browser dependencies
+
+3. **Sets Up Python Environment**
+   - Creates virtual environment
+   - Upgrades pip and setuptools
+   - Installs wheel for faster builds
+
+4. **Installs Hercules**
+   - Installs testzeus-hercules package
+   - Installs all Python dependencies
+   - Downloads browser binaries
+
+5. **Configures Environment**
+   - Creates configuration directories
+   - Sets up environment variables
+   - Creates shell aliases
+
+## Manual Installation
+
+### Linux (Ubuntu/Debian)
+
+#### 1. Install System Dependencies
+
+```bash
+# Update package list
+sudo apt update
+
+# Install Python and build tools
+sudo apt install -y python3 python3-pip python3-venv python3-dev
+
+# Install browser dependencies
+sudo apt install -y \
+    libnss3 \
+    libatk-bridge2.0-0 \
+    libdrm2 \
+    libxkbcommon0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxrandr2 \
+    libgbm1 \
+    libxss1 \
+    libasound2
+
+# Install additional tools
+sudo apt install -y curl wget git
+```
+
+#### 2. Create Virtual Environment
+
+```bash
+# Create virtual environment
+python3 -m venv hercules-env
+
+# Activate virtual environment
+source hercules-env/bin/activate
+
+# Upgrade pip
+pip install --upgrade pip setuptools wheel
+```
+
+#### 3. Install Hercules
+
+```bash
+# Install Hercules
+pip install testzeus-hercules
+
+# Install browser dependencies
+playwright install
+```
+
+### macOS
+
+#### 1. Install Prerequisites
+
+```bash
+# Install Homebrew (if not installed)
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# Install Python
+brew install python@3.10
+
+# Install Xcode Command Line Tools
+xcode-select --install
+```
+
+#### 2. Create Virtual Environment
+
+```bash
+# Create virtual environment
+python3 -m venv hercules-env
+
+# Activate virtual environment
+source hercules-env/bin/activate
+
+# Upgrade pip
+pip install --upgrade pip setuptools wheel
+```
+
+#### 3. Install Hercules
+
+```bash
+# Install Hercules
+pip install testzeus-hercules
+
+# Install browser dependencies
+playwright install
+```
+
+## Distribution-Specific Instructions
+
+### CentOS/RHEL/Fedora
+
+```bash
+# CentOS/RHEL 8+
+sudo dnf install -y python3 python3-pip python3-devel gcc
+
+# Fedora
+sudo dnf install -y python3 python3-pip python3-devel gcc
+
+# Install browser dependencies
+sudo dnf install -y \
+    nss \
+    atk \
+    at-spi2-atk \
+    cups-libs \
+    drm \
+    gtk3 \
+    libXcomposite \
+    libXdamage \
+    libXrandr \
+    libgbm \
+    libxss \
+    alsa-lib
+```
+
+### Arch Linux
+
+```bash
+# Install dependencies
+sudo pacman -S python python-pip python-virtualenv gcc
+
+# Install browser dependencies
+sudo pacman -S \
+    nss \
+    atk \
+    at-spi2-atk \
+    cups \
+    libdrm \
+    gtk3 \
+    libxcomposite \
+    libxdamage \
+    libxrandr \
+    mesa \
+    libxss \
+    alsa-lib
+```
+
+### Alpine Linux
+
+```bash
+# Install dependencies
+apk add --no-cache \
+    python3 \
+    python3-dev \
+    py3-pip \
+    gcc \
+    musl-dev \
+    libffi-dev
+
+# Install browser dependencies
+apk add --no-cache \
+    chromium \
+    nss \
+    freetype \
+    freetype-dev \
+    harfbuzz \
+    ca-certificates \
+    ttf-freefont
+```
+
+## Environment Configuration
+
+### Shell Configuration
+
+Add Hercules to your shell profile:
+
+<Tabs>
+  <Tab title="Bash">
+    ```bash ~/.bashrc
+    # Hercules Test Automation
+    export HERCULES_HOME="$HOME/hercules-env"
+    alias hercules-activate="source $HERCULES_HOME/bin/activate"
+    alias hercules-test="hercules"
+    
+    # Auto-activate when in test directory
+    if [[ "$PWD" == *"/tests"* ]] && [[ -f "$HERCULES_HOME/bin/activate" ]]; then
+        source "$HERCULES_HOME/bin/activate"
+    fi
+    ```
+  </Tab>
+  <Tab title="Zsh">
+    ```bash ~/.zshrc
+    # Hercules Test Automation
+    export HERCULES_HOME="$HOME/hercules-env"
+    alias hercules-activate="source $HERCULES_HOME/bin/activate"
+    alias hercules-test="hercules"
+    
+    # Auto-completion
+    autoload -U compinit && compinit
+    ```
+  </Tab>
+  <Tab title="Fish">
+    ```fish ~/.config/fish/config.fish
+    # Hercules Test Automation
+    set -gx HERCULES_HOME "$HOME/hercules-env"
+    alias hercules-activate="source $HERCULES_HOME/bin/activate.fish"
+    alias hercules-test="hercules"
+    ```
+  </Tab>
+</Tabs>
+
+### Environment Variables
+
+Create a `.env` file for your project:
+
+```bash .env
+# LLM Configuration
+OPENAI_API_KEY=your-api-key-here
+OPENAI_MODEL=gpt-4o
+
+# Browser Configuration
+BROWSER_TYPE=chromium
+HEADLESS=true
+BROWSER_TIMEOUT=30000
+
+# Test Configuration
+MAX_RETRIES=3
+SCREENSHOT_ON_FAILURE=true
+RESULTS_DIR=./results
+
+# System Configuration
+PYTHONPATH=$PWD:$PYTHONPATH
+```
+
+## Docker Setup
+
+### Using Docker
+
+```bash
+# Pull Hercules image
+docker pull testzeus/hercules:latest
+
+# Run with volume mounting
+docker run -v $(pwd):/workspace testzeus/hercules:latest hercules /workspace/test.feature
+
+# Run interactively
+docker run -it -v $(pwd):/workspace testzeus/hercules:latest bash
+```
+
+### Docker Compose
+
+Create `docker-compose.yml`:
+
+```yaml docker-compose.yml
+version: '3.8'
+
+services:
+  hercules:
+    image: testzeus/hercules:latest
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - BROWSER_TYPE=chromium
+      - HEADLESS=true
+    volumes:
+      - ./tests:/workspace/tests
+      - ./results:/workspace/results
+    working_dir: /workspace
+```
+
+Run with:
+
+```bash
+export OPENAI_API_KEY="your-api-key"
+docker-compose run hercules hercules tests/
+```
+
+## Running Your First Test
+
+Create and run a test:
+
+```bash
+# Create test file
+cat > test.feature << 'EOF'
+Feature: Linux/macOS Test Example
+
+  Scenario: Test Google Search
+    Given I have a web browser open
+    When I navigate to "https://www.google.com"
+    And I search for "TestZeus Hercules"
+    Then I should see search results
+EOF
+
+# Activate environment
+source hercules-env/bin/activate
+
+# Run the test
+hercules test.feature
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Permission Denied Errors">
+    Fix permission issues:
+    ```bash
+    # Fix script permissions
+    chmod +x hercules_setup.sh
+    
+    # Fix Python permissions
+    sudo chown -R $USER:$USER ~/.local
+    
+    # Install without sudo
+    pip install --user testzeus-hercules
+    ```
+  </Accordion>
+
+  <Accordion title="Browser Dependencies Missing">
+    Install missing browser dependencies:
+    ```bash
+    # Ubuntu/Debian
+    sudo apt install -y $(playwright install-deps 2>&1 | grep -o 'apt install [^"]*' | cut -d' ' -f3-)
+    
+    # macOS
+    brew install --cask google-chrome
+    
+    # Manual browser installation
+    playwright install chromium --force
+    ```
+  </Accordion>
+
+  <Accordion title="Python Version Issues">
+    Handle Python version conflicts:
+    ```bash
+    # Use specific Python version
+    python3.10 -m venv hercules-env
+    
+    # Install pyenv for version management
+    curl https://pyenv.run | bash
+    pyenv install 3.10.12
+    pyenv local 3.10.12
+    ```
+  </Accordion>
+
+  <Accordion title="Network/Firewall Issues">
+    Configure for restricted networks:
+    ```bash
+    # Set proxy for pip
+    pip config set global.proxy http://proxy.company.com:8080
+    
+    # Set proxy for playwright
+    export HTTPS_PROXY=http://proxy.company.com:8080
+    export HTTP_PROXY=http://proxy.company.com:8080
+    
+    # Use alternative package index
+    pip install -i https://pypi.org/simple/ testzeus-hercules
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Advanced Configuration
+
+### Custom Installation Directory
+
+```bash
+# Set custom installation path
+export HERCULES_HOME="/opt/hercules"
+sudo mkdir -p $HERCULES_HOME
+sudo chown $USER:$USER $HERCULES_HOME
+
+# Create virtual environment in custom location
+python3 -m venv $HERCULES_HOME/venv
+source $HERCULES_HOME/venv/bin/activate
+```
+
+### System-wide Installation
+
+```bash
+# Install system-wide (not recommended for production)
+sudo pip3 install testzeus-hercules
+
+# Create system service (systemd)
+sudo tee /etc/systemd/system/hercules.service << 'EOF'
+[Unit]
+Description=Hercules Test Automation
+After=network.target
+
+[Service]
+Type=oneshot
+User=hercules
+WorkingDirectory=/opt/hercules
+ExecStart=/usr/local/bin/hercules /opt/hercules/tests/
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+```
+
+### Performance Optimization
+
+```bash
+# Optimize for performance
+export PYTHONOPTIMIZE=1
+export PYTHONDONTWRITEBYTECODE=1
+
+# Use faster JSON library
+pip install orjson
+
+# Enable parallel execution
+export PARALLEL_TESTS=4
+```
+
+## Integration with System Tools
+
+### Cron Jobs
+
+Schedule automated test runs:
+
+```bash
+# Edit crontab
+crontab -e
+
+# Add daily test run at 9 AM
+0 9 * * * cd /path/to/tests && source hercules-env/bin/activate && hercules tests/ > /var/log/hercules.log 2>&1
+```
+
+### Systemd Timer
+
+Create a systemd timer for regular execution:
+
+```bash
+# Create timer unit
+sudo tee /etc/systemd/system/hercules.timer << 'EOF'
+[Unit]
+Description=Run Hercules Tests Daily
+Requires=hercules.service
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+
+# Enable and start timer
+sudo systemctl enable hercules.timer
+sudo systemctl start hercules.timer
+```
+
+## Next Steps
+
+After successful installation:
+
+1. [Configure environment variables](/configuration/environment-variables)
+2. [Set up your project structure](/configuration/project-structure)
+3. [Write your first test](/testing/writing-first-test)
+4. [Explore Unix-specific testing scenarios](/examples/ui-automation)
+
+Need Unix-specific help? Join our [Slack community](https://join.slack.com/t/testzeuscommunityhq/shared_invite/zt-2v2br8wog-FAmo_76xRHx~k~1oNaGQ0Q) for support!

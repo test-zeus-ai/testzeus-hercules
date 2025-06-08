@@ -1,0 +1,146 @@
+---
+title: 'Quickstart'
+description: 'Get started with TestZeus Hercules in under 5 minutes'
+---
+
+## Installation
+
+Get started by installing Hercules using pip:
+
+<CodeGroup>
+
+```bash pip
+pip install testzeus-hercules
+```
+
+```bash Docker
+docker pull testzeus/hercules:latest
+```
+
+</CodeGroup>
+
+## Set Up Your LLM Provider
+
+Hercules requires an LLM provider to function. Set up your API key for your preferred provider:
+
+<CodeGroup>
+
+```bash OpenAI
+export OPENAI_API_KEY="your-api-key-here"
+```
+
+```bash Anthropic
+export ANTHROPIC_API_KEY="your-api-key-here"
+```
+
+```bash Groq
+export GROQ_API_KEY="your-api-key-here"
+```
+
+</CodeGroup>
+
+<Note>
+  Hercules supports multiple LLM providers. See our [LLM Setup Guide](/configuration/llm-setup) for complete configuration options.
+</Note>
+
+## Create Your First Test
+
+Create a new file called `my-first-test.feature`:
+
+```gherkin my-first-test.feature
+Feature: Google Search Test
+
+  Scenario: Search for TestZeus Hercules
+    Given I have a web browser open
+    When I navigate to "https://www.google.com"
+    And I search for "TestZeus Hercules"
+    Then I should see search results
+    And the results should contain "testzeus"
+```
+
+## Run Your Test
+
+Execute your test using the Hercules CLI:
+
+```bash
+hercules my-first-test.feature
+```
+
+That's it! Hercules will:
+1. 🚀 Launch a browser
+2. 🔍 Navigate to Google
+3. 📝 Perform the search
+4. ✅ Validate the results
+5. 📊 Generate a detailed report
+
+## View Results
+
+After execution, you'll find:
+- **Test report**: `results/test_results.html`
+- **Screenshots**: `results/screenshots/`
+- **Logs**: `results/logs/`
+
+<Tip>
+  Use the `--headless false` flag to watch Hercules execute your tests in a visible browser window.
+</Tip>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Write More Complex Tests"
+    icon="code"
+    href="/testing/writing-first-test"
+  >
+    Learn advanced Gherkin syntax and test patterns
+  </Card>
+  <Card
+    title="Configure Environment"
+    icon="gear"
+    href="/configuration/environment-variables"
+  >
+    Set up browser options, timeouts, and other settings
+  </Card>
+  <Card
+    title="Explore Examples"
+    icon="book-open"
+    href="/examples/ui-automation"
+  >
+    See real-world test examples for different scenarios
+  </Card>
+  <Card
+    title="Join Community"
+    icon="users"
+    href="/community/slack"
+  >
+    Get help and share knowledge with other users
+  </Card>
+</CardGroup>
+
+## Common Issues
+
+<AccordionGroup>
+  <Accordion title="Browser not launching">
+    Make sure you have the required browser dependencies installed. On Linux, you may need to install additional packages:
+    ```bash
+    sudo apt-get update
+    sudo apt-get install -y chromium-browser
+    ```
+  </Accordion>
+
+  <Accordion title="LLM API errors">
+    Verify your API key is correctly set and has sufficient credits:
+    ```bash
+    echo $OPENAI_API_KEY
+    ```
+  </Accordion>
+
+  <Accordion title="Permission errors">
+    On some systems, you may need to run with elevated permissions or adjust file permissions:
+    ```bash
+    chmod +x hercules
+    ```
+  </Accordion>
+</AccordionGroup>
+
+Need more help? Join our [Slack community](https://join.slack.com/t/testzeuscommunityhq/shared_invite/zt-2v2br8wog-FAmo_76xRHx~k~1oNaGQ0Q) for support!
