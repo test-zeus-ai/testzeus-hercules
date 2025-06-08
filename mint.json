@@ -1,0 +1,128 @@
+{
+  "name": "TestZeus Hercules",
+  "logo": {
+    "dark": "/logo/hercules-dark.svg",
+    "light": "/logo/hercules-light.svg"
+  },
+  "favicon": "/favicon.svg",
+  "colors": {
+    "primary": "#7C3AED",
+    "light": "#A855F7",
+    "dark": "#5B21B6"
+  },
+  "topbarLinks": [
+    {
+      "name": "Support",
+      "url": "https://join.slack.com/t/testzeuscommunityhq/shared_invite/zt-2v2br8wog-FAmo_76xRHx~k~1oNaGQ0Q"
+    }
+  ],
+  "topbarCtaButton": {
+    "name": "GitHub",
+    "url": "https://github.com/test-zeus-ai/testzeus-hercules"
+  },
+  "tabs": [
+    {
+      "name": "API Reference",
+      "url": "api"
+    },
+    {
+      "name": "Examples",
+      "url": "examples"
+    }
+  ],
+  "anchors": [
+    {
+      "name": "Documentation",
+      "icon": "book-open",
+      "url": "https://docs.testzeus.com"
+    },
+    {
+      "name": "Community",
+      "icon": "slack",
+      "url": "https://join.slack.com/t/testzeuscommunityhq/shared_invite/zt-2v2br8wog-FAmo_76xRHx~k~1oNaGQ0Q"
+    },
+    {
+      "name": "GitHub",
+      "icon": "github",
+      "url": "https://github.com/test-zeus-ai/testzeus-hercules"
+    }
+  ],
+  "navigation": [
+    {
+      "group": "Get Started",
+      "pages": [
+        "introduction",
+        "quickstart"
+      ]
+    },
+    {
+      "group": "Installation",
+      "pages": [
+        "installation/overview",
+        "installation/pypi",
+        "installation/docker",
+        "installation/source",
+        "installation/windows-setup",
+        "installation/linux-mac-setup"
+      ]
+    },
+    {
+      "group": "Configuration",
+      "pages": [
+        "configuration/overview",
+        "configuration/llm-setup",
+        "configuration/environment-variables",
+        "configuration/project-structure"
+      ]
+    },
+    {
+      "group": "Writing Tests",
+      "pages": [
+        "testing/writing-first-test",
+        "testing/running-tests",
+        "testing/test-data",
+        "testing/gherkin-syntax"
+      ]
+    },
+    {
+      "group": "Architecture",
+      "pages": [
+        "architecture/overview",
+        "architecture/agents",
+        "architecture/tools",
+        "architecture/memory-system"
+      ]
+    },
+    {
+      "group": "Examples",
+      "pages": [
+        "examples/ui-automation",
+        "examples/api-testing",
+        "examples/security-testing",
+        "examples/accessibility-testing",
+        "examples/visual-testing",
+        "examples/mobile-automation"
+      ]
+    },
+    {
+      "group": "API Reference",
+      "pages": [
+        "api/environment-variables",
+        "api/cli-options",
+        "api/configuration-files"
+      ]
+    },
+    {
+      "group": "Community",
+      "pages": [
+        "community/slack",
+        "community/contributing",
+        "community/troubleshooting"
+      ]
+    }
+  ],
+  "footerSocials": {
+    "github": "https://github.com/test-zeus-ai/testzeus-hercules",
+    "slack": "https://join.slack.com/t/testzeuscommunityhq/shared_invite/zt-2v2br8wog-FAmo_76xRHx~k~1oNaGQ0Q"
+  }
+}
