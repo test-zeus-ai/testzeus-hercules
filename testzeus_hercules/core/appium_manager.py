@@ -2610,9 +2610,12 @@ iOS Environment Setup Required:
 
         try:
             driver = cast(WebDriver, self.driver)
-            await ios_gestures.perform_force_touch(
-                driver, x, y, element_id, pressure, duration
-            )
+            if ios_gestures:
+                await ios_gestures.perform_force_touch(
+                    driver, x, y, element_id, pressure, duration
+                )
+            else:
+                raise RuntimeError("iOS gestures module not available")
             # Clear cache after interaction
             self.clear_accessibility_tree_cache()
         except Exception as e:
@@ -2642,7 +2645,10 @@ iOS Environment Setup Required:
 
         try:
             driver = cast(WebDriver, self.driver)
-            await ios_gestures.perform_double_tap(driver, x, y, element_id, duration)
+            if ios_gestures:
+                await ios_gestures.perform_double_tap(driver, x, y, element_id, duration)
+            else:
+                raise RuntimeError("iOS gestures module not available")
             # Clear cache after interaction
             self.clear_accessibility_tree_cache()
         except Exception as e:
@@ -2661,7 +2667,10 @@ iOS Environment Setup Required:
             raise RuntimeError("No active Appium session")
         try:
             driver = cast(WebDriver, self.driver)
-            await ios_gestures.perform_haptic(driver, type)
+            if ios_gestures:
+                await ios_gestures.perform_haptic(driver, type)
+            else:
+                raise RuntimeError("iOS gestures module not available")
         except Exception as e:
             logger.error(f"Error performing haptic feedback: {e}")
             raise e
