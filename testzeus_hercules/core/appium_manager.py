@@ -9,6 +9,8 @@ import base64
 import json
 import xml.etree.ElementTree as ET
 import io
+import glob
+import shutil
 from typing import Callable, Optional, Dict, Any, List, Tuple, TypeVar, Union, cast
 import multiprocessing
 from concurrent.futures import ThreadPoolExecutor
@@ -21,7 +23,10 @@ from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.remote.webelement import WebElement
 from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.utils.logger import logger
-from testzeus_hercules.core import ios_gestures
+try:
+    from testzeus_hercules.core import ios_gestures
+except ImportError:
+    ios_gestures = None
 
 from PIL import Image
 
@@ -282,21 +287,29 @@ class AppiumManager:
         if cls._ui_thread_pool is None:
             # Calculate optimal number of workers based on CPU cores
             # Use max(4, CPU_COUNT) to ensure we have enough threads for UI operations
-            worker_count = max(30, multiprocessing.cpu_count())
+            worker_count = max(4, min(8, multiprocessing.cpu_count()))
             cls._ui_thread_pool = ThreadPoolExecutor(
                 max_workers=worker_count, thread_name_prefix="AppiumUI"
             )
         return cls._ui_thread_pool
 
-    async def _run_in_ui_thread(self, func: Callable[[], Any], identifier: str) -> Any:
+    async def _run_in_ui_thread(self, func: Callable[[], Any], identifier: str, force_thread: bool = False) -> Any:
         """Execute a function in the UI thread and measure its execution time."""
         start_time = time.time()
         logger.info(f"[APPIUM_DRIVER_TIMING] Starting driver interaction: {identifier}")
 
         try:
+            if not force_thread and identifier in ["take_screenshot", "get_viewport_size"]:
+                try:
+                    result = func()
+                    end_time = time.time()
+                    logger.info(f"[APPIUM_DRIVER_TIMING] Completed direct driver interaction: {identifier} in {end_time - start_time:.2f} seconds")
+                    return result
+                except Exception:
+                    pass
+            
             loop = asyncio.get_running_loop()
             result = await loop.run_in_executor(self._get_thread_pool(), func)
-            # result = await asyncio.to_thread(func)
 
             end_time = time.time()
             logger.info(
@@ -879,7 +892,7 @@ class AppiumManager:
             with open(self._network_log_path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(log_entry) + "\n")
 
-        def wrapped_execute(command: str, params: Dict = None) -> Any:
+        def wrapped_execute(command: str, params: Dict[str, Any] | None = None) -> Any:
             try:
                 sync_log_entry(command, params or {})
                 return original_execute(command, params)
@@ -1087,9 +1100,10 @@ class AppiumManager:
 
             # Set up request/response logging
             timestamp = int(time.time())
-            self._request_log_path = os.path.join(
-                self._logs_dir, f"appium_requests_{timestamp}.log"
-            )
+            if self._logs_dir:
+                self._request_log_path = os.path.join(
+                    self._logs_dir, f"appium_requests_{timestamp}.log"
+                )
             logger.info(f"Request/response logging enabled at {self._request_log_path}")
 
             # Set up logging if driver exists
@@ -1104,20 +1118,22 @@ class AppiumManager:
                 and self.appium_process.stdout
                 and self.appium_process.stderr
             ):
-                self._log_tasks.append(
-                    asyncio.create_task(
-                        self._capture_stream(
-                            self.appium_process.stdout, "appium_stdout.log"
+                if self.appium_process.stdout:
+                    self._log_tasks.append(
+                        asyncio.create_task(
+                            self._capture_stream(
+                                self.appium_process.stdout, "appium_stdout.log"
+                            )
                         )
                     )
-                )
-                self._log_tasks.append(
-                    asyncio.create_task(
-                        self._capture_stream(
-                            self.appium_process.stderr, "appium_stderr.log"
+                if self.appium_process.stderr:
+                    self._log_tasks.append(
+                        asyncio.create_task(
+                            self._capture_stream(
+                                self.appium_process.stderr, "appium_stderr.log"
+                            )
                         )
                     )
-                )
 
             # Wait for server to be fully responsive
             logger.info("Waiting for Appium server to be ready...")
@@ -1176,7 +1192,7 @@ class AppiumManager:
                 try:
                     process = cast(Popen[bytes], self.emulator_process)
                     # Create a Future for the process.wait()
-                    wait_future = asyncio.create_task(process.wait())
+                    wait_future = asyncio.create_task(asyncio.to_thread(process.wait))
                     process.terminate()
                     try:
                         await asyncio.wait_for(wait_future, timeout=10.0)
@@ -1223,7 +1239,7 @@ class AppiumManager:
                         process = cast(Popen[bytes], self.emulator_process)
                         process.terminate()
                         await asyncio.wait_for(
-                            asyncio.create_task(process.wait()), timeout=5.0
+                            asyncio.create_task(asyncio.to_thread(process.wait)), timeout=5.0
                         )
                     except Exception:
                         pass
@@ -1646,10 +1662,11 @@ iOS Environment Setup Required:
                 self.platformName.lower() == "android"
                 and "settings[waitForIdleTimeout]" not in desired_caps
             ):
-                await self._run_in_ui_thread(
-                    lambda: self.driver.update_settings({"waitForIdleTimeout": 0}),
-                    "set_waitForIdleTimeout",
-                )
+                if self.driver:
+                    await self._run_in_ui_thread(
+                        lambda: self.driver.update_settings({"waitForIdleTimeout": 0}),
+                        "set_waitForIdleTimeout",
+                    )
 
             # Wait for session to be fully ready
             logger.info("Waiting for session to stabilize...")
@@ -1675,7 +1692,7 @@ iOS Environment Setup Required:
                 {
                     "command": "create_session",
                     "status": "success",
-                    "session_id": self.driver.session_id,
+                    "session_id": self.driver.session_id if self.driver else None,
                     "capabilities": desired_caps,
                 },
                 self._network_log_path,
@@ -2559,7 +2576,10 @@ iOS Environment Setup Required:
             raise RuntimeError("No active Appium session")
         try:
             driver = cast(WebDriver, self.driver)
-            await ios_gestures.perform_pinch(driver, scale, velocity, element_id)
+            if ios_gestures:
+                await ios_gestures.perform_pinch(driver, scale, velocity, element_id)
+            else:
+                raise RuntimeError("iOS gestures module not available")
             # Clear cache after interaction
             self.clear_accessibility_tree_cache()
         except Exception as e:
