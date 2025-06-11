@@ -1,0 +1,559 @@
+---
+title: 'Writing Your First Test'
+description: 'Learn to write effective tests using Gherkin syntax and TestZeus Hercules'
+---
+
+## Overview
+
+Writing your first test with TestZeus Hercules is straightforward thanks to its natural language approach. You'll write tests in Gherkin syntax that reads like plain English, and the AI agents will understand and execute them automatically.
+
+## Basic Test Structure
+
+### Simple Feature File
+
+Create your first test file `first_test.feature`:
+
+```gherkin
+Feature: My First Test
+  As a new user of TestZeus Hercules
+  I want to test a simple website
+  So that I can verify the framework works
+
+  Scenario: Visit a website and verify content
+    Given I have a web browser open
+    When I navigate to "https://example.com"
+    Then I should see "Example Domain"
+    And the page title should contain "Example"
+```
+
+### Running Your First Test
+
+```bash
+# Make sure you have your API key set
+export OPENAI_API_KEY="your-api-key-here"
+
+# Run the test
+hercules first_test.feature
+
+# Run with visible browser (for learning)
+HEADLESS=false hercules first_test.feature
+```
+
+## Gherkin Syntax Basics
+
+### Feature Structure
+
+Every test file starts with a Feature:
+
+```gherkin
+Feature: [Feature Name]
+  [Optional: Feature Description]
+  As a [role]
+  I want [goal]
+  So that [benefit]
+
+  Scenario: [Scenario Name]
+    Given [initial context]
+    When [action]
+    Then [expected outcome]
+    And [additional verification]
+```
+
+### Keywords Explained
+
+- **Feature**: Describes the functionality being tested
+- **Scenario**: A specific test case
+- **Given**: Sets up the initial state
+- **When**: Describes the action being performed
+- **Then**: Verifies the expected outcome
+- **And/But**: Continues the previous step type
+
+## Common Test Patterns
+
+### Web UI Testing
+
+```gherkin
+Feature: User Login
+
+  Scenario: Successful login with valid credentials
+    Given I am on the login page
+    When I enter "user@example.com" in the email field
+    And I enter "password123" in the password field
+    And I click the "Login" button
+    Then I should be redirected to the dashboard
+    And I should see "Welcome back" message
+
+  Scenario: Failed login with invalid credentials
+    Given I am on the login page
+    When I enter "invalid@email.com" in the email field
+    And I enter "wrongpassword" in the password field
+    And I click the "Login" button
+    Then I should see "Invalid credentials" error message
+    And I should remain on the login page
+```
+
+### Form Testing
+
+```gherkin
+Feature: Contact Form
+
+  Scenario: Submit contact form with valid data
+    Given I am on the contact page
+    When I fill in the contact form:
+      | Field   | Value                    |
+      | Name    | John Doe                 |
+      | Email   | john.doe@example.com     |
+      | Subject | Test Inquiry             |
+      | Message | This is a test message   |
+    And I click "Send Message"
+    Then I should see "Message sent successfully"
+    And I should receive a confirmation email
+
+  Scenario: Validate required fields
+    Given I am on the contact page
+    When I click "Send Message" without filling any fields
+    Then I should see validation errors:
+      | Field   | Error Message           |
+      | Name    | Name is required        |
+      | Email   | Email is required       |
+      | Message | Message is required     |
+```
+
+### Navigation Testing
+
+```gherkin
+Feature: Website Navigation
+
+  Scenario: Navigate through main menu
+    Given I am on the homepage
+    When I click on "Products" in the main menu
+    Then I should be on the products page
+    And the page title should be "Our Products"
+    
+    When I click on "About Us" in the main menu
+    Then I should be on the about page
+    And I should see company information
+
+  Scenario: Breadcrumb navigation
+    Given I am on the homepage
+    When I navigate to "Products > Laptops > Gaming Laptops"
+    Then I should see the breadcrumb trail:
+      | Level | Text           |
+      | 1     | Home           |
+      | 2     | Products       |
+      | 3     | Laptops        |
+      | 4     | Gaming Laptops |
+```
+
+## API Testing
+
+### Basic API Tests
+
+```gherkin
+Feature: User API
+
+  Scenario: Get user information
+    Given I have the API endpoint "https://jsonplaceholder.typicode.com/users/1"
+    When I send a GET request
+    Then the response status should be 200
+    And the response should contain:
+      | Field | Value              |
+      | id    | 1                  |
+      | name  | Leanne Graham      |
+      | email | Sincere@april.biz  |
+
+  Scenario: Create a new user
+    Given I have the API endpoint "https://jsonplaceholder.typicode.com/users"
+    When I send a POST request with:
+      """
+      {
+        "name": "John Doe",
+        "username": "johndoe",
+        "email": "john@example.com"
+      }
+      """
+    Then the response status should be 201
+    And the response should contain the created user data
+    And the user should have a valid ID
+```
+
+### API Authentication
+
+```gherkin
+Feature: Authenticated API Access
+
+  Scenario: Access protected endpoint with valid token
+    Given I have a valid authentication token
+    When I send a GET request to "/api/protected/profile"
+    With the authorization header
+    Then the response status should be 200
+    And I should receive my profile information
+
+  Scenario: Access protected endpoint without token
+    Given I do not have an authentication token
+    When I send a GET request to "/api/protected/profile"
+    Then the response status should be 401
+    And the response should contain "Unauthorized"
+```
+
+## Data-Driven Testing
+
+### Using Examples Tables
+
+```gherkin
+Feature: Login Validation
+
+  Scenario Outline: Login with different credentials
+    Given I am on the login page
+    When I enter "<email>" as email
+    And I enter "<password>" as password
+    And I click login
+    Then I should see "<result>"
+
+    Examples:
+      | email              | password    | result                    |
+      | valid@example.com  | correct123  | Welcome to your dashboard |
+      | invalid@email      | correct123  | Invalid email format      |
+      | valid@example.com  | wrong       | Invalid credentials       |
+      | empty              | correct123  | Email is required         |
+      | valid@example.com  | empty       | Password is required      |
+```
+
+### External Data Files
+
+```gherkin
+Feature: Bulk User Registration
+
+  Scenario: Register multiple users from CSV
+    Given I have a CSV file with user data "test_data/users.csv"
+    When I process each user in the file
+    Then all users should be registered successfully
+    And each user should receive a welcome email
+```
+
+## Background and Setup
+
+### Using Background
+
+```gherkin
+Feature: E-commerce Shopping
+
+  Background:
+    Given I am on the homepage
+    And I am logged in as a customer
+    And I have items in my shopping cart
+
+  Scenario: Proceed to checkout
+    When I click "Checkout"
+    Then I should be on the checkout page
+    And I should see my cart items
+
+  Scenario: Update cart quantities
+    When I change the quantity of the first item to 3
+    Then the cart total should be updated
+    And I should see the new quantity reflected
+```
+
+## Advanced Test Patterns
+
+### Multi-Step Workflows
+
+```gherkin
+Feature: Complete Purchase Flow
+
+  Scenario: End-to-end purchase
+    Given I am a new customer
+    When I register for an account
+    And I browse the product catalog
+    And I add a laptop to my cart
+    And I add a mouse to my cart
+    And I proceed to checkout
+    And I enter my shipping information:
+      | Field    | Value           |
+      | Address  | 123 Main St     |
+      | City     | Anytown         |
+      | State    | CA              |
+      | ZIP      | 12345           |
+    And I enter my payment information
+    And I place the order
+    Then I should see "Order confirmed"
+    And I should receive an order confirmation email
+    And the order should appear in my account history
+```
+
+### Conditional Logic
+
+```gherkin
+Feature: Smart Recommendations
+
+  Scenario: Show recommendations based on browsing history
+    Given I am a logged-in user
+    When I view a laptop product
+    And I spend more than 30 seconds on the page
+    Then I should see related product recommendations
+    But if I immediately navigate away
+    Then no recommendations should be recorded
+
+  Scenario: Handle out-of-stock items
+    Given I am viewing a product
+    When the product is in stock
+    Then I should see "Add to Cart" button
+    But when the product is out of stock
+    Then I should see "Notify When Available" button
+    And I should be able to sign up for notifications
+```
+
+## Error Handling and Edge Cases
+
+### Testing Error Conditions
+
+```gherkin
+Feature: Error Handling
+
+  Scenario: Handle network timeout
+    Given the API server is slow to respond
+    When I submit a form that calls the API
+    And the request takes longer than 30 seconds
+    Then I should see a timeout error message
+    And I should be able to retry the operation
+
+  Scenario: Handle server errors
+    Given the API server returns a 500 error
+    When I try to save my profile
+    Then I should see "Server error, please try again"
+    And my changes should not be lost
+    And I should be able to retry saving
+```
+
+### Boundary Testing
+
+```gherkin
+Feature: Input Validation
+
+  Scenario Outline: Test password requirements
+    Given I am on the registration page
+    When I enter "<password>" as password
+    Then I should see "<validation_message>"
+
+    Examples:
+      | password    | validation_message                    |
+      | abc         | Password must be at least 8 characters |
+      | password    | Password must contain a number        |
+      | password1   | Password must contain uppercase letter |
+      | Password1   | Password is valid                     |
+      | P@ssw0rd    | Password is valid                     |
+```
+
+## Mobile and Responsive Testing
+
+### Mobile-Specific Tests
+
+```gherkin
+Feature: Mobile Navigation
+
+  Scenario: Mobile menu functionality
+    Given I am on a mobile device
+    When I am on the homepage
+    Then I should see a hamburger menu icon
+    When I tap the hamburger menu
+    Then the navigation menu should slide out
+    And I should see all navigation options
+
+  Scenario: Touch interactions
+    Given I am on a mobile device
+    When I am viewing a product gallery
+    Then I should be able to swipe between images
+    And I should be able to pinch to zoom
+    And I should be able to double-tap to zoom
+```
+
+### Responsive Design Testing
+
+```gherkin
+Feature: Responsive Design
+
+  Scenario Outline: Layout adapts to different screen sizes
+    Given I set the browser window to "<width>x<height>"
+    When I visit the homepage
+    Then the layout should be optimized for "<device_type>"
+    And all content should be readable
+    And all buttons should be easily clickable
+
+    Examples:
+      | width | height | device_type |
+      | 320   | 568    | mobile      |
+      | 768   | 1024   | tablet      |
+      | 1920  | 1080   | desktop     |
+```
+
+## Best Practices for Writing Tests
+
+### Clear and Descriptive
+
+```gherkin
+# Good: Clear and specific
+Scenario: User can update their profile email address
+  Given I am logged in as a user
+  When I navigate to my profile settings
+  And I change my email to "newemail@example.com"
+  And I save the changes
+  Then I should see "Email updated successfully"
+  And I should receive a confirmation email at the new address
+
+# Avoid: Vague and unclear
+Scenario: Update stuff
+  Given I am logged in
+  When I change something
+  Then it should work
+```
+
+### Independent and Atomic
+
+```gherkin
+# Good: Self-contained test
+Scenario: Add item to cart
+  Given I am on the product page for "Gaming Laptop"
+  When I click "Add to Cart"
+  Then the item should be added to my cart
+  And the cart count should increase by 1
+
+# Avoid: Dependent on other tests
+Scenario: Checkout with items
+  # This assumes items are already in cart from previous test
+  Given I have items in my cart
+  When I proceed to checkout
+  Then I should see the checkout page
+```
+
+### Business-Focused Language
+
+```gherkin
+# Good: Business language
+Scenario: Customer receives order confirmation
+  Given I have completed a purchase
+  When the order is processed
+  Then I should receive an email confirmation
+  And the email should contain my order details
+
+# Avoid: Technical implementation details
+Scenario: POST request returns 200 status
+  Given I send a POST to /api/orders
+  When the database insert succeeds
+  Then the HTTP response should be 200
+  And the JSON should contain order_id
+```
+
+## Debugging Your Tests
+
+### Adding Debug Information
+
+```gherkin
+Feature: Debug Example
+
+  Scenario: Debug login flow
+    Given I am on the login page
+    And I take a screenshot for reference
+    When I enter "user@example.com" in the email field
+    And I take a screenshot after entering email
+    And I enter "password123" in the password field
+    And I take a screenshot after entering password
+    And I click the "Login" button
+    And I wait for the page to load
+    Then I should be on the dashboard
+    And I take a screenshot of the final result
+```
+
+### Using Debug Mode
+
+```bash
+# Run with debug output
+DEBUG=true hercules test.feature
+
+# Run with visible browser and slow motion
+HEADLESS=false SLOW_MO=1000 hercules test.feature
+
+# Run with detailed logging
+LOG_LEVEL=DEBUG hercules test.feature
+```
+
+## Common Mistakes to Avoid
+
+### 1. Too Technical
+
+```gherkin
+# Avoid: Too technical
+Scenario: Validate JSON response schema
+  When I GET /api/users/1
+  Then response.status should equal 200
+  And response.body.id should be integer
+  And response.body.email should match email regex
+
+# Better: Business focused
+Scenario: Retrieve user information
+  When I request user details for user ID 1
+  Then I should receive the user information
+  And the user should have a valid email address
+```
+
+### 2. Too Many Details in One Scenario
+
+```gherkin
+# Avoid: Too much in one scenario
+Scenario: Complete user journey
+  Given I register a new account
+  And I verify my email
+  And I log in
+  And I update my profile
+  And I browse products
+  And I add items to cart
+  And I checkout
+  And I track my order
+  Then everything should work
+
+# Better: Split into focused scenarios
+Scenario: User registration
+  Given I am on the registration page
+  When I complete the registration form
+  Then I should receive a verification email
+
+Scenario: User login after registration
+  Given I have a verified account
+  When I log in with my credentials
+  Then I should access my dashboard
+```
+
+### 3. Hard-Coded Data
+
+```gherkin
+# Avoid: Hard-coded specific data
+Scenario: Login test
+  When I enter "john.doe@example.com" as email
+  And I enter "MyPassword123!" as password
+  Then I should be logged in
+
+# Better: Use variables or data tables
+Scenario: Login with valid credentials
+  When I enter valid user credentials
+  Then I should be logged in successfully
+```
+
+## Next Steps
+
+After writing your first test:
+
+<CardGroup cols={2}>
+  <Card title="Running Tests" icon="play" href="/testing/running-tests">
+    Learn how to execute your tests effectively
+  </Card>
+  <Card title="Gherkin Syntax" icon="code" href="/testing/gherkin-syntax">
+    Master advanced Gherkin patterns and syntax
+  </Card>
+  <Card title="Test Data" icon="database" href="/testing/test-data">
+    Learn to manage test data effectively
+  </Card>
+  <Card title="Examples" icon="lightbulb" href="/examples/ui-automation">
+    Explore comprehensive testing examples
+  </Card>
+</CardGroup>
+
+Ready to write more tests? Join our [Slack community](https://join.slack.com/t/testzeuscommunityhq/shared_invite/zt-2v2br8wog-FAmo_76xRHx~k~1oNaGQ0Q) to share your tests and get feedback from other users!

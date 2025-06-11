@@ -1,0 +1,377 @@
+---
+title: 'Docker Installation'
+description: 'Run TestZeus Hercules in a containerized environment'
+---
+
+## Quick Start with Docker
+
+Pull and run Hercules using Docker:
+
+```bash
+docker pull testzeus/hercules:latest
+docker run -it testzeus/hercules:latest
+```
+
+## Docker Hub Images
+
+Hercules provides several Docker image variants:
+
+| Image Tag | Description | Size | Use Case |
+|-----------|-------------|------|----------|
+| `latest` | Latest stable release | ~2GB | Production |
+| `dev` | Development version | ~2.2GB | Testing new features |
+| `slim` | Minimal dependencies | ~1.5GB | CI/CD pipelines |
+| `gpu` | GPU-enabled for local LLMs | ~3GB | Local inference |
+
+## Running Tests with Docker
+
+### Basic Usage
+
+Run a test file from your local directory:
+
+```bash
+docker run -v $(pwd):/workspace testzeus/hercules:latest hercules /workspace/test.feature
+```
+
+### With Environment Variables
+
+Pass LLM API keys and configuration:
+
+```bash
+docker run \
+  -e OPENAI_API_KEY="your-api-key" \
+  -e BROWSER_TYPE="chromium" \
+  -e HEADLESS="true" \
+  -v $(pwd):/workspace \
+  testzeus/hercules:latest hercules /workspace/test.feature
+```
+
+### Interactive Mode
+
+Run Hercules interactively for development:
+
+```bash
+docker run -it \
+  -e OPENAI_API_KEY="your-api-key" \
+  -v $(pwd):/workspace \
+  testzeus/hercules:latest bash
+```
+
+## Docker Compose Setup
+
+Create a `docker-compose.yml` for easier management:
+
+```yaml docker-compose.yml
+version: '3.8'
+
+services:
+  hercules:
+    image: testzeus/hercules:latest
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - BROWSER_TYPE=chromium
+      - HEADLESS=true
+      - MAX_RETRIES=3
+    volumes:
+      - ./tests:/workspace/tests
+      - ./results:/workspace/results
+      - ./config:/workspace/config
+    working_dir: /workspace
+    command: hercules tests/
+```
+
+Run with Docker Compose:
+
+```bash
+# Set environment variables
+export OPENAI_API_KEY="your-api-key"
+
+# Run tests
+docker-compose run hercules
+```
+
+## Building Custom Images
+
+### Basic Dockerfile
+
+Create a custom image with your tests and configuration:
+
+```dockerfile Dockerfile
+FROM testzeus/hercules:latest
+
+# Copy test files
+COPY tests/ /app/tests/
+COPY config/ /app/config/
+
+# Set working directory
+WORKDIR /app
+
+# Set default command
+CMD ["hercules", "tests/"]
+```
+
+Build and run:
+
+```bash
+docker build -t my-hercules-tests .
+docker run -e OPENAI_API_KEY="your-api-key" my-hercules-tests
+```
+
+### Advanced Dockerfile with Custom Dependencies
+
+```dockerfile Dockerfile.custom
+FROM testzeus/hercules:latest
+
+# Install additional dependencies
+RUN pip install requests beautifulsoup4 pandas
+
+# Copy custom tools and configurations
+COPY custom_tools/ /app/custom_tools/
+COPY .env /app/.env
+
+# Set environment variables
+ENV PYTHONPATH="/app/custom_tools:$PYTHONPATH"
+
+WORKDIR /app
+CMD ["hercules", "tests/"]
+```
+
+## CI/CD Integration
+
+### GitHub Actions
+
+```yaml .github/workflows/test.yml
+name: Hercules Tests
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Run Hercules Tests
+      run: |
+        docker run \
+          -e OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
+          -v ${{ github.workspace }}:/workspace \
+          testzeus/hercules:latest \
+          hercules /workspace/tests/
+```
+
+### GitLab CI
+
+```yaml .gitlab-ci.yml
+test:
+  image: testzeus/hercules:latest
+  variables:
+    OPENAI_API_KEY: $OPENAI_API_KEY
+    HEADLESS: "true"
+  script:
+    - hercules tests/
+  artifacts:
+    reports:
+      junit: results/junit.xml
+    paths:
+      - results/
+```
+
+## Volume Mounting
+
+### Test Files and Results
+
+Mount directories for persistent storage:
+
+```bash
+docker run \
+  -v $(pwd)/tests:/app/tests \
+  -v $(pwd)/results:/app/results \
+  -v $(pwd)/config:/app/config \
+  testzeus/hercules:latest
+```
+
+### Browser Data Persistence
+
+For consistent browser state across runs:
+
+```bash
+docker run \
+  -v hercules-browser-data:/app/.browser-data \
+  testzeus/hercules:latest
+```
+
+## Network Configuration
+
+### Custom Network
+
+Create a custom network for multi-container setups:
+
+```bash
+# Create network
+docker network create hercules-network
+
+# Run with custom network
+docker run --network hercules-network testzeus/hercules:latest
+```
+
+### Port Mapping
+
+Expose ports for debugging or monitoring:
+
+```bash
+docker run -p 9222:9222 testzeus/hercules:latest
+```
+
+## Environment Variables
+
+Common environment variables for Docker deployment:
+
+```bash
+# LLM Configuration
+OPENAI_API_KEY=your-api-key
+ANTHROPIC_API_KEY=your-api-key
+GROQ_API_KEY=your-api-key
+
+# Browser Configuration
+BROWSER_TYPE=chromium
+HEADLESS=true
+BROWSER_TIMEOUT=30000
+
+# Test Configuration
+MAX_RETRIES=3
+PARALLEL_TESTS=1
+SCREENSHOT_ON_FAILURE=true
+
+# Output Configuration
+RESULTS_DIR=/app/results
+LOG_LEVEL=INFO
+```
+
+## Helper Scripts
+
+### Docker Run Script
+
+Create a helper script for easier execution:
+
+```bash run-hercules.sh
+#!/bin/bash
+
+# Load environment variables
+source .env
+
+# Run Hercules with Docker
+docker run \
+  -e OPENAI_API_KEY="$OPENAI_API_KEY" \
+  -e BROWSER_TYPE="$BROWSER_TYPE" \
+  -e HEADLESS="$HEADLESS" \
+  -v $(pwd)/tests:/workspace/tests \
+  -v $(pwd)/results:/workspace/results \
+  testzeus/hercules:latest \
+  hercules /workspace/tests/
+```
+
+Make executable and run:
+
+```bash
+chmod +x run-hercules.sh
+./run-hercules.sh
+```
+
+### PowerShell Script (Windows)
+
+```powershell run-hercules.ps1
+# Load environment variables
+Get-Content .env | ForEach-Object {
+    $name, $value = $_.split('=')
+    Set-Variable -Name $name -Value $value
+}
+
+# Run Hercules with Docker
+docker run `
+  -e OPENAI_API_KEY="$OPENAI_API_KEY" `
+  -e BROWSER_TYPE="$BROWSER_TYPE" `
+  -e HEADLESS="$HEADLESS" `
+  -v "${PWD}/tests:/workspace/tests" `
+  -v "${PWD}/results:/workspace/results" `
+  testzeus/hercules:latest `
+  hercules /workspace/tests/
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Permission Issues">
+    Fix file permission issues:
+    ```bash
+    # Run as current user
+    docker run --user $(id -u):$(id -g) testzeus/hercules:latest
+    
+    # Fix ownership after run
+    sudo chown -R $(id -u):$(id -g) results/
+    ```
+  </Accordion>
+
+  <Accordion title="Memory Issues">
+    Increase Docker memory limits:
+    ```bash
+    docker run --memory=4g testzeus/hercules:latest
+    ```
+  </Accordion>
+
+  <Accordion title="Browser Issues in Container">
+    Use specific browser flags:
+    ```bash
+    docker run \
+      -e BROWSER_ARGS="--no-sandbox --disable-dev-shm-usage" \
+      testzeus/hercules:latest
+    ```
+  </Accordion>
+
+  <Accordion title="Network Connectivity">
+    Test network connectivity:
+    ```bash
+    docker run testzeus/hercules:latest ping google.com
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Performance Optimization
+
+### Multi-stage Builds
+
+Optimize image size with multi-stage builds:
+
+```dockerfile
+# Build stage
+FROM python:3.10-slim as builder
+COPY requirements.txt .
+RUN pip install --user -r requirements.txt
+
+# Runtime stage
+FROM testzeus/hercules:slim
+COPY --from=builder /root/.local /root/.local
+```
+
+### Resource Limits
+
+Set appropriate resource limits:
+
+```bash
+docker run \
+  --memory=2g \
+  --cpus=2 \
+  testzeus/hercules:latest
+```
+
+## Next Steps
+
+After setting up Docker:
+
+1. [Configure environment variables](/configuration/environment-variables)
+2. [Set up your test project structure](/configuration/project-structure)
+3. [Write comprehensive tests](/testing/writing-first-test)
+4. [Explore CI/CD integration patterns](/community/contributing)
+
+Need help? Join our [Slack community](https://join.slack.com/t/testzeuscommunityhq/shared_invite/zt-2v2br8wog-FAmo_76xRHx~k~1oNaGQ0Q) for Docker-specific support!

@@ -1,0 +1,557 @@
+---
+title: 'Agents Overview'
+description: 'Detailed guide to the AI agents in TestZeus Hercules and their capabilities'
+---
+
+## Agent Architecture
+
+TestZeus Hercules employs a multi-agent architecture where specialized AI agents collaborate to understand, plan, and execute complex test scenarios. Each agent has specific responsibilities and capabilities, working together to provide comprehensive test automation.
+
+## Core Agent Types
+
+### Planner and Assert Agent
+
+The **Planner Agent** serves as the central orchestrator of the entire testing process:
+
+**Primary Responsibilities:**
+- **Test Analysis**: Parses Gherkin feature files and understands test requirements
+- **Execution Planning**: Creates detailed step-by-step execution plans
+- **Agent Coordination**: Delegates tasks to appropriate specialized agents
+- **Result Validation**: Performs assertions and validates test outcomes
+- **Flow Control**: Manages the overall test execution flow and error handling
+
+**Key Capabilities:**
+- Natural language understanding of test scenarios
+- Dynamic plan generation based on test context
+- Intelligent agent selection for specific tasks
+- Complex assertion logic and validation
+- Error recovery and retry mechanisms
+
+```python
+# Example Planner Agent response
+{
+  "plan": "1. Navigate to login page\n2. Enter credentials\n3. Validate dashboard access",
+  "next_step": "Navigate to the login page and verify it loads correctly",
+  "target_helper": "browser",
+  "is_assert": false,
+  "context": {
+    "current_url": null,
+    "expected_elements": ["email_field", "password_field", "login_button"]
+  }
+}
+```
+
+## Navigation Agents
+
+### Browser Navigation Agent
+
+Handles all web browser interactions and UI automation:
+
+**Core Functions:**
+- **Page Navigation**: URL navigation and page transitions
+- **Element Interaction**: Clicking, typing, form submission
+- **Visual Validation**: Screenshot comparison and visual assertions
+- **State Management**: Browser state and session handling
+- **Responsive Testing**: Multi-device and viewport testing
+
+**Supported Actions:**
+```gherkin
+# Navigation actions
+Given I navigate to "https://example.com"
+When I click the "Login" button
+And I enter "text" in the "field" field
+Then I should see "Welcome" on the page
+
+# Advanced interactions
+When I drag "element1" to "element2"
+And I upload file "document.pdf"
+And I switch to iframe "content"
+Then the page should load within 5 seconds
+```
+
+**Browser Capabilities:**
+- Multi-browser support (Chromium, Firefox, WebKit)
+- Headless and headed execution modes
+- Mobile device emulation
+- Network throttling and offline testing
+- Cookie and session management
+
+### API Navigation Agent
+
+Manages REST API testing and HTTP operations:
+
+**Core Functions:**
+- **HTTP Operations**: GET, POST, PUT, DELETE, PATCH requests
+- **Authentication**: Bearer tokens, API keys, OAuth, Basic Auth
+- **Response Validation**: Status codes, headers, body content
+- **Data Transformation**: JSON/XML parsing and manipulation
+- **Performance Testing**: Response time monitoring
+
+**Supported Operations:**
+```gherkin
+# Basic API operations
+Given I have the API endpoint "https://api.example.com/users"
+When I send a GET request
+Then the response status should be 200
+And the response should contain user data
+
+# Advanced API testing
+When I send a POST request with:
+  """
+  {
+    "name": "John Doe",
+    "email": "john@example.com"
+  }
+  """
+And I set the header "Authorization" to "Bearer {token}"
+Then the response time should be less than 500ms
+```
+
+**API Features:**
+- Multiple authentication methods
+- Request/response logging and debugging
+- Schema validation (JSON Schema, OpenAPI)
+- Rate limiting and retry logic
+- Mock server integration
+
+### Security Navigation Agent
+
+Performs comprehensive security testing:
+
+**Core Functions:**
+- **Vulnerability Scanning**: SQL injection, XSS, CSRF testing
+- **Authentication Testing**: Login bypass, session management
+- **Authorization Testing**: Role-based access control
+- **Input Validation**: Boundary testing and malicious input
+- **Security Headers**: HTTPS, CSP, HSTS validation
+
+**Security Test Types:**
+```gherkin
+# SQL Injection testing
+Given I am on the login page
+When I enter "admin'; DROP TABLE users; --" as username
+Then the application should handle it safely
+And no database modification should occur
+
+# XSS testing
+When I enter "<script>alert('xss')</script>" in the comment field
+Then the script should be sanitized
+And no JavaScript should execute
+
+# Authentication testing
+Given I have an expired session token
+When I try to access protected resources
+Then I should be denied access
+And redirected to login page
+```
+
+**Security Tools Integration:**
+- OWASP ZAP integration
+- Nuclei vulnerability scanner
+- Custom security rule engine
+- Compliance checking (OWASP Top 10)
+
+### SQL Navigation Agent
+
+Handles database operations and data validation:
+
+**Core Functions:**
+- **Query Execution**: SELECT, INSERT, UPDATE, DELETE operations
+- **Data Validation**: Database state verification
+- **Transaction Management**: Rollback and commit operations
+- **Schema Validation**: Table structure and constraint checking
+- **Performance Monitoring**: Query execution time tracking
+
+**Database Operations:**
+```gherkin
+# Data validation
+Given I create a user through the UI
+When I check the database
+Then the user should exist in the users table
+And the user status should be "active"
+
+# Data manipulation
+Given I have test data in the database
+When I update user "john@example.com" status to "inactive"
+Then the change should be reflected in the application
+And the audit log should record the change
+```
+
+**Supported Databases:**
+- PostgreSQL
+- MySQL
+- SQLite
+- Oracle
+- Microsoft SQL Server
+- MongoDB (NoSQL)
+
+### TimeKeeper Agent
+
+Manages timing, synchronization, and scheduling:
+
+**Core Functions:**
+- **Wait Operations**: Explicit and implicit waits
+- **Timeout Management**: Operation timeout handling
+- **Performance Monitoring**: Execution time tracking
+- **Scheduling**: Test execution timing coordination
+- **Synchronization**: Multi-agent coordination timing
+
+**Timing Operations:**
+```gherkin
+# Wait operations
+When I click the "Submit" button
+And I wait for the page to load
+Then I should see the confirmation message
+
+# Performance monitoring
+Given I start performance monitoring
+When I execute the checkout process
+Then the total time should be less than 30 seconds
+And each step should complete within 5 seconds
+```
+
+## Agent Communication
+
+### Message Passing Protocol
+
+Agents communicate through structured JSON messages:
+
+```json
+{
+  "agent_type": "browser_nav_agent",
+  "action": "click_element",
+  "parameters": {
+    "selector": "#login-button",
+    "wait_for": "navigation",
+    "timeout": 30000
+  },
+  "context": {
+    "current_url": "https://app.example.com/login",
+    "step_number": 3,
+    "scenario_id": "login_scenario_001"
+  },
+  "metadata": {
+    "timestamp": "2024-01-15T10:30:00Z",
+    "request_id": "req_12345"
+  }
+}
+```
+
+### Response Format
+
+```json
+{
+  "success": true,
+  "result": {
+    "action_completed": true,
+    "element_found": true,
+    "navigation_occurred": true
+  },
+  "data": {
+    "new_url": "https://app.example.com/dashboard",
+    "page_title": "Dashboard",
+    "screenshot_path": "/results/screenshots/step_3.png"
+  },
+  "performance": {
+    "execution_time": 2.5,
+    "network_requests": 3,
+    "dom_ready_time": 1.2
+  },
+  "errors": [],
+  "warnings": ["Element took longer than expected to appear"]
+}
+```
+
+## Agent Configuration
+
+### LLM Configuration per Agent
+
+Each agent can be configured with different LLM providers and parameters:
+
+```json
+{
+  "agents": {
+    "planner_agent": {
+      "provider": "openai",
+      "model": "gpt-4o",
+      "temperature": 0.1,
+      "max_tokens": 4000,
+      "timeout": 120
+    },
+    "browser_nav_agent": {
+      "provider": "anthropic",
+      "model": "claude-3-5-haiku-20241022",
+      "temperature": 0.0,
+      "max_tokens": 2000,
+      "timeout": 60
+    },
+    "api_nav_agent": {
+      "provider": "groq",
+      "model": "llama-3.1-70b-versatile",
+      "temperature": 0.1,
+      "max_tokens": 3000,
+      "timeout": 90
+    }
+  }
+}
+```
+
+### Agent-Specific Settings
+
+```json
+{
+  "browser_nav_agent": {
+    "browser_type": "chromium",
+    "headless": true,
+    "viewport": {"width": 1920, "height": 1080},
+    "timeout": 30000,
+    "screenshot_on_action": true
+  },
+  "api_nav_agent": {
+    "default_timeout": 30,
+    "retry_attempts": 3,
+    "verify_ssl": true,
+    "follow_redirects": true
+  },
+  "security_nav_agent": {
+    "scan_depth": "medium",
+    "include_passive_scans": true,
+    "custom_payloads": true,
+    "compliance_checks": ["owasp_top_10"]
+  }
+}
+```
+
+## Agent Lifecycle
+
+### Initialization Phase
+
+```python
+# Agent initialization process
+1. Load agent configuration
+2. Initialize LLM connection
+3. Set up agent-specific resources
+4. Register with agent coordinator
+5. Perform health checks
+```
+
+### Execution Phase
+
+```python
+# Agent execution workflow
+1. Receive task from planner
+2. Parse task parameters
+3. Execute agent-specific logic
+4. Collect results and metrics
+5. Return response to planner
+6. Update agent state
+```
+
+### Cleanup Phase
+
+```python
+# Agent cleanup process
+1. Complete pending operations
+2. Save state and logs
+3. Release resources
+4. Report final status
+5. Deregister from coordinator
+```
+
+## Custom Agent Development
+
+### Creating Custom Agents
+
+Developers can create custom agents for specific needs:
+
+```python
+from testzeus_hercules.core.agents.base_nav_agent import BaseNavAgent
+
+class CustomDatabaseAgent(BaseNavAgent):
+    agent_name = "custom_database_agent"
+    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.db_connection = None
+        
+    def initialize(self):
+        """Initialize database connection"""
+        self.db_connection = self.create_db_connection()
+        
+    def execute_action(self, action: str, parameters: dict) -> dict:
+        """Execute database-specific actions"""
+        if action == "execute_query":
+            return self.execute_query(parameters.get("query"))
+        elif action == "validate_data":
+            return self.validate_data(parameters)
+        else:
+            return {"error": f"Unknown action: {action}"}
+            
+    def cleanup(self):
+        """Clean up database resources"""
+        if self.db_connection:
+            self.db_connection.close()
+```
+
+### Agent Registration
+
+```python
+# Register custom agent
+from testzeus_hercules.core.agent_registry import register_agent
+
+@register_agent
+class CustomAgent(BaseNavAgent):
+    agent_name = "custom_agent"
+    supported_actions = ["custom_action_1", "custom_action_2"]
+    
+    def execute_action(self, action, parameters):
+        # Implementation here
+        pass
+```
+
+## Agent Monitoring and Debugging
+
+### Performance Metrics
+
+```json
+{
+  "agent_metrics": {
+    "browser_nav_agent": {
+      "total_actions": 150,
+      "success_rate": 98.7,
+      "average_response_time": 2.3,
+      "error_count": 2,
+      "memory_usage": "245MB"
+    },
+    "api_nav_agent": {
+      "total_requests": 75,
+      "success_rate": 100.0,
+      "average_response_time": 0.8,
+      "error_count": 0,
+      "memory_usage": "128MB"
+    }
+  }
+}
+```
+
+### Debug Mode
+
+```bash
+# Enable agent debugging
+export DEBUG_AGENTS=true
+export AGENT_LOG_LEVEL=DEBUG
+
+# Debug specific agent
+export DEBUG_BROWSER_AGENT=true
+
+# Agent trace logging
+export ENABLE_AGENT_TRACES=true
+```
+
+### Agent Health Monitoring
+
+```python
+# Health check endpoint
+GET /api/agents/health
+
+{
+  "status": "healthy",
+  "agents": {
+    "planner_agent": {"status": "active", "last_seen": "2024-01-15T10:30:00Z"},
+    "browser_nav_agent": {"status": "active", "last_seen": "2024-01-15T10:29:58Z"},
+    "api_nav_agent": {"status": "active", "last_seen": "2024-01-15T10:29:59Z"}
+  }
+}
+```
+
+## Agent Best Practices
+
+### Design Principles
+
+1. **Single Responsibility**: Each agent should have a clear, focused purpose
+2. **Loose Coupling**: Agents should communicate through well-defined interfaces
+3. **Error Handling**: Robust error handling and recovery mechanisms
+4. **Resource Management**: Proper cleanup and resource management
+5. **Observability**: Comprehensive logging and monitoring
+
+### Performance Optimization
+
+```python
+# Agent optimization techniques
+1. Connection pooling for database agents
+2. Browser session reuse for UI agents
+3. Caching for API responses
+4. Lazy loading of resources
+5. Parallel execution where possible
+```
+
+### Security Considerations
+
+```python
+# Security best practices
+1. Secure credential management
+2. Input validation and sanitization
+3. Audit logging for all actions
+4. Rate limiting for external calls
+5. Secure communication between agents
+```
+
+## Agent Extensibility
+
+### Plugin System
+
+```python
+# Agent plugin interface
+class AgentPlugin:
+    def before_action(self, agent, action, parameters):
+        """Called before agent action execution"""
+        pass
+        
+    def after_action(self, agent, action, result):
+        """Called after agent action execution"""
+        pass
+        
+    def on_error(self, agent, action, error):
+        """Called when agent action fails"""
+        pass
+```
+
+### Middleware Support
+
+```python
+# Agent middleware for cross-cutting concerns
+class LoggingMiddleware:
+    def process_request(self, agent, request):
+        self.log_request(agent.name, request)
+        
+    def process_response(self, agent, response):
+        self.log_response(agent.name, response)
+```
+
+## Future Agent Capabilities
+
+### Planned Enhancements
+
+- **Machine Learning Integration**: Adaptive behavior based on test patterns
+- **Natural Language Processing**: Enhanced understanding of test requirements
+- **Visual AI**: Computer vision for UI testing and validation
+- **Predictive Analytics**: Proactive issue detection and prevention
+- **Multi-Modal Testing**: Integration of voice, gesture, and other input methods
+
+### Community Contributions
+
+- **Agent Marketplace**: Community-contributed specialized agents
+- **Agent Templates**: Standardized templates for common use cases
+- **Best Practice Sharing**: Community-driven best practices and patterns
+- **Integration Examples**: Real-world integration examples and case studies
+
+## Next Steps
+
+To learn more about agents:
+
+1. [Explore the tool library](/architecture/tools)
+2. [Understand the memory system](/architecture/memory-system)
+3. [See practical examples](/examples/ui-automation)
+4. [Learn about custom development](/installation/source)
+
+Ready to work with agents? Join our [Slack community](https://join.slack.com/t/testzeuscommunityhq/shared_invite/zt-2v2br8wog-FAmo_76xRHx~k~1oNaGQ0Q) to discuss agent development and share experiences!

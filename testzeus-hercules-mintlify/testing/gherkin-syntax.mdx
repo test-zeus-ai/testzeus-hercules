@@ -1,0 +1,687 @@
+---
+title: 'Gherkin Syntax Guide'
+description: 'Master Gherkin syntax for writing effective test scenarios in TestZeus Hercules'
+---
+
+## Overview
+
+Gherkin is a business-readable, domain-specific language that lets you describe software behavior without detailing how that behavior is implemented. TestZeus Hercules uses Gherkin syntax to make tests readable by both technical and non-technical team members.
+
+## Basic Gherkin Structure
+
+### Feature File Structure
+
+```gherkin
+Feature: User Authentication
+  As a user
+  I want to log into the application
+  So that I can access my personal dashboard
+
+  Background:
+    Given the application is running
+    And the database is clean
+
+  Scenario: Successful login with valid credentials
+    Given I am on the login page
+    When I enter "user@example.com" as email
+    And I enter "password123" as password
+    And I click the login button
+    Then I should see the dashboard
+    And I should see "Welcome back" message
+
+  Scenario: Failed login with invalid credentials
+    Given I am on the login page
+    When I enter "invalid@example.com" as email
+    And I enter "wrongpassword" as password
+    And I click the login button
+    Then I should see an error message
+    And I should remain on the login page
+```
+
+## Gherkin Keywords
+
+### Primary Keywords
+
+<Tabs>
+  <Tab title="Feature">
+    **Feature** - Describes the feature being tested
+    
+    ```gherkin
+    Feature: User Registration
+      Brief description of the feature
+      
+      Additional context about the feature
+      can span multiple lines
+    ```
+    
+    - Should be a high-level description
+    - Can include user story format
+    - Provides context for all scenarios
+  </Tab>
+  
+  <Tab title="Scenario">
+    **Scenario** - Describes a specific test case
+    
+    ```gherkin
+    Scenario: User registers with valid information
+      Given I am on the registration page
+      When I fill in the registration form
+      Then I should be registered successfully
+    ```
+    
+    - Each scenario should test one specific behavior
+    - Should be independent of other scenarios
+    - Should have a clear, descriptive name
+  </Tab>
+  
+  <Tab title="Given">
+    **Given** - Sets up the initial context
+    
+    ```gherkin
+    Given I am on the homepage
+    Given the user "john@example.com" exists
+    Given I have 5 items in my cart
+    ```
+    
+    - Describes the initial state
+    - Sets up preconditions
+    - Should not contain actions
+  </Tab>
+  
+  <Tab title="When">
+    **When** - Describes the action being performed
+    
+    ```gherkin
+    When I click the "Submit" button
+    When I enter "test@example.com" in the email field
+    When I navigate to "/products"
+    ```
+    
+    - Describes the key action
+    - Usually only one When per scenario
+    - Triggers the behavior being tested
+  </Tab>
+  
+  <Tab title="Then">
+    **Then** - Describes the expected outcome
+    
+    ```gherkin
+    Then I should see "Success" message
+    Then the page should redirect to "/dashboard"
+    Then the form should be submitted
+    ```
+    
+    - Describes expected results
+    - Should be observable outcomes
+    - Can have multiple Then statements
+  </Tab>
+  
+  <Tab title="And/But">
+    **And/But** - Continues the previous step type
+    
+    ```gherkin
+    Given I am logged in
+    And I am on the products page
+    When I click "Add to Cart"
+    And I confirm the action
+    Then I should see the item in cart
+    But I should not see the "Empty cart" message
+    ```
+    
+    - And continues the same step type
+    - But adds contrast or exception
+    - Improves readability
+  </Tab>
+</Tabs>
+
+### Advanced Keywords
+
+#### Background
+
+Sets up common preconditions for all scenarios in a feature:
+
+```gherkin
+Feature: Shopping Cart
+
+  Background:
+    Given I am a registered user
+    And I am logged into the application
+    And the shopping cart is empty
+
+  Scenario: Add item to cart
+    When I add a product to the cart
+    Then the cart should contain 1 item
+
+  Scenario: Remove item from cart
+    Given I have 1 item in the cart
+    When I remove the item
+    Then the cart should be empty
+```
+
+#### Scenario Outline
+
+Creates parameterized scenarios with examples:
+
+```gherkin
+Feature: Login Validation
+
+  Scenario Outline: Login with different credentials
+    Given I am on the login page
+    When I enter "<email>" as email
+    And I enter "<password>" as password
+    And I click login
+    Then I should see "<result>"
+
+    Examples:
+      | email              | password    | result                |
+      | valid@example.com  | correct123  | Welcome Dashboard     |
+      | invalid@email.com  | wrong       | Invalid credentials   |
+      | user@example.com   | short       | Password too short    |
+      |                    | password123 | Email is required     |
+      | valid@example.com  |             | Password is required  |
+```
+
+#### Tags
+
+Organize and filter scenarios:
+
+```gherkin
+@smoke @critical
+Feature: User Authentication
+
+  @positive @happy-path
+  Scenario: Successful login
+    Given I have valid credentials
+    When I log in
+    Then I should be authenticated
+
+  @negative @edge-case
+  Scenario: Login with expired password
+    Given I have expired credentials
+    When I attempt to log in
+    Then I should be prompted to reset password
+
+  @slow @integration
+  Scenario: Login with external authentication
+    Given I use OAuth provider
+    When I authenticate through Google
+    Then I should be logged in
+```
+
+## Writing Effective Scenarios
+
+### Best Practices
+
+#### 1. Use Clear, Descriptive Language
+
+```gherkin
+# Good
+Scenario: User successfully purchases a product with credit card
+  Given I have a product in my cart
+  And I have a valid credit card
+  When I proceed to checkout
+  And I enter my credit card details
+  And I confirm the purchase
+  Then I should see a confirmation message
+  And I should receive an email receipt
+
+# Avoid
+Scenario: Test payment
+  Given stuff is set up
+  When I do payment things
+  Then it works
+```
+
+#### 2. Keep Scenarios Independent
+
+```gherkin
+# Good - Each scenario is independent
+Feature: User Profile
+
+  Scenario: Update profile information
+    Given I am logged in as "john@example.com"
+    And I am on my profile page
+    When I update my name to "John Smith"
+    And I save the changes
+    Then I should see "Profile updated successfully"
+
+  Scenario: Change profile picture
+    Given I am logged in as "jane@example.com"
+    And I am on my profile page
+    When I upload a new profile picture
+    And I save the changes
+    Then I should see the new picture displayed
+
+# Avoid - Scenarios depend on each other
+Feature: User Profile
+
+  Scenario: Create user profile
+    When I create a profile
+    Then the profile should exist
+
+  Scenario: Update the profile  # Depends on previous scenario
+    When I update the profile
+    Then the profile should be updated
+```
+
+#### 3. Focus on Business Value
+
+```gherkin
+# Good - Focuses on business outcome
+Scenario: Customer finds product using search
+  Given I am on the homepage
+  When I search for "wireless headphones"
+  Then I should see relevant product results
+  And I should be able to filter by price range
+  And I should be able to sort by customer rating
+
+# Avoid - Focuses on technical implementation
+Scenario: Search API returns results
+  Given the search service is running
+  When I send a GET request to /api/search?q=headphones
+  Then I should get a 200 response
+  And the JSON should contain product data
+```
+
+#### 4. Use Data Tables for Complex Data
+
+```gherkin
+Scenario: Register user with complete profile
+  Given I am on the registration page
+  When I fill in the registration form with:
+    | Field           | Value                |
+    | First Name      | John                 |
+    | Last Name       | Doe                  |
+    | Email           | john.doe@example.com |
+    | Password        | SecurePass123        |
+    | Confirm Password| SecurePass123        |
+    | Phone           | +1-555-123-4567      |
+    | Date of Birth   | 1990-01-15           |
+  And I accept the terms and conditions
+  And I click "Register"
+  Then I should see "Registration successful"
+  And I should receive a welcome email
+```
+
+#### 5. Use Doc Strings for Large Text
+
+```gherkin
+Scenario: Send email with formatted content
+  Given I am composing an email
+  When I enter the following message:
+    """
+    Dear Customer,
+    
+    Thank you for your recent purchase. Your order #12345 
+    has been processed and will be shipped within 2-3 business days.
+    
+    Tracking information will be sent to this email address
+    once your order has shipped.
+    
+    Best regards,
+    Customer Service Team
+    """
+  And I send the email
+  Then the recipient should receive the formatted message
+```
+
+## Domain-Specific Language Patterns
+
+### Web UI Testing Patterns
+
+```gherkin
+Feature: E-commerce Product Browsing
+
+  Scenario: Browse products by category
+    Given I am on the homepage
+    When I click on "Electronics" category
+    Then I should see a list of electronic products
+    And I should see category filters on the left
+    And I should see sorting options at the top
+
+  Scenario: Add product to wishlist
+    Given I am viewing a product page
+    And I am logged in
+    When I click the "Add to Wishlist" button
+    Then the product should be added to my wishlist
+    And I should see "Added to wishlist" confirmation
+    And the wishlist icon should show updated count
+
+  Scenario: Compare products
+    Given I am on the products listing page
+    When I select 2 products for comparison
+    And I click "Compare Selected"
+    Then I should see a comparison table
+    And I should see features side by side
+    And I should be able to add either product to cart
+```
+
+### API Testing Patterns
+
+```gherkin
+Feature: User Management API
+
+  Scenario: Create new user via API
+    Given I have valid API credentials
+    When I send a POST request to "/api/users" with:
+      """
+      {
+        "name": "John Doe",
+        "email": "john@example.com",
+        "role": "user"
+      }
+      """
+    Then the response status should be 201
+    And the response should contain the user ID
+    And the user should exist in the database
+
+  Scenario: Retrieve user information
+    Given a user with ID "12345" exists
+    When I send a GET request to "/api/users/12345"
+    Then the response status should be 200
+    And the response should contain:
+      | field | value           |
+      | name  | John Doe        |
+      | email | john@example.com|
+      | role  | user            |
+
+  Scenario: Handle invalid user creation
+    Given I have valid API credentials
+    When I send a POST request to "/api/users" with invalid data:
+      """
+      {
+        "name": "",
+        "email": "invalid-email",
+        "role": "invalid-role"
+      }
+      """
+    Then the response status should be 400
+    And the response should contain validation errors
+    And no user should be created
+```
+
+### Mobile Testing Patterns
+
+```gherkin
+Feature: Mobile App Navigation
+
+  Scenario: Navigate using bottom tab bar
+    Given I am on the mobile app home screen
+    When I tap the "Profile" tab
+    Then I should see the profile screen
+    And the "Profile" tab should be highlighted
+    And the previous screen should not be visible
+
+  Scenario: Use pull-to-refresh functionality
+    Given I am on the news feed screen
+    When I pull down to refresh
+    Then I should see a loading indicator
+    And the feed should update with new content
+    And the loading indicator should disappear
+
+  Scenario: Handle device orientation change
+    Given I am viewing a video in portrait mode
+    When I rotate the device to landscape
+    Then the video should enter fullscreen mode
+    And the controls should adapt to landscape layout
+    And the video should continue playing
+```
+
+### Security Testing Patterns
+
+```gherkin
+Feature: Authentication Security
+
+  Scenario: Prevent SQL injection in login
+    Given I am on the login page
+    When I enter "admin'; DROP TABLE users; --" as username
+    And I enter "password" as password
+    And I click login
+    Then the login should fail safely
+    And I should see "Invalid credentials" message
+    And no database modifications should occur
+
+  Scenario: Enforce password complexity
+    Given I am on the password reset page
+    When I enter a weak password "123"
+    And I confirm the password
+    Then I should see password strength requirements
+    And the password should not be accepted
+    And I should see specific improvement suggestions
+
+  Scenario: Session timeout after inactivity
+    Given I am logged into the application
+    When I remain inactive for 30 minutes
+    Then my session should expire automatically
+    And I should be redirected to the login page
+    And I should see "Session expired" message
+```
+
+## Advanced Gherkin Techniques
+
+### Scenario Hooks and Setup
+
+```gherkin
+Feature: Order Processing
+
+  Background:
+    Given the following products exist:
+      | id | name        | price | stock |
+      | 1  | Laptop      | 999   | 10    |
+      | 2  | Mouse       | 25    | 50    |
+      | 3  | Keyboard    | 75    | 30    |
+    And the following users exist:
+      | email              | role  | status |
+      | admin@example.com  | admin | active |
+      | user@example.com   | user  | active |
+
+  @setup-payment-gateway
+  Scenario: Process payment for order
+    Given I am logged in as "user@example.com"
+    And I have items in my cart
+    When I proceed to checkout
+    And I enter valid payment information
+    And I confirm the order
+    Then the payment should be processed
+    And I should receive an order confirmation
+```
+
+### Complex Data Scenarios
+
+```gherkin
+Feature: Bulk Data Operations
+
+  Scenario: Import multiple users from CSV
+    Given I am an administrator
+    When I upload a CSV file with user data:
+      """
+      name,email,department,role
+      John Doe,john@example.com,Engineering,Developer
+      Jane Smith,jane@example.com,Marketing,Manager
+      Bob Johnson,bob@example.com,Sales,Representative
+      """
+    Then all users should be created successfully
+    And I should see a summary of imported users
+    And each user should receive a welcome email
+
+  Scenario: Bulk update product prices
+    Given the following products exist in the system:
+      | sku    | name     | current_price |
+      | LAP001 | Laptop   | 999.00        |
+      | MOU001 | Mouse    | 25.00         |
+      | KEY001 | Keyboard | 75.00         |
+    When I apply a 10% price increase to all products
+    Then the product prices should be updated:
+      | sku    | new_price |
+      | LAP001 | 1098.90   |
+      | MOU001 | 27.50     |
+      | KEY001 | 82.50     |
+    And price change notifications should be sent
+```
+
+### Error Handling Scenarios
+
+```gherkin
+Feature: Error Handling
+
+  Scenario: Handle network connectivity issues
+    Given I am using the mobile application
+    And I have a poor network connection
+    When I try to load the product catalog
+    Then I should see a "Poor connection" message
+    And I should see cached products if available
+    And I should have an option to retry
+    And the app should not crash
+
+  Scenario: Graceful degradation when service is unavailable
+    Given the recommendation service is unavailable
+    When I view a product page
+    Then the product details should still load
+    And I should see "Recommendations temporarily unavailable"
+    And I should still be able to add the product to cart
+    And the core functionality should remain intact
+
+  Scenario: Handle file upload errors
+    Given I am uploading a profile picture
+    When the file upload fails due to server error
+    Then I should see a clear error message
+    And I should have an option to retry
+    And my previous profile picture should remain unchanged
+    And the form should retain other entered data
+```
+
+## Common Gherkin Mistakes to Avoid
+
+### 1. Implementation Details in Scenarios
+
+```gherkin
+# Avoid - Too technical
+Scenario: User clicks submit button
+  Given the form validation JavaScript is loaded
+  When I trigger the onclick event on element with id "submit-btn"
+  Then the AJAX request should be sent to "/api/submit"
+  And the response should update the DOM
+
+# Better - Business focused
+Scenario: User submits contact form
+  Given I have filled in the contact form
+  When I submit the form
+  Then I should see a confirmation message
+  And my message should be sent to customer service
+```
+
+### 2. Overly Complex Scenarios
+
+```gherkin
+# Avoid - Too many actions in one scenario
+Scenario: Complete user journey
+  Given I register a new account
+  And I verify my email
+  And I log in
+  And I update my profile
+  And I browse products
+  And I add items to cart
+  And I checkout
+  And I make payment
+  Then I should receive order confirmation
+
+# Better - Split into focused scenarios
+Scenario: User registers and verifies account
+  Given I am on the registration page
+  When I register with valid information
+  And I verify my email address
+  Then I should have an active account
+
+Scenario: User completes purchase
+  Given I am logged in
+  And I have items in my cart
+  When I complete the checkout process
+  Then I should receive order confirmation
+```
+
+### 3. Vague or Ambiguous Language
+
+```gherkin
+# Avoid - Vague language
+Scenario: Test the system
+  Given the system is ready
+  When I do something
+  Then it should work correctly
+
+# Better - Specific and clear
+Scenario: User searches for products by keyword
+  Given I am on the product search page
+  When I search for "wireless headphones"
+  Then I should see products matching "wireless headphones"
+  And the results should be sorted by relevance
+```
+
+## Integration with TestZeus Hercules
+
+### Natural Language Processing
+
+TestZeus Hercules uses AI to understand your Gherkin scenarios:
+
+```gherkin
+Feature: Smart Test Execution
+
+  Scenario: AI understands natural language
+    Given I am on the login page
+    When I enter my credentials and sign in
+    Then I should be taken to my dashboard
+    # Hercules AI interprets "credentials" and "sign in" automatically
+
+  Scenario: Flexible step definitions
+    Given I navigate to the product page
+    When I add the item to my shopping cart
+    Then the cart should show the new item
+    # Multiple ways to express the same action work
+```
+
+### Dynamic Element Recognition
+
+```gherkin
+Feature: Smart Element Interaction
+
+  Scenario: Find elements by context
+    Given I am on the checkout page
+    When I enter "4111 1111 1111 1111" in the credit card field
+    And I click the submit button
+    Then the payment should be processed
+    # Hercules finds elements by context, not rigid selectors
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Writing Your First Test"
+    icon="pen-to-square"
+    href="/testing/writing-first-test"
+  >
+    Apply Gherkin syntax to create your first test
+  </Card>
+  <Card
+    title="Running Tests"
+    icon="play"
+    href="/testing/running-tests"
+  >
+    Learn how to execute your Gherkin scenarios
+  </Card>
+  <Card
+    title="Test Examples"
+    icon="code"
+    href="/examples/ui-automation"
+  >
+    See comprehensive Gherkin examples in action
+  </Card>
+  <Card
+    title="Test Data"
+    icon="database"
+    href="/testing/test-data"
+  >
+    Learn to work with test data in scenarios
+  </Card>
+</CardGroup>
+
+Master Gherkin syntax to write clear, maintainable, and effective test scenarios that everyone on your team can understand! 🚀

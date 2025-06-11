@@ -1,0 +1,759 @@
+---
+title: 'CLI Options Reference'
+description: 'Complete reference of command-line interface options for TestZeus Hercules'
+---
+
+## Overview
+
+TestZeus Hercules provides a comprehensive command-line interface (CLI) for running tests, managing configuration, and controlling test execution. This reference covers all available CLI commands and options.
+
+## Basic Usage
+
+### Running Tests
+
+```bash
+# Run a single test file
+hercules test.feature
+
+# Run multiple test files
+hercules test1.feature test2.feature test3.feature
+
+# Run all tests in a directory
+hercules tests/
+
+# Run tests with glob pattern
+hercules "tests/**/*.feature"
+```
+
+### Help and Version
+
+```bash
+# Show help
+hercules --help
+hercules -h
+
+# Show version
+hercules --version
+hercules -v
+
+# Show detailed help for specific command
+hercules run --help
+```
+
+## Global Options
+
+### Configuration Options
+
+```bash
+# Specify configuration file
+hercules --config config.json test.feature
+hercules -c config.json test.feature
+
+# Set environment
+hercules --env production test.feature
+hercules -e production test.feature
+
+# Override environment variables
+hercules --set HEADLESS=true test.feature
+hercules --set BROWSER_TYPE=firefox --set TIMEOUT=60000 test.feature
+
+# Load environment file
+hercules --env-file .env.production test.feature
+```
+
+### Output and Logging Options
+
+```bash
+# Set log level
+hercules --log-level debug test.feature
+hercules -l debug test.feature
+
+# Enable verbose output
+hercules --verbose test.feature
+hercules -v test.feature
+
+# Quiet mode (minimal output)
+hercules --quiet test.feature
+hercules -q test.feature
+
+# Output format
+hercules --output json test.feature
+hercules -o json test.feature
+
+# Save output to file
+hercules --output-file results.json test.feature
+```
+
+### Browser Options
+
+```bash
+# Set browser type
+hercules --browser chromium test.feature
+hercules -b chromium test.feature
+
+# Run in headless mode
+hercules --headless test.feature
+
+# Run with visible browser
+hercules --headed test.feature
+
+# Set viewport size
+hercules --viewport 1920x1080 test.feature
+
+# Device emulation
+hercules --device "iPhone 12" test.feature
+```
+
+### Execution Options
+
+```bash
+# Set execution mode
+hercules --mode single test.feature
+hercules --mode bulk tests/
+
+# Parallel execution
+hercules --parallel 4 tests/
+hercules -p 4 tests/
+
+# Set timeout
+hercules --timeout 30000 test.feature
+hercules -t 30000 test.feature
+
+# Retry failed tests
+hercules --retry 3 test.feature
+hercules -r 3 test.feature
+
+# Fail fast (stop on first failure)
+hercules --fail-fast test.feature
+hercules -f test.feature
+```
+
+## Test Selection Options
+
+### Tag-Based Selection
+
+```bash
+# Run tests with specific tags
+hercules --tags @smoke test.feature
+hercules --tags "@smoke,@critical" tests/
+
+# Exclude tests with specific tags
+hercules --exclude-tags @slow tests/
+hercules --exclude-tags "@slow,@manual" tests/
+
+# Complex tag expressions
+hercules --tags "@smoke and not @slow" tests/
+hercules --tags "(@critical or @smoke) and not @manual" tests/
+```
+
+### Name-Based Selection
+
+```bash
+# Run scenarios matching name pattern
+hercules --name "Login*" tests/
+hercules -n "User registration" tests/
+
+# Run scenarios matching regex
+hercules --name-regex ".*login.*" tests/
+
+# Run specific scenario by line number
+hercules test.feature:15
+
+# Run specific scenarios by line numbers
+hercules test.feature:15:25:35
+```
+
+### Feature-Based Selection
+
+```bash
+# Run specific features
+hercules --feature "User Management" tests/
+
+# Run features matching pattern
+hercules --feature-regex ".*API.*" tests/
+
+# Skip specific features
+hercules --skip-feature "Legacy Tests" tests/
+```
+
+## Reporting Options
+
+### Report Generation
+
+```bash
+# Generate HTML report
+hercules --report html tests/
+
+# Generate JSON report
+hercules --report json tests/
+
+# Generate JUnit XML report
+hercules --report junit tests/
+
+# Generate multiple report formats
+hercules --report html,json,junit tests/
+
+# Specify report directory
+hercules --report-dir ./reports tests/
+
+# Custom report filename
+hercules --report-name "test-results-$(date +%Y%m%d)" tests/
+```
+
+### Report Content
+
+```bash
+# Include screenshots in report
+hercules --include-screenshots tests/
+
+# Include logs in report
+hercules --include-logs tests/
+
+# Include network logs in report
+hercules --include-network tests/
+
+# Include performance metrics
+hercules --include-performance tests/
+
+# Include accessibility results
+hercules --include-accessibility tests/
+```
+
+## Debug and Development Options
+
+### Debug Options
+
+```bash
+# Enable debug mode
+hercules --debug test.feature
+
+# Enable trace mode
+hercules --trace test.feature
+
+# Take screenshots on failure
+hercules --screenshot-on-failure test.feature
+
+# Take screenshots on success
+hercules --screenshot-on-success test.feature
+
+# Save page source on failure
+hercules --save-source-on-failure test.feature
+
+# Record video
+hercules --record-video test.feature
+```
+
+### Development Options
+
+```bash
+# Dry run (validate without executing)
+hercules --dry-run test.feature
+
+# Step-by-step execution
+hercules --step-by-step test.feature
+
+# Interactive mode
+hercules --interactive test.feature
+
+# Pause on failure
+hercules --pause-on-failure test.feature
+
+# Keep browser open after test
+hercules --keep-browser-open test.feature
+```
+
+## Advanced Options
+
+### Performance Options
+
+```bash
+# Set memory limit
+hercules --memory-limit 2048 tests/
+
+# Set CPU limit
+hercules --cpu-limit 4 tests/
+
+# Enable caching
+hercules --cache tests/
+
+# Disable caching
+hercules --no-cache tests/
+
+# Set cache directory
+hercules --cache-dir ./cache tests/
+
+# Network throttling
+hercules --throttle slow3G tests/
+```
+
+### Security Options
+
+```bash
+# Ignore SSL errors
+hercules --ignore-ssl-errors test.feature
+
+# Use proxy
+hercules --proxy http://proxy.example.com:8080 test.feature
+
+# Client certificate
+hercules --client-cert cert.pem --client-key key.pem test.feature
+
+# Custom CA certificate
+hercules --ca-cert ca.pem test.feature
+```
+
+### Data Options
+
+```bash
+# Test data file
+hercules --data data.json test.feature
+
+# Test data directory
+hercules --data-dir ./test-data tests/
+
+# Generate test data
+hercules --generate-data test.feature
+
+# Validate test data
+hercules --validate-data test.feature
+
+# External data source
+hercules --data-source "https://api.example.com/testdata" test.feature
+```
+
+## Command Reference
+
+### Main Commands
+
+#### `hercules run` (default)
+
+Run test scenarios:
+
+```bash
+hercules run [OPTIONS] [FILES...]
+hercules [OPTIONS] [FILES...]  # 'run' is default command
+
+Options:
+  -c, --config FILE           Configuration file path
+  -e, --env ENVIRONMENT       Environment name
+  --set KEY=VALUE             Override environment variable
+  --env-file FILE             Load environment file
+  -b, --browser BROWSER       Browser type (chromium, firefox, webkit)
+  --headless                  Run in headless mode
+  --headed                    Run with visible browser
+  --viewport WIDTHxHEIGHT     Set viewport size
+  --device DEVICE             Device emulation
+  --timeout MILLISECONDS      Default timeout
+  -p, --parallel WORKERS      Number of parallel workers
+  -r, --retry COUNT           Retry count for failed tests
+  -f, --fail-fast             Stop on first failure
+  --tags TAGS                 Run tests with specific tags
+  --exclude-tags TAGS         Exclude tests with specific tags
+  -n, --name PATTERN          Run scenarios matching name pattern
+  --name-regex REGEX          Run scenarios matching regex
+  --feature PATTERN           Run features matching pattern
+  --report FORMAT             Generate report (html, json, junit)
+  --report-dir DIR            Report output directory
+  --debug                     Enable debug mode
+  --trace                     Enable trace mode
+  -v, --verbose               Verbose output
+  -q, --quiet                 Quiet mode
+  -l, --log-level LEVEL       Log level (error, warn, info, debug, trace)
+  -o, --output FORMAT         Output format (text, json, yaml)
+  --output-file FILE          Save output to file
+  --dry-run                   Validate without executing
+  --interactive               Interactive mode
+  --step-by-step              Step-by-step execution
+  --screenshot-on-failure     Take screenshots on failure
+  --record-video              Record video
+  --help                      Show help
+```
+
+#### `hercules config`
+
+Manage configuration:
+
+```bash
+# Show current configuration
+hercules config show
+
+# Validate configuration
+hercules config validate
+
+# Initialize default configuration
+hercules config init
+
+# Test LLM connection
+hercules config test-llm
+
+# Test browser setup
+hercules config test-browser
+
+# Generate configuration template
+hercules config template
+
+# Check environment variables
+hercules config check-env
+```
+
+#### `hercules doctor`
+
+Diagnose installation and configuration issues:
+
+```bash
+# Run full diagnostic
+hercules doctor
+
+# Check specific component
+hercules doctor --check browser
+hercules doctor --check llm
+hercules doctor --check network
+
+# Fix common issues
+hercules doctor --fix
+
+# Generate diagnostic report
+hercules doctor --report
+```
+
+#### `hercules init`
+
+Initialize new test project:
+
+```bash
+# Initialize in current directory
+hercules init
+
+# Initialize in specific directory
+hercules init my-test-project
+
+# Initialize with template
+hercules init --template basic
+hercules init --template advanced
+hercules init --template api-testing
+
+# Initialize with specific configuration
+hercules init --llm openai --browser chromium
+```
+
+#### `hercules generate`
+
+Generate test files and templates:
+
+```bash
+# Generate test file from template
+hercules generate test --name "User Login" --template ui
+
+# Generate API test
+hercules generate api-test --endpoint "/api/users"
+
+# Generate page object
+hercules generate page-object --name "LoginPage"
+
+# Generate test data
+hercules generate test-data --format json --count 10
+
+# Generate configuration file
+hercules generate config --template production
+```
+
+#### `hercules validate`
+
+Validate test files and configuration:
+
+```bash
+# Validate test files
+hercules validate tests/
+
+# Validate specific file
+hercules validate test.feature
+
+# Validate configuration
+hercules validate --config
+
+# Validate test data
+hercules validate --data test-data.json
+
+# Validate with specific rules
+hercules validate --rules strict tests/
+```
+
+#### `hercules clean`
+
+Clean up test artifacts:
+
+```bash
+# Clean all artifacts
+hercules clean
+
+# Clean specific types
+hercules clean --screenshots
+hercules clean --videos
+hercules clean --logs
+hercules clean --reports
+hercules clean --cache
+
+# Clean older than specified days
+hercules clean --older-than 7
+
+# Dry run (show what would be cleaned)
+hercules clean --dry-run
+```
+
+#### `hercules serve`
+
+Start test server for debugging:
+
+```bash
+# Start server on default port (3000)
+hercules serve
+
+# Start server on specific port
+hercules serve --port 8080
+
+# Start with specific configuration
+hercules serve --config config.json
+
+# Start with live reload
+hercules serve --watch
+
+# Start with specific test files
+hercules serve tests/
+```
+
+## Environment-Specific Commands
+
+### Development Commands
+
+```bash
+# Development mode with debug enabled
+hercules dev test.feature
+
+# Watch mode (re-run on file changes)
+hercules watch tests/
+
+# Interactive debugging
+hercules debug test.feature
+
+# Profile test execution
+hercules profile tests/
+```
+
+### CI/CD Commands
+
+```bash
+# CI mode (optimized for CI environments)
+hercules ci tests/
+
+# Generate CI-friendly reports
+hercules ci --report junit --report-dir ./test-results tests/
+
+# Run with CI-specific timeouts
+hercules ci --timeout 60000 --retry 2 tests/
+
+# Parallel execution for CI
+hercules ci --parallel auto tests/
+```
+
+## Exit Codes
+
+TestZeus Hercules uses standard exit codes:
+
+- `0` - Success (all tests passed)
+- `1` - Test failures (some tests failed)
+- `2` - Configuration error
+- `3` - Runtime error
+- `4` - Invalid arguments
+- `5` - Environment error
+- `6` - Network error
+- `7` - Timeout error
+- `8` - Permission error
+- `9` - Resource error
+- `10` - Unknown error
+
+## Configuration File Integration
+
+### Command-Line Override Priority
+
+Configuration sources are applied in this order (later sources override earlier ones):
+
+1. Default values
+2. Configuration file (`hercules.config.json`)
+3. Environment variables
+4. Command-line arguments
+
+### Example Configuration Override
+
+```bash
+# Configuration file sets headless=true
+# Environment variable overrides: HEADLESS=false
+# Command-line argument overrides: --headless
+# Final result: headless=true (command-line wins)
+
+HEADLESS=false hercules --headless test.feature
+```
+
+## Common Command Patterns
+
+### Development Workflow
+
+```bash
+# Quick test run during development
+hercules --headed --debug test.feature
+
+# Run specific test with verbose output
+hercules --verbose --name "User login" tests/auth.feature
+
+# Run tests with live browser for debugging
+hercules --headed --pause-on-failure --keep-browser-open test.feature
+```
+
+### CI/CD Workflow
+
+```bash
+# Standard CI run
+hercules --headless --parallel 4 --retry 2 --report junit tests/
+
+# Smoke tests
+hercules --tags @smoke --fail-fast tests/
+
+# Full regression suite
+hercules --parallel auto --report html,junit --include-screenshots tests/
+```
+
+### Performance Testing
+
+```bash
+# Performance-focused run
+hercules --include-performance --throttle slow3G tests/
+
+# Memory-constrained environment
+hercules --memory-limit 1024 --parallel 2 tests/
+
+# Network testing
+hercules --include-network --proxy http://proxy:8080 tests/
+```
+
+### Security Testing
+
+```bash
+# Security-focused run
+hercules --tags @security --include-accessibility tests/
+
+# SSL testing
+hercules --ignore-ssl-errors --ca-cert custom-ca.pem tests/
+
+# Proxy testing
+hercules --proxy http://security-proxy:8080 tests/
+```
+
+## Best Practices
+
+### Command-Line Usage
+
+1. **Use configuration files** for complex setups
+2. **Use environment variables** for sensitive data
+3. **Use command-line arguments** for runtime overrides
+4. **Use tags** for test organization and selection
+5. **Use parallel execution** for faster test runs
+
+### Development Tips
+
+1. **Use `--headed` mode** for debugging
+2. **Use `--debug` flag** for detailed output
+3. **Use `--dry-run`** to validate tests
+4. **Use `--interactive` mode** for step-by-step debugging
+5. **Use `--watch` mode** for continuous testing
+
+### CI/CD Tips
+
+1. **Use `--headless` mode** for CI environments
+2. **Use `--parallel auto`** for optimal performance
+3. **Use `--fail-fast`** for quick feedback
+4. **Use `--retry`** for flaky test handling
+5. **Use multiple report formats** for different consumers
+
+## Troubleshooting CLI Issues
+
+### Common Issues
+
+<AccordionGroup>
+  <Accordion title="Command not found">
+    ```bash
+    # Check installation
+    which hercules
+    pip show testzeus-hercules
+    
+    # Reinstall if necessary
+    pip install --force-reinstall testzeus-hercules
+    ```
+  </Accordion>
+
+  <Accordion title="Invalid arguments">
+    ```bash
+    # Check command syntax
+    hercules --help
+    hercules run --help
+    
+    # Validate arguments
+    hercules validate --config
+    ```
+  </Accordion>
+
+  <Accordion title="Configuration errors">
+    ```bash
+    # Check configuration
+    hercules config show
+    hercules config validate
+    
+    # Test configuration
+    hercules config test-llm
+    hercules config test-browser
+    ```
+  </Accordion>
+
+  <Accordion title="Permission errors">
+    ```bash
+    # Check file permissions
+    ls -la test.feature
+    
+    # Run with appropriate permissions
+    sudo hercules test.feature  # If necessary
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Environment Variables"
+    icon="gear"
+    href="/api/environment-variables"
+  >
+    Complete environment variables reference
+  </Card>
+  <Card
+    title="Configuration Files"
+    icon="file-code"
+    href="/api/configuration-files"
+  >
+    Configuration file format and options
+  </Card>
+  <Card
+    title="Writing Tests"
+    icon="pen-to-square"
+    href="/testing/writing-first-test"
+  >
+    Learn to write effective test scenarios
+  </Card>
+  <Card
+    title="Troubleshooting"
+    icon="wrench"
+    href="/community/troubleshooting"
+  >
+    Get help with CLI issues
+  </Card>
+</CardGroup>
+
+This comprehensive CLI reference helps you master the TestZeus Hercules command-line interface for efficient test automation! 🚀

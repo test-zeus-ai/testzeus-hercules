@@ -1,0 +1,520 @@
+---
+title: 'Security Testing Examples'
+description: 'Comprehensive security testing examples using TestZeus Hercules'
+---
+
+## Authentication Security
+
+### Login Security Testing
+
+```gherkin
+Feature: Authentication Security
+
+  Scenario: Test password brute force protection
+    Given I am on the login page
+    When I attempt to login with wrong password 5 times
+    Then the account should be temporarily locked
+    And I should see "Account temporarily locked due to multiple failed attempts"
+    And subsequent login attempts should be blocked for 15 minutes
+
+  Scenario: Test SQL injection in login
+    Given I am on the login page
+    When I enter "admin'; DROP TABLE users; --" as username
+    And I enter "password" as password
+    And I click login
+    Then I should see "Invalid credentials"
+    And the users table should still exist
+    And no SQL injection should occur
+```
+
+### Session Management
+
+```gherkin
+Feature: Session Security
+
+  Scenario: Test session timeout
+    Given I am logged into the application
+    When I remain idle for 30 minutes
+    Then my session should expire automatically
+    And I should be redirected to the login page
+    And I should see "Session expired, please login again"
+
+  Scenario: Test concurrent session handling
+    Given I am logged in from browser A
+    When I login from browser B with the same credentials
+    Then the session in browser A should be invalidated
+    And I should be logged out from browser A
+    And only browser B should have an active session
+
+  Scenario: Test session fixation protection
+    Given I have an unauthenticated session ID
+    When I login successfully
+    Then I should receive a new session ID
+    And the old session ID should be invalidated
+```
+
+## Input Validation Security
+
+### Cross-Site Scripting (XSS) Prevention
+
+```gherkin
+Feature: XSS Protection
+
+  Scenario: Test reflected XSS protection
+    Given I am on the search page
+    When I search for "<script>alert('XSS')</script>"
+    Then the search term should be properly escaped
+    And no JavaScript should execute
+    And I should see the escaped text in results
+
+  Scenario: Test stored XSS protection
+    Given I am on the comment form
+    When I submit a comment with "<img src=x onerror=alert('XSS')>"
+    Then the comment should be sanitized before storage
+    And when the comment is displayed
+    Then no JavaScript should execute
+    And the malicious code should be escaped
+
+  Scenario: Test DOM-based XSS protection
+    Given I am on a page that processes URL fragments
+    When I visit a URL with malicious fragment "#<script>alert('XSS')</script>"
+    Then the fragment should be safely processed
+    And no JavaScript should execute from the fragment
+```
+
+### SQL Injection Prevention
+
+```gherkin
+Feature: SQL Injection Protection
+
+  Scenario: Test SQL injection in search
+    Given I am on the product search page
+    When I search for "'; DELETE FROM products; --"
+    Then the search should be handled safely
+    And no database modification should occur
+    And I should see safe search results or no results
+
+  Scenario: Test SQL injection in user registration
+    Given I am on the registration page
+    When I enter "admin'; INSERT INTO users (username, role) VALUES ('hacker', 'admin'); --" as username
+    Then the registration should fail safely
+    And no unauthorized user should be created
+    And the database should remain intact
+
+  Scenario: Test blind SQL injection
+    Given I am on the login page
+    When I enter "admin' AND (SELECT COUNT(*) FROM users) > 0 --" as username
+    Then the response time should be consistent
+    And no database information should be leaked
+    And the login should fail normally
+```
+
+### Command Injection Prevention
+
+```gherkin
+Feature: Command Injection Protection
+
+  Scenario: Test command injection in file upload
+    Given I am on the file upload page
+    When I upload a file named "test.jpg; rm -rf /"
+    Then the filename should be sanitized
+    And no system commands should execute
+    And the file should be processed safely
+
+  Scenario: Test command injection in search
+    Given I am on the search page
+    When I search for "test && cat /etc/passwd"
+    Then the search should be processed safely
+    And no system commands should execute
+    And I should see normal search results
+```
+
+## Authorization and Access Control
+
+### Role-Based Access Control
+
+```gherkin
+Feature: Access Control Testing
+
+  Scenario: Test unauthorized admin access
+    Given I am logged in as a regular user
+    When I try to access the admin panel at "/admin"
+    Then I should be denied access
+    And I should see "Access denied" or be redirected
+    And I should not see any admin functionality
+
+  Scenario: Test privilege escalation
+    Given I am logged in as a regular user
+    When I try to modify my role to admin via API
+    Then the request should be rejected
+    And my role should remain unchanged
+    And I should receive an authorization error
+
+  Scenario: Test horizontal privilege escalation
+    Given I am user A with access to my profile
+    When I try to access user B's profile by changing the user ID
+    Then I should be denied access
+    And I should only see my own profile data
+```
+
+### Direct Object Reference
+
+```gherkin
+Feature: Insecure Direct Object Reference
+
+  Scenario: Test IDOR in user profiles
+    Given I am logged in as user with ID 123
+    When I try to access "/profile/124" (another user's profile)
+    Then I should be denied access
+    And I should not see the other user's data
+    And I should receive an authorization error
+
+  Scenario: Test IDOR in file downloads
+    Given I have uploaded a private document with ID 456
+    And another user has uploaded document with ID 457
+    When I try to download document 457
+    Then I should be denied access
+    And I should not be able to download the file
+```
+
+## Data Protection
+
+### Sensitive Data Exposure
+
+```gherkin
+Feature: Sensitive Data Protection
+
+  Scenario: Test password exposure in responses
+    Given I create a user account
+    When I retrieve user information via API
+    Then the password should not be included in the response
+    And only safe user data should be returned
+    And password hashes should not be exposed
+
+  Scenario: Test credit card data protection
+    Given I enter credit card information during checkout
+    When I view my order history
+    Then the full credit card number should not be displayed
+    And only the last 4 digits should be shown
+    And the CVV should never be stored or displayed
+
+  Scenario: Test error message information disclosure
+    Given I am on the login page
+    When I enter a non-existent username
+    Then the error message should not reveal if the username exists
+    And I should see a generic "Invalid credentials" message
+    And no user enumeration should be possible
+```
+
+### Data Encryption
+
+```gherkin
+Feature: Data Encryption
+
+  Scenario: Test HTTPS enforcement
+    Given I try to access the application via HTTP
+    Then I should be redirected to HTTPS
+    And all subsequent communication should be encrypted
+    And no sensitive data should be transmitted over HTTP
+
+  Scenario: Test password storage encryption
+    Given I create an account with password "MySecurePassword123!"
+    When I check the database
+    Then the password should be properly hashed
+    And the original password should not be stored in plain text
+    And the hash should use a strong algorithm (bcrypt, scrypt, etc.)
+```
+
+## File Upload Security
+
+### Malicious File Upload Prevention
+
+```gherkin
+Feature: File Upload Security
+
+  Scenario: Test executable file upload prevention
+    Given I am on the file upload page
+    When I try to upload a file named "malware.exe"
+    Then the upload should be rejected
+    And I should see "File type not allowed"
+    And the file should not be stored on the server
+
+  Scenario: Test script file upload prevention
+    Given I am on the file upload page
+    When I try to upload a PHP file with malicious code
+    Then the upload should be rejected
+    And the file should not be executable on the server
+    And I should receive an appropriate error message
+
+  Scenario: Test file size limit enforcement
+    Given I am on the file upload page
+    When I try to upload a file larger than the allowed limit
+    Then the upload should be rejected
+    And I should see "File size exceeds limit"
+    And the server should not process the oversized file
+
+  Scenario: Test file content validation
+    Given I am on the image upload page
+    When I upload a file with .jpg extension but containing executable code
+    Then the file should be validated by content, not just extension
+    And the upload should be rejected if content doesn't match extension
+    And I should see "Invalid file content"
+```
+
+## Cross-Site Request Forgery (CSRF)
+
+### CSRF Protection Testing
+
+```gherkin
+Feature: CSRF Protection
+
+  Scenario: Test CSRF token validation
+    Given I am logged into the application
+    When I submit a form without a valid CSRF token
+    Then the request should be rejected
+    And I should see "CSRF token validation failed"
+    And no action should be performed
+
+  Scenario: Test CSRF protection on state-changing operations
+    Given I am logged in
+    When an external site tries to submit a form to change my password
+    Without proper CSRF protection
+    Then the password change should be rejected
+    And my password should remain unchanged
+    And I should receive a security error
+
+  Scenario: Test CSRF token refresh
+    Given I have a form with a CSRF token
+    When the token expires
+    And I submit the form
+    Then I should be prompted to refresh the page
+    And a new token should be generated
+    And the form should work with the new token
+```
+
+## Security Headers
+
+### HTTP Security Headers
+
+```gherkin
+Feature: Security Headers
+
+  Scenario: Test security headers presence
+    Given I access any page of the application
+    Then the response should include security headers:
+      | Header                    | Expected Value                |
+      | X-Content-Type-Options    | nosniff                      |
+      | X-Frame-Options           | DENY or SAMEORIGIN           |
+      | X-XSS-Protection          | 1; mode=block                |
+      | Strict-Transport-Security | max-age=31536000             |
+      | Content-Security-Policy   | restrictive policy           |
+
+  Scenario: Test Content Security Policy
+    Given I am on any page of the application
+    When I try to execute inline JavaScript
+    Then it should be blocked by CSP
+    And I should see CSP violation in browser console
+    And only whitelisted scripts should execute
+```
+
+## API Security
+
+### API Authentication and Authorization
+
+```gherkin
+Feature: API Security
+
+  Scenario: Test API without authentication
+    Given I have an API endpoint that requires authentication
+    When I send a request without authentication headers
+    Then I should receive a 401 Unauthorized response
+    And no data should be returned
+    And the error message should not reveal system details
+
+  Scenario: Test API with invalid token
+    Given I have an API endpoint
+    When I send a request with an invalid or expired token
+    Then I should receive a 401 Unauthorized response
+    And the token should not grant any access
+    And I should see "Invalid or expired token"
+
+  Scenario: Test API rate limiting
+    Given I have an API with rate limiting
+    When I send more requests than allowed per minute
+    Then subsequent requests should be rejected with 429
+    And I should see "Rate limit exceeded"
+    And the rate limit should reset after the time window
+```
+
+### API Input Validation
+
+```gherkin
+Feature: API Input Validation
+
+  Scenario: Test API parameter injection
+    Given I have an API endpoint that accepts parameters
+    When I send malicious parameters like SQL injection payloads
+    Then the API should sanitize the input
+    And no database queries should be compromised
+    And I should receive a safe response
+
+  Scenario: Test API data type validation
+    Given I have an API endpoint expecting integer values
+    When I send string values or special characters
+    Then the API should validate data types
+    And reject invalid input with appropriate error messages
+    And no type confusion vulnerabilities should exist
+```
+
+## Password Security
+
+### Password Policy Testing
+
+```gherkin
+Feature: Password Security
+
+  Scenario: Test password complexity requirements
+    Given I am on the password change page
+    When I try to set a weak password "123456"
+    Then the password should be rejected
+    And I should see "Password does not meet complexity requirements"
+    And the password should not be updated
+
+  Scenario: Test password history
+    Given I am changing my password
+    When I try to reuse one of my last 5 passwords
+    Then the password should be rejected
+    And I should see "Cannot reuse recent passwords"
+    And I should be forced to choose a different password
+
+  Scenario: Test password reset security
+    Given I request a password reset
+    When I receive the reset link
+    Then the link should expire after a reasonable time (e.g., 1 hour)
+    And the link should be single-use only
+    And using an expired or used link should fail
+```
+
+## Security Monitoring
+
+### Intrusion Detection
+
+```gherkin
+Feature: Security Monitoring
+
+  Scenario: Test suspicious activity detection
+    Given I am monitoring for suspicious activities
+    When multiple failed login attempts occur from the same IP
+    Then the system should detect this as suspicious
+    And appropriate alerts should be generated
+    And the IP should be temporarily blocked
+
+  Scenario: Test unusual access pattern detection
+    Given I am monitoring user access patterns
+    When a user accesses the system from an unusual location
+    Then the system should flag this as potentially suspicious
+    And additional verification may be required
+    And security logs should record the event
+```
+
+## Vulnerability Scanning
+
+### Automated Security Scanning
+
+```gherkin
+Feature: Vulnerability Scanning
+
+  Scenario: Test for common vulnerabilities
+    Given I run an automated security scan
+    Then the scan should check for:
+      | OWASP Top 10 vulnerabilities |
+      | Known CVEs                   |
+      | Misconfigurations           |
+      | Weak encryption             |
+    And any findings should be reported
+    And critical vulnerabilities should be flagged
+
+  Scenario: Test dependency vulnerabilities
+    Given I scan the application dependencies
+    Then all third-party libraries should be checked for known vulnerabilities
+    And outdated dependencies should be identified
+    And security patches should be recommended
+```
+
+## Social Engineering Protection
+
+### User Education and Warnings
+
+```gherkin
+Feature: Social Engineering Protection
+
+  Scenario: Test phishing protection
+    Given I receive a suspicious email claiming to be from the application
+    When I click on links in the email
+    Then the application should warn about potential phishing
+    And I should be educated about verifying legitimate communications
+    And suspicious activities should be reported
+
+  Scenario: Test account takeover protection
+    Given someone tries to change my account details
+    When critical changes are attempted
+    Then I should receive immediate notifications
+    And additional verification should be required
+    And I should be able to quickly secure my account
+```
+
+## Compliance Testing
+
+### Data Privacy Compliance
+
+```gherkin
+Feature: Privacy Compliance
+
+  Scenario: Test GDPR data deletion
+    Given I am a user with personal data in the system
+    When I request deletion of my personal data
+    Then all my personal data should be removed within the required timeframe
+    And I should receive confirmation of deletion
+    And the data should not be recoverable
+
+  Scenario: Test data portability
+    Given I am a user of the system
+    When I request export of my personal data
+    Then I should receive all my data in a machine-readable format
+    And the export should be complete and accurate
+    And the process should complete within required timeframes
+```
+
+## Security Testing Best Practices
+
+### Comprehensive Security Test Suite
+
+```gherkin
+Feature: Security Test Coverage
+
+  Scenario: Regular security assessment
+    Given I have a comprehensive security test suite
+    When I run the complete security test suite
+    Then all critical security controls should be tested
+    And any failures should be immediately flagged
+    And security test results should be documented
+    And remediation should be tracked
+
+  Scenario: Security regression testing
+    Given I have made changes to the application
+    When I run security regression tests
+    Then no new vulnerabilities should be introduced
+    And existing security controls should still function
+    And any security regressions should be caught before deployment
+```
+
+## Next Steps
+
+After exploring security testing examples:
+
+1. [Learn about accessibility testing](/examples/accessibility-testing)
+2. [Explore visual testing](/examples/visual-testing)
+3. [Check out mobile automation](/examples/mobile-automation)
+4. [Understand the architecture](/architecture/overview)
+
+Ready to implement security testing? Join our [Slack community](https://join.slack.com/t/testzeuscommunityhq/shared_invite/zt-2v2br8wog-FAmo_76xRHx~k~1oNaGQ0Q) to share your security testing experiences!

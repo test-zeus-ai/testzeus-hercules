@@ -1,0 +1,372 @@
+---
+title: 'Windows Setup'
+description: 'Automated Windows installation using PowerShell script'
+---
+
+## Automated Windows Setup
+
+Hercules provides a PowerShell script for automated installation on Windows systems. This script handles all dependencies and configuration automatically.
+
+## Prerequisites
+
+- **Windows 10** or later
+- **PowerShell 5.1** or later (PowerShell 7+ recommended)
+- **Administrator privileges** for initial setup
+- **Internet connection** for downloading dependencies
+
+## Quick Setup
+
+### 1. Download and Run Setup Script
+
+Open PowerShell as Administrator and run:
+
+```powershell
+# Download and execute the setup script
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/test-zeus-ai/testzeus-hercules/main/helper_scripts/hercules_windows_setup.ps1" -OutFile "hercules_setup.ps1"
+
+# Set execution policy (if needed)
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+
+# Run the setup script
+.\hercules_setup.ps1
+```
+
+### 2. Alternative: Clone Repository First
+
+If you prefer to clone the repository first:
+
+```powershell
+# Clone the repository
+git clone https://github.com/test-zeus-ai/testzeus-hercules.git
+cd testzeus-hercules
+
+# Run the setup script
+.\helper_scripts\hercules_windows_setup.ps1
+```
+
+## What the Script Does
+
+The Windows setup script automatically:
+
+1. **Checks System Requirements**
+   - Verifies Windows version compatibility
+   - Checks PowerShell version
+   - Validates available disk space
+
+2. **Installs Python**
+   - Downloads and installs Python 3.10+ if not present
+   - Configures Python PATH environment variable
+   - Installs pip package manager
+
+3. **Sets Up Virtual Environment**
+   - Creates isolated Python environment
+   - Activates virtual environment
+   - Upgrades pip to latest version
+
+4. **Installs Hercules**
+   - Installs testzeus-hercules package
+   - Installs all required dependencies
+   - Downloads browser binaries via Playwright
+
+5. **Configures Environment**
+   - Creates default configuration files
+   - Sets up environment variables
+   - Creates desktop shortcuts (optional)
+
+## Manual Installation Steps
+
+If you prefer manual installation or need to troubleshoot:
+
+### 1. Install Python
+
+Download Python from [python.org](https://www.python.org/downloads/windows/):
+
+```powershell
+# Using winget (Windows Package Manager)
+winget install Python.Python.3.10
+
+# Using chocolatey
+choco install python
+
+# Verify installation
+python --version
+pip --version
+```
+
+### 2. Create Virtual Environment
+
+```powershell
+# Create virtual environment
+python -m venv hercules-env
+
+# Activate virtual environment
+hercules-env\Scripts\Activate.ps1
+
+# Upgrade pip
+python -m pip install --upgrade pip
+```
+
+### 3. Install Hercules
+
+```powershell
+# Install Hercules
+pip install testzeus-hercules
+
+# Install browser dependencies
+playwright install
+```
+
+### 4. Configure Environment Variables
+
+Set up your LLM API keys:
+
+```powershell
+# Set environment variables for current session
+$env:OPENAI_API_KEY = "your-api-key-here"
+$env:BROWSER_TYPE = "chromium"
+$env:HEADLESS = "true"
+
+# Set permanent environment variables
+[Environment]::SetEnvironmentVariable("OPENAI_API_KEY", "your-api-key-here", "User")
+[Environment]::SetEnvironmentVariable("BROWSER_TYPE", "chromium", "User")
+```
+
+## Configuration Files
+
+### PowerShell Profile Setup
+
+Add Hercules to your PowerShell profile for easy access:
+
+```powershell
+# Check if profile exists
+if (!(Test-Path -Path $PROFILE)) {
+    New-Item -ItemType File -Path $PROFILE -Force
+}
+
+# Add Hercules alias to profile
+Add-Content -Path $PROFILE -Value @"
+# Hercules Test Automation
+function Start-Hercules {
+    param([string]$TestFile)
+    if ($TestFile) {
+        hercules $TestFile
+    } else {
+        hercules --help
+    }
+}
+Set-Alias -Name hercules-test -Value Start-Hercules
+"@
+```
+
+### Environment Configuration File
+
+Create a `.env` file for your project:
+
+```powershell .env
+# LLM Configuration
+OPENAI_API_KEY=your-api-key-here
+OPENAI_MODEL=gpt-4o
+
+# Browser Configuration
+BROWSER_TYPE=chromium
+HEADLESS=true
+BROWSER_TIMEOUT=30000
+
+# Test Configuration
+MAX_RETRIES=3
+SCREENSHOT_ON_FAILURE=true
+RESULTS_DIR=./results
+```
+
+## Docker Setup on Windows
+
+### Using Docker Desktop
+
+If you prefer Docker on Windows:
+
+```powershell
+# Install Docker Desktop (if not installed)
+winget install Docker.DockerDesktop
+
+# Pull Hercules image
+docker pull testzeus/hercules:latest
+
+# Run with Windows paths
+docker run -v "${PWD}:/workspace" testzeus/hercules:latest hercules /workspace/test.feature
+```
+
+### Using WSL2
+
+For better performance, use Windows Subsystem for Linux:
+
+```powershell
+# Enable WSL2
+wsl --install
+
+# Install Ubuntu
+wsl --install -d Ubuntu
+
+# Switch to WSL2 and follow Linux installation
+wsl
+```
+
+## Running Your First Test
+
+Create a test file and run it:
+
+```powershell
+# Create test file
+@"
+Feature: Windows Test Example
+
+  Scenario: Test Google Search
+    Given I have a web browser open
+    When I navigate to "https://www.google.com"
+    And I search for "TestZeus Hercules"
+    Then I should see search results
+"@ | Out-File -FilePath "test.feature" -Encoding UTF8
+
+# Run the test
+hercules test.feature
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="PowerShell Execution Policy">
+    If you get execution policy errors:
+    ```powershell
+    # Check current policy
+    Get-ExecutionPolicy
+    
+    # Set policy for current user
+    Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+    
+    # Or bypass for single script
+    PowerShell -ExecutionPolicy Bypass -File hercules_setup.ps1
+    ```
+  </Accordion>
+
+  <Accordion title="Python PATH Issues">
+    Fix Python PATH problems:
+    ```powershell
+    # Add Python to PATH manually
+    $pythonPath = (Get-Command python).Source | Split-Path
+    $env:PATH += ";$pythonPath"
+    
+    # Make permanent
+    [Environment]::SetEnvironmentVariable("PATH", $env:PATH, "User")
+    ```
+  </Accordion>
+
+  <Accordion title="Browser Installation Failures">
+    Resolve browser installation issues:
+    ```powershell
+    # Clear Playwright cache
+    playwright uninstall --all
+    
+    # Reinstall with verbose output
+    playwright install --verbose
+    
+    # Install system dependencies
+    playwright install-deps
+    ```
+  </Accordion>
+
+  <Accordion title="Antivirus Interference">
+    Handle antivirus blocking:
+    ```powershell
+    # Add exclusions to Windows Defender
+    Add-MpPreference -ExclusionPath "C:\Users\$env:USERNAME\.cache\ms-playwright"
+    Add-MpPreference -ExclusionPath "C:\Users\$env:USERNAME\AppData\Local\Programs\Python"
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Advanced Configuration
+
+### Custom Installation Directory
+
+Install to a specific directory:
+
+```powershell
+# Set custom installation path
+$env:HERCULES_HOME = "C:\Tools\Hercules"
+New-Item -ItemType Directory -Path $env:HERCULES_HOME -Force
+
+# Install to custom location
+pip install --target $env:HERCULES_HOME testzeus-hercules
+```
+
+### Network Configuration
+
+Configure for corporate networks:
+
+```powershell
+# Set proxy for pip
+pip config set global.proxy http://proxy.company.com:8080
+
+# Set proxy for playwright
+$env:HTTPS_PROXY = "http://proxy.company.com:8080"
+$env:HTTP_PROXY = "http://proxy.company.com:8080"
+
+# Install with proxy
+playwright install
+```
+
+### Performance Optimization
+
+Optimize for Windows performance:
+
+```powershell
+# Increase virtual memory
+$env:PYTHONHASHSEED = "0"
+
+# Use faster JSON library
+pip install orjson
+
+# Enable parallel test execution
+$env:PARALLEL_TESTS = "2"
+```
+
+## Integration with Windows Tools
+
+### Task Scheduler
+
+Schedule automated test runs:
+
+```powershell
+# Create scheduled task
+$action = New-ScheduledTaskAction -Execute "hercules" -Argument "tests/"
+$trigger = New-ScheduledTaskTrigger -Daily -At 9am
+Register-ScheduledTask -Action $action -Trigger $trigger -TaskName "HerculesTests"
+```
+
+### Windows Terminal
+
+Configure Windows Terminal for better experience:
+
+```json settings.json
+{
+  "profiles": {
+    "list": [
+      {
+        "name": "Hercules Testing",
+        "commandline": "powershell.exe -NoExit -Command \"cd C:\\Projects\\Tests; hercules-env\\Scripts\\Activate.ps1\"",
+        "icon": "🏛️"
+      }
+    ]
+  }
+}
+```
+
+## Next Steps
+
+After successful Windows setup:
+
+1. [Configure environment variables](/configuration/environment-variables)
+2. [Set up your project structure](/configuration/project-structure)
+3. [Write your first test](/testing/writing-first-test)
+4. [Explore Windows-specific testing scenarios](/examples/ui-automation)
+
+Need Windows-specific help? Join our [Slack community](https://join.slack.com/t/testzeuscommunityhq/shared_invite/zt-2v2br8wog-FAmo_76xRHx~k~1oNaGQ0Q) for support!

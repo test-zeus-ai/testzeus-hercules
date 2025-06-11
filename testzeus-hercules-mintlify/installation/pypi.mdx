@@ -1,0 +1,256 @@
+---
+title: 'PyPI Installation'
+description: 'Install TestZeus Hercules using pip package manager'
+---
+
+## Quick Installation
+
+The fastest way to get started with Hercules is through PyPI:
+
+```bash
+pip install testzeus-hercules
+```
+
+## Detailed Installation Steps
+
+### 1. Check Python Version
+
+Ensure you have Python 3.8 or higher installed:
+
+```bash
+python --version
+# or
+python3 --version
+```
+
+<Note>
+  Python 3.10+ is recommended for optimal performance and compatibility.
+</Note>
+
+### 2. Create Virtual Environment (Recommended)
+
+Create an isolated environment for Hercules:
+
+<CodeGroup>
+
+```bash venv
+# Create virtual environment
+python -m venv hercules-env
+
+# Activate on Windows
+hercules-env\Scripts\activate
+
+# Activate on macOS/Linux
+source hercules-env/bin/activate
+```
+
+```bash conda
+# Create conda environment
+conda create -n hercules python=3.10
+conda activate hercules
+```
+
+</CodeGroup>
+
+### 3. Install Hercules
+
+Install the latest stable version:
+
+```bash
+pip install testzeus-hercules
+```
+
+For the latest development version:
+
+```bash
+pip install testzeus-hercules --pre
+```
+
+### 4. Install Browser Dependencies
+
+Hercules uses Playwright for browser automation. Install browser binaries:
+
+```bash
+playwright install
+```
+
+Or install specific browsers:
+
+```bash
+# Install only Chromium (recommended)
+playwright install chromium
+
+# Install all browsers
+playwright install chromium firefox webkit
+```
+
+### 5. Verify Installation
+
+Check that Hercules is installed correctly:
+
+```bash
+hercules --version
+hercules --help
+```
+
+## Configuration
+
+### Set Up LLM Provider
+
+Configure your preferred LLM provider by setting environment variables:
+
+<Tabs>
+  <Tab title="OpenAI">
+    ```bash
+    export OPENAI_API_KEY="your-api-key-here"
+    export OPENAI_MODEL="gpt-4o"
+    ```
+  </Tab>
+  <Tab title="Anthropic">
+    ```bash
+    export ANTHROPIC_API_KEY="your-api-key-here"
+    export ANTHROPIC_MODEL="claude-3-5-haiku-20241022"
+    ```
+  </Tab>
+  <Tab title="Groq">
+    ```bash
+    export GROQ_API_KEY="your-api-key-here"
+    export GROQ_MODEL="llama-3.1-70b-versatile"
+    ```
+  </Tab>
+</Tabs>
+
+### Basic Configuration File
+
+Create a `.env` file in your project directory:
+
+```bash .env
+# LLM Configuration
+OPENAI_API_KEY=your-api-key-here
+OPENAI_MODEL=gpt-4o
+
+# Browser Configuration
+BROWSER_TYPE=chromium
+HEADLESS=true
+BROWSER_TIMEOUT=30000
+
+# Test Configuration
+MAX_RETRIES=3
+SCREENSHOT_ON_FAILURE=true
+```
+
+## Running Your First Test
+
+Create a simple test file:
+
+```gherkin test.feature
+Feature: Basic Web Test
+
+  Scenario: Visit Google Homepage
+    Given I have a web browser open
+    When I navigate to "https://www.google.com"
+    Then I should see the Google homepage
+    And the page title should contain "Google"
+```
+
+Run the test:
+
+```bash
+hercules test.feature
+```
+
+## Advanced Installation Options
+
+### Install with Specific Dependencies
+
+Install with additional optional dependencies:
+
+```bash
+# Install with all optional dependencies
+pip install testzeus-hercules[all]
+
+# Install with specific extras
+pip install testzeus-hercules[dev,testing]
+```
+
+### Install from Specific Version
+
+Install a specific version:
+
+```bash
+pip install testzeus-hercules==1.2.3
+```
+
+### Upgrade Installation
+
+Upgrade to the latest version:
+
+```bash
+pip install --upgrade testzeus-hercules
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Permission Denied Errors">
+    If you encounter permission errors, try installing with user flag:
+    ```bash
+    pip install --user testzeus-hercules
+    ```
+  </Accordion>
+
+  <Accordion title="Browser Installation Issues">
+    If browser installation fails, try manual installation:
+    ```bash
+    # Clear playwright cache
+    playwright uninstall --all
+    
+    # Reinstall browsers
+    playwright install chromium
+    ```
+  </Accordion>
+
+  <Accordion title="Python Version Conflicts">
+    Use specific Python version:
+    ```bash
+    python3.10 -m pip install testzeus-hercules
+    ```
+  </Accordion>
+
+  <Accordion title="Network/Proxy Issues">
+    Configure pip for proxy environments:
+    ```bash
+    pip install --proxy http://proxy.company.com:8080 testzeus-hercules
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## System-Specific Notes
+
+### Windows
+- Use PowerShell or Command Prompt as Administrator for global installation
+- Consider using Windows Subsystem for Linux (WSL) for better compatibility
+
+### macOS
+- Install Xcode Command Line Tools if not already installed:
+  ```bash
+  xcode-select --install
+  ```
+
+### Linux
+- Install system dependencies for browser automation:
+  ```bash
+  sudo apt-get update
+  sudo apt-get install -y libnss3 libatk-bridge2.0-0 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libxss1 libasound2
+  ```
+
+## Next Steps
+
+After successful installation:
+
+1. [Configure environment variables](/configuration/environment-variables)
+2. [Set up your project structure](/configuration/project-structure)
+3. [Write your first comprehensive test](/testing/writing-first-test)
+4. [Explore example test scenarios](/examples/ui-automation)
+
+Need help? Join our [Slack community](https://join.slack.com/t/testzeuscommunityhq/shared_invite/zt-2v2br8wog-FAmo_76xRHx~k~1oNaGQ0Q) for support and discussions!

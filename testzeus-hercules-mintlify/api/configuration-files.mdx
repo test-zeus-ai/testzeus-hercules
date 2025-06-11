@@ -1,0 +1,1346 @@
+---
+title: 'Configuration Files Reference'
+description: 'Complete reference for TestZeus Hercules configuration file formats and options'
+---
+
+## Overview
+
+TestZeus Hercules supports multiple configuration file formats to provide flexible and maintainable configuration management. This reference covers all supported formats and configuration options.
+
+## Supported Configuration Formats
+
+<CardGroup cols={2}>
+  <Card
+    title="JSON Configuration"
+    icon="brackets-curly"
+    href="#json-configuration"
+  >
+    Standard JSON format for configuration
+  </Card>
+  <Card
+    title="YAML Configuration"
+    icon="file-code"
+    href="#yaml-configuration"
+  >
+    Human-readable YAML format
+  </Card>
+  <Card
+    title="JavaScript Configuration"
+    icon="js"
+    href="#javascript-configuration"
+  >
+    Dynamic configuration with JavaScript
+  </Card>
+  <Card
+    title="Environment Files"
+    icon="gear"
+    href="#environment-files"
+  >
+    Simple key-value environment files
+  </Card>
+</CardGroup>
+
+## Configuration File Discovery
+
+TestZeus Hercules automatically discovers configuration files in this order:
+
+1. `hercules.config.js`
+2. `hercules.config.json`
+3. `hercules.config.yaml` or `hercules.config.yml`
+4. `.herculesrc.json`
+5. `.herculesrc.yaml` or `.herculesrc.yml`
+6. `package.json` (in `hercules` field)
+
+You can also specify a custom configuration file:
+
+```bash
+hercules --config custom-config.json test.feature
+```
+
+## JSON Configuration
+
+### Basic JSON Configuration
+
+```json
+{
+  "llm": {
+    "provider": "openai",
+    "model": "gpt-4",
+    "temperature": 0.1,
+    "maxTokens": 4000,
+    "timeout": 30000
+  },
+  "browser": {
+    "type": "chromium",
+    "headless": false,
+    "viewport": {
+      "width": 1920,
+      "height": 1080
+    }
+  },
+  "timeouts": {
+    "default": 30000,
+    "navigation": 10000,
+    "element": 5000
+  },
+  "debug": {
+    "enabled": false,
+    "screenshotOnFailure": true,
+    "saveLogs": true,
+    "logLevel": "info"
+  }
+}
+```
+
+### Complete JSON Configuration
+
+```json
+{
+  "$schema": "https://schemas.testzeus.com/hercules-config.json",
+  "version": "1.0",
+  "extends": ["./base-config.json"],
+  
+  "llm": {
+    "provider": "openai",
+    "model": "gpt-4",
+    "temperature": 0.1,
+    "maxTokens": 4000,
+    "timeout": 30000,
+    "retryCount": 3,
+    "retryDelay": 1000,
+    "cache": {
+      "enabled": true,
+      "ttl": 3600
+    },
+    "providers": {
+      "openai": {
+        "apiKey": "${OPENAI_API_KEY}",
+        "baseUrl": "https://api.openai.com/v1",
+        "organization": "${OPENAI_ORG_ID}",
+        "project": "${OPENAI_PROJECT_ID}"
+      },
+      "anthropic": {
+        "apiKey": "${ANTHROPIC_API_KEY}",
+        "baseUrl": "https://api.anthropic.com"
+      }
+    }
+  },
+  
+  "browser": {
+    "type": "chromium",
+    "headless": false,
+    "viewport": {
+      "width": 1920,
+      "height": 1080
+    },
+    "device": "Desktop",
+    "userAgent": "Mozilla/5.0...",
+    "locale": "en-US",
+    "timezone": "America/New_York",
+    "permissions": ["geolocation", "notifications"],
+    "args": [
+      "--disable-web-security",
+      "--disable-features=VizDisplayCompositor"
+    ],
+    "env": {
+      "DISPLAY": ":99"
+    },
+    "executablePath": "/usr/bin/chromium",
+    "channel": "chrome"
+  },
+  
+  "timeouts": {
+    "default": 30000,
+    "navigation": 10000,
+    "element": 5000,
+    "api": 15000,
+    "screenshot": 5000,
+    "download": 30000,
+    "upload": 30000
+  },
+  
+  "execution": {
+    "mode": "single",
+    "parallelWorkers": 1,
+    "maxParallelWorkers": 8,
+    "retryCount": 0,
+    "retryDelay": 1000,
+    "failFast": false,
+    "continueOnError": false,
+    "batchSize": 10
+  },
+  
+  "debug": {
+    "enabled": false,
+    "screenshotOnFailure": true,
+    "screenshotOnSuccess": false,
+    "saveLogs": true,
+    "logLevel": "info",
+    "logDir": "./logs",
+    "verbose": false,
+    "trace": false
+  },
+  
+  "reporting": {
+    "enabled": true,
+    "formats": ["html", "json"],
+    "outputDir": "./reports",
+    "filename": "test-report",
+    "includeScreenshots": true,
+    "includeLogs": true,
+    "includeNetwork": false,
+    "compression": true
+  },
+  
+  "testData": {
+    "dir": "./test-data",
+    "format": "json",
+    "encoding": "utf-8",
+    "validation": true,
+    "generation": false,
+    "cache": true
+  },
+  
+  "security": {
+    "verifySSL": true,
+    "ignoreCertErrors": false,
+    "encryptApiKeys": true,
+    "secureStorage": true,
+    "maskSensitiveData": true
+  },
+  
+  "performance": {
+    "memoryLimit": 2048,
+    "cpuLimit": 4,
+    "enableCache": true,
+    "cacheSize": 500,
+    "networkThrottling": false
+  },
+  
+  "accessibility": {
+    "enabled": false,
+    "standard": "WCAG21AA",
+    "includeExperimentalRules": false,
+    "threshold": 0
+  },
+  
+  "visual": {
+    "enabled": false,
+    "threshold": 0.1,
+    "baselineDir": "./visual-baselines",
+    "diffDir": "./visual-diffs",
+    "algorithm": "pixelmatch"
+  },
+  
+  "mobile": {
+    "enabled": false,
+    "deviceName": "iPhone 12",
+    "orientation": "portrait",
+    "touchEnabled": true
+  },
+  
+  "api": {
+    "baseUrl": "https://api.example.com",
+    "timeout": 15000,
+    "retryCount": 3,
+    "validateResponses": true,
+    "followRedirects": true
+  },
+  
+  "notifications": {
+    "enabled": false,
+    "onSuccess": false,
+    "onFailure": true,
+    "onCompletion": true,
+    "slack": {
+      "webhookUrl": "${SLACK_WEBHOOK_URL}",
+      "channel": "#testing"
+    },
+    "email": {
+      "enabled": false,
+      "recipients": ["team@example.com"],
+      "smtp": {
+        "host": "smtp.example.com",
+        "port": 587,
+        "username": "${EMAIL_USERNAME}",
+        "password": "${EMAIL_PASSWORD}"
+      }
+    }
+  }
+}
+```
+
+## YAML Configuration
+
+### Basic YAML Configuration
+
+```yaml
+llm:
+  provider: openai
+  model: gpt-4
+  temperature: 0.1
+  maxTokens: 4000
+  timeout: 30000
+
+browser:
+  type: chromium
+  headless: false
+  viewport:
+    width: 1920
+    height: 1080
+
+timeouts:
+  default: 30000
+  navigation: 10000
+  element: 5000
+
+debug:
+  enabled: false
+  screenshotOnFailure: true
+  saveLogs: true
+  logLevel: info
+```
+
+### Complete YAML Configuration
+
+```yaml
+# TestZeus Hercules Configuration
+version: "1.0"
+extends:
+  - ./base-config.yaml
+
+# LLM Configuration
+llm:
+  provider: openai
+  model: gpt-4
+  temperature: 0.1
+  maxTokens: 4000
+  timeout: 30000
+  retryCount: 3
+  retryDelay: 1000
+  
+  cache:
+    enabled: true
+    ttl: 3600
+  
+  providers:
+    openai:
+      apiKey: ${OPENAI_API_KEY}
+      baseUrl: https://api.openai.com/v1
+      organization: ${OPENAI_ORG_ID}
+      project: ${OPENAI_PROJECT_ID}
+    
+    anthropic:
+      apiKey: ${ANTHROPIC_API_KEY}
+      baseUrl: https://api.anthropic.com
+
+# Browser Configuration
+browser:
+  type: chromium
+  headless: false
+  viewport:
+    width: 1920
+    height: 1080
+  device: Desktop
+  userAgent: Mozilla/5.0...
+  locale: en-US
+  timezone: America/New_York
+  permissions:
+    - geolocation
+    - notifications
+  args:
+    - --disable-web-security
+    - --disable-features=VizDisplayCompositor
+  env:
+    DISPLAY: ":99"
+  executablePath: /usr/bin/chromium
+  channel: chrome
+
+# Timeout Configuration
+timeouts:
+  default: 30000
+  navigation: 10000
+  element: 5000
+  api: 15000
+  screenshot: 5000
+  download: 30000
+  upload: 30000
+
+# Execution Configuration
+execution:
+  mode: single
+  parallelWorkers: 1
+  maxParallelWorkers: 8
+  retryCount: 0
+  retryDelay: 1000
+  failFast: false
+  continueOnError: false
+  batchSize: 10
+
+# Debug Configuration
+debug:
+  enabled: false
+  screenshotOnFailure: true
+  screenshotOnSuccess: false
+  saveLogs: true
+  logLevel: info
+  logDir: ./logs
+  verbose: false
+  trace: false
+
+# Reporting Configuration
+reporting:
+  enabled: true
+  formats:
+    - html
+    - json
+  outputDir: ./reports
+  filename: test-report
+  includeScreenshots: true
+  includeLogs: true
+  includeNetwork: false
+  compression: true
+
+# Test Data Configuration
+testData:
+  dir: ./test-data
+  format: json
+  encoding: utf-8
+  validation: true
+  generation: false
+  cache: true
+
+# Security Configuration
+security:
+  verifySSL: true
+  ignoreCertErrors: false
+  encryptApiKeys: true
+  secureStorage: true
+  maskSensitiveData: true
+
+# Performance Configuration
+performance:
+  memoryLimit: 2048
+  cpuLimit: 4
+  enableCache: true
+  cacheSize: 500
+  networkThrottling: false
+
+# Accessibility Configuration
+accessibility:
+  enabled: false
+  standard: WCAG21AA
+  includeExperimentalRules: false
+  threshold: 0
+
+# Visual Testing Configuration
+visual:
+  enabled: false
+  threshold: 0.1
+  baselineDir: ./visual-baselines
+  diffDir: ./visual-diffs
+  algorithm: pixelmatch
+
+# Mobile Testing Configuration
+mobile:
+  enabled: false
+  deviceName: iPhone 12
+  orientation: portrait
+  touchEnabled: true
+
+# API Testing Configuration
+api:
+  baseUrl: https://api.example.com
+  timeout: 15000
+  retryCount: 3
+  validateResponses: true
+  followRedirects: true
+
+# Notifications Configuration
+notifications:
+  enabled: false
+  onSuccess: false
+  onFailure: true
+  onCompletion: true
+  
+  slack:
+    webhookUrl: ${SLACK_WEBHOOK_URL}
+    channel: "#testing"
+  
+  email:
+    enabled: false
+    recipients:
+      - team@example.com
+    smtp:
+      host: smtp.example.com
+      port: 587
+      username: ${EMAIL_USERNAME}
+      password: ${EMAIL_PASSWORD}
+```
+
+## JavaScript Configuration
+
+### Basic JavaScript Configuration
+
+```javascript
+// hercules.config.js
+module.exports = {
+  llm: {
+    provider: 'openai',
+    model: 'gpt-4',
+    temperature: 0.1,
+    maxTokens: 4000,
+    timeout: 30000
+  },
+  
+  browser: {
+    type: 'chromium',
+    headless: false,
+    viewport: {
+      width: 1920,
+      height: 1080
+    }
+  },
+  
+  timeouts: {
+    default: 30000,
+    navigation: 10000,
+    element: 5000
+  },
+  
+  debug: {
+    enabled: false,
+    screenshotOnFailure: true,
+    saveLogs: true,
+    logLevel: 'info'
+  }
+};
+```
+
+### Dynamic JavaScript Configuration
+
+```javascript
+// hercules.config.js
+const path = require('path');
+const os = require('os');
+
+const isCI = process.env.CI === 'true';
+const isDevelopment = process.env.NODE_ENV === 'development';
+
+module.exports = {
+  // Dynamic LLM configuration based on environment
+  llm: {
+    provider: process.env.LLM_PROVIDER || 'openai',
+    model: isCI ? 'gpt-3.5-turbo' : 'gpt-4',
+    temperature: 0.1,
+    timeout: isCI ? 60000 : 30000
+  },
+  
+  // Dynamic browser configuration
+  browser: {
+    type: 'chromium',
+    headless: isCI || !isDevelopment,
+    viewport: {
+      width: 1920,
+      height: 1080
+    },
+    args: isCI ? [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage'
+    ] : []
+  },
+  
+  // Environment-specific timeouts
+  timeouts: {
+    default: isCI ? 60000 : 30000,
+    navigation: isCI ? 30000 : 10000,
+    element: 5000
+  },
+  
+  // Dynamic execution configuration
+  execution: {
+    mode: isCI ? 'bulk' : 'single',
+    parallelWorkers: isCI ? Math.min(os.cpus().length, 4) : 1,
+    retryCount: isCI ? 2 : 0,
+    failFast: isCI
+  },
+  
+  // Environment-specific debug settings
+  debug: {
+    enabled: isDevelopment,
+    screenshotOnFailure: true,
+    saveLogs: true,
+    logLevel: isDevelopment ? 'debug' : 'info',
+    logDir: path.join(__dirname, 'logs')
+  },
+  
+  // Dynamic reporting configuration
+  reporting: {
+    enabled: true,
+    formats: isCI ? ['junit', 'json'] : ['html'],
+    outputDir: path.join(__dirname, 'reports'),
+    filename: `test-report-${new Date().toISOString().split('T')[0]}`,
+    includeScreenshots: true,
+    includeLogs: isDevelopment
+  },
+  
+  // Conditional feature enablement
+  accessibility: {
+    enabled: process.env.ENABLE_ACCESSIBILITY_TESTS === 'true',
+    standard: 'WCAG21AA'
+  },
+  
+  visual: {
+    enabled: process.env.ENABLE_VISUAL_TESTS === 'true',
+    threshold: parseFloat(process.env.VISUAL_THRESHOLD) || 0.1
+  },
+  
+  // Environment-specific API configuration
+  api: {
+    baseUrl: process.env.API_BASE_URL || 'https://api.example.com',
+    timeout: 15000,
+    retryCount: isCI ? 3 : 1
+  },
+  
+  // Conditional notifications
+  notifications: {
+    enabled: isCI,
+    onFailure: true,
+    slack: {
+      webhookUrl: process.env.SLACK_WEBHOOK_URL,
+      channel: process.env.SLACK_CHANNEL || '#testing'
+    }
+  }
+};
+```
+
+### Advanced JavaScript Configuration with Functions
+
+```javascript
+// hercules.config.js
+const { execSync } = require('child_process');
+
+function getGitBranch() {
+  try {
+    return execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf8' }).trim();
+  } catch {
+    return 'unknown';
+  }
+}
+
+function getTestEnvironment() {
+  const branch = getGitBranch();
+  if (branch === 'main' || branch === 'master') return 'production';
+  if (branch.startsWith('release/')) return 'staging';
+  return 'development';
+}
+
+module.exports = {
+  // Environment detection
+  environment: getTestEnvironment(),
+  
+  // Branch-specific configuration
+  llm: {
+    provider: 'openai',
+    model: getTestEnvironment() === 'production' ? 'gpt-4' : 'gpt-3.5-turbo'
+  },
+  
+  // Dynamic test selection
+  execution: {
+    tags: (() => {
+      const env = getTestEnvironment();
+      switch (env) {
+        case 'production': return '@smoke';
+        case 'staging': return '@smoke,@regression';
+        default: return '';
+      }
+    })()
+  },
+  
+  // Custom hooks
+  hooks: {
+    beforeAll: async () => {
+      console.log(`Running tests in ${getTestEnvironment()} environment`);
+    },
+    
+    afterAll: async (results) => {
+      if (results.failed > 0 && getTestEnvironment() === 'production') {
+        // Send alert for production failures
+        console.log('Production test failures detected!');
+      }
+    }
+  }
+};
+```
+
+## Environment Files
+
+### Basic .env File
+
+```bash
+# .env
+# LLM Configuration
+OPENAI_API_KEY=sk-your-api-key
+LLM_MODEL=gpt-4
+
+# Browser Configuration
+BROWSER_TYPE=chromium
+HEADLESS=false
+VIEWPORT_WIDTH=1920
+VIEWPORT_HEIGHT=1080
+
+# Timeout Configuration
+TIMEOUT=30000
+NAVIGATION_TIMEOUT=10000
+
+# Debug Configuration
+DEBUG=false
+SCREENSHOT_ON_FAILURE=true
+LOG_LEVEL=info
+```
+
+### Environment-Specific Files
+
+#### .env.development
+
+```bash
+# Development Environment
+NODE_ENV=development
+
+# LLM Configuration
+OPENAI_API_KEY=sk-dev-api-key
+LLM_MODEL=gpt-4
+LLM_TEMPERATURE=0.1
+
+# Browser Configuration
+BROWSER_TYPE=chromium
+HEADLESS=false
+VIEWPORT_WIDTH=1920
+VIEWPORT_HEIGHT=1080
+
+# Debug Configuration
+DEBUG=true
+SCREENSHOT_ON_FAILURE=true
+SCREENSHOT_ON_SUCCESS=false
+LOG_LEVEL=debug
+VERBOSE=true
+
+# Execution Configuration
+EXECUTION_MODE=single
+RETRY_COUNT=1
+FAIL_FAST=false
+
+# Feature Flags
+ENABLE_VISUAL_TESTS=false
+ENABLE_ACCESSIBILITY_TESTS=true
+ENABLE_PERFORMANCE_TESTS=false
+
+# API Configuration
+API_BASE_URL=https://dev-api.example.com
+API_TIMEOUT=15000
+
+# Reporting
+ENABLE_REPORTING=true
+REPORT_FORMAT=html
+REPORT_INCLUDE_SCREENSHOTS=true
+```
+
+#### .env.staging
+
+```bash
+# Staging Environment
+NODE_ENV=staging
+
+# LLM Configuration
+OPENAI_API_KEY=sk-staging-api-key
+LLM_MODEL=gpt-4
+LLM_TEMPERATURE=0.1
+
+# Browser Configuration
+BROWSER_TYPE=chromium
+HEADLESS=true
+VIEWPORT_WIDTH=1920
+VIEWPORT_HEIGHT=1080
+
+# Debug Configuration
+DEBUG=false
+SCREENSHOT_ON_FAILURE=true
+LOG_LEVEL=info
+
+# Execution Configuration
+EXECUTION_MODE=bulk
+PARALLEL_WORKERS=2
+RETRY_COUNT=2
+FAIL_FAST=false
+
+# Feature Flags
+ENABLE_VISUAL_TESTS=true
+ENABLE_ACCESSIBILITY_TESTS=true
+ENABLE_PERFORMANCE_TESTS=true
+
+# API Configuration
+API_BASE_URL=https://staging-api.example.com
+API_TIMEOUT=20000
+
+# Reporting
+ENABLE_REPORTING=true
+REPORT_FORMAT=html,json
+REPORT_INCLUDE_SCREENSHOTS=true
+REPORT_INCLUDE_LOGS=true
+
+# Notifications
+SLACK_WEBHOOK_URL=https://hooks.slack.com/staging-webhook
+SLACK_CHANNEL=#staging-tests
+```
+
+#### .env.production
+
+```bash
+# Production Environment
+NODE_ENV=production
+
+# LLM Configuration
+OPENAI_API_KEY=sk-prod-api-key
+LLM_MODEL=gpt-4
+LLM_TEMPERATURE=0.1
+
+# Browser Configuration
+BROWSER_TYPE=chromium
+HEADLESS=true
+VIEWPORT_WIDTH=1920
+VIEWPORT_HEIGHT=1080
+
+# Debug Configuration
+DEBUG=false
+SCREENSHOT_ON_FAILURE=true
+LOG_LEVEL=error
+
+# Execution Configuration
+EXECUTION_MODE=bulk
+PARALLEL_WORKERS=4
+RETRY_COUNT=3
+FAIL_FAST=true
+
+# Feature Flags
+ENABLE_VISUAL_TESTS=true
+ENABLE_ACCESSIBILITY_TESTS=true
+ENABLE_PERFORMANCE_TESTS=true
+ENABLE_SECURITY_TESTS=true
+
+# API Configuration
+API_BASE_URL=https://api.example.com
+API_TIMEOUT=30000
+
+# Reporting
+ENABLE_REPORTING=true
+REPORT_FORMAT=html,json,junit
+REPORT_INCLUDE_SCREENSHOTS=true
+REPORT_INCLUDE_LOGS=false
+
+# Notifications
+SLACK_WEBHOOK_URL=https://hooks.slack.com/prod-webhook
+SLACK_CHANNEL=#production-alerts
+EMAIL_REPORTS=true
+EMAIL_RECIPIENTS=team@example.com,alerts@example.com
+```
+
+## Configuration Schema
+
+### JSON Schema
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TestZeus Hercules Configuration",
+  "type": "object",
+  "properties": {
+    "llm": {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "enum": ["openai", "anthropic", "groq", "mistral"]
+        },
+        "model": {
+          "type": "string"
+        },
+        "temperature": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "maxTokens": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "timeout": {
+          "type": "integer",
+          "minimum": 1000
+        }
+      },
+      "required": ["provider"]
+    },
+    "browser": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["chromium", "firefox", "webkit"]
+        },
+        "headless": {
+          "type": "boolean"
+        },
+        "viewport": {
+          "type": "object",
+          "properties": {
+            "width": {
+              "type": "integer",
+              "minimum": 320
+            },
+            "height": {
+              "type": "integer",
+              "minimum": 240
+            }
+          }
+        }
+      }
+    },
+    "timeouts": {
+      "type": "object",
+      "properties": {
+        "default": {
+          "type": "integer",
+          "minimum": 1000
+        },
+        "navigation": {
+          "type": "integer",
+          "minimum": 1000
+        },
+        "element": {
+          "type": "integer",
+          "minimum": 1000
+        }
+      }
+    }
+  }
+}
+```
+
+## Configuration Validation
+
+### Built-in Validation
+
+TestZeus Hercules automatically validates configuration files:
+
+```bash
+# Validate current configuration
+hercules config validate
+
+# Validate specific configuration file
+hercules config validate --config custom-config.json
+
+# Show validation errors
+hercules config validate --verbose
+```
+
+### Custom Validation
+
+```javascript
+// hercules.config.js with validation
+const config = {
+  llm: {
+    provider: 'openai',
+    model: 'gpt-4'
+  },
+  browser: {
+    type: 'chromium',
+    headless: false
+  }
+};
+
+// Custom validation function
+function validateConfig(config) {
+  const errors = [];
+  
+  if (!config.llm?.provider) {
+    errors.push('LLM provider is required');
+  }
+  
+  if (config.browser?.viewport?.width < 320) {
+    errors.push('Viewport width must be at least 320px');
+  }
+  
+  if (errors.length > 0) {
+    throw new Error(`Configuration validation failed:\n${errors.join('\n')}`);
+  }
+  
+  return config;
+}
+
+module.exports = validateConfig(config);
+```
+
+## Configuration Inheritance
+
+### Base Configuration
+
+```json
+// base-config.json
+{
+  "llm": {
+    "temperature": 0.1,
+    "maxTokens": 4000,
+    "timeout": 30000
+  },
+  "browser": {
+    "type": "chromium",
+    "viewport": {
+      "width": 1920,
+      "height": 1080
+    }
+  },
+  "timeouts": {
+    "default": 30000,
+    "navigation": 10000,
+    "element": 5000
+  }
+}
+```
+
+### Environment-Specific Configuration
+
+```json
+// development-config.json
+{
+  "extends": ["./base-config.json"],
+  "llm": {
+    "provider": "openai",
+    "model": "gpt-4"
+  },
+  "browser": {
+    "headless": false
+  },
+  "debug": {
+    "enabled": true,
+    "logLevel": "debug"
+  }
+}
+```
+
+```json
+// production-config.json
+{
+  "extends": ["./base-config.json"],
+  "llm": {
+    "provider": "openai",
+    "model": "gpt-4"
+  },
+  "browser": {
+    "headless": true
+  },
+  "execution": {
+    "mode": "bulk",
+    "parallelWorkers": 4
+  },
+  "debug": {
+    "enabled": false,
+    "logLevel": "error"
+  }
+}
+```
+
+## Package.json Integration
+
+### Configuration in package.json
+
+```json
+{
+  "name": "my-test-project",
+  "version": "1.0.0",
+  "scripts": {
+    "test": "hercules tests/",
+    "test:dev": "hercules --config development-config.json tests/",
+    "test:staging": "hercules --config staging-config.json tests/",
+    "test:prod": "hercules --config production-config.json tests/"
+  },
+  "hercules": {
+    "llm": {
+      "provider": "openai",
+      "model": "gpt-4"
+    },
+    "browser": {
+      "type": "chromium",
+      "headless": false
+    },
+    "debug": {
+      "screenshotOnFailure": true
+    }
+  }
+}
+```
+
+## Configuration Templates
+
+### Minimal Template
+
+```json
+{
+  "llm": {
+    "provider": "openai",
+    "model": "gpt-4"
+  },
+  "browser": {
+    "type": "chromium",
+    "headless": false
+  }
+}
+```
+
+### Development Template
+
+```json
+{
+  "llm": {
+    "provider": "openai",
+    "model": "gpt-4",
+    "temperature": 0.1
+  },
+  "browser": {
+    "type": "chromium",
+    "headless": false,
+    "viewport": {
+      "width": 1920,
+      "height": 1080
+    }
+  },
+  "debug": {
+    "enabled": true,
+    "screenshotOnFailure": true,
+    "logLevel": "debug"
+  },
+  "execution": {
+    "mode": "single",
+    "retryCount": 1
+  }
+}
+```
+
+### CI/CD Template
+
+```json
+{
+  "llm": {
+    "provider": "openai",
+    "model": "gpt-4"
+  },
+  "browser": {
+    "type": "chromium",
+    "headless": true,
+    "args": [
+      "--no-sandbox",
+      "--disable-setuid-sandbox"
+    ]
+  },
+  "execution": {
+    "mode": "bulk",
+    "parallelWorkers": 4,
+    "retryCount": 2,
+    "failFast": true
+  },
+  "reporting": {
+    "enabled": true,
+    "formats": ["junit", "json"],
+    "includeScreenshots": true
+  },
+  "debug": {
+    "enabled": false,
+    "screenshotOnFailure": true,
+    "logLevel": "error"
+  }
+}
+```
+
+### Enterprise Template
+
+```json
+{
+  "llm": {
+    "provider": "openai",
+    "model": "gpt-4",
+    "timeout": 60000
+  },
+  "browser": {
+    "type": "chromium",
+    "headless": true,
+    "viewport": {
+      "width": 1920,
+      "height": 1080
+    }
+  },
+  "execution": {
+    "mode": "bulk",
+    "parallelWorkers": 8,
+    "retryCount": 3
+  },
+  "security": {
+    "verifySSL": true,
+    "encryptApiKeys": true,
+    "secureStorage": true
+  },
+  "reporting": {
+    "enabled": true,
+    "formats": ["html", "json", "junit"],
+    "compression": true
+  },
+  "notifications": {
+    "enabled": true,
+    "onFailure": true,
+    "slack": {
+      "webhookUrl": "${SLACK_WEBHOOK_URL}",
+      "channel": "#testing"
+    },
+    "email": {
+      "enabled": true,
+      "recipients": ["team@company.com"]
+    }
+  },
+  "accessibility": {
+    "enabled": true,
+    "standard": "WCAG21AA"
+  },
+  "visual": {
+    "enabled": true,
+    "threshold": 0.05
+  },
+  "performance": {
+    "memoryLimit": 4096,
+    "cpuLimit": 8,
+    "enableCache": true
+  }
+}
+```
+
+## Best Practices
+
+### Configuration Management
+
+1. **Use environment-specific configurations** for different deployment stages
+2. **Keep sensitive data in environment variables**, not configuration files
+3. **Use configuration inheritance** to avoid duplication
+4. **Validate configurations** before running tests
+5. **Document all configuration options** used in your project
+
+### Security Best Practices
+
+1. **Never commit API keys** to version control
+2. **Use environment variables** for sensitive configuration
+3. **Encrypt sensitive configuration** when possible
+4. **Use secure storage** for production configurations
+5. **Rotate credentials** regularly
+
+### Performance Optimization
+
+1. **Adjust timeouts** based on your application's performance
+2. **Use appropriate parallel worker counts** for your environment
+3. **Enable caching** for repeated operations
+4. **Optimize browser settings** for your use case
+5. **Monitor resource usage** and adjust limits accordingly
+
+### Maintenance
+
+1. **Keep configurations up to date** with framework changes
+2. **Review and update** configurations regularly
+3. **Test configurations** in different environments
+4. **Document configuration changes** and their impact
+5. **Use version control** for configuration files
+
+## Troubleshooting Configuration
+
+### Common Issues
+
+<AccordionGroup>
+  <Accordion title="Configuration file not found">
+    ```bash
+    # Check file existence and path
+    ls -la hercules.config.json
+    
+    # Use absolute path
+    hercules --config /full/path/to/config.json test.feature
+    
+    # Check current directory
+    pwd
+    ```
+  </Accordion>
+
+  <Accordion title="Invalid JSON syntax">
+    ```bash
+    # Validate JSON syntax
+    cat hercules.config.json | jq .
+    
+    # Use online JSON validator
+    # Check for trailing commas, missing quotes, etc.
+    ```
+  </Accordion>
+
+  <Accordion title="Environment variable not resolved">
+    ```bash
+    # Check environment variable exists
+    echo $OPENAI_API_KEY
+    
+    # Load environment file
+    source .env
+    
+    # Use explicit environment file
+    hercules --env-file .env test.feature
+    ```
+  </Accordion>
+
+  <Accordion title="Configuration validation errors">
+    ```bash
+    # Validate configuration
+    hercules config validate
+    
+    # Show detailed validation errors
+    hercules config validate --verbose
+    
+    # Check configuration schema
+    hercules config show
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Environment Variables"
+    icon="gear"
+    href="/api/environment-variables"
+  >
+    Complete environment variables reference
+  </Card>
+  <Card
+    title="CLI Options"
+    icon="terminal"
+    href="/api/cli-options"
+  >
+    Command-line interface reference
+  </Card>
+  <Card
+    title="Configuration Overview"
+    icon="settings"
+    href="/configuration/overview"
+  >
+    Learn about configuration methods and best practices
+  </Card>
+  <Card
+    title="Troubleshooting"
+    icon="wrench"
+    href="/community/troubleshooting"
+  >
+    Get help with configuration issues
+  </Card>
+</CardGroup>
+
+This comprehensive configuration reference helps you master TestZeus Hercules configuration management for any environment or use case! 🚀

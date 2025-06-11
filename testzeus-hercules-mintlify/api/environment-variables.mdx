@@ -1,0 +1,417 @@
+---
+title: "Environment Variables API"
+description: "Complete reference for all environment variables supported by TestZeus Hercules"
+---
+
+# Environment Variables API
+
+This page provides a comprehensive reference for all environment variables supported by TestZeus Hercules, organized by category and functionality.
+
+## LLM Configuration
+
+### OpenAI Configuration
+
+```bash
+# OpenAI API settings
+OPENAI_API_KEY=your_openai_api_key_here
+OPENAI_MODEL=gpt-4o  # Default model
+OPENAI_BASE_URL=https://api.openai.com/v1  # Custom endpoint
+OPENAI_TIMEOUT=60  # Request timeout in seconds
+OPENAI_MAX_RETRIES=3  # Maximum retry attempts
+```
+
+### Anthropic Configuration
+
+```bash
+# Anthropic Claude settings
+ANTHROPIC_API_KEY=your_anthropic_api_key_here
+ANTHROPIC_MODEL=claude-3-5-sonnet-20241022  # Default model
+ANTHROPIC_BASE_URL=https://api.anthropic.com  # Custom endpoint
+ANTHROPIC_TIMEOUT=60  # Request timeout in seconds
+ANTHROPIC_MAX_RETRIES=3  # Maximum retry attempts
+```
+
+### Groq Configuration
+
+```bash
+# Groq API settings
+GROQ_API_KEY=your_groq_api_key_here
+GROQ_MODEL=llama-3.1-70b-versatile  # Default model
+GROQ_BASE_URL=https://api.groq.com/openai/v1  # API endpoint
+GROQ_TIMEOUT=30  # Request timeout in seconds
+GROQ_MAX_RETRIES=3  # Maximum retry attempts
+```
+
+### Mistral Configuration
+
+```bash
+# Mistral AI settings
+MISTRAL_API_KEY=your_mistral_api_key_here
+MISTRAL_MODEL=mistral-large-latest  # Default model
+MISTRAL_BASE_URL=https://api.mistral.ai/v1  # API endpoint
+MISTRAL_TIMEOUT=60  # Request timeout in seconds
+MISTRAL_MAX_RETRIES=3  # Maximum retry attempts
+```
+
+### Azure OpenAI Configuration
+
+```bash
+# Azure OpenAI settings
+AZURE_OPENAI_API_KEY=your_azure_openai_key_here
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+AZURE_OPENAI_API_VERSION=2024-02-15-preview
+AZURE_OPENAI_DEPLOYMENT_NAME=your_deployment_name
+AZURE_OPENAI_MODEL=gpt-4o  # Model name
+```
+
+### Google AI Configuration
+
+```bash
+# Google AI (Gemini) settings
+GOOGLE_API_KEY=your_google_ai_key_here
+GOOGLE_MODEL=gemini-1.5-pro  # Default model
+GOOGLE_BASE_URL=https://generativelanguage.googleapis.com/v1beta
+GOOGLE_TIMEOUT=60  # Request timeout in seconds
+GOOGLE_MAX_RETRIES=3  # Maximum retry attempts
+```
+
+## Browser Configuration
+
+### Browser Selection
+
+```bash
+# Browser engine selection
+BROWSER=chrome  # Options: chrome, firefox, safari, edge
+BROWSER_MODE=normal  # Options: normal, headless, headed
+BROWSER_BINARY_PATH=/path/to/browser/binary  # Custom browser path
+```
+
+### Browser Behavior
+
+```bash
+# Browser behavior settings
+HEADLESS=false  # Run browser in headless mode
+BROWSER_WIDTH=1920  # Browser window width
+BROWSER_HEIGHT=1080  # Browser window height
+BROWSER_TIMEOUT=30000  # Page load timeout in milliseconds
+BROWSER_WAIT_TIMEOUT=10000  # Element wait timeout in milliseconds
+```
+
+### Browser Features
+
+```bash
+# Browser feature toggles
+DISABLE_IMAGES=false  # Disable image loading
+DISABLE_JAVASCRIPT=false  # Disable JavaScript execution
+DISABLE_CSS=false  # Disable CSS loading
+DISABLE_PLUGINS=true  # Disable browser plugins
+DISABLE_EXTENSIONS=true  # Disable browser extensions
+```
+
+### Browser Security
+
+```bash
+# Security and privacy settings
+DISABLE_WEB_SECURITY=false  # Disable web security (for testing)
+IGNORE_CERTIFICATE_ERRORS=false  # Ignore SSL certificate errors
+DISABLE_FEATURES=VizDisplayCompositor  # Disable specific browser features
+USER_AGENT=custom_user_agent_string  # Custom user agent
+```
+
+## Test Execution
+
+### Test Configuration
+
+```bash
+# Test execution settings
+TEST_TIMEOUT=300  # Test timeout in seconds
+MAX_RETRIES=3  # Maximum test retry attempts
+RETRY_DELAY=5  # Delay between retries in seconds
+PARALLEL_TESTS=1  # Number of parallel test executions
+```
+
+### Test Data
+
+```bash
+# Test data configuration
+TEST_DATA_PATH=./test_data  # Path to test data files
+TEST_RESULTS_PATH=./test_results  # Path to store test results
+SCREENSHOT_PATH=./screenshots  # Path to store screenshots
+VIDEO_PATH=./videos  # Path to store test videos
+```
+
+### Test Behavior
+
+```bash
+# Test execution behavior
+CONTINUE_ON_FAILURE=false  # Continue test execution on failure
+TAKE_SCREENSHOT_ON_FAILURE=true  # Take screenshot on test failure
+RECORD_VIDEO=false  # Record video of test execution
+SAVE_TRACE=false  # Save browser trace for debugging
+```
+
+## Logging and Debugging
+
+### Log Configuration
+
+```bash
+# Logging settings
+LOG_LEVEL=INFO  # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
+LOG_FORMAT=detailed  # Options: simple, detailed, json
+LOG_FILE=hercules.log  # Log file path
+LOG_ROTATION=true  # Enable log file rotation
+LOG_MAX_SIZE=10MB  # Maximum log file size
+LOG_BACKUP_COUNT=5  # Number of backup log files
+```
+
+### Debug Settings
+
+```bash
+# Debug configuration
+DEBUG=false  # Enable debug mode
+VERBOSE=false  # Enable verbose output
+TRACE_ENABLED=false  # Enable execution tracing
+PERFORMANCE_MONITORING=false  # Enable performance monitoring
+MEMORY_PROFILING=false  # Enable memory profiling
+```
+
+### Development Settings
+
+```bash
+# Development and testing
+DEV_MODE=false  # Enable development mode
+MOCK_RESPONSES=false  # Use mock responses for testing
+CACHE_ENABLED=true  # Enable response caching
+CACHE_TTL=3600  # Cache time-to-live in seconds
+```
+
+## Network Configuration
+
+### Proxy Settings
+
+```bash
+# Proxy configuration
+HTTP_PROXY=http://proxy.example.com:8080
+HTTPS_PROXY=https://proxy.example.com:8080
+NO_PROXY=localhost,127.0.0.1,.local
+PROXY_USERNAME=proxy_user
+PROXY_PASSWORD=proxy_password
+```
+
+### Network Behavior
+
+```bash
+# Network settings
+NETWORK_TIMEOUT=30  # Network request timeout in seconds
+MAX_CONNECTIONS=10  # Maximum concurrent connections
+CONNECTION_POOL_SIZE=5  # Connection pool size
+RETRY_ON_NETWORK_ERROR=true  # Retry on network errors
+```
+
+### Rate Limiting
+
+```bash
+# Rate limiting configuration
+RATE_LIMIT_ENABLED=false  # Enable rate limiting
+REQUESTS_PER_SECOND=10  # Maximum requests per second
+BURST_SIZE=20  # Maximum burst size
+RATE_LIMIT_DELAY=1  # Delay when rate limit exceeded
+```
+
+## Security Configuration
+
+### API Security
+
+```bash
+# API security settings
+API_KEY_ROTATION=false  # Enable API key rotation
+API_KEY_EXPIRY_DAYS=90  # API key expiry in days
+ENCRYPT_API_KEYS=true  # Encrypt stored API keys
+SECURE_STORAGE=true  # Use secure storage for sensitive data
+```
+
+### Test Security
+
+```bash
+# Test security settings
+SANITIZE_LOGS=true  # Remove sensitive data from logs
+MASK_CREDENTIALS=true  # Mask credentials in output
+SECURE_SCREENSHOTS=false  # Blur sensitive areas in screenshots
+DATA_RETENTION_DAYS=30  # Data retention period
+```
+
+## Performance Configuration
+
+### Memory Management
+
+```bash
+# Memory settings
+MAX_MEMORY_USAGE=2GB  # Maximum memory usage
+MEMORY_CLEANUP_INTERVAL=300  # Memory cleanup interval in seconds
+GARBAGE_COLLECTION=auto  # Garbage collection strategy
+MEMORY_MONITORING=false  # Enable memory monitoring
+```
+
+### Performance Optimization
+
+```bash
+# Performance settings
+ENABLE_CACHING=true  # Enable response caching
+CACHE_SIZE=100MB  # Maximum cache size
+PRELOAD_RESOURCES=false  # Preload common resources
+OPTIMIZE_IMAGES=true  # Optimize image loading
+COMPRESS_RESPONSES=true  # Compress API responses
+```
+
+### Concurrency
+
+```bash
+# Concurrency settings
+MAX_WORKERS=4  # Maximum worker threads
+THREAD_POOL_SIZE=10  # Thread pool size
+ASYNC_ENABLED=true  # Enable asynchronous execution
+QUEUE_SIZE=100  # Task queue size
+```
+
+## Integration Configuration
+
+### CI/CD Integration
+
+```bash
+# CI/CD settings
+CI_MODE=false  # Enable CI/CD mode
+BUILD_ID=build_123  # Build identifier
+PIPELINE_ID=pipeline_456  # Pipeline identifier
+ARTIFACT_PATH=./artifacts  # Path to store artifacts
+```
+
+### Reporting Integration
+
+```bash
+# Reporting settings
+REPORT_FORMAT=html  # Options: html, json, xml, junit
+REPORT_PATH=./reports  # Path to store reports
+INCLUDE_SCREENSHOTS=true  # Include screenshots in reports
+INCLUDE_LOGS=true  # Include logs in reports
+REPORT_TEMPLATE=default  # Report template to use
+```
+
+### External Tool Integration
+
+```bash
+# External tool integration
+SLACK_WEBHOOK_URL=https://hooks.slack.com/...  # Slack notifications
+JIRA_API_URL=https://company.atlassian.net  # JIRA integration
+JIRA_USERNAME=jira_user  # JIRA username
+JIRA_API_TOKEN=jira_token  # JIRA API token
+```
+
+## Mobile Testing Configuration
+
+### Device Configuration
+
+```bash
+# Mobile device settings
+MOBILE_DEVICE=iPhone 14 Pro  # Device to simulate
+MOBILE_PLATFORM=iOS  # Platform: iOS, Android
+MOBILE_VERSION=16.0  # OS version
+MOBILE_ORIENTATION=portrait  # Options: portrait, landscape
+```
+
+### Mobile Network
+
+```bash
+# Mobile network simulation
+MOBILE_NETWORK=4G  # Network type: 3G, 4G, 5G, WiFi
+NETWORK_THROTTLING=false  # Enable network throttling
+NETWORK_LATENCY=100  # Network latency in milliseconds
+NETWORK_DOWNLOAD_SPEED=1000  # Download speed in kbps
+NETWORK_UPLOAD_SPEED=500  # Upload speed in kbps
+```
+
+## Environment-Specific Settings
+
+### Development Environment
+
+```bash
+# Development environment
+NODE_ENV=development
+ENVIRONMENT=dev
+DEBUG_MODE=true
+HOT_RELOAD=true
+SOURCE_MAPS=true
+```
+
+### Staging Environment
+
+```bash
+# Staging environment
+NODE_ENV=staging
+ENVIRONMENT=staging
+DEBUG_MODE=false
+PERFORMANCE_MONITORING=true
+ERROR_REPORTING=true
+```
+
+### Production Environment
+
+```bash
+# Production environment
+NODE_ENV=production
+ENVIRONMENT=production
+DEBUG_MODE=false
+LOGGING_LEVEL=WARNING
+SECURITY_ENHANCED=true
+```
+
+## Configuration Validation
+
+### Required Variables
+
+The following environment variables are required for basic operation:
+
+- At least one LLM provider API key (OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.)
+- BROWSER (defaults to 'chrome' if not specified)
+
+### Optional Variables
+
+All other environment variables are optional and have sensible defaults.
+
+### Validation Rules
+
+```bash
+# Environment validation
+VALIDATE_CONFIG=true  # Enable configuration validation
+STRICT_VALIDATION=false  # Enable strict validation mode
+CONFIG_SCHEMA_PATH=./config/schema.json  # Configuration schema
+```
+
+## Best Practices
+
+### Security Best Practices
+
+1. **Never commit API keys** to version control
+2. **Use environment files** for local development
+3. **Rotate API keys** regularly in production
+4. **Encrypt sensitive data** at rest
+
+### Performance Best Practices
+
+1. **Set appropriate timeouts** for your use case
+2. **Enable caching** for repeated operations
+3. **Monitor memory usage** in long-running tests
+4. **Use headless mode** for faster execution
+
+### Configuration Management
+
+1. **Use configuration files** for complex setups
+2. **Document custom variables** in your project
+3. **Validate configuration** before test execution
+4. **Use environment-specific configs** for different stages
+
+## Related Documentation
+
+- [Configuration Overview](/configuration/overview)
+- [LLM Setup Guide](/configuration/llm-setup)
+- [CLI Options](/api/cli-options)
+- [Configuration Files](/api/configuration-files)

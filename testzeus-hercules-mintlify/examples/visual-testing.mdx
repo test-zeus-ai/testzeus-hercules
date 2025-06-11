@@ -1,0 +1,627 @@
+---
+title: 'Visual Testing Examples'
+description: 'Comprehensive visual testing and validation examples using TestZeus Hercules'
+---
+
+## Overview
+
+TestZeus Hercules provides powerful visual testing capabilities to ensure your applications look correct across different browsers, devices, and screen sizes. Detect visual regressions, validate UI consistency, and maintain design standards.
+
+## Screenshot Comparison Testing
+
+### Basic Visual Regression Testing
+
+```gherkin
+Feature: Visual Regression Testing
+
+  Scenario: Capture baseline screenshots
+    Given I am on the homepage
+    When I capture a screenshot as "homepage_baseline"
+    Then the screenshot should be saved for future comparison
+    And the baseline should be established for visual testing
+    And the image should be stored in the visual test repository
+
+  Scenario: Compare current state with baseline
+    Given I have a baseline screenshot for the homepage
+    When I navigate to the homepage
+    And I capture a screenshot as "homepage_current"
+    And I compare it with the baseline
+    Then the visual difference should be within acceptable threshold
+    And any differences should be highlighted
+    And a comparison report should be generated
+
+  Scenario: Detect visual regressions
+    Given I have baseline screenshots for key pages
+    When I run visual regression tests after code changes
+    Then any visual changes should be detected
+    And differences should be categorized by severity
+    And regression reports should be generated
+    And failing tests should block deployment if configured
+```
+
+### Cross-Browser Visual Testing
+
+```gherkin
+Feature: Cross-Browser Visual Consistency
+
+  Scenario Outline: Test visual consistency across browsers
+    Given I am using "<browser>"
+    When I navigate to the product page
+    And I capture a screenshot
+    Then the layout should be consistent with other browsers
+    And all elements should be properly positioned
+    And fonts and colors should render correctly
+    And no browser-specific visual issues should be present
+
+    Examples:
+      | browser  |
+      | Chrome   |
+      | Firefox  |
+      | Safari   |
+      | Edge     |
+
+  Scenario: Compare browser-specific rendering
+    Given I have screenshots from all supported browsers
+    When I compare the visual output
+    Then critical differences should be identified
+    And browser-specific issues should be documented
+    And acceptable variations should be noted
+    And remediation should be prioritized
+```
+
+## Responsive Design Testing
+
+### Multi-Device Visual Testing
+
+```gherkin
+Feature: Responsive Design Visual Testing
+
+  Scenario Outline: Test responsive layout at different screen sizes
+    Given I set the viewport to "<width>x<height>"
+    When I navigate to the homepage
+    And I capture a screenshot
+    Then the layout should be optimized for "<device_type>"
+    And all content should be visible and accessible
+    And navigation should be appropriate for the screen size
+    And no horizontal scrolling should be required
+
+    Examples:
+      | width | height | device_type |
+      | 320   | 568    | mobile      |
+      | 768   | 1024   | tablet      |
+      | 1024  | 768    | tablet_landscape |
+      | 1920  | 1080   | desktop     |
+      | 2560  | 1440   | large_desktop |
+
+  Scenario: Test responsive breakpoints
+    Given I am on a responsive page
+    When I gradually resize the browser from 320px to 1920px width
+    Then layout changes should occur at defined breakpoints
+    And each breakpoint should provide optimal user experience
+    And content should remain accessible at all sizes
+    And no layout should break between breakpoints
+
+  Scenario: Test orientation changes
+    Given I am testing on a tablet device
+    When I rotate from portrait to landscape orientation
+    Then the layout should adapt appropriately
+    And all content should remain visible and functional
+    And navigation should adjust to the new orientation
+    And the user experience should be optimized for both orientations
+```
+
+## Component-Level Visual Testing
+
+### UI Component Consistency
+
+```gherkin
+Feature: UI Component Visual Testing
+
+  Scenario: Test button component variations
+    Given I have different button styles on the page
+    When I capture screenshots of each button type:
+      | Button Type | State    |
+      | Primary     | Default  |
+      | Primary     | Hover    |
+      | Primary     | Disabled |
+      | Secondary   | Default  |
+      | Secondary   | Hover    |
+      | Secondary   | Disabled |
+    Then all buttons should match the design system
+    And hover states should be visually distinct
+    And disabled states should be clearly indicated
+    And button styles should be consistent across the application
+
+  Scenario: Test form component styling
+    Given I am on a page with form elements
+    When I capture screenshots of form components
+    Then input fields should have consistent styling
+    And labels should be properly aligned
+    And error states should be visually clear
+    And focus states should be clearly visible
+    And form layout should be clean and organized
+
+  Scenario: Test card component layout
+    Given I have a page with card components
+    When I test cards with different content lengths
+    Then cards should maintain consistent structure
+    And content should be properly contained
+    And spacing should be uniform
+    And cards should align properly in grids
+    And overflow should be handled gracefully
+```
+
+### Icon and Image Testing
+
+```gherkin
+Feature: Icon and Image Visual Testing
+
+  Scenario: Test icon consistency
+    Given I have icons throughout the application
+    When I examine icon usage
+    Then all icons should be from the same icon set
+    And icon sizes should be consistent within contexts
+    And icon colors should match the design system
+    And icons should be properly aligned with text
+    And icon meanings should be clear and intuitive
+
+  Scenario: Test image loading and display
+    Given I have pages with images
+    When I test image loading behavior
+    Then images should load without layout shift
+    And placeholder states should be visually appropriate
+    And image aspect ratios should be maintained
+    And images should be optimized for different screen densities
+    And alt text should be provided for accessibility
+
+  Scenario: Test image gallery functionality
+    Given I have an image gallery
+    When I interact with the gallery
+    Then thumbnails should be clearly visible
+    And full-size images should display correctly
+    And navigation controls should be intuitive
+    And loading states should be smooth
+    And the gallery should work on all device sizes
+```
+
+## Animation and Transition Testing
+
+### CSS Animation Testing
+
+```gherkin
+Feature: Animation Visual Testing
+
+  Scenario: Test loading animations
+    Given I have loading animations in the application
+    When I trigger loading states
+    Then animations should be smooth and performant
+    And loading indicators should be clearly visible
+    And animations should not interfere with usability
+    And performance should remain acceptable during animations
+
+  Scenario: Test hover and interaction animations
+    Given I have interactive elements with animations
+    When I hover over or interact with elements
+    Then transitions should be smooth and responsive
+    And animation timing should feel natural
+    And animations should enhance the user experience
+    And no animations should cause accessibility issues
+
+  Scenario: Test page transition animations
+    Given I navigate between pages with transitions
+    When page transitions occur
+    Then transitions should be smooth and consistent
+    And content should load appropriately during transitions
+    And users should understand the navigation flow
+    And transitions should not cause disorientation
+```
+
+### Motion and Accessibility
+
+```gherkin
+Feature: Motion Accessibility Testing
+
+  Scenario: Test reduced motion preferences
+    Given a user has enabled reduced motion preferences
+    When I view the application
+    Then animations should be reduced or disabled
+    And essential functionality should remain intact
+    And the user experience should still be pleasant
+    And motion-sensitive users should be accommodated
+
+  Scenario: Test animation performance
+    Given I have animations running on the page
+    When I monitor performance metrics
+    Then animations should maintain 60fps
+    And CPU usage should remain reasonable
+    And battery life should not be significantly impacted
+    And animations should not cause janky scrolling
+```
+
+## Color and Theme Testing
+
+### Color Scheme Validation
+
+```gherkin
+Feature: Color and Theme Testing
+
+  Scenario: Test dark mode implementation
+    Given the application supports dark mode
+    When I switch to dark mode
+    Then all colors should invert appropriately
+    And text should remain readable
+    And images and icons should adapt correctly
+    And the overall aesthetic should be pleasing
+    And no elements should become invisible
+
+  Scenario: Test high contrast mode
+    Given I enable high contrast mode
+    When I view the application
+    Then all content should remain visible
+    And contrast ratios should meet accessibility standards
+    And important elements should stand out clearly
+    And the interface should remain functional
+
+  Scenario: Test color consistency across pages
+    Given I navigate through different pages
+    When I examine color usage
+    Then colors should be consistent with the design system
+    And brand colors should be used appropriately
+    And color meanings should be consistent
+    And no unauthorized colors should be present
+```
+
+### Brand Compliance Testing
+
+```gherkin
+Feature: Brand Compliance Visual Testing
+
+  Scenario: Test logo usage and placement
+    Given I examine logo usage across the application
+    When I check logo implementation
+    Then logos should be placed consistently
+    And logo sizes should be appropriate for context
+    And logo quality should be high on all devices
+    And brand guidelines should be followed
+
+  Scenario: Test typography consistency
+    Given I examine text throughout the application
+    When I check typography implementation
+    Then font families should match brand guidelines
+    And font sizes should follow the type scale
+    And line heights should be consistent
+    And text hierarchy should be clear
+
+  Scenario: Test brand color usage
+    Given I examine color usage across the application
+    When I check brand color implementation
+    Then primary brand colors should be used correctly
+    And secondary colors should complement the brand
+    And color combinations should be on-brand
+    And color usage should be consistent
+```
+
+## Layout and Spacing Testing
+
+### Grid and Layout Testing
+
+```gherkin
+Feature: Layout Visual Testing
+
+  Scenario: Test grid system consistency
+    Given I have pages using a grid system
+    When I examine grid implementation
+    Then columns should align properly
+    And gutters should be consistent
+    And grid breakpoints should work correctly
+    And content should flow naturally within the grid
+
+  Scenario: Test spacing and padding consistency
+    Given I examine spacing throughout the application
+    When I check spacing implementation
+    Then spacing should follow a consistent scale
+    And padding should be uniform for similar elements
+    And margins should create appropriate separation
+    And white space should enhance readability
+
+  Scenario: Test content alignment
+    Given I have pages with various content types
+    When I check content alignment
+    Then text should be properly aligned
+    And images should align with surrounding content
+    And form elements should align consistently
+    And overall layout should feel balanced
+```
+
+### Print Styles Testing
+
+```gherkin
+Feature: Print Styles Testing
+
+  Scenario: Test print layout
+    Given I have a page that users might print
+    When I preview the print layout
+    Then content should be formatted appropriately for print
+    And unnecessary elements should be hidden
+    And page breaks should occur in logical places
+    And text should be readable in black and white
+
+  Scenario: Test print-specific styling
+    Given I have print-specific CSS rules
+    When I test print output
+    Then print styles should override screen styles appropriately
+    And colors should be print-friendly
+    And fonts should be suitable for printing
+    And layout should work within print margins
+```
+
+## Performance Visual Testing
+
+### Loading State Testing
+
+```gherkin
+Feature: Loading State Visual Testing
+
+  Scenario: Test skeleton loading states
+    Given I have pages with skeleton loading states
+    When content is loading
+    Then skeleton screens should match the final layout
+    And loading states should be visually appealing
+    And users should understand that content is loading
+    And the transition to loaded content should be smooth
+
+  Scenario: Test progressive image loading
+    Given I have pages with many images
+    When images are loading progressively
+    Then low-quality placeholders should load first
+    And image quality should improve progressively
+    And layout should not shift as images load
+    And the loading experience should feel fast
+
+  Scenario: Test lazy loading visual behavior
+    Given I have images that load lazily
+    When I scroll to reveal new images
+    Then images should load smoothly as they come into view
+    And placeholder states should be appropriate
+    And scrolling performance should remain smooth
+    And users should not notice loading delays
+```
+
+## Error State Visual Testing
+
+### Error Message Display
+
+```gherkin
+Feature: Error State Visual Testing
+
+  Scenario: Test form validation error display
+    Given I have a form with validation
+    When validation errors occur
+    Then error messages should be clearly visible
+    And error styling should be consistent
+    And errors should be associated with the correct fields
+    And the overall form layout should remain intact
+
+  Scenario: Test page-level error states
+    Given I encounter page-level errors
+    When error pages are displayed
+    Then error pages should match the site design
+    And error messages should be helpful and clear
+    And navigation should remain available
+    And the error state should not break the layout
+
+  Scenario: Test network error handling
+    Given I simulate network connectivity issues
+    When network errors occur
+    Then offline states should be visually clear
+    And users should understand what happened
+    And recovery options should be presented
+    And the interface should degrade gracefully
+```
+
+## Accessibility Visual Testing
+
+### Focus State Testing
+
+```gherkin
+Feature: Focus State Visual Testing
+
+  Scenario: Test keyboard focus indicators
+    Given I navigate using only the keyboard
+    When I tab through interactive elements
+    Then focus indicators should be clearly visible
+    And focus styles should be consistent
+    And focus should never be lost or hidden
+    And focus indicators should meet contrast requirements
+
+  Scenario: Test focus management in modals
+    Given I open a modal dialog
+    When I interact with the modal using keyboard
+    Then focus should be trapped within the modal
+    And the first focusable element should receive focus
+    And focus should return to the trigger when modal closes
+    And focus indicators should work properly in modals
+```
+
+## Advanced Visual Testing
+
+### Dynamic Content Testing
+
+```gherkin
+Feature: Dynamic Content Visual Testing
+
+  Scenario: Test content that changes based on user data
+    Given I have personalized content on the page
+    When content updates based on user preferences
+    Then layout should accommodate different content lengths
+    And personalized elements should integrate seamlessly
+    And the overall design should remain cohesive
+    And no layout breaks should occur with dynamic content
+
+  Scenario: Test real-time content updates
+    Given I have content that updates in real-time
+    When new content appears
+    Then updates should be visually smooth
+    And new content should integrate well with existing layout
+    And users should notice updates without being distracted
+    And performance should remain good during updates
+
+  Scenario: Test A/B test variations
+    Given I have A/B test variations running
+    When different variations are displayed
+    Then each variation should be visually consistent
+    And variations should maintain brand standards
+    And layout should work for all variations
+    And visual quality should be maintained across tests
+```
+
+### Multi-Language Visual Testing
+
+```gherkin
+Feature: Multi-Language Visual Testing
+
+  Scenario: Test text expansion in different languages
+    Given I have content in multiple languages
+    When I switch between languages
+    Then layout should accommodate longer text
+    And text should not overflow containers
+    And spacing should remain appropriate
+    And the design should work for all supported languages
+
+  Scenario: Test right-to-left language support
+    Given I have content in RTL languages
+    When I view RTL content
+    Then layout should mirror appropriately
+    And text alignment should be correct
+    And icons and images should flip when appropriate
+    And the overall design should feel natural in RTL
+
+  Scenario: Test font rendering across languages
+    Given I have content in different scripts
+    When I view content in various languages
+    Then fonts should render correctly for each script
+    And character spacing should be appropriate
+    And line heights should work for all languages
+    And text should be readable and well-formatted
+```
+
+## Visual Testing Tools Integration
+
+### Automated Visual Testing
+
+```gherkin
+Feature: Automated Visual Testing Integration
+
+  Scenario: Run visual regression tests in CI/CD
+    Given visual tests are integrated in the pipeline
+    When code changes are deployed
+    Then visual regression tests should run automatically
+    And any visual changes should be detected
+    And test results should be reported clearly
+    And deployment should be blocked if critical visual issues are found
+
+  Scenario: Test visual changes across environments
+    Given I have multiple deployment environments
+    When I compare visual output across environments
+    Then staging should match production visually
+    And environment-specific differences should be documented
+    And visual consistency should be maintained
+    And any discrepancies should be investigated
+
+  Scenario: Generate visual test reports
+    Given visual tests have been executed
+    When test reports are generated
+    Then reports should show before/after comparisons
+    And differences should be highlighted clearly
+    And test coverage should be documented
+    And trends should be tracked over time
+```
+
+## Best Practices for Visual Testing
+
+### Test Strategy
+
+1. **Baseline Management**: Maintain clean, up-to-date baselines
+2. **Test Coverage**: Cover critical user journeys and components
+3. **Environment Consistency**: Ensure consistent test environments
+4. **Threshold Tuning**: Set appropriate difference thresholds
+5. **Regular Maintenance**: Update tests as designs evolve
+
+### Visual Test Data
+
+1. **Realistic Content**: Use realistic text and image content
+2. **Edge Cases**: Test with long text, empty states, error conditions
+3. **User Scenarios**: Test with different user roles and permissions
+4. **Device Coverage**: Test across representative devices and browsers
+5. **Performance Impact**: Consider the performance impact of visual tests
+
+### Integration Considerations
+
+1. **CI/CD Integration**: Automate visual testing in deployment pipelines
+2. **Review Process**: Establish clear processes for reviewing visual changes
+3. **Team Collaboration**: Enable designers and developers to collaborate on visual tests
+4. **Documentation**: Document visual standards and testing procedures
+5. **Tool Selection**: Choose appropriate tools for your team's needs
+
+## Integration with TestZeus Hercules
+
+### Visual Testing Configuration
+
+```bash
+# Enable visual testing
+export ENABLE_VISUAL_TESTING="true"
+export VISUAL_THRESHOLD="0.1"
+
+# Configure screenshot settings
+export SCREENSHOT_MODE="fullPage"
+export SCREENSHOT_QUALITY="90"
+
+# Set baseline directory
+export VISUAL_BASELINE_DIR="visual_baselines"
+
+# Run visual tests
+hercules visual_tests.feature
+```
+
+### Custom Visual Testing
+
+```gherkin
+Feature: Custom Visual Testing
+
+  Scenario: Test with custom visual rules
+    Given I have custom visual testing requirements
+    When I run visual tests
+    Then custom comparison rules should be applied
+    And organization-specific standards should be verified
+    And visual quality should meet requirements
+    And results should guide design decisions
+
+  Scenario: Test visual accessibility
+    Given I test visual accessibility compliance
+    When I check color contrast and visual elements
+    Then accessibility standards should be met
+    And visual barriers should be identified
+    And remediation guidance should be provided
+    And compliance should be documented
+```
+
+## Next Steps
+
+After mastering visual testing:
+
+<CardGroup cols={2}>
+  <Card title="Mobile Testing" icon="mobile" href="/examples/mobile-automation">
+    Learn mobile application testing strategies
+  </Card>
+  <Card title="Performance Testing" icon="gauge" href="/examples/performance-testing">
+    Explore performance and load testing
+  </Card>
+  <Card title="API Testing" icon="plug" href="/examples/api-testing">
+    Test REST APIs and web services
+  </Card>
+  <Card title="Architecture" icon="sitemap" href="/architecture/overview">
+    Understand the system architecture
+  </Card>
+</CardGroup>
+
+Ready to ensure your applications look perfect? Join our [Slack community](https://join.slack.com/t/testzeuscommunityhq/shared_invite/zt-2v2br8wog-FAmo_76xRHx~k~1oNaGQ0Q) to share visual testing strategies and get help with complex visual validation scenarios!

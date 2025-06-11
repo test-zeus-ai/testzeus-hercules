@@ -1,0 +1,518 @@
+---
+title: 'Project Structure'
+description: 'Organize your TestZeus Hercules test projects for maximum efficiency'
+---
+
+## Overview
+
+TestZeus Hercules supports flexible project structures to accommodate different testing scenarios, from simple single tests to complex enterprise test suites. Understanding the recommended structure helps organize tests, data, and results effectively.
+
+## Basic Project Structure
+
+### Minimal Setup
+
+For simple testing scenarios:
+
+```
+my-test-project/
+├── test.feature              # Single test file
+├── .env                      # Environment configuration
+└── results/                  # Generated results (auto-created)
+    ├── screenshots/
+    ├── logs/
+    └── reports/
+```
+
+### Recommended Structure
+
+For organized test projects:
+
+```
+my-test-project/
+├── tests/                    # Test files directory
+│   ├── ui/                   # UI automation tests
+│   │   ├── login.feature
+│   │   ├── navigation.feature
+│   │   └── forms.feature
+│   ├── api/                  # API testing
+│   │   ├── users.feature
+│   │   ├── products.feature
+│   │   └── orders.feature
+│   ├── security/             # Security tests
+│   │   ├── authentication.feature
+│   │   ├── authorization.feature
+│   │   └── vulnerabilities.feature
+│   └── accessibility/        # Accessibility tests
+│       ├── wcag.feature
+│       └── screen-reader.feature
+├── test_data/               # Test data files
+│   ├── users.json
+│   ├── products.csv
+│   └── test_images/
+├── config/                  # Configuration files
+│   ├── .env
+│   ├── config.json
+│   └── browsers.json
+├── results/                 # Test results (auto-created)
+│   ├── screenshots/
+│   ├── videos/
+│   ├── logs/
+│   ├── reports/
+│   └── traces/
+├── custom_tools/           # Custom tool implementations
+│   ├── __init__.py
+│   ├── custom_validator.py
+│   └── data_helpers.py
+└── README.md               # Project documentation
+```
+
+## Test Organization Patterns
+
+### By Application Module
+
+Organize tests by application features:
+
+```
+tests/
+├── user_management/
+│   ├── registration.feature
+│   ├── login.feature
+│   ├── profile.feature
+│   └── password_reset.feature
+├── e_commerce/
+│   ├── product_catalog.feature
+│   ├── shopping_cart.feature
+│   ├── checkout.feature
+│   └── payment.feature
+├── admin_panel/
+│   ├── user_admin.feature
+│   ├── content_management.feature
+│   └── system_settings.feature
+└── reporting/
+    ├── sales_reports.feature
+    ├── user_analytics.feature
+    └── system_metrics.feature
+```
+
+### By Test Type
+
+Organize tests by testing methodology:
+
+```
+tests/
+├── smoke/                  # Quick validation tests
+│   ├── critical_paths.feature
+│   └── health_checks.feature
+├── regression/             # Full regression suite
+│   ├── ui_regression.feature
+│   ├── api_regression.feature
+│   └── integration_regression.feature
+├── performance/            # Performance tests
+│   ├── load_testing.feature
+│   ├── stress_testing.feature
+│   └── endurance_testing.feature
+├── security/              # Security validation
+│   ├── authentication.feature
+│   ├── authorization.feature
+│   ├── input_validation.feature
+│   └── sql_injection.feature
+└── accessibility/         # Accessibility compliance
+    ├── keyboard_navigation.feature
+    ├── screen_reader.feature
+    └── color_contrast.feature
+```
+
+### By Environment
+
+Organize tests by target environment:
+
+```
+tests/
+├── local/                 # Local development tests
+│   ├── unit_integration.feature
+│   └── dev_smoke.feature
+├── staging/               # Staging environment tests
+│   ├── staging_regression.feature
+│   ├── integration_tests.feature
+│   └── user_acceptance.feature
+├── production/            # Production validation
+│   ├── prod_smoke.feature
+│   ├── monitoring.feature
+│   └── health_checks.feature
+└── cross_environment/     # Tests that run across environments
+    ├── data_consistency.feature
+    └── configuration_validation.feature
+```
+
+## Execution Modes
+
+### Single Test Mode
+
+Run individual test files:
+
+```bash
+# Run a specific test file
+hercules tests/ui/login.feature
+
+# Run with custom configuration
+hercules --config config/staging.json tests/api/users.feature
+
+# Run with environment override
+HEADLESS=false hercules tests/ui/forms.feature
+```
+
+### Bulk Test Mode
+
+Run multiple tests or entire directories:
+
+```bash
+# Run all tests in a directory
+hercules tests/ui/
+
+# Run all tests in the project
+hercules tests/
+
+# Run tests matching a pattern
+hercules tests/**/*smoke*.feature
+
+# Run with parallel execution
+PARALLEL_TESTS=4 hercules tests/
+```
+
+### Selective Execution
+
+Run tests based on tags or conditions:
+
+```bash
+# Run tests with specific tags (if supported)
+hercules --tags @smoke tests/
+
+# Run tests excluding certain patterns
+hercules --exclude "*performance*" tests/
+
+# Run tests for specific environment
+hercules --env staging tests/
+```
+
+## Configuration Management
+
+### Environment-Specific Configuration
+
+Create separate configuration files for different environments:
+
+```
+config/
+├── .env.local              # Local development
+├── .env.staging            # Staging environment
+├── .env.production         # Production environment
+├── browsers.local.json     # Local browser config
+├── browsers.ci.json        # CI browser config
+└── llm.config.json         # LLM configuration
+```
+
+**Local Development (.env.local):**
+```bash
+DEBUG=true
+HEADLESS=false
+BROWSER_TYPE=chromium
+SCREENSHOT_ON_FAILURE=true
+SCREENSHOT_ON_SUCCESS=true
+LOG_LEVEL=DEBUG
+```
+
+**Staging Environment (.env.staging):**
+```bash
+DEBUG=false
+HEADLESS=true
+BROWSER_TYPE=chromium
+SCREENSHOT_ON_FAILURE=true
+LOG_LEVEL=INFO
+API_BASE_URL=https://staging-api.example.com
+```
+
+**Production Environment (.env.production):**
+```bash
+DEBUG=false
+HEADLESS=true
+BROWSER_TYPE=chromium
+SCREENSHOT_ON_FAILURE=true
+LOG_LEVEL=WARNING
+API_BASE_URL=https://api.example.com
+```
+
+### Browser Configuration
+
+Create browser-specific configurations:
+
+```json browsers.json
+{
+  "local": {
+    "browser_type": "chromium",
+    "headless": false,
+    "viewport": {
+      "width": 1920,
+      "height": 1080
+    },
+    "args": ["--start-maximized"]
+  },
+  "ci": {
+    "browser_type": "chromium",
+    "headless": true,
+    "viewport": {
+      "width": 1280,
+      "height": 720
+    },
+    "args": [
+      "--no-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu"
+    ]
+  },
+  "mobile": {
+    "browser_type": "chromium",
+    "headless": true,
+    "device": "iPhone 12",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    }
+  }
+}
+```
+
+## Test Data Management
+
+### Data Organization
+
+Structure test data for easy maintenance:
+
+```
+test_data/
+├── users/                  # User-related data
+│   ├── valid_users.json
+│   ├── invalid_users.json
+│   └── admin_users.json
+├── products/               # Product data
+│   ├── electronics.csv
+│   ├── clothing.json
+│   └── books.xml
+├── forms/                  # Form test data
+│   ├── contact_forms.json
+│   ├── registration_data.csv
+│   └── survey_responses.json
+├── files/                  # File uploads
+│   ├── images/
+│   │   ├── test_image.jpg
+│   │   ├── large_image.png
+│   │   └── invalid_format.txt
+│   ├── documents/
+│   │   ├── test_document.pdf
+│   │   ├── spreadsheet.xlsx
+│   │   └── presentation.pptx
+│   └── media/
+│       ├── test_video.mp4
+│       └── test_audio.mp3
+└── configurations/         # Configuration data
+    ├── database_configs.json
+    ├── api_endpoints.json
+    └── environment_urls.json
+```
+
+### Data File Examples
+
+**User Data (users/valid_users.json):**
+```json
+{
+  "standard_user": {
+    "username": "testuser@example.com",
+    "password": "SecurePass123!",
+    "first_name": "Test",
+    "last_name": "User",
+    "role": "user"
+  },
+  "admin_user": {
+    "username": "admin@example.com",
+    "password": "AdminPass456!",
+    "first_name": "Admin",
+    "last_name": "User",
+    "role": "admin"
+  }
+}
+```
+
+**Product Data (products/electronics.csv):**
+```csv
+name,price,category,in_stock,description
+Laptop Pro,1299.99,Electronics,true,High-performance laptop
+Wireless Mouse,29.99,Electronics,true,Ergonomic wireless mouse
+Gaming Keyboard,89.99,Electronics,false,Mechanical gaming keyboard
+```
+
+## Results and Reporting
+
+### Results Directory Structure
+
+Hercules automatically creates a structured results directory:
+
+```
+results/
+├── test_results.html       # Main HTML report
+├── test_results.json       # JSON results data
+├── test_results.xml        # JUnit XML format
+├── screenshots/            # Test screenshots
+│   ├── login_success.png
+│   ├── form_validation_error.png
+│   └── checkout_complete.png
+├── videos/                 # Test execution videos
+│   ├── login_flow.webm
+│   └── checkout_process.webm
+├── logs/                   # Execution logs
+│   ├── hercules.log
+│   ├── browser.log
+│   └── api.log
+├── traces/                 # Browser traces
+│   ├── login_trace.zip
+│   └── checkout_trace.zip
+└── reports/               # Additional reports
+    ├── performance_report.json
+    ├── accessibility_report.json
+    └── security_report.json
+```
+
+### Custom Results Organization
+
+Organize results by test run or environment:
+
+```
+results/
+├── 2024-01-15_smoke_tests/
+│   ├── screenshots/
+│   ├── logs/
+│   └── test_results.html
+├── 2024-01-15_regression/
+│   ├── screenshots/
+│   ├── logs/
+│   └── test_results.html
+└── latest/                 # Symlink to most recent run
+    ├── screenshots/
+    ├── logs/
+    └── test_results.html
+```
+
+## Custom Tools and Extensions
+
+### Custom Tools Structure
+
+Extend Hercules with custom tools:
+
+```
+custom_tools/
+├── __init__.py
+├── validators/
+│   ├── __init__.py
+│   ├── custom_validator.py
+│   └── business_rules.py
+├── data_helpers/
+│   ├── __init__.py
+│   ├── database_helper.py
+│   ├── file_processor.py
+│   └── api_client.py
+├── integrations/
+│   ├── __init__.py
+│   ├── jira_integration.py
+│   ├── slack_notifier.py
+│   └── email_sender.py
+└── utilities/
+    ├── __init__.py
+    ├── date_utils.py
+    ├── string_utils.py
+    └── encryption_utils.py
+```
+
+**Custom Tool Example (custom_tools/validators/custom_validator.py):**
+```python
+def validate_email_format(email):
+    """Custom email validation tool."""
+    import re
+    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    return re.match(pattern, email) is not None
+
+def validate_phone_number(phone):
+    """Custom phone number validation."""
+    import re
+    pattern = r'^\+?1?[-.\s]?\(?[0-9]{3}\)?[-.\s]?[0-9]{3}[-.\s]?[0-9]{4}$'
+    return re.match(pattern, phone) is not None
+```
+
+## CI/CD Integration Structure
+
+### GitHub Actions Structure
+
+```
+.github/
+├── workflows/
+│   ├── smoke_tests.yml     # Quick validation
+│   ├── regression.yml      # Full test suite
+│   ├── security_scan.yml   # Security tests
+│   └── performance.yml     # Performance tests
+└── scripts/
+    ├── setup_test_env.sh
+    ├── run_tests.sh
+    └── upload_results.sh
+```
+
+### Docker Structure
+
+```
+docker/
+├── Dockerfile              # Custom Hercules image
+├── docker-compose.yml      # Multi-service setup
+├── docker-compose.ci.yml   # CI-specific setup
+└── scripts/
+    ├── entrypoint.sh
+    └── health_check.sh
+```
+
+## Best Practices
+
+### File Naming Conventions
+
+- Use descriptive, lowercase names with underscores
+- Group related tests with common prefixes
+- Include test type in filename when helpful
+
+```
+tests/
+├── ui_login_valid_credentials.feature
+├── ui_login_invalid_credentials.feature
+├── api_users_create_user.feature
+├── api_users_update_user.feature
+├── security_sql_injection.feature
+└── accessibility_keyboard_navigation.feature
+```
+
+### Directory Organization Tips
+
+1. **Keep related tests together** - Group by feature or functionality
+2. **Use consistent naming** - Establish and follow naming conventions
+3. **Separate test types** - Keep UI, API, and security tests organized
+4. **Environment separation** - Use different configs for different environments
+5. **Data isolation** - Keep test data separate from test logic
+
+### Scalability Considerations
+
+- **Modular structure** - Design for easy addition of new tests
+- **Shared resources** - Use common data and utilities across tests
+- **Parallel execution** - Structure tests to support parallel running
+- **Environment flexibility** - Design for multiple deployment targets
+
+## Next Steps
+
+After setting up your project structure:
+
+1. [Write your first test](/testing/writing-first-test)
+2. [Learn about running tests](/testing/running-tests)
+3. [Explore test data management](/testing/test-data)
+4. [Check out example test scenarios](/examples/ui-automation)
+
+Need help organizing your tests? Join our [Slack community](https://join.slack.com/t/testzeuscommunityhq/shared_invite/zt-2v2br8wog-FAmo_76xRHx~k~1oNaGQ0Q) for advice and best practices!

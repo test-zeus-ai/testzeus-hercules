@@ -1,0 +1,490 @@
+---
+title: 'Mobile Automation Examples'
+description: 'Comprehensive mobile testing and automation examples using TestZeus Hercules'
+---
+
+## Mobile Web Testing
+
+### Responsive Mobile Testing
+
+```gherkin
+Feature: Mobile Web Application Testing
+
+  Scenario: Test mobile navigation menu
+    Given I am viewing the application on a mobile device
+    When I am on the homepage
+    Then I should see a hamburger menu icon
+    When I tap the hamburger menu
+    Then the navigation menu should slide out smoothly
+    And all menu items should be easily tappable
+    And the menu should overlay the content appropriately
+
+  Scenario: Test mobile form interactions
+    Given I am on a registration form on mobile
+    When I interact with form fields
+    Then the virtual keyboard should appear appropriately
+    And form fields should remain visible when keyboard is open
+    And I should be able to scroll to see all fields
+    And form submission should work with mobile keyboards
+```
+
+### Touch Interactions
+
+```gherkin
+Feature: Mobile Touch Interactions
+
+  Scenario: Test touch target sizes
+    Given I am using the mobile interface
+    When I examine interactive elements
+    Then all touch targets should be at least 44x44 pixels
+    And there should be adequate spacing between touch targets
+    And buttons should be easy to tap without accidental touches
+    And touch feedback should be immediate and clear
+
+  Scenario: Test swipe gestures
+    Given I am on a page with swipeable content
+    When I perform swipe gestures:
+      | Direction | Expected Action        |
+      | Left      | Navigate to next item  |
+      | Right     | Navigate to previous   |
+      | Up        | Scroll content up      |
+      | Down      | Scroll content down    |
+    Then swipe gestures should be responsive
+    And swipe actions should provide visual feedback
+    And swipe boundaries should be clearly defined
+```
+
+### Mobile-Specific Features
+
+```gherkin
+Feature: Mobile-Specific Functionality
+
+  Scenario: Test device orientation changes
+    Given I am using the mobile application
+    When I rotate the device from portrait to landscape
+    Then the layout should adapt appropriately
+    And all content should remain accessible
+    And no functionality should be lost
+    And the transition should be smooth
+
+  Scenario: Test mobile input methods
+    Given I am on a form with different input types
+    When I interact with various input fields:
+      | Input Type | Expected Keyboard |
+      | email      | Email keyboard    |
+      | tel        | Numeric keypad    |
+      | url        | URL keyboard      |
+      | number     | Numeric keyboard  |
+      | date       | Date picker       |
+    Then the appropriate input method should appear
+    And input should be optimized for mobile entry
+```
+
+## Mobile Performance Testing
+
+### Loading Performance on Mobile
+
+```gherkin
+Feature: Mobile Performance Testing
+
+  Scenario: Test page load performance on mobile networks
+    Given I am testing on a mobile device with 3G connection
+    When I navigate to the homepage
+    Then the page should load within 5 seconds
+    And critical content should appear within 3 seconds
+    And the page should remain usable during loading
+    And loading indicators should provide clear feedback
+
+  Scenario: Test image optimization for mobile
+    Given I am viewing pages with images on mobile
+    When images load on the page
+    Then appropriate image sizes should be served for mobile
+    And images should be optimized for mobile bandwidth
+    And lazy loading should work effectively
+    And image quality should be acceptable on mobile screens
+
+  Scenario: Test mobile battery and resource usage
+    Given I am using the application extensively on mobile
+    When I monitor resource usage
+    Then CPU usage should be reasonable
+    And battery drain should not be excessive
+    And memory usage should be optimized
+    And the device should not overheat during normal use
+```
+
+### Mobile Network Conditions
+
+```gherkin
+Feature: Mobile Network Testing
+
+  Scenario: Test application behavior on slow networks
+    Given I am using the application on a slow mobile connection
+    When I perform common actions
+    Then the application should remain responsive
+    And appropriate loading states should be shown
+    And critical functionality should still work
+    And users should receive feedback about network status
+
+  Scenario: Test offline functionality
+    Given I am using the mobile application
+    When I lose network connectivity
+    Then I should see an appropriate offline message
+    And cached content should remain accessible
+    And the application should handle offline gracefully
+    When connectivity is restored
+    Then the application should sync data appropriately
+```
+
+## Mobile User Experience Testing
+
+### Mobile Navigation Patterns
+
+```gherkin
+Feature: Mobile Navigation UX
+
+  Scenario: Test bottom navigation bar
+    Given I am using a mobile app with bottom navigation
+    When I navigate between sections
+    Then the bottom navigation should remain accessible
+    And the current section should be clearly indicated
+    And navigation should be thumb-friendly
+    And transitions between sections should be smooth
+
+  Scenario: Test mobile search functionality
+    Given I am using mobile search
+    When I tap the search field
+    Then the search interface should expand appropriately
+    And the virtual keyboard should not obscure the search
+    And search suggestions should be easily tappable
+    And search results should be optimized for mobile viewing
+
+  Scenario: Test mobile modal and popup behavior
+    Given I encounter modals or popups on mobile
+    When modals appear
+    Then they should be appropriately sized for mobile screens
+    And close buttons should be easily tappable
+    And modals should not be cut off by screen boundaries
+    And background scrolling should be prevented when appropriate
+```
+
+### Mobile Content Consumption
+
+```gherkin
+Feature: Mobile Content Experience
+
+  Scenario: Test mobile reading experience
+    Given I am reading content on mobile
+    When I view articles or long-form content
+    Then text should be easily readable without zooming
+    And line length should be appropriate for mobile
+    And font sizes should be comfortable for mobile reading
+    And content should flow naturally on mobile screens
+
+  Scenario: Test mobile media consumption
+    Given I am viewing media content on mobile
+    When I interact with videos, images, or audio
+    Then media should be optimized for mobile viewing
+    And controls should be touch-friendly
+    And media should not exceed screen boundaries
+    And playback should work smoothly on mobile devices
+
+  Scenario: Test mobile table and data display
+    Given I am viewing data tables on mobile
+    When tables are displayed on small screens
+    Then tables should be responsive or horizontally scrollable
+    And important data should remain visible
+    And table interactions should work with touch
+    And data should be readable without excessive zooming
+```
+
+## Mobile Accessibility Testing
+
+### Mobile Screen Reader Testing
+
+```gherkin
+Feature: Mobile Accessibility
+
+  Scenario: Test mobile screen reader navigation
+    Given I am using a mobile screen reader
+    When I navigate through the application
+    Then all content should be accessible via swipe gestures
+    And screen reader announcements should be clear
+    And navigation should follow logical reading order
+    And interactive elements should be properly labeled
+
+  Scenario: Test mobile voice control
+    Given I am using voice control on mobile
+    When I attempt to control the application with voice commands
+    Then voice commands should be recognized accurately
+    And voice control should work for navigation
+    And form filling should be possible with voice input
+    And voice feedback should be appropriate
+```
+
+### Mobile Touch Accessibility
+
+```gherkin
+Feature: Mobile Touch Accessibility
+
+  Scenario: Test accessibility of touch gestures
+    Given I have motor impairments affecting touch precision
+    When I interact with the mobile interface
+    Then touch targets should be large enough for imprecise touches
+    And alternative interaction methods should be available
+    And accidental touches should be minimized
+    And touch feedback should be clear and immediate
+
+  Scenario: Test mobile accessibility features
+    Given I am using mobile accessibility features
+    When I enable features like larger text or high contrast
+    Then the application should adapt appropriately
+    And functionality should not be lost
+    And the interface should remain usable
+    And accessibility settings should be respected
+```
+
+## Cross-Platform Mobile Testing
+
+### iOS and Android Compatibility
+
+```gherkin
+Feature: Cross-Platform Mobile Testing
+
+  Scenario: Test iOS Safari mobile behavior
+    Given I am using iOS Safari
+    When I interact with the mobile web application
+    Then iOS-specific behaviors should work correctly
+    And touch interactions should feel native
+    And iOS keyboard behaviors should be handled properly
+    And iOS-specific UI elements should display correctly
+
+  Scenario: Test Android Chrome mobile behavior
+    Given I am using Android Chrome
+    When I interact with the mobile web application
+    Then Android-specific behaviors should work correctly
+    And Android keyboard variations should be supported
+    And Android back button behavior should be appropriate
+    And Android-specific features should be utilized when available
+
+  Scenario: Test mobile browser differences
+    Given I am testing across different mobile browsers
+    When I compare functionality across browsers
+    Then core functionality should work consistently
+    And browser-specific differences should be acceptable
+    And fallbacks should be provided for unsupported features
+    And the user experience should be comparable
+```
+
+### Mobile Device Testing
+
+```gherkin
+Feature: Mobile Device Compatibility
+
+  Scenario: Test on various mobile screen sizes
+    Given I am testing on different mobile devices
+    When I view the application on devices with different screen sizes:
+      | Device Type    | Screen Size | Resolution |
+      | Small Phone    | 4.7"        | 750x1334   |
+      | Standard Phone | 6.1"        | 828x1792   |
+      | Large Phone    | 6.7"        | 1284x2778  |
+      | Small Tablet   | 7.9"        | 1536x2048  |
+      | Large Tablet   | 12.9"       | 2048x2732  |
+    Then the layout should adapt appropriately to each screen size
+    And content should be readable and accessible
+    And touch targets should remain appropriately sized
+
+  Scenario: Test mobile hardware integration
+    Given I am testing mobile hardware features
+    When I use features that integrate with device hardware
+    Then camera integration should work for photo uploads
+    And GPS location should be accessible when permitted
+    And device sensors should be utilized appropriately
+    And hardware features should degrade gracefully when unavailable
+```
+
+## Mobile Security Testing
+
+### Mobile-Specific Security Concerns
+
+```gherkin
+Feature: Mobile Security Testing
+
+  Scenario: Test mobile authentication security
+    Given I am using mobile authentication
+    When I log in on a mobile device
+    Then biometric authentication should work when available
+    And mobile-specific authentication flows should be secure
+    And session management should be appropriate for mobile usage
+    And authentication should work across app backgrounding
+
+  Scenario: Test mobile data security
+    Given I am handling sensitive data on mobile
+    When data is transmitted or stored
+    Then data should be encrypted in transit
+    And local storage should be secure
+    And sensitive data should not be cached inappropriately
+    And mobile-specific security measures should be in place
+
+  Scenario: Test mobile app permissions
+    Given I am using features that require device permissions
+    When the application requests permissions
+    Then permission requests should be clear and justified
+    And the application should work gracefully without optional permissions
+    And sensitive permissions should be handled securely
+    And users should understand why permissions are needed
+```
+
+## Mobile Testing Automation
+
+### Automated Mobile Testing
+
+```gherkin
+Feature: Mobile Test Automation
+
+  Scenario: Automate mobile user journeys
+    Given I have critical mobile user journeys identified
+    When I run automated mobile tests
+    Then all critical paths should be tested automatically
+    And mobile-specific interactions should be validated
+    And tests should run reliably across different mobile configurations
+    And mobile test results should be clearly reported
+
+  Scenario: Test mobile application updates
+    Given I have a new version of the mobile application
+    When I test the update process
+    Then updates should install smoothly
+    And existing data should be preserved
+    And new features should work correctly
+    And the update should not break existing functionality
+
+  Scenario: Test mobile performance regression
+    Given I am monitoring mobile performance over time
+    When I run performance tests on mobile
+    Then performance should not regress with new releases
+    And mobile-specific performance metrics should be tracked
+    And performance issues should be detected early
+    And mobile performance should meet established benchmarks
+```
+
+## Mobile Analytics and Monitoring
+
+### Mobile Usage Analytics
+
+```gherkin
+Feature: Mobile Analytics Testing
+
+  Scenario: Test mobile analytics tracking
+    Given I have mobile analytics implemented
+    When users interact with the mobile application
+    Then mobile-specific events should be tracked accurately
+    And mobile user journeys should be captured
+    And mobile performance metrics should be recorded
+    And analytics should work across mobile browsers and devices
+
+  Scenario: Test mobile error tracking
+    Given I have error tracking for mobile users
+    When errors occur on mobile devices
+    Then mobile-specific errors should be captured
+    And error context should include mobile device information
+    And mobile errors should be prioritized appropriately
+    And mobile error patterns should be identifiable
+```
+
+## Mobile Progressive Web App (PWA) Testing
+
+### PWA Functionality
+
+```gherkin
+Feature: Progressive Web App Testing
+
+  Scenario: Test PWA installation
+    Given I am using a PWA-enabled mobile browser
+    When I visit the application
+    Then I should see an install prompt when appropriate
+    And the PWA should install correctly
+    And the installed PWA should behave like a native app
+    And PWA icons and metadata should display correctly
+
+  Scenario: Test PWA offline functionality
+    Given I have installed the PWA
+    When I use the application offline
+    Then cached content should be available
+    And offline functionality should work as expected
+    And the PWA should sync data when connectivity returns
+    And offline status should be clearly communicated
+
+  Scenario: Test PWA push notifications
+    Given I have enabled push notifications for the PWA
+    When notifications are sent
+    Then notifications should appear on the mobile device
+    And notification interactions should work correctly
+    And notification permissions should be handled properly
+    And notifications should be relevant and timely
+```
+
+## Mobile E-commerce Testing
+
+### Mobile Shopping Experience
+
+```gherkin
+Feature: Mobile E-commerce Testing
+
+  Scenario: Test mobile product browsing
+    Given I am shopping on mobile
+    When I browse products
+    Then product images should be optimized for mobile viewing
+    And product information should be easily readable
+    And filtering and sorting should work well on mobile
+    And product comparisons should be mobile-friendly
+
+  Scenario: Test mobile checkout process
+    Given I am completing a purchase on mobile
+    When I go through the checkout process
+    Then the checkout flow should be optimized for mobile
+    And payment forms should be mobile-friendly
+    And mobile payment methods should be supported
+    And the checkout process should be secure and efficient
+
+  Scenario: Test mobile payment integration
+    Given I am making a payment on mobile
+    When I use mobile payment methods
+    Then mobile wallets should be supported when available
+    And payment forms should use appropriate input types
+    And payment security should be maintained
+    And payment confirmation should be clear and immediate
+```
+
+## Mobile Testing Best Practices
+
+### Comprehensive Mobile Testing Strategy
+
+```gherkin
+Feature: Mobile Testing Strategy
+
+  Scenario: Establish mobile testing coverage
+    Given I am implementing mobile testing
+    When I plan my mobile testing approach
+    Then I should test on real devices when possible
+    And mobile testing should cover various network conditions
+    And mobile-specific user scenarios should be prioritized
+    And mobile testing should be integrated into CI/CD pipelines
+
+  Scenario: Mobile test maintenance and optimization
+    Given I have an established mobile testing suite
+    When I maintain mobile tests
+    Then tests should be updated for new mobile OS versions
+    And mobile test performance should be optimized
+    And mobile test reliability should be maintained
+    And mobile testing should provide valuable feedback
+```
+
+## Next Steps
+
+After exploring mobile automation examples:
+
+1. [Understand the architecture](/architecture/overview)
+2. [Learn about agents and tools](/architecture/agents)
+3. [Explore the tool library](/architecture/tools)
+4. [Join the community](/community/slack)
+
+Ready to implement mobile testing? Join our [Slack community](https://join.slack.com/t/testzeuscommunityhq/shared_invite/zt-2v2br8wog-FAmo_76xRHx~k~1oNaGQ0Q) to share your mobile automation experiences!

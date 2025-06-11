@@ -1,0 +1,742 @@
+---
+title: 'Contributing Guide'
+description: 'Learn how to contribute to TestZeus Hercules and help improve the project'
+---
+
+## Welcome Contributors!
+
+We're excited that you're interested in contributing to TestZeus Hercules! This guide will help you get started with contributing to our AI-powered test automation framework.
+
+## Ways to Contribute
+
+### 🐛 Bug Reports
+- Report bugs and issues you encounter
+- Provide detailed reproduction steps
+- Include environment information
+- Suggest potential fixes
+
+### 💡 Feature Requests
+- Propose new features and enhancements
+- Share use cases and requirements
+- Discuss implementation approaches
+- Help prioritize development
+
+### 📝 Documentation
+- Improve existing documentation
+- Add new guides and tutorials
+- Fix typos and clarify content
+- Translate documentation
+
+### 🔧 Code Contributions
+- Fix bugs and implement features
+- Improve performance and reliability
+- Add new tools and agents
+- Enhance test coverage
+
+### 🧪 Testing
+- Test new features and releases
+- Report compatibility issues
+- Validate fixes and improvements
+- Share testing strategies
+
+## Getting Started
+
+### 1. Set Up Development Environment
+
+```bash
+# Fork the repository on GitHub
+# Clone your fork
+git clone https://github.com/YOUR_USERNAME/testzeus-hercules.git
+cd testzeus-hercules
+
+# Add upstream remote
+git remote add upstream https://github.com/test-zeus-ai/testzeus-hercules.git
+
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install development dependencies
+pip install -r requirements-dev.txt
+pip install -e .
+
+# Install pre-commit hooks
+pre-commit install
+
+# Install browser dependencies
+playwright install
+```
+
+### 2. Verify Setup
+
+```bash
+# Run tests to ensure everything works
+pytest tests/unit/
+
+# Run linting and formatting
+pre-commit run --all-files
+
+# Test basic functionality
+echo 'Feature: Test
+Scenario: Simple test
+  Given I have a web browser open
+  When I navigate to "https://example.com"
+  Then I should see "Example Domain"' > test.feature
+
+hercules test.feature
+```
+
+## Development Workflow
+
+### 1. Create Feature Branch
+
+```bash
+# Fetch latest changes
+git fetch upstream
+git checkout main
+git merge upstream/main
+
+# Create feature branch
+git checkout -b feature/your-feature-name
+
+# Or for bug fixes
+git checkout -b fix/issue-description
+```
+
+### 2. Make Changes
+
+Follow our coding standards:
+
+```python
+# Example: Adding a new tool
+from testzeus_hercules.core.tools.base_tool import BaseTool
+
+class CustomValidationTool(BaseTool):
+    name = "custom_validation_tool"
+    description = "Performs custom business logic validation"
+    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.validation_rules = kwargs.get('validation_rules', {})
+    
+    def execute(self, data: dict, rules: list = None) -> dict:
+        rules = rules or self.validation_rules
+        results = {
+            "valid": True,
+            "errors": [],
+            "warnings": []
+        }
+        
+        for rule in rules:
+            validation_result = self.apply_rule(data, rule)
+            if not validation_result.valid:
+                results["valid"] = False
+                results["errors"].extend(validation_result.errors)
+        
+        return results
+```
+
+### 3. Write Tests
+
+```python
+# tests/unit/tools/test_custom_validation_tool.py
+import pytest
+from testzeus_hercules.core.tools.custom_validation_tool import CustomValidationTool
+
+class TestCustomValidationTool:
+    def test_valid_data(self):
+        tool = CustomValidationTool()
+        result = tool.execute({"email": "test@example.com"})
+        assert result["valid"] is True
+        assert len(result["errors"]) == 0
+    
+    def test_invalid_data(self):
+        tool = CustomValidationTool()
+        result = tool.execute({"email": "invalid-email"})
+        assert result["valid"] is False
+        assert len(result["errors"]) > 0
+```
+
+### 4. Update Documentation
+
+```markdown
+# docs/tools/custom_validation_tool.md
+
+## Custom Validation Tool
+
+The Custom Validation Tool allows you to implement business-specific validation logic.
+
+### Usage
+
+```gherkin
+Feature: Data Validation
+
+  Scenario: Validate user input
+    Given I have user data to validate
+    When I apply custom validation rules
+    Then the data should be validated correctly
+```
+
+### Configuration
+
+```json
+{
+  "validation_rules": [
+    {"field": "email", "type": "email"},
+    {"field": "age", "type": "integer", "min": 18}
+  ]
+}
+```
+```
+
+### 5. Run Quality Checks
+
+```bash
+# Format code
+black testzeus_hercules/
+isort testzeus_hercules/
+
+# Run linting
+flake8 testzeus_hercules/
+mypy testzeus_hercules/
+
+# Run tests
+pytest tests/ -v
+
+# Run integration tests
+pytest tests/integration/ -v
+
+# Check coverage
+pytest tests/ --cov=testzeus_hercules --cov-report=html
+```
+
+### 6. Commit Changes
+
+```bash
+# Stage specific files
+git add testzeus_hercules/core/tools/custom_validation_tool.py
+git add tests/unit/tools/test_custom_validation_tool.py
+git add docs/tools/custom_validation_tool.md
+
+# Commit with descriptive message
+git commit -m "feat: add custom validation tool
+
+- Implement CustomValidationTool for business logic validation
+- Add comprehensive unit tests
+- Include documentation and usage examples
+- Support configurable validation rules"
+
+# Push to your fork
+git push origin feature/your-feature-name
+```
+
+## Coding Standards
+
+### Python Code Style
+
+We follow PEP 8 with some modifications:
+
+```python
+# Good: Clear, descriptive names
+class BrowserNavigationAgent:
+    def execute_click_action(self, element_selector: str) -> dict:
+        pass
+
+# Good: Type hints
+def validate_response(response: dict, expected_status: int) -> bool:
+    return response.get("status") == expected_status
+
+# Good: Docstrings for public methods
+def create_test_user(self, email: str, role: str = "user") -> dict:
+    """Create a test user with specified email and role.
+    
+    Args:
+        email: User's email address
+        role: User role (default: "user")
+        
+    Returns:
+        Dictionary containing user data
+    """
+    pass
+```
+
+### Configuration
+
+```toml
+# pyproject.toml
+[tool.black]
+line-length = 88
+target-version = ['py38']
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+```
+
+### Error Handling
+
+```python
+# Good: Specific exception handling
+try:
+    result = self.execute_action(action, parameters)
+except TimeoutError as e:
+    logger.error(f"Action timed out: {e}")
+    return {"success": False, "error": "timeout"}
+except ValidationError as e:
+    logger.error(f"Validation failed: {e}")
+    return {"success": False, "error": "validation"}
+except Exception as e:
+    logger.error(f"Unexpected error: {e}")
+    return {"success": False, "error": "unknown"}
+```
+
+## Testing Guidelines
+
+### Unit Tests
+
+```python
+# Good: Focused, isolated tests
+class TestAPINavigationAgent:
+    @pytest.fixture
+    def agent(self):
+        return APINavigationAgent(base_url="https://api.example.com")
+    
+    def test_get_request_success(self, agent, mock_requests):
+        mock_requests.get.return_value.status_code = 200
+        mock_requests.get.return_value.json.return_value = {"id": 1}
+        
+        result = agent.execute_get_request("/users/1")
+        
+        assert result["success"] is True
+        assert result["data"]["id"] == 1
+        mock_requests.get.assert_called_once_with(
+            "https://api.example.com/users/1",
+            headers=agent.default_headers
+        )
+```
+
+### Integration Tests
+
+```python
+# Good: End-to-end workflow testing
+class TestUserRegistrationFlow:
+    def test_complete_registration_flow(self, test_app):
+        # Test the complete user registration process
+        registration_data = {
+            "email": "test@example.com",
+            "password": "SecurePass123!",
+            "first_name": "Test",
+            "last_name": "User"
+        }
+        
+        # Register user
+        response = test_app.post("/api/register", json=registration_data)
+        assert response.status_code == 201
+        
+        # Verify user can login
+        login_response = test_app.post("/api/login", json={
+            "email": registration_data["email"],
+            "password": registration_data["password"]
+        })
+        assert login_response.status_code == 200
+        assert "token" in login_response.json()
+```
+
+### Test Data Management
+
+```python
+# Good: Reusable test fixtures
+@pytest.fixture
+def sample_user_data():
+    return {
+        "email": "test@example.com",
+        "password": "SecurePass123!",
+        "profile": {
+            "first_name": "Test",
+            "last_name": "User",
+            "phone": "+1234567890"
+        }
+    }
+
+@pytest.fixture
+def mock_api_response():
+    return {
+        "status": "success",
+        "data": {"id": 1, "name": "Test User"},
+        "timestamp": "2024-01-15T10:30:00Z"
+    }
+```
+
+## Documentation Standards
+
+### Code Documentation
+
+```python
+class BrowserNavigationAgent:
+    """Agent for handling browser-based UI interactions.
+    
+    This agent manages web browser automation using Playwright,
+    including navigation, element interaction, and validation.
+    
+    Attributes:
+        browser_type: Type of browser to use (chromium, firefox, webkit)
+        headless: Whether to run browser in headless mode
+        timeout: Default timeout for operations in milliseconds
+    """
+    
+    def click_element(self, selector: str, timeout: int = None) -> dict:
+        """Click on an element identified by CSS selector.
+        
+        Args:
+            selector: CSS selector for the target element
+            timeout: Maximum time to wait for element (optional)
+            
+        Returns:
+            Dictionary containing operation result and metadata
+            
+        Raises:
+            TimeoutError: If element is not found within timeout
+            ElementNotInteractableError: If element cannot be clicked
+        """
+        pass
+```
+
+### API Documentation
+
+```markdown
+## Agent API Reference
+
+### BrowserNavigationAgent
+
+#### Methods
+
+##### `click_element(selector, timeout=None)`
+
+Clicks on an element identified by CSS selector.
+
+**Parameters:**
+- `selector` (str): CSS selector for the target element
+- `timeout` (int, optional): Maximum time to wait for element
+
+**Returns:**
+- `dict`: Operation result with success status and metadata
+
+**Example:**
+```python
+result = agent.click_element("#login-button", timeout=5000)
+```
+```
+
+### Feature Documentation
+
+```markdown
+## Custom Validation Tool
+
+### Overview
+
+The Custom Validation Tool enables implementation of business-specific validation logic within test scenarios.
+
+### Use Cases
+
+- Validate complex business rules
+- Check data consistency across systems
+- Implement custom assertion logic
+- Verify compliance requirements
+
+### Configuration
+
+```json
+{
+  "validation_rules": [
+    {
+      "field": "email",
+      "type": "email",
+      "required": true
+    },
+    {
+      "field": "age",
+      "type": "integer",
+      "min": 18,
+      "max": 120
+    }
+  ]
+}
+```
+
+### Examples
+
+```gherkin
+Feature: User Data Validation
+
+  Scenario: Validate user registration data
+    Given I have user registration data
+    When I apply validation rules
+    Then all required fields should be present
+    And all data types should be correct
+```
+```
+
+## Pull Request Process
+
+### 1. Create Pull Request
+
+```markdown
+# Pull Request Template
+
+## Description
+Brief description of the changes and their purpose.
+
+## Type of Change
+- [ ] Bug fix (non-breaking change which fixes an issue)
+- [ ] New feature (non-breaking change which adds functionality)
+- [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
+- [ ] Documentation update
+
+## Testing
+- [ ] Unit tests pass
+- [ ] Integration tests pass
+- [ ] Manual testing completed
+- [ ] Performance impact assessed
+
+## Checklist
+- [ ] Code follows project style guidelines
+- [ ] Self-review completed
+- [ ] Documentation updated
+- [ ] Tests added/updated
+- [ ] No breaking changes (or clearly documented)
+
+## Screenshots (if applicable)
+Include screenshots for UI changes.
+
+## Additional Notes
+Any additional information or context.
+```
+
+### 2. Review Process
+
+**Automated Checks:**
+- Code formatting (Black, isort)
+- Linting (flake8, mypy)
+- Unit tests
+- Integration tests
+- Security scanning
+
+**Manual Review:**
+- Code quality and design
+- Test coverage and quality
+- Documentation completeness
+- Performance impact
+- Security considerations
+
+### 3. Addressing Feedback
+
+```bash
+# Make requested changes
+git add modified_files
+git commit -m "address review feedback: improve error handling"
+
+# Push updates
+git push origin feature/your-feature-name
+
+# The PR will be automatically updated
+```
+
+## Community Guidelines
+
+### Code of Conduct
+
+We are committed to providing a welcoming and inclusive environment:
+
+- **Be Respectful**: Treat all community members with respect and kindness
+- **Be Inclusive**: Welcome newcomers and help them get started
+- **Be Collaborative**: Work together to improve the project
+- **Be Professional**: Maintain professional communication
+- **Be Patient**: Help others learn and grow
+
+### Communication Channels
+
+- **GitHub Issues**: Bug reports and feature requests
+- **GitHub Discussions**: General questions and discussions
+- **Slack Community**: Real-time chat and support
+- **Pull Requests**: Code review and collaboration
+
+### Getting Help
+
+**For Contributors:**
+- Check existing issues and documentation
+- Ask questions in GitHub Discussions
+- Join our Slack community for real-time help
+- Attend community office hours
+
+**For Maintainers:**
+- Review PRs promptly and constructively
+- Provide clear feedback and guidance
+- Help onboard new contributors
+- Maintain project standards
+
+## Release Process
+
+### Version Numbering
+
+We follow Semantic Versioning (SemVer):
+
+- **MAJOR**: Breaking changes
+- **MINOR**: New features (backward compatible)
+- **PATCH**: Bug fixes (backward compatible)
+
+### Release Cycle
+
+- **Patch releases**: As needed for critical fixes
+- **Minor releases**: Monthly for new features
+- **Major releases**: Quarterly for significant changes
+
+### Contributing to Releases
+
+- Test release candidates
+- Report issues with pre-releases
+- Help with release documentation
+- Validate upgrade procedures
+
+## Recognition
+
+### Contributor Recognition
+
+We recognize contributors through:
+
+- **GitHub Contributors**: Listed in repository
+- **Release Notes**: Mentioned in release announcements
+- **Community Spotlight**: Featured in community updates
+- **Maintainer Status**: Invited to join maintainer team
+
+### Contribution Types
+
+All contributions are valued:
+
+- **Code**: New features, bug fixes, improvements
+- **Documentation**: Guides, tutorials, API docs
+- **Testing**: Bug reports, test cases, validation
+- **Community**: Support, mentoring, advocacy
+- **Design**: UI/UX improvements, graphics, branding
+
+## Advanced Contributing
+
+### Custom Agent Development
+
+```python
+from testzeus_hercules.core.agents.base_nav_agent import BaseNavAgent
+
+class CustomIntegrationAgent(BaseNavAgent):
+    agent_name = "custom_integration_agent"
+    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.integration_config = kwargs.get('integration_config', {})
+    
+    def execute_action(self, action: str, parameters: dict) -> dict:
+        if action == "sync_data":
+            return self.sync_external_data(parameters)
+        elif action == "validate_integration":
+            return self.validate_integration_status(parameters)
+        else:
+            return {"error": f"Unknown action: {action}"}
+```
+
+### Custom Tool Development
+
+```python
+from testzeus_hercules.core.tools.base_tool import BaseTool
+
+class CustomReportingTool(BaseTool):
+    name = "custom_reporting_tool"
+    description = "Generates custom test reports"
+    
+    def execute(self, test_results: list, format: str = "html") -> dict:
+        if format == "html":
+            return self.generate_html_report(test_results)
+        elif format == "pdf":
+            return self.generate_pdf_report(test_results)
+        else:
+            return {"error": f"Unsupported format: {format}"}
+```
+
+### Plugin Development
+
+```python
+class CustomPlugin:
+    def __init__(self):
+        self.name = "custom_plugin"
+        self.version = "1.0.0"
+    
+    def initialize(self, hercules_instance):
+        hercules_instance.register_tool(CustomReportingTool())
+        hercules_instance.register_agent(CustomIntegrationAgent)
+    
+    def before_test_execution(self, test_context):
+        pass
+    
+    def after_test_execution(self, test_results):
+        pass
+```
+
+## Troubleshooting
+
+### Common Issues
+
+**Development Environment:**
+- Python version compatibility
+- Dependency conflicts
+- Browser installation issues
+- Permission problems
+
+**Testing Issues:**
+- Test failures in CI
+- Flaky tests
+- Performance problems
+- Environment differences
+
+**Code Quality:**
+- Linting errors
+- Type checking issues
+- Test coverage gaps
+- Documentation problems
+
+### Getting Support
+
+1. **Check Documentation**: Review guides and troubleshooting
+2. **Search Issues**: Look for existing solutions
+3. **Ask Community**: Post in Slack or GitHub Discussions
+4. **Create Issue**: Report bugs with detailed information
+
+## Resources
+
+### Documentation
+- [Architecture Overview](/architecture/overview)
+- [Agent Development](/architecture/agents)
+- [Tool Development](/architecture/tools)
+- [API Reference](/api/environment-variables)
+
+### Examples
+- [Sample Contributions](https://github.com/test-zeus-ai/testzeus-hercules/tree/main/examples)
+- [Test Cases](https://github.com/test-zeus-ai/testzeus-hercules/tree/main/tests)
+- [Documentation Examples](https://github.com/test-zeus-ai/testzeus-hercules/tree/main/docs)
+
+### Community
+- [Slack Community](https://join.slack.com/t/testzeuscommunityhq/shared_invite/zt-2v2br8wog-FAmo_76xRHx~k~1oNaGQ0Q)
+- [GitHub Discussions](https://github.com/test-zeus-ai/testzeus-hercules/discussions)
+- [Issue Tracker](https://github.com/test-zeus-ai/testzeus-hercules/issues)
+
+## Thank You!
+
+Thank you for your interest in contributing to TestZeus Hercules! Your contributions help make AI-powered test automation accessible to everyone. Whether you're fixing a typo, adding a feature, or helping other users, every contribution matters.
+
+We look forward to working with you and seeing what amazing things we can build together! 🚀
+
+---
+
+**Questions?** Join our [Slack community](https://join.slack.com/t/testzeuscommunityhq/shared_invite/zt-2v2br8wog-FAmo_76xRHx~k~1oNaGQ0Q) or check out our [GitHub Discussions](https://github.com/test-zeus-ai/testzeus-hercules/discussions) for help and support.

@@ -1,0 +1,588 @@
+---
+title: 'Test Data Management'
+description: 'Learn how to effectively manage and use test data in TestZeus Hercules'
+---
+
+## Overview
+
+Effective test data management is crucial for reliable and maintainable test automation. TestZeus Hercules provides flexible approaches to handle test data, from simple inline values to complex external data sources.
+
+## Inline Test Data
+
+### Simple Values
+
+Use direct values in your test steps:
+
+```gherkin
+Feature: User Registration
+
+  Scenario: Register with valid data
+    Given I am on the registration page
+    When I enter "john.doe@example.com" as email
+    And I enter "SecurePass123!" as password
+    And I enter "John" as first name
+    And I enter "Doe" as last name
+    Then I should see "Registration successful"
+```
+
+### Data Tables
+
+Use tables for structured data:
+
+```gherkin
+Feature: Contact Form
+
+  Scenario: Submit contact form
+    Given I am on the contact page
+    When I fill in the contact form:
+      | Field    | Value                    |
+      | Name     | John Doe                |
+      | Email    | john@example.com        |
+      | Subject  | Product Inquiry         |
+      | Message  | I need more information |
+    And I click "Submit"
+    Then I should see "Thank you for your message"
+```
+
+### Multiple Data Sets
+
+Use scenario outlines for multiple data variations:
+
+```gherkin
+Feature: Login Validation
+
+  Scenario Outline: Login with different credentials
+    Given I am on the login page
+    When I enter "<username>" as username
+    And I enter "<password>" as password
+    And I click login
+    Then I should see "<result>"
+
+    Examples:
+      | username           | password      | result              |
+      | valid@example.com  | ValidPass123! | Welcome Dashboard   |
+      | invalid@email.com  | WrongPass     | Invalid credentials |
+      | admin@example.com  | AdminPass456! | Admin Panel         |
+```
+
+## External Data Files
+
+### JSON Data Files
+
+Create JSON files for complex test data:
+
+```json test_data/users.json
+{
+  "standard_user": {
+    "email": "user@example.com",
+    "password": "UserPass123!",
+    "first_name": "Test",
+    "last_name": "User",
+    "role": "user",
+    "preferences": {
+      "theme": "dark",
+      "notifications": true
+    }
+  },
+  "admin_user": {
+    "email": "admin@example.com",
+    "password": "AdminPass456!",
+    "first_name": "Admin",
+    "last_name": "User",
+    "role": "admin",
+    "permissions": ["read", "write", "delete"]
+  }
+}
+```
+
+Reference in tests:
+
+```gherkin
+Feature: User Management
+
+  Scenario: Login with user data from file
+    Given I have user data from "test_data/users.json"
+    When I login as "standard_user"
+    Then I should access the user dashboard
+    And my preferences should be loaded correctly
+```
+
+### CSV Data Files
+
+Use CSV for tabular data:
+
+```csv test_data/products.csv
+name,price,category,in_stock,description
+Laptop Pro,1299.99,Electronics,true,High-performance laptop
+Wireless Mouse,29.99,Electronics,true,Ergonomic wireless mouse
+Office Chair,199.99,Furniture,false,Comfortable office chair
+```
+
+Reference in tests:
+
+```gherkin
+Feature: Product Catalog
+
+  Scenario: Verify product information
+    Given I have product data from "test_data/products.csv"
+    When I search for each product
+    Then the displayed information should match the data file
+    And the stock status should be accurate
+```
+
+### XML Data Files
+
+Handle XML data for legacy systems:
+
+```xml test_data/orders.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<orders>
+  <order id="ORD001">
+    <customer>john@example.com</customer>
+    <items>
+      <item sku="LAP001" quantity="1" price="1299.99"/>
+      <item sku="MOU001" quantity="2" price="29.99"/>
+    </items>
+    <total>1359.97</total>
+  </order>
+</orders>
+```
+
+## Dynamic Data Generation
+
+### Random Data
+
+Generate random test data:
+
+```gherkin
+Feature: User Registration with Random Data
+
+  Scenario: Register with generated data
+    Given I generate a random email address
+    And I generate a secure password
+    And I generate random personal information
+    When I register with the generated data
+    Then the registration should be successful
+    And I should be able to login with the generated credentials
+```
+
+### Timestamp-based Data
+
+Use timestamps for unique data:
+
+```gherkin
+Feature: Order Processing
+
+  Scenario: Create order with timestamp
+    Given I generate an order ID with current timestamp
+    And I create order data with timestamp "2024-01-15T10:30:00Z"
+    When I submit the order
+    Then the order should be created with the correct timestamp
+    And I should be able to track the order
+```
+
+### Calculated Data
+
+Generate data based on calculations:
+
+```gherkin
+Feature: Financial Calculations
+
+  Scenario: Verify tax calculations
+    Given I have a product with price "$100.00"
+    And the tax rate is "8.5%"
+    When I add the product to cart
+    Then the tax amount should be "$8.50"
+    And the total should be "$108.50"
+```
+
+## Data Parameterization
+
+### Environment-Specific Data
+
+Use different data for different environments:
+
+```gherkin
+Feature: API Testing
+
+  Scenario: Test API endpoints
+    Given I have API configuration for environment "staging"
+    When I call the user endpoint
+    Then I should receive user data
+    And the response should match the expected schema
+```
+
+### Configuration-Driven Data
+
+Use configuration files for data management:
+
+```json test_config.json
+{
+  "environments": {
+    "staging": {
+      "api_base_url": "https://staging-api.example.com",
+      "test_users": {
+        "standard": "staging_user@example.com",
+        "admin": "staging_admin@example.com"
+      }
+    },
+    "production": {
+      "api_base_url": "https://api.example.com",
+      "test_users": {
+        "standard": "prod_user@example.com",
+        "admin": "prod_admin@example.com"
+      }
+    }
+  }
+}
+```
+
+## Database Integration
+
+### Database Seeding
+
+Prepare database with test data:
+
+```gherkin
+Feature: User Management with Database
+
+  Background:
+    Given the database is clean
+    And I seed the database with test users:
+      | email              | role  | status |
+      | user1@example.com  | user  | active |
+      | user2@example.com  | user  | inactive |
+      | admin@example.com  | admin | active |
+
+  Scenario: Verify user status
+    When I query the database for "user1@example.com"
+    Then the user status should be "active"
+    And the user role should be "user"
+```
+
+### Database Validation
+
+Validate data persistence:
+
+```gherkin
+Feature: Data Persistence
+
+  Scenario: Verify order is saved to database
+    Given I create an order through the UI
+    When I check the database
+    Then the order should exist in the orders table
+    And the order status should be "pending"
+    And the order items should match what was submitted
+```
+
+### Database Cleanup
+
+Clean up test data after tests:
+
+```gherkin
+Feature: User Registration
+
+  Scenario: Register new user
+    Given I register a new user with email "test@example.com"
+    When the registration is complete
+    Then the user should exist in the database
+    
+  # Cleanup happens automatically after test
+```
+
+## API Data Integration
+
+### API Data Setup
+
+Use APIs to set up test data:
+
+```gherkin
+Feature: E-commerce Testing
+
+  Background:
+    Given I create test products via API:
+      | name          | price  | category    |
+      | Test Laptop   | 999.99 | Electronics |
+      | Test Mouse    | 19.99  | Electronics |
+    And I create a test user via API with email "buyer@example.com"
+
+  Scenario: Purchase products
+    Given I am logged in as "buyer@example.com"
+    When I add "Test Laptop" to cart
+    And I proceed to checkout
+    Then the order should be created successfully
+```
+
+### API Data Validation
+
+Validate data through API calls:
+
+```gherkin
+Feature: User Profile Updates
+
+  Scenario: Update profile information
+    Given I update my profile through the UI
+    When I verify the changes via API
+    Then the API should return the updated information
+    And the last_modified timestamp should be recent
+```
+
+## File Upload Testing
+
+### Test Files Management
+
+Organize test files for upload scenarios:
+
+```
+test_data/
+├── files/
+│   ├── images/
+│   │   ├── valid_image.jpg
+│   │   ├── large_image.png
+│   │   └── invalid_format.txt
+│   ├── documents/
+│   │   ├── test_document.pdf
+│   │   ├── large_document.pdf
+│   │   └── corrupted_file.doc
+│   └── media/
+│       ├── test_video.mp4
+│       └── test_audio.mp3
+```
+
+Use in tests:
+
+```gherkin
+Feature: File Upload
+
+  Scenario: Upload valid image
+    Given I am on the file upload page
+    When I upload "test_data/files/images/valid_image.jpg"
+    Then the file should be uploaded successfully
+    And I should see a preview of the image
+
+  Scenario: Upload invalid file type
+    Given I am on the file upload page
+    When I upload "test_data/files/images/invalid_format.txt"
+    Then I should see an error "Invalid file type"
+    And the file should not be uploaded
+```
+
+## Data Security and Privacy
+
+### Sensitive Data Handling
+
+Handle sensitive data securely:
+
+```gherkin
+Feature: Secure Data Testing
+
+  Scenario: Test with encrypted data
+    Given I have encrypted test credentials
+    When I decrypt the credentials for testing
+    And I use the credentials to login
+    Then the login should be successful
+    And the credentials should be cleared from memory
+```
+
+### Data Masking
+
+Use masked data for production-like testing:
+
+```json test_data/masked_users.json
+{
+  "user1": {
+    "email": "user****@example.com",
+    "phone": "555-***-1234",
+    "ssn": "***-**-1234"
+  }
+}
+```
+
+### GDPR Compliance
+
+Ensure test data complies with privacy regulations:
+
+```gherkin
+Feature: GDPR Compliance Testing
+
+  Scenario: Data deletion request
+    Given I have a user account with personal data
+    When I request data deletion
+    Then all personal data should be removed
+    And only anonymized data should remain
+```
+
+## Data Validation
+
+### Schema Validation
+
+Validate data against schemas:
+
+```gherkin
+Feature: API Response Validation
+
+  Scenario: Validate user data schema
+    Given I call the user API
+    When I receive the response
+    Then the response should match the user schema
+    And all required fields should be present
+    And data types should be correct
+```
+
+### Data Integrity Checks
+
+Verify data integrity:
+
+```gherkin
+Feature: Data Integrity
+
+  Scenario: Verify referential integrity
+    Given I have orders with customer references
+    When I check the database
+    Then all customer references should be valid
+    And no orphaned records should exist
+```
+
+### Cross-System Validation
+
+Validate data consistency across systems:
+
+```gherkin
+Feature: Cross-System Data Sync
+
+  Scenario: Verify data synchronization
+    Given I update user data in system A
+    When the synchronization process runs
+    Then the data should be updated in system B
+    And the timestamps should match
+```
+
+## Performance Testing Data
+
+### Large Data Sets
+
+Test with large volumes of data:
+
+```gherkin
+Feature: Performance Testing
+
+  Scenario: Search with large dataset
+    Given I have 10000 products in the database
+    When I search for "laptop"
+    Then the results should be returned within 2 seconds
+    And the results should be accurate
+```
+
+### Concurrent Data Access
+
+Test concurrent data operations:
+
+```gherkin
+Feature: Concurrent Access
+
+  Scenario: Multiple users accessing same data
+    Given I have 5 users logged in simultaneously
+    When they all try to update the same record
+    Then only one update should succeed
+    And the others should receive appropriate errors
+```
+
+## Data Cleanup and Maintenance
+
+### Automatic Cleanup
+
+Configure automatic data cleanup:
+
+```bash
+# Environment variable for cleanup
+CLEANUP_AFTER_TEST=true hercules tests/
+
+# Cleanup specific data types
+CLEANUP_TEST_USERS=true \
+CLEANUP_TEST_ORDERS=true \
+hercules tests/
+```
+
+### Manual Cleanup
+
+Implement manual cleanup procedures:
+
+```gherkin
+Feature: Data Cleanup
+
+  Scenario: Clean test data
+    Given I have test data in the system
+    When I run the cleanup procedure
+    Then all test data should be removed
+    And production data should remain intact
+```
+
+### Data Archival
+
+Archive test data for analysis:
+
+```gherkin
+Feature: Test Data Archival
+
+  Scenario: Archive test results
+    Given I have completed test execution
+    When I archive the test data
+    Then the data should be stored securely
+    And it should be available for future analysis
+```
+
+## Best Practices
+
+### Data Organization
+
+1. **Separate by Environment**: Keep dev, staging, and prod data separate
+2. **Version Control**: Track data changes with version control
+3. **Documentation**: Document data structure and usage
+4. **Naming Conventions**: Use consistent naming for data files
+
+### Data Security
+
+1. **No Real Data**: Never use production data in tests
+2. **Encryption**: Encrypt sensitive test data
+3. **Access Control**: Limit access to test data
+4. **Regular Cleanup**: Clean up test data regularly
+
+### Data Maintenance
+
+1. **Regular Updates**: Keep test data current and relevant
+2. **Data Validation**: Validate data integrity regularly
+3. **Performance Monitoring**: Monitor data-related performance
+4. **Backup Strategy**: Implement backup for critical test data
+
+## Troubleshooting
+
+### Common Data Issues
+
+1. **File Not Found**: Check file paths and permissions
+2. **Invalid Format**: Validate data file formats
+3. **Encoding Issues**: Ensure proper character encoding
+4. **Large Files**: Consider file size limitations
+
+### Data Debugging
+
+```bash
+# Enable data debugging
+DEBUG_DATA=true hercules tests/
+
+# Validate data files
+hercules --validate-data tests/
+
+# Check data file formats
+hercules --check-data-format test_data/
+```
+
+## Next Steps
+
+After mastering test data management:
+
+1. [Learn about Gherkin syntax in detail](/testing/gherkin-syntax)
+2. [Explore comprehensive examples](/examples/ui-automation)
+3. [Understand the architecture](/architecture/overview)
+4. [Check out API testing examples](/examples/api-testing)
+
+Need help with test data? Join our [Slack community](https://join.slack.com/t/testzeuscommunityhq/shared_invite/zt-2v2br8wog-FAmo_76xRHx~k~1oNaGQ0Q) for support and best practices!
