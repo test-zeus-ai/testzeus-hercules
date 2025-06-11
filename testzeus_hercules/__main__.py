@@ -1,6 +1,9 @@
 import asyncio
 import json
 import os
+import time
+import concurrent.futures
+from typing import List, Dict, Any
 
 import aiofiles
 from junit2htmlreport.runner import run as prepare_html
@@ -15,7 +18,7 @@ from testzeus_hercules.utils.junit_helper import JUnitXMLGenerator, build_junit_
 from testzeus_hercules.utils.logger import logger
 
 
-async def sequential_process() -> None:
+async def sequential_process(feature_files: List[Dict[str, str]] | None = None) -> List[Dict[str, Any]]:
     """
     sequential_process function to process feature files, run test cases, and generate JUnit XML results.
 
@@ -37,14 +40,19 @@ async def sequential_process() -> None:
     7. Logs the location of the final result file.
     """
     dont_close_browser = get_global_conf().get_dont_close_browser()
-    list_of_feats = await process_feature_file(dont_append_header=dont_close_browser)
+    
+    if feature_files is None:
+        list_of_feats = await process_feature_file(dont_append_header=dont_close_browser)
+    else:
+        list_of_feats = feature_files
+    
     input_gherkin_file_path = get_global_conf().get_input_gherkin_file_path()
-    # get name of the feature file using os package
     feature_file_name = os.path.basename(input_gherkin_file_path)
 
     result_of_tests = []
 
     add_event(EventType.RUN, EventData(detail="Total Runs: " + str(len(list_of_feats))))
+    
     for feat in list_of_feats:
         file_path = feat["output_file"]
         feature_name = feat["feature"]
@@ -58,13 +66,12 @@ async def sequential_process() -> None:
             .replace(".", "_")
         )
 
-        # TODO: remove the following set default hack later.
         get_global_conf().set_default_test_id(stake_id)
 
         cmd = await serialize_feature_file(file_path)
 
         logger.info(f"Running testcase: {stake_id}")
-        logger.info(f"testcase details: {cmd}")
+
         runner = SingleCommandInputRunner(
             stake_id=stake_id,
             command=cmd,
@@ -75,13 +82,11 @@ async def sequential_process() -> None:
         runner_result = {}
         cost_metrics = {}
 
-        if get_global_conf().get_token_verbose():
-            # Parse usage and sum across all agents based on keys
+        if get_global_conf().get_token_verbose() and runner.simple_hercules and runner.simple_hercules.agents_map:
             for ag_name, agent in runner.simple_hercules.agents_map.items():
                 if agent and agent.client and agent.client.total_usage_summary:
                     for key, value in agent.client.total_usage_summary.items():
                         if key == "total_cost":
-                            # Sum total_cost across agents
                             cost_metrics["total_cost"] = (
                                 cost_metrics.get("total_cost", 0) + value
                             )
@@ -107,14 +112,12 @@ async def sequential_process() -> None:
                                 "total_tokens", 0
                             )
                         else:
-                            # For unexpected keys, just add them as-is
                             cost_metrics[ag_name][key] = (
                                 cost_metrics.get(key, 0) + value
                             )
 
         execution_time = runner.execution_time
         if runner.result and runner.result.chat_history:
-            s_rr = runner.result.chat_history[-1]["content"]
             s_rr = runner.result.chat_history[-1]["content"]
             json_content = s_rr.replace("```json\n", "").replace("\n```", "").strip()
             try:
@@ -136,11 +139,11 @@ async def sequential_process() -> None:
                 feature_file_path=file_path,
                 output_file_path="",
                 proofs_path=get_global_conf().get_proof_path(
-                    runner.device_manager.stake_id
+                    runner.device_manager.stake_id if runner.device_manager else stake_id
                 ),
-                proofs_screenshot_path=runner.device_manager._screenshots_dir,
-                proofs_video_path=runner.device_manager.get_latest_video_path(),
-                network_logs_path=runner.device_manager.request_response_log_file,
+                proofs_screenshot_path=runner.device_manager._screenshots_dir if runner.device_manager and runner.device_manager._screenshots_dir else "",
+                proofs_video_path=runner.device_manager.get_latest_video_path() if runner.device_manager and hasattr(runner.device_manager, 'get_latest_video_path') else "",
+                network_logs_path=runner.device_manager.request_response_log_file if runner.device_manager and runner.device_manager.request_response_log_file else "",
                 logs_path=get_global_conf().get_source_log_folder_path(stake_id),
                 planner_thoughts_path=get_global_conf().get_source_log_folder_path(
                     stake_id
@@ -149,14 +152,22 @@ async def sequential_process() -> None:
             )
         )
 
+    return result_of_tests
+
+
+async def generate_junit_xml_report(result_of_tests: List[Dict[str, Any]]) -> None:
+    """Generate JUnit XML and HTML reports from test results"""
+    input_gherkin_file_path = get_global_conf().get_input_gherkin_file_path()
+    feature_file_name = os.path.basename(input_gherkin_file_path)
+    
     final_result_file_name = (
         f"{get_global_conf().get_junit_xml_base_path()}/{feature_file_name}_result.xml"
     )
 
-    await JUnitXMLGenerator.merge_junit_xml(result_of_tests, final_result_file_name)
+    junit_xml_files = [test_result for test_result in result_of_tests if isinstance(test_result, str)]
+    await JUnitXMLGenerator.merge_junit_xml(junit_xml_files, final_result_file_name)
     logger.info(f"Results published in junitxml file: {final_result_file_name}")
 
-    # building html from junitxml
     final_result_html_file_name = (
         f"{get_global_conf().get_junit_xml_base_path()}/{feature_file_name}_result.html"
     )
@@ -185,13 +196,113 @@ async def process_test_directory(test_dir: str) -> None:
     set_global_conf(test_config, override=True)
 
     logger.info(f"Processing test directory: {test_dir}")
-    await sequential_process()
+    result_of_tests = await sequential_process()
+    await generate_junit_xml_report(result_of_tests)
+
+
+async def parallel_process(
+    feature_files: List[Dict[str, str]], 
+    max_workers: int = 3,
+    dont_close_browser: bool = False
+) -> List[Dict[str, Any]]:
+    """Process feature files in parallel with limited concurrency"""
+    result_of_tests = []
+    
+    async def process_single_test(feature_dict: Dict[str, str]) -> Dict[str, Any]:
+        file_path = feature_dict["output_file"]
+        feature_name = feature_dict["feature"]
+        scenario = feature_dict["scenario"]
+        
+        stake_id = (
+            scenario.replace(" ", "_")
+            .replace(":", "_")
+            .replace("/", "_")
+            .replace("\\", "_")
+            .replace(".", "_")
+        )
+        
+        get_global_conf().set_default_test_id(stake_id)
+        cmd = await serialize_feature_file(file_path)
+        
+        logger.info(f"Running testcase: {stake_id}")
+        runner = SingleCommandInputRunner(
+            stake_id=stake_id,
+            command=cmd,
+            dont_terminate_browser_after_run=dont_close_browser,
+        )
+        
+        await runner.start()
+        
+        execution_time = runner.execution_time
+        runner_result = {}
+        cost_metrics = {}
+        
+        if runner.result and runner.result.chat_history:
+            s_rr = runner.result.chat_history[-1]["content"]
+            json_content = s_rr.replace("```json\n", "").replace("\n```", "").strip()
+            try:
+                runner_result = json.loads(json_content)
+            except json.JSONDecodeError:
+                logger.error(f"Failed to decode JSON: {json_content}")
+        
+        return await build_junit_xml(
+            runner_result,
+            execution_time,
+            cost_metrics,
+            feature_name,
+            scenario,
+            feature_file_path=file_path,
+            output_file_path="",
+            proofs_path=get_global_conf().get_proof_path(
+                runner.device_manager.stake_id if runner.device_manager else stake_id
+            ),
+            proofs_screenshot_path=runner.device_manager._screenshots_dir if runner.device_manager and runner.device_manager._screenshots_dir else "",
+            proofs_video_path=runner.device_manager.get_latest_video_path() if runner.device_manager and hasattr(runner.device_manager, 'get_latest_video_path') else "",
+            network_logs_path=runner.device_manager.request_response_log_file if runner.device_manager and runner.device_manager.request_response_log_file else "",
+            logs_path=get_global_conf().get_source_log_folder_path(stake_id),
+            planner_thoughts_path=get_global_conf().get_source_log_folder_path(stake_id) + "/chat_messages.json",
+        )
+    
+    semaphore = asyncio.Semaphore(max_workers)
+    
+    async def process_with_semaphore(feature_dict: Dict[str, str]) -> Dict[str, Any]:
+        async with semaphore:
+            return await process_single_test(feature_dict)
+    
+    tasks = [process_with_semaphore(feature_dict) for feature_dict in feature_files]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    for i, result in enumerate(results):
+        if isinstance(result, Exception):
+            logger.error(f"Test {i} failed with exception: {result}")
+            feature_dict = feature_files[i]
+            failure_result = await build_junit_xml(
+                {"is_passed": False, "final_response": f"Exception: {result}"},
+                0,
+                {},
+                feature_dict["feature"],
+                feature_dict["scenario"],
+                feature_file_path=feature_dict["output_file"],
+                output_file_path="",
+                proofs_path="",
+                proofs_screenshot_path="",
+                proofs_video_path="",
+                network_logs_path="",
+                logs_path="",
+                planner_thoughts_path="",
+            )
+            result_of_tests.append(failure_result)
+        else:
+            result_of_tests.append(result)
+    
+    return result_of_tests
 
 
 async def a_main() -> None:
-    """
-    Main function that checks for bulk execution flag and runs tests accordingly
-    """
+    """Main execution function with performance optimizations"""
+    
+    parallel_mode = os.getenv("PARALLEL_EXECUTION", "false").lower() == "true"
+    max_workers = int(os.getenv("MAX_PARALLEL_WORKERS", "3"))
 
     def is_width_gt_120() -> bool:
         try:
@@ -259,7 +370,6 @@ async def a_main() -> None:
             """
         )
 
-    # Check bulk execution flag instead of directory existence
     if get_global_conf().should_execute_bulk():
         project_base = get_global_conf().get_project_source_root()
         tests_dir = os.path.join(project_base, "tests")
@@ -279,9 +389,17 @@ async def a_main() -> None:
             )
             exit(1)
     else:
-        # Single test case execution
         logger.info("Single test execution mode")
-        await sequential_process()
+        feature_files = await process_feature_file()
+        
+        if parallel_mode:
+            logger.info(f"Running {len(feature_files)} tests in parallel with {max_workers} workers")
+            result_of_tests = await parallel_process(feature_files, max_workers)
+        else:
+            logger.info(f"Running {len(feature_files)} tests sequentially")
+            result_of_tests = await sequential_process(feature_files)
+        
+        await generate_junit_xml_report(result_of_tests)
 
 
 def main() -> None:

@@ -287,7 +287,7 @@ class AppiumManager:
         if cls._ui_thread_pool is None:
             # Calculate optimal number of workers based on CPU cores
             # Use max(4, CPU_COUNT) to ensure we have enough threads for UI operations
-            worker_count = max(4, min(8, multiprocessing.cpu_count()))
+            worker_count = max(2, min(3, multiprocessing.cpu_count()))
             cls._ui_thread_pool = ThreadPoolExecutor(
                 max_workers=worker_count, thread_name_prefix="AppiumUI"
             )
@@ -299,7 +299,7 @@ class AppiumManager:
         logger.info(f"[APPIUM_DRIVER_TIMING] Starting driver interaction: {identifier}")
 
         try:
-            if not force_thread and identifier in ["take_screenshot", "get_viewport_size"]:
+            if not force_thread and identifier in ["take_screenshot", "get_viewport_size", "get_page_source", "get_current_url", "get_window_size"]:
                 try:
                     result = func()
                     end_time = time.time()

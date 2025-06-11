@@ -69,8 +69,8 @@ class SimpleHercules:
         self,
         stake_id: str,
         save_chat_logs_to_files: bool = True,
-        planner_max_chat_round: int = 500,
-        nav_max_chat_round: int = 10,
+        planner_max_chat_round: int = 50,
+        nav_max_chat_round: int = 5,
     ):
         self.timestamp = get_timestamp_str()
         oai.Completion.set_cache(5, cache_path_root=".cache")
@@ -121,8 +121,8 @@ class SimpleHercules:
         mem_agent_config: dict[str, Any],
         helper_agent_config: dict[str, Any],
         save_chat_logs_to_files: bool = True,
-        planner_max_chat_round: int = 500,
-        nav_max_chat_round: int = 10,
+        planner_max_chat_round: int = 50,
+        nav_max_chat_round: int = 5,
     ) -> "SimpleHercules":
         """
         Create an instance of SimpleHercules.
@@ -145,7 +145,7 @@ class SimpleHercules:
             helper_agent_config: dict[str, Any]: A dictionary containing the configuration parameters for the helper agent. Same format as planner_agent_config.
             save_chat_logs_to_files (bool, optional): Whether to save chat logs to files. Defaults to True.
             planner_max_chat_rounds (int, optional): The maximum number of chat rounds for the planner. Defaults to 50.
-            nav_max_chat_round (int, optional): The maximum number of chat rounds for the navigation navigation agent. Defaults to 10.
+            nav_max_chat_round (int, optional): The maximum number of chat rounds for the navigation navigation agent. Defaults to 5.
 
         Returns:
             SimpleHercules: An instance of SimpleHercules.
@@ -264,9 +264,8 @@ class SimpleHercules:
             if self.device_manager_type == "playwright":
                 return asyncio.run(geturl())
             elif self.device_manager_type == "appium":
-                return "Current Device View: " + asyncio.run(
-                    self.device_manager.get_current_screen_state()
-                )
+                screen_state = asyncio.run(self.device_manager.get_current_screen_state())
+                return "Current Device View: " + (screen_state or "")
             else:
                 return "Current state not clear, try to check"
 
@@ -284,8 +283,9 @@ class SimpleHercules:
                 return "I received an empty message. This is not an error and is recoverable. Try to reformulate the task..."
             elif "##TERMINATE TASK##" in last_message:
                 last_message = last_message.replace("##TERMINATE TASK##", "")  # type: ignore
-                if last_message and do_we_need_get_url:
-                    last_message += " " + get_url()
+                if last_message and hasattr(self, 'do_we_need_get_url') and self.do_we_need_get_url:
+                    if hasattr(self, 'get_url'):
+                        last_message += " " + self.get_url()
                 if "##FLAG::SAVE_IN_MEM##" in last_message:
                     mem = (
                         "Context from execution of previous steps: "
@@ -675,9 +675,9 @@ class SimpleHercules:
             init_cls = BrowserNavAgent
 
         navigation_nav_agent = init_cls(
-            self.navigation_nav_agent_model_config,
-            self.nav_agent_config["llm_config_params"],  # type: ignore
-            self.nav_agent_config["other_settings"].get("system_prompt", None),
+            self.navigation_nav_agent_model_config or [],
+            self.nav_agent_config["llm_config_params"] if self.nav_agent_config else {},
+            self.nav_agent_config["other_settings"].get("system_prompt", None) if self.nav_agent_config and self.nav_agent_config.get("other_settings") else None,
             user_proxy_agent,
         )  # type: ignore
         return navigation_nav_agent.agent
@@ -988,11 +988,11 @@ class SimpleHercules:
             self.memory.clear()
 
         planner_agent = self.agents_map.get("planner_agent")
-        if isinstance(planner_agent, autogen.ConversableAgent):
+        if planner_agent and isinstance(planner_agent, autogen.ConversableAgent):
             planner_agent.clear_history()
 
         user_agent = self.agents_map.get("user")
-        if isinstance(user_agent, autogen.ConversableAgent):
+        if user_agent and isinstance(user_agent, autogen.ConversableAgent):
             user_agent.clear_history()
 
         logger.info("Plan cleaned up.")
