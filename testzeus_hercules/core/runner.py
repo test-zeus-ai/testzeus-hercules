@@ -25,8 +25,8 @@ class BaseRunner:
 
     def __init__(
         self,
-        planner_max_chat_round: int = 500,
-        nav_max_chat_round: int = 10,
+        planner_max_chat_round: int = 50,
+        nav_max_chat_round: int = 5,
         stake_id: str | None = None,
         dont_terminate_browser_after_run: bool = False,
     ):
@@ -38,7 +38,7 @@ class BaseRunner:
         self.stake_id = stake_id
         self.dont_terminate_browser_after_run = dont_terminate_browser_after_run
 
-        self.save_chat_logs_to_files = os.getenv("SAVE_CHAT_LOGS_TO_FILE", "True").lower() in ["true", "1"]
+        self.save_chat_logs_to_files = os.getenv("SAVE_CHAT_LOGS_TO_FILE", "False").lower() in ["true", "1"]
 
         self.planner_agent_name = "planner_agent"
         self.shutdown_event = asyncio.Event()
@@ -54,7 +54,7 @@ class BaseRunner:
         self.helper_config = llm_config.get_helper_agent_config()
 
         self.simple_hercules = await SimpleHercules.create(
-            self.stake_id,
+            self.stake_id or "default",
             self.planner_agent_config,
             self.nav_agent_config,
             self.mem_agent_config,
@@ -71,7 +71,8 @@ class BaseRunner:
         """
         Clean up the plan after each command is processed.
         """
-        await self.simple_hercules.clean_up_plan()
+        if self.simple_hercules:
+            await self.simple_hercules.clean_up_plan()
 
     async def process_command(self, command: str) -> tuple[Any, float]:
         """
@@ -94,20 +95,34 @@ class BaseRunner:
         if command:
             self.is_running = True
             start_time = time.time()
+            
+            device_start = time.time()
             current_url = await self.device_manager.get_current_screen_state() if self.device_manager else None
+            device_time = time.time() - device_start
+            
             result = None
+            llm_time = 0
             logger.info(f"Processing command: {command}")
             if self.simple_hercules:
                 await self.device_manager.update_processing_state("processing")  # type: ignore
+                
+                llm_start = time.time()
                 result = await self.simple_hercules.process_command(command, current_url)
+                llm_time = time.time() - llm_start
+                
                 await self.device_manager.update_processing_state("done")  # type: ignore
+            
+            io_start = time.time()
+            await self.save_planner_chat_messages()
+            io_time = time.time() - io_start
+            
             end_time = time.time()
             elapsed_time = round(end_time - start_time, 2)
-
-            await self.save_planner_chat_messages()
+            
+            logger.info(f'Command "{command}" took: {elapsed_time} seconds.')
+            logger.info(f'Performance breakdown - Device: {device_time:.2f}s, LLM: {llm_time:.2f}s, I/O: {io_time:.2f}s')
+            
             if result is not None:
-                logger.info(f'Command "{command}" took: {elapsed_time} seconds.')
-                # Get trace paths from config
                 chat_history = result.chat_history  # type: ignore
                 last_message = chat_history[-1] if chat_history else None  # type: ignore
                 if last_message and "terminate" in last_message and last_message["terminate"] == "yes":
@@ -121,6 +136,9 @@ class BaseRunner:
         """
         Saves chat messages to a file or logs them based on configuration.
         """
+        if not self.simple_hercules or not self.simple_hercules.agents_map:
+            return
+            
         messages = self.simple_hercules.agents_map[self.planner_agent_name].chat_messages
         messages_str_keys = {str(key): value for key, value in messages.items()}
         res_output_thoughts_logs_di = {}
