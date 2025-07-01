@@ -7,6 +7,7 @@ import httpx
 from testzeus_hercules.core.tools.tool_registry import api_logger as file_logger
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
+from testzeus_hercules.integration.dual_mode_adapter import get_dual_mode_adapter
 
 # ------------------------------------------------------------------------------
 # Logging and Utility Functions
@@ -230,6 +231,8 @@ async def generic_http_api(
 ) -> Annotated[
     Tuple[str, float], "Minified JSON response and call duration (in seconds)."
 ]:
+    adapter = get_dual_mode_adapter()
+    
     # Set authentication headers based on auth_type.
     if auth_type:
         auth_type = auth_type.lower()
@@ -250,11 +253,56 @@ async def generic_http_api(
         elif auth_type == "api_key":
             headers["x-api-key"] = auth_value
 
-    return await _send_request(
-        method,
-        url,
-        query_params=query_params,
-        body=body,
-        body_mode=body_mode,
-        headers=headers,
-    )
+    try:
+        result_str, duration = await _send_request(
+            method,
+            url,
+            query_params=query_params,
+            body=body,
+            body_mode=body_mode,
+            headers=headers,
+        )
+        
+        try:
+            result_dict = json.loads(result_str.replace("'", '"'))
+            success = "error" not in result_dict or result_dict.get("status_type") == "success"
+            status_code = result_dict.get("status_code")
+        except:
+            success = True  # Assume success if we can't parse
+            status_code = None
+        
+        await adapter.log_tool_interaction(
+            tool_name="http_request",
+            selector=url,
+            action=f"{method.upper()}_request",
+            success=success,
+            additional_data={
+                "method": method,
+                "auth_type": auth_type,
+                "query_params": query_params,
+                "body_mode": body_mode,
+                "status_code": status_code,
+                "duration": duration,
+                "has_body": body is not None,
+                "has_auth": auth_type is not None
+            }
+        )
+        
+        return result_str, duration
+        
+    except Exception as e:
+        await adapter.log_tool_interaction(
+            tool_name="http_request",
+            selector=url,
+            action=f"{method.upper()}_request",
+            success=False,
+            error_message=str(e),
+            additional_data={
+                "method": method,
+                "auth_type": auth_type,
+                "query_params": query_params,
+                "body_mode": body_mode,
+                "error_type": "unexpected"
+            }
+        )
+        raise

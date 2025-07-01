@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_en
 from sqlalchemy.sql import text
 from testzeus_hercules.core.tools.tool_registry import tool, tool_registry
 from testzeus_hercules.utils.logger import logger
+from testzeus_hercules.integration.dual_mode_adapter import get_dual_mode_adapter
 
 
 @tool(
@@ -108,6 +109,10 @@ async def execute_select_cte_query_sql(
       Check for this in your code to handle errors gracefully.
 
     """
+    adapter = get_dual_mode_adapter()
+    success = False
+    error_message = None
+    
     try:
         # Ensure only SELECT queries are allowed
         query_lower = query.strip().lower()
@@ -127,16 +132,63 @@ async def execute_select_cte_query_sql(
 
             result = await connection.execute(text(query), params or {})
             rows = [dict(row) for row in result]
+            success = True
+            
+            await adapter.log_tool_interaction(
+                tool_name="execute_select_query",
+                selector=connection_string,
+                action="sql_query_execution",
+                success=True,
+                additional_data={
+                    "query": query,
+                    "schema_name": schema_name,
+                    "params": params,
+                    "row_count": len(rows)
+                }
+            )
+            
             return rows
     except SQLAlchemyError as e:
-
+        success = False
+        error_message = str(e)
         traceback.print_exc()
         logger.error(f"SQLAlchemy error occurred: {e}")
+        
+        await adapter.log_tool_interaction(
+            tool_name="execute_select_query",
+            selector=connection_string,
+            action="sql_query_execution",
+            success=False,
+            error_message=error_message,
+            additional_data={
+                "query": query,
+                "schema_name": schema_name,
+                "params": params,
+                "error_type": "sqlalchemy"
+            }
+        )
+        
         return {"error": str(e)}
     except Exception as e:
-
+        success = False
+        error_message = str(e)
         traceback.print_exc()
         logger.error(f"An unexpected error occurred: {e}")
+        
+        await adapter.log_tool_interaction(
+            tool_name="execute_select_query",
+            selector=connection_string,
+            action="sql_query_execution",
+            success=False,
+            error_message=error_message,
+            additional_data={
+                "query": query,
+                "schema_name": schema_name,
+                "params": params,
+                "error_type": "unexpected"
+            }
+        )
+        
         return {"error": str(e)}
     finally:
         await engine.dispose()

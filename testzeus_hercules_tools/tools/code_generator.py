@@ -25,7 +25,14 @@ class CodeGenerator:
             "",
             "import asyncio",
             "from testzeus_hercules_tools import ToolsConfig, ToolsPlaywrightManager",
-            "from testzeus_hercules_tools.tools import click_element, enter_text, hover_element, select_dropdown",
+            "from testzeus_hercules_tools.tools import (",
+            "    # Browser interaction tools",
+            "    click_element, enter_text, hover_element, select_dropdown,",
+            "    open_url, press_key_combination, upload_file, get_page_text,",
+            "    # Specialized operation tools", 
+            "    execute_select_query, http_request, test_page_accessibility,",
+            "    wait_for_seconds, wait_until_condition, run_security_scan",
+            ")",
             "",
             "",
             "async def main():",
@@ -51,6 +58,16 @@ class CodeGenerator:
                 code_lines.extend(self._generate_hover_code(interaction, selector))
             elif interaction.tool_name == "select_dropdown":
                 code_lines.extend(self._generate_dropdown_code(interaction, selector))
+            elif interaction.tool_name == "execute_select_query":
+                code_lines.extend(self._generate_sql_code(interaction, selector))
+            elif interaction.tool_name == "http_request":
+                code_lines.extend(self._generate_api_code(interaction, selector))
+            elif interaction.tool_name == "test_page_accessibility":
+                code_lines.extend(self._generate_accessibility_code(interaction, selector))
+            elif interaction.tool_name in ["wait_for_seconds", "wait_until_condition"]:
+                code_lines.extend(self._generate_wait_code(interaction, selector))
+            elif interaction.tool_name == "run_security_scan":
+                code_lines.extend(self._generate_security_code(interaction, selector))
         
         code_lines.extend([
             "    ",
@@ -167,6 +184,167 @@ class CodeGenerator:
             f"            playwright_manager=playwright_manager",
             f"        )",
             f"        print(f'Dropdown result: {{result[\"success\"]}}')  # Selected: {value}",
+            f"        ",
+        ]
+        
+        return lines
+    
+    def _generate_sql_code(self, interaction: InteractionLog, selector: str) -> List[str]:
+        """Generate SQL query execution code."""
+        query = ""
+        schema_name = ""
+        params = {}
+        
+        if interaction.additional_data:
+            query = interaction.additional_data.get("query", "")
+            schema_name = interaction.additional_data.get("schema_name", "")
+            params = interaction.additional_data.get("params", {})
+        
+        lines = [
+            f"        # Execute SQL query: {interaction.action}",
+            f"        result = await execute_select_query(",
+            f"            connection_string='{selector}',",
+            f"            query='''{query}''',",
+        ]
+        
+        if schema_name:
+            lines.append(f"            schema_name='{schema_name}',")
+        
+        if params:
+            lines.append(f"            params={params},")
+        
+        lines.extend([
+            f"            config=config,",
+            f"            playwright_manager=playwright_manager",
+            f"        )",
+            f"        print(f'SQL result: {{result[\"success\"]}} - {{result.get(\"row_count\", 0)}} rows')  # Query executed",
+            f"        ",
+        ])
+        
+        return lines
+    
+    def _generate_api_code(self, interaction: InteractionLog, selector: str) -> List[str]:
+        """Generate HTTP request code."""
+        method = "GET"
+        auth_type = None
+        body_mode = None
+        
+        if interaction.additional_data:
+            method = interaction.additional_data.get("method", "GET")
+            auth_type = interaction.additional_data.get("auth_type")
+            body_mode = interaction.additional_data.get("body_mode")
+        
+        lines = [
+            f"        # HTTP request: {interaction.action}",
+            f"        result = await http_request(",
+            f"            method='{method}',",
+            f"            url='{selector}',",
+        ]
+        
+        if auth_type:
+            lines.append(f"            auth_type='{auth_type}',")
+            lines.append(f"            auth_value='YOUR_AUTH_VALUE',  # Replace with actual auth value")
+        
+        if body_mode:
+            lines.append(f"            body_mode='{body_mode}',")
+            lines.append(f"            body={{}},  # Replace with actual request body")
+        
+        lines.extend([
+            f"            config=config,",
+            f"            playwright_manager=playwright_manager",
+            f"        )",
+            f"        print(f'API result: {{result[\"success\"]}} - Status: {{result.get(\"status_code\", \"N/A\")}}')  # {method} request executed",
+            f"        ",
+        ])
+        
+        return lines
+    
+    def _generate_accessibility_code(self, interaction: InteractionLog, selector: str) -> List[str]:
+        """Generate accessibility test code."""
+        violations_count = 0
+        
+        if interaction.additional_data:
+            violations_count = interaction.additional_data.get("violations_count", 0)
+        
+        lines = [
+            f"        # Accessibility test: {interaction.action}",
+            f"        result = await test_page_accessibility(",
+            f"            page_url='{selector}',",
+            f"            config=config,",
+            f"            playwright_manager=playwright_manager",
+            f"        )",
+            f"        print(f'Accessibility result: {{result[\"success\"]}} - {{result.get(\"violations_count\", 0)}} violations')  # Accessibility test completed",
+            f"        ",
+        ]
+        
+        return lines
+    
+    def _generate_wait_code(self, interaction: InteractionLog, selector: str) -> List[str]:
+        """Generate wait operation code."""
+        if interaction.tool_name == "wait_for_seconds":
+            seconds = float(selector) if selector.replace('.', '').isdigit() else 1.0
+            reason = ""
+            
+            if interaction.additional_data:
+                seconds = interaction.additional_data.get("requested_seconds", seconds)
+                reason = interaction.additional_data.get("reason", "")
+            
+            lines = [
+                f"        # Wait for seconds: {interaction.action}",
+                f"        result = await wait_for_seconds(",
+                f"            seconds={seconds},",
+            ]
+            
+            if reason:
+                lines.append(f"            reason='{reason}',")
+            
+            lines.extend([
+                f"            config=config,",
+                f"            playwright_manager=playwright_manager",
+                f"        )",
+                f"        print(f'Wait result: {{result[\"success\"]}} - Waited {{result.get(\"actual_duration\", 0):.2f}}s')  # Wait completed",
+                f"        ",
+            ])
+            
+        else:  # wait_until_condition
+            condition = selector
+            max_wait = 30.0
+            
+            if interaction.additional_data:
+                max_wait = interaction.additional_data.get("max_wait_seconds", 30.0)
+            
+            lines = [
+                f"        # Wait until condition: {interaction.action}",
+                f"        result = await wait_until_condition(",
+                f"            condition_check='{condition}',",
+                f"            max_wait_seconds={max_wait},",
+                f"            config=config,",
+                f"            playwright_manager=playwright_manager",
+                f"        )",
+                f"        print(f'Condition wait result: {{result[\"success\"]}} - {{result.get(\"elapsed_seconds\", 0):.2f}}s')  # Condition wait completed",
+                f"        ",
+            ]
+        
+        return lines
+    
+    def _generate_security_code(self, interaction: InteractionLog, selector: str) -> List[str]:
+        """Generate security scan code."""
+        scan_type = "cve"
+        vulnerabilities_found = 0
+        
+        if interaction.additional_data:
+            scan_type = interaction.additional_data.get("scan_type", "cve")
+            vulnerabilities_found = interaction.additional_data.get("vulnerabilities_found", 0)
+        
+        lines = [
+            f"        # Security scan: {interaction.action}",
+            f"        result = await run_security_scan(",
+            f"            target_url='{selector}',",
+            f"            scan_type='{scan_type}',",
+            f"            config=config,",
+            f"            playwright_manager=playwright_manager",
+            f"        )",
+            f"        print(f'Security scan result: {{result[\"success\"]}} - {{result.get(\"vulnerabilities_found\", 0)}} vulnerabilities')  # {scan_type.upper()} scan completed",
             f"        ",
         ]
         
