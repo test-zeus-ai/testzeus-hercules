@@ -29,20 +29,21 @@ def get_page_data(page: Any) -> dict[str, Any]:
 
 @tool(
     agent_names=["browser_nav_agent"],
-    description="""Clicks element by md attribute. Returns success/failure status.""",
+    description="""Clicks element by md attribute or other selectors. Returns success/failure status. Supports dual-mode operation.""",
     name="click",
 )
 async def click(
-    selector: Annotated[str, """selector using md attribute, just give the md ID value"""],
+    selector: Annotated[str, """selector using md attribute (agent mode) or CSS/XPath selector (code mode), just give the md ID value or standard selector"""],
     user_input_dialog_response: Annotated[str, "Dialog input value"] = "",
     expected_message_of_dialog: Annotated[str, "Expected dialog message"] = "",
     action_on_dialog: Annotated[str, "Dialog action: 'DISMISS' or 'ACCEPT'"] = "",
     type_of_click: Annotated[str, "Click type: click/right_click/double_click/middle_click"] = "click",
     wait_before_execution: Annotated[float, "Wait time before click"] = 0.0,
+    mode: Annotated[str, "Operation mode: 'agent' (default) or 'code'"] = "agent",
 ) -> Annotated[str, "Click action result"]:
     query_selector = selector
 
-    if "md=" not in query_selector:
+    if mode == "agent" and "md=" not in query_selector and not query_selector.startswith("[") and not query_selector.startswith("/"):
         query_selector = f"[md='{query_selector}']"
 
     logger.info(f'Executing ClickElement with "{query_selector}" as the selector')
