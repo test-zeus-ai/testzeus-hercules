@@ -9,6 +9,11 @@ from testzeus_hercules_tools.tools import (
     enter_text, 
     hover_element, 
     select_dropdown,
+    open_url,
+    press_key_combination,
+    upload_file,
+    get_page_text,
+    get_interactive_elements,
     InteractionLogger,
     CodeGenerator
 )
@@ -24,12 +29,18 @@ async def agent_mode_example():
     
     try:
         await playwright_manager.initialize()
-        page = await playwright_manager.get_page()
         
-        await page.goto("https://example.com")
+        result = await open_url("https://example.com", config=config, playwright_manager=playwright_manager)
+        print(f"Navigation result: {result['success']}")
+        
+        result = await get_page_text(config=config, playwright_manager=playwright_manager)
+        print(f"Page text length: {len(result.get('text_content', ''))}")
+        
+        result = await get_interactive_elements(config=config, playwright_manager=playwright_manager)
+        print(f"Found {result.get('element_count', 0)} interactive elements")
         
         
-        print("Agent mode initialized successfully")
+        print("Agent mode example completed successfully")
         
     finally:
         await playwright_manager.close()
@@ -45,12 +56,18 @@ async def code_mode_example():
     
     try:
         await playwright_manager.initialize()
-        page = await playwright_manager.get_page()
         
-        await page.goto("https://example.com")
+        result = await open_url("https://httpbin.org/forms/post", config=config, playwright_manager=playwright_manager)
+        print(f"Navigation result: {result['success']}")
+        
+        result = await get_page_text(config=config, playwright_manager=playwright_manager)
+        print(f"Page text length: {len(result.get('text_content', ''))}")
+        
+        result = await get_interactive_elements(config=config, playwright_manager=playwright_manager)
+        print(f"Found {result.get('element_count', 0)} interactive elements")
         
         
-        print("Code mode initialized successfully")
+        print("Code mode example completed successfully")
         
     finally:
         await playwright_manager.close()
