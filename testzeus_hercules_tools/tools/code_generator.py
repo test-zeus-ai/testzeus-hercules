@@ -369,4 +369,5 @@ class CodeGenerator:
         """Generate code from an InteractionLogger instance."""
         interactions = logger.get_successful_interactions()
         code = self.generate_code_from_logs(interactions)
-        return self.save_generated_code(code, filename)
+        self.save_generated_code(code, filename)
+        return code

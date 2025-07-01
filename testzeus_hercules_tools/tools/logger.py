@@ -27,13 +27,20 @@ class InteractionLog:
 class InteractionLogger:
     """Logger for tool interactions with dual-mode support."""
     
+    _shared_interactions: List[InteractionLog] = []
+    _shared_log_file: Optional[str] = None
+    
     def __init__(self, config: Optional[ToolsConfig] = None):
         self.config = config or ToolsConfig.from_env()
         self._log_file: Optional[str] = None
-        self._interactions: List[InteractionLog] = []
         
         if self.config.enable_logging:
             self._setup_log_file()
+            if InteractionLogger._shared_log_file is None:
+                InteractionLogger._shared_log_file = self._log_file
+                self._load_existing_interactions()
+            else:
+                self._log_file = InteractionLogger._shared_log_file
     
     def _setup_log_file(self) -> None:
         """Setup log file path."""
@@ -44,6 +51,19 @@ class InteractionLogger:
         
         os.makedirs(log_dir, exist_ok=True)
         self._log_file = os.path.join(log_dir, "interactions.ndjson")
+    
+    def _load_existing_interactions(self) -> None:
+        """Load existing interactions from log file."""
+        if self._log_file and os.path.exists(self._log_file):
+            try:
+                with open(self._log_file, "r", encoding="utf-8") as f:
+                    for line in f:
+                        if line.strip():
+                            data = json.loads(line.strip())
+                            interaction = InteractionLog(**data)
+                            InteractionLogger._shared_interactions.append(interaction)
+            except Exception:
+                pass  # Fail silently for loading errors
     
     async def log_interaction(
         self,
@@ -72,7 +92,7 @@ class InteractionLogger:
             additional_data=additional_data
         )
         
-        self._interactions.append(log_entry)
+        InteractionLogger._shared_interactions.append(log_entry)
         
         if self._log_file:
             try:
@@ -83,12 +103,17 @@ class InteractionLogger:
     
     def get_interactions(self) -> List[InteractionLog]:
         """Get all logged interactions."""
-        return self._interactions.copy()
+        return InteractionLogger._shared_interactions.copy()
     
     def get_successful_interactions(self) -> List[InteractionLog]:
         """Get only successful interactions."""
-        return [log for log in self._interactions if log.success]
+        return [log for log in InteractionLogger._shared_interactions if log.success]
     
     def clear_interactions(self) -> None:
         """Clear all logged interactions."""
-        self._interactions.clear()
+        InteractionLogger._shared_interactions.clear()
+        if self._log_file and os.path.exists(self._log_file):
+            try:
+                os.remove(self._log_file)
+            except Exception:
+                pass
