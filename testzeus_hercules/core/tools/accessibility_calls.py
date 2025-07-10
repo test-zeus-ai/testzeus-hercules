@@ -12,6 +12,7 @@ from testzeus_hercules.core.tools.tool_registry import (
     tool,
 )
 from testzeus_hercules.utils.logger import logger
+from testzeus_hercules.integration.dual_mode_adapter import get_dual_mode_adapter
 
 AXE_SCRIPT_URL = "https://cdnjs.cloudflare.com/ajax/libs/axe-core/4.10.2/axe.min.js"
 
@@ -23,6 +24,7 @@ AXE_SCRIPT_URL = "https://cdnjs.cloudflare.com/ajax/libs/axe-core/4.10.2/axe.min
 )
 async def test_page_accessibility(
     page_path: Annotated[str, "Current page URL"],
+    mode: Annotated[str, "Operation mode: 'agent' (default) or 'code'"] = "agent",
 ) -> Annotated[str, "Minified JSON string of accessibility test results"]:
     """
     Performs an accessibility test on the current page.
@@ -32,6 +34,13 @@ async def test_page_accessibility(
     Returns:
     - A **string** with the Axe-core accessibility test results in minified JSON format.
     """
+    adapter = get_dual_mode_adapter()
+    
+    if mode == "agent":
+        query_selector = page_path
+    else:
+        query_selector = page_path
+    
     try:
         # Create and use the PlaywrightManager
         browser_manager = PlaywrightManager()
@@ -79,6 +88,19 @@ async def test_page_accessibility(
                 "message": "No accessibility violations found.",
                 "details": "All good",
             }
+            
+            await adapter.log_tool_interaction(
+                tool_name="test_accessibility",
+                selector=page_path,
+                action="accessibility_test",
+                success=True,
+                additional_data={
+                    "violations_count": 0,
+                    "incomplete_count": len(incomplete),
+                    "status": "success"
+                }
+            )
+            
             return json.dumps(result_dict, separators=(",", ":"))
 
         # Otherwise, report the failures
@@ -87,6 +109,20 @@ async def test_page_accessibility(
             "message": f"Accessibility violations found: {len(failureSummaries)}",
             "details": failureSummaries,
         }
+        
+        await adapter.log_tool_interaction(
+            tool_name="test_accessibility",
+            selector=page_path,
+            action="accessibility_test",
+            success=False,
+            additional_data={
+                "violations_count": len(failureSummaries),
+                "incomplete_count": len(incomplete),
+                "status": "failure",
+                "failure_summaries": failureSummaries
+            }
+        )
+        
         return json.dumps(result_dict, separators=(",", ":"))
 
     except Exception as e:
@@ -98,4 +134,17 @@ async def test_page_accessibility(
             "message": "An error occurred while performing the accessibility test.",
             "error": str(e),
         }
+        
+        await adapter.log_tool_interaction(
+            tool_name="test_accessibility",
+            selector=page_path,
+            action="accessibility_test",
+            success=False,
+            error_message=str(e),
+            additional_data={
+                "status": "error",
+                "error_type": "unexpected"
+            }
+        )
+        
         return json.dumps(error_dict, separators=(",", ":"))

@@ -290,6 +290,25 @@ async def interact_with_element_select_type(
 
 @tool(
     agent_names=["browser_nav_agent"],
+    name="select_dropdown",
+    description="Selects an option from dropdown/listbox/combobox/spinner elements. Supports dual-mode operation with md attribute (agent mode) or CSS/XPath selectors (code mode).",
+)
+async def select_dropdown_using_selector(
+    selector: Annotated[str, "selector using md attribute (agent mode) or CSS/XPath selector (code mode), just give the md ID value or standard selector"],
+    value: Annotated[str, "option value or text to select from the dropdown"],
+    mode: Annotated[str, "Operation mode: 'agent' (default) or 'code'"] = "agent",
+) -> Annotated[str, "Dropdown selection result"]:
+    """Select an option from a dropdown with dual-mode selector support."""
+    query_selector = selector
+    
+    if mode == "agent" and "md=" not in query_selector and not query_selector.startswith("[") and not query_selector.startswith("/"):
+        query_selector = f"[md='{query_selector}']"
+    
+    return await select_option((query_selector, value))
+
+
+@tool(
+    agent_names=["browser_nav_agent"],
     name="bulk_select_option",
     description=("Used to select/search an options in multiple picklist/listbox/combobox/dropdowns/spinners in a single attempt. " "Each entry is a tuple of (selector, value_to_fill)."),
 )

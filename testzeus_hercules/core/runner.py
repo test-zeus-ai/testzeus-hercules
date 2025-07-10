@@ -12,6 +12,9 @@ from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.simple_hercules import SimpleHercules
 from testzeus_hercules.utils.cli_helper import async_input  # type: ignore
 from testzeus_hercules.utils.logger import logger
+from testzeus_hercules.integration.dual_mode_adapter import get_dual_mode_adapter
+import importlib.util
+import sys
 
 
 class BaseRunner:
@@ -190,8 +193,105 @@ class BaseRunner:
                     logger.info(f"Final message: {last_message}")
 
             await self.browser_manager.command_completed(command, elapsed_time)  # type: ignore
+            
+            try:
+                adapter = get_dual_mode_adapter()
+                if adapter.is_agent_mode():
+                    proof_path = get_global_conf().get_proof_path(self.stake_id)
+                    output_filename = f"generated_test_{self.stake_id}.py"
+                    output_path = os.path.join(proof_path, output_filename)
+                    
+                    generated_code = await adapter.generate_code_from_session(output_path)
+                    if generated_code:
+                        logger.info(f"Generated code saved to: {output_path}")
+                        logger.info(f"Generated code length: {len(generated_code)} characters")
+                    else:
+                        logger.info("No interactions logged for code generation")
+            except Exception as e:
+                logger.warning(f"Code generation failed: {e}")
+            
             self.is_running = False
         return result, elapsed_time
+
+
+class CodeModeRunner(BaseRunner):
+    """
+    A runner that executes generated code in non-LLM mode.
+    """
+    
+    def __init__(self, code_file_path: str, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.code_file_path = code_file_path
+        self.result = None
+        self.execution_time = 0.0
+        
+    async def start(self) -> None:
+        """Execute the generated code file."""
+        start_time = time.time()
+        
+        try:
+            await self.initialize()
+            
+            adapter = get_dual_mode_adapter()
+            adapter.set_mode("code")
+            
+            logger.info(f"Executing generated code in code mode: {self.code_file_path}")
+            
+            if not os.path.exists(self.code_file_path):
+                raise FileNotFoundError(f"Generated code file not found: {self.code_file_path}")
+            
+            spec = importlib.util.spec_from_file_location("generated_test", self.code_file_path)
+            if spec and spec.loader:
+                module = importlib.util.module_from_spec(spec)
+                
+                sys.modules["generated_test"] = module
+                
+                try:
+                    spec.loader.exec_module(module)
+                    
+                    if hasattr(module, 'main'):
+                        if asyncio.iscoroutinefunction(module.main):
+                            await module.main()
+                        else:
+                            module.main()
+                        logger.info("Generated code main() function executed successfully")
+                        self.result = {
+                            "summary": "Generated code executed successfully",
+                            "is_success": True
+                        }
+                    else:
+                        logger.info("Generated code executed successfully (no main function)")
+                        self.result = {
+                            "summary": "Generated code executed successfully (no main function)",
+                            "is_success": True
+                        }
+                        
+                except Exception as exec_error:
+                    logger.error(f"Error executing generated code: {exec_error}")
+                    self.result = {
+                        "summary": f"Generated code execution failed: {exec_error}",
+                        "is_success": False
+                    }
+                    raise
+                finally:
+                    if "generated_test" in sys.modules:
+                        del sys.modules["generated_test"]
+            else:
+                raise ImportError(f"Could not load module from {self.code_file_path}")
+            
+            logger.info("Code mode execution completed successfully")
+            
+        except Exception as e:
+            logger.error(f"Code mode execution failed: {e}")
+            self.result = {
+                "summary": f"Code mode execution failed: {e}",
+                "is_success": False
+            }
+            raise
+        finally:
+            self.execution_time = time.time() - start_time
+            if not self.dont_terminate_browser_after_run:
+                await self.clean_up()
 
     async def save_planner_chat_messages(self) -> None:
         """

@@ -28,6 +28,7 @@ async def execute_select_cte_query_sql(
         dict,
         "Optional parameters to pass to the query for parameterized queries.",
     ] = None,
+    mode: Annotated[str, "Operation mode: 'agent' (default) or 'code'"] = "agent",
 ) -> Annotated[
     Union[List[dict], dict],
     "SQL query results or an error message.",
@@ -112,6 +113,11 @@ async def execute_select_cte_query_sql(
     adapter = get_dual_mode_adapter()
     success = False
     error_message = None
+    
+    if mode == "agent":
+        query_selector = connection_string
+    else:
+        query_selector = connection_string
     
     try:
         # Ensure only SELECT queries are allowed

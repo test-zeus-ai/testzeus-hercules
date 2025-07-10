@@ -18,16 +18,20 @@ from testzeus_hercules.utils.logger import logger
 
 @tool(
     agent_names=["browser_nav_agent"],
-    description="""Hovers over element. Returns tooltip details.""",
+    description="""Hovers over element. Returns tooltip details. Supports dual-mode operation.""",
     name="hover",
 )
 async def hover(
-    selector: Annotated[str, "selector using md attribute, just give the md ID value"],
+    selector: Annotated[str, "selector using md attribute (agent mode) or CSS/XPath selector (code mode), just give the md ID value or standard selector"],
     wait_before_execution: Annotated[float, "Wait time in seconds before hover"] = 0.0,
+    mode: Annotated[str, "Operation mode: 'agent' (default) or 'code'"] = "agent",
 ) -> Annotated[str, "Result of hover action with tooltip text"]:
-    logger.info(f'Executing HoverElement with "{selector}" as the selector')
-    if "md=" not in selector:
-        selector = f"[md='{selector}']"
+    query_selector = selector
+    
+    if mode == "agent" and "md=" not in query_selector and not query_selector.startswith("[") and not query_selector.startswith("/"):
+        query_selector = f"[md='{query_selector}']"
+    
+    logger.info(f'Executing HoverElement with "{query_selector}" as the selector')
     add_event(EventType.INTERACTION, EventData(detail="hover"))
     # Initialize PlaywrightManager and get the active browser page
     browser_manager = PlaywrightManager()
@@ -49,7 +53,7 @@ async def hover(
         dom_changes_detected = changes  # type: ignore
 
     subscribe(detect_dom_changes)
-    result = await do_hover(page, selector, wait_before_execution)
+    result = await do_hover(page, query_selector, wait_before_execution)
     await asyncio.sleep(get_global_conf().get_delay_time())  # sleep to allow the mutation observer to detect changes
     unsubscribe(detect_dom_changes)
 

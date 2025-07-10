@@ -20,6 +20,25 @@ from testzeus_hercules.utils.ui_messagetype import MessageType
 
 @tool(
     agent_names=["browser_nav_agent"],
+    name="upload_file",
+    description="Upload a file to a file input element on the page. Supports dual-mode operation.",
+)
+async def upload_file_using_selector(
+    selector: Annotated[str, "selector using md attribute (agent mode) or CSS/XPath selector (code mode), just give the md ID value or standard selector"],
+    file_path: Annotated[str, "path to the file to upload"],
+    mode: Annotated[str, "Operation mode: 'agent' (default) or 'code'"] = "agent",
+) -> Annotated[str, "File upload result"]:
+    """Upload a file to an element with dual-mode selector support."""
+    query_selector = selector
+    
+    if mode == "agent" and "md=" not in query_selector and not query_selector.startswith("[") and not query_selector.startswith("/"):
+        query_selector = f"[md='{query_selector}']"
+    
+    return await click_and_upload_file([query_selector, file_path])
+
+
+@tool(
+    agent_names=["browser_nav_agent"],
     name="click_and_upload_file",
     description="Click and Upload a file to a file input element on the page.",
 )

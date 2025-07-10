@@ -17,6 +17,7 @@ async def wait_for_duration(
         float,
         "Number of seconds to wait. Must be between 0 and 3600 seconds.",
     ],
+    mode: Annotated[str, "Operation mode: 'agent' (default) or 'code'"] = "agent",
 ) -> Annotated[
     Dict[str, str],
     "Result of the wait operation containing status and message.",
@@ -43,6 +44,11 @@ async def wait_for_duration(
     - Negative values will be rejected
     """
     adapter = get_dual_mode_adapter()
+    
+    if mode == "agent":
+        query_selector = f"duration_{duration}"
+    else:
+        query_selector = f"duration_{duration}"
     
     try:
         # Validate input
@@ -144,7 +150,9 @@ async def wait_for_duration(
     description="Get the current timestamp in string format.",
     name="get_current_timestamp",
 )
-async def get_current_timestamp() -> Annotated[
+async def get_current_timestamp(
+    mode: Annotated[str, "Operation mode: 'agent' (default) or 'code'"] = "agent",
+) -> Annotated[
     Dict[str, str],
     "Current timestamp in string format.",
 ]:
@@ -163,6 +171,11 @@ async def get_current_timestamp() -> Annotated[
     from datetime import datetime
     
     adapter = get_dual_mode_adapter()
+    
+    if mode == "agent":
+        query_selector = "system_time"
+    else:
+        query_selector = "system_time"
 
     try:
         # Get current timestamp

@@ -240,6 +240,25 @@ async def do_entertext(page: Page, selector: str, text_to_enter: str, use_keyboa
 
 @tool(
     agent_names=["browser_nav_agent"],
+    name="enter_text",
+    description="Enters text into text fields and textarea elements. Supports dual-mode operation with md attribute (agent mode) or CSS/XPath selectors (code mode).",
+)
+async def enter_text_using_selector(
+    selector: Annotated[str, "selector using md attribute (agent mode) or CSS/XPath selector (code mode), just give the md ID value or standard selector"],
+    text: Annotated[str, "text to enter into the element"],
+    mode: Annotated[str, "Operation mode: 'agent' (default) or 'code'"] = "agent",
+) -> Annotated[str, "Text entry result"]:
+    """Enter text into an element with dual-mode selector support."""
+    query_selector = selector
+    
+    if mode == "agent" and "md=" not in query_selector and not query_selector.startswith("[") and not query_selector.startswith("/"):
+        query_selector = f"[md='{query_selector}']"
+    
+    return await entertext((query_selector, text))
+
+
+@tool(
+    agent_names=["browser_nav_agent"],
     name="bulk_enter_text",
     description="Enters text into multiple text fields and textarea elements using a bulk operation based on detected fields details. An dict containing'selector' (selector query using md attribute e.g. [md='114'] md is ID) and 'text' (text to enter on the element)",
 )

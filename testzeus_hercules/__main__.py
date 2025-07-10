@@ -1,12 +1,14 @@
 import asyncio
 import json
 import os
+import argparse
 
 import aiofiles
 from junit2htmlreport.runner import run as prepare_html
 from testzeus_hercules.config import get_global_conf, set_global_conf
-from testzeus_hercules.core.runner import SingleCommandInputRunner
+from testzeus_hercules.core.runner import SingleCommandInputRunner, CodeModeRunner
 from testzeus_hercules.telemetry import EventData, EventType, add_event
+from testzeus_hercules.integration.dual_mode_adapter import get_dual_mode_adapter
 from testzeus_hercules.utils.gherkin_helper import (
     process_feature_file,
     serialize_feature_file,
@@ -160,10 +162,50 @@ async def process_test_directory(test_dir: str) -> None:
     await sequential_process()
 
 
+async def execute_code_mode(code_file_path: str) -> None:
+    """
+    Execute a generated code file in code mode.
+    
+    Args:
+        code_file_path (str): Path to the generated code file to execute
+    """
+    logger.info(f"Starting code mode execution for: {code_file_path}")
+    
+    # Create a unique stake_id for code mode execution
+    stake_id = f"code_mode_{os.path.basename(code_file_path).replace('.py', '')}"
+    
+    runner = CodeModeRunner(
+        code_file_path=code_file_path,
+        stake_id=stake_id,
+        dont_terminate_browser_after_run=get_global_conf().get_dont_close_browser(),
+    )
+    
+    try:
+        await runner.start()
+        logger.info(f"Code mode execution completed for: {code_file_path}")
+        if runner.result:
+            logger.info(f"Execution result: {runner.result.get('summary', 'No summary')}")
+    except Exception as e:
+        logger.error(f"Code mode execution failed: {e}")
+        raise
+
+
 async def a_main() -> None:
     """
     Main function that checks for bulk execution flag and runs tests accordingly
     """
+    
+    parser = argparse.ArgumentParser(description='TestZeus Hercules - Dual-mode test automation')
+    parser.add_argument('--code-mode', type=str, help='Execute generated code file in code mode')
+    parser.add_argument('--agent-mode', action='store_true', help='Run in agent mode (default)')
+    
+    args, unknown = parser.parse_known_args()
+    
+    # Handle code mode execution
+    if args.code_mode:
+        logger.info("Running in code mode")
+        await execute_code_mode(args.code_mode)
+        return
 
     def is_width_gt_120() -> bool:
         try:

@@ -19,8 +19,15 @@ from testzeus_hercules.utils.logger import logger
 )
 async def press_key_combination(
     key_combination: Annotated[str, "key to press, e.g., Enter, PageDown etc"],
+    mode: Annotated[str, "Operation mode: 'agent' (default) or 'code'"] = "agent",
 ) -> str:
     logger.info(f"Executing press_key_combination with key combo: {key_combination}")
+    
+    if mode == "agent":
+        query_selector = key_combination
+    else:
+        query_selector = key_combination
+    
     # Create and use the PlaywrightManager
     browser_manager = PlaywrightManager()
     page = await browser_manager.get_current_page()

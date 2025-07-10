@@ -1,9 +1,12 @@
 import asyncio
 import inspect
+import json
 from typing import Any
 
 from autogen import Agent  # type: ignore
 from autogen import UserProxyAgent  # type: ignore
+
+from testzeus_hercules.integration.dual_mode_adapter import get_dual_mode_adapter
 
 
 class UserProxyAgent_SequentialFunctionExecution(UserProxyAgent):
@@ -42,11 +45,75 @@ class UserProxyAgent_SequentialFunctionExecution(UserProxyAgent):
                     close_loop = True
                 if not skip_flag:
                     _, func_return = loop.run_until_complete(self.a_execute_function(function_call))  # type: ignore
+                    
+                    try:
+                        adapter = get_dual_mode_adapter()
+                        tool_name = function_call.get("name", "unknown")
+                        
+                        args = function_call.get("arguments", {})
+                        if isinstance(args, str):
+                            try:
+                                args = json.loads(args)
+                            except:
+                                args = {}
+                        
+                        selector = args.get("selector", args.get("url", args.get("query", args.get("sql", args.get("endpoint", "unknown")))))
+                        
+                        success = func_return is not None and isinstance(func_return, dict) and func_return.get("content", "") != ""
+                        
+                        loop.run_until_complete(adapter.log_tool_interaction(
+                            tool_name=tool_name,
+                            selector=str(selector),
+                            action="execute",
+                            success=success,
+                            element_info=args,
+                            error_message=func_return.get("content") if not success and isinstance(func_return, dict) else None
+                        ))
+                    except Exception as e:
+                        pass
+                    
                     if close_loop:
                         loop.close()
             else:
                 if not skip_flag:
                     _, func_return = self.execute_function(function_call)  # type: ignore
+                    
+                    try:
+                        adapter = get_dual_mode_adapter()
+                        tool_name = function_call.get("name", "unknown")
+                        
+                        args = function_call.get("arguments", {})
+                        if isinstance(args, str):
+                            try:
+                                args = json.loads(args)
+                            except:
+                                args = {}
+                        
+                        selector = args.get("selector", args.get("url", args.get("query", args.get("sql", args.get("endpoint", "unknown")))))
+                        
+                        success = func_return is not None and isinstance(func_return, dict) and func_return.get("content", "") != ""
+                        
+                        try:
+                            loop = asyncio.get_running_loop()
+                            loop.run_until_complete(adapter.log_tool_interaction(
+                                tool_name=tool_name,
+                                selector=str(selector),
+                                action="execute",
+                                success=success,
+                                element_info=args,
+                                error_message=func_return.get("content") if not success and isinstance(func_return, dict) else None
+                            ))
+                        except RuntimeError:
+                            asyncio.run(adapter.log_tool_interaction(
+                                tool_name=tool_name,
+                                selector=str(selector),
+                                action="execute",
+                                success=success,
+                                element_info=args,
+                                error_message=func_return.get("content") if not success and isinstance(func_return, dict) else None
+                            ))
+                    except Exception as e:
+                        pass
             if func_return is None:  # type: ignore
                 if skip_flag:
                     content = (

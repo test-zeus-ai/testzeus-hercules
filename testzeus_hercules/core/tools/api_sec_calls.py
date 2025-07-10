@@ -13,6 +13,7 @@ from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.tools.tool_registry import sec_logger as file_logger
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
+from testzeus_hercules.integration.dual_mode_adapter import get_dual_mode_adapter
 
 # Define cache and binary paths
 CACHE_DIR = Path(get_global_conf().get_hf_home()) / "nuclei_tool"
@@ -241,6 +242,7 @@ for tag, explanation in security_terms_explanation.items():
                 "Optional list of header tokens in 'Key=Value' format.",
             ] = [],
             jwt_token: Annotated[str, "Optional JWT token for authentication."] = "",
+            mode: Annotated[str, "Operation mode: 'agent' (default) or 'code'"] = "agent",
             # output_dir: Annotated[
             #     str, "Optional output directory for results."
             # ] = "nuclei_results",
@@ -251,7 +253,14 @@ for tag, explanation in security_terms_explanation.items():
             """
             Specific test tool function.
             """
+            adapter = get_dual_mode_adapter()
             start_time = time.perf_counter()
+            
+            if mode == "agent":
+                query_selector = target_url or open_api_spec_path
+            else:
+                query_selector = target_url or open_api_spec_path
+            
             try:
                 OUTPUT_PATH = get_global_conf().get_proof_path() + "/nuclei_results"
                 output_path = Path(OUTPUT_PATH)
@@ -278,6 +287,25 @@ for tag, explanation in security_terms_explanation.items():
                     file_logger(f"Nuclei command failed: {error_message}")
                     end_time = time.perf_counter()
                     duration = end_time - start_time
+                    
+                    await adapter.log_tool_interaction(
+                        tool_name="run_security_scan",
+                        selector=target_url or open_api_spec_path,
+                        action=f"security_scan_{tag}",
+                        success=False,
+                        error_message=error_message,
+                        additional_data={
+                            "tag": tag,
+                            "is_open_api_spec": is_open_api_spec,
+                            "has_bearer_token": bool(bearer_token),
+                            "has_jwt_token": bool(jwt_token),
+                            "header_count": len(header_tokens),
+                            "duration": duration,
+                            "error_type": "nuclei_command_failed",
+                            "return_code": returncode
+                        }
+                    )
+                    
                     return {"error": error_message}, duration
 
                 with open(output_file, "r") as f:
@@ -288,21 +316,37 @@ for tag, explanation in security_terms_explanation.items():
 
                 end_time = time.perf_counter()
                 duration = end_time - start_time
+                
+                success = True
+                result_data = None
+                
                 if content:
-                    return (
-                        {
-                            # "message": f"Test completed. output saved in {output_file}",
-                            "test_result": content,
-                        },
-                        duration,
-                    )
+                    result_data = {
+                        # "message": f"Test completed. output saved in {output_file}",
+                        "test_result": content,
+                    }
                 else:
-                    return (
-                        {
-                            "test_result": "No failures.",
-                        },
-                        duration,
-                    )
+                    result_data = {
+                        "test_result": "No failures.",
+                    }
+                
+                await adapter.log_tool_interaction(
+                    tool_name="run_security_scan",
+                    selector=target_url or open_api_spec_path,
+                    action=f"security_scan_{tag}",
+                    success=success,
+                    additional_data={
+                        "tag": tag,
+                        "is_open_api_spec": is_open_api_spec,
+                        "has_bearer_token": bool(bearer_token),
+                        "has_jwt_token": bool(jwt_token),
+                        "header_count": len(header_tokens),
+                        "duration": duration,
+                        "has_results": bool(content)
+                    }
+                )
+                
+                return result_data, duration
             except Exception as e:
                 import traceback
 
@@ -311,6 +355,24 @@ for tag, explanation in security_terms_explanation.items():
                 file_logger(f"An unexpected error occurred: {e}")
                 end_time = time.perf_counter()
                 duration = end_time - start_time
+                
+                await adapter.log_tool_interaction(
+                    tool_name="run_security_scan",
+                    selector=target_url or open_api_spec_path,
+                    action=f"security_scan_{tag}",
+                    success=False,
+                    error_message=str(e),
+                    additional_data={
+                        "tag": tag,
+                        "is_open_api_spec": is_open_api_spec,
+                        "has_bearer_token": bool(bearer_token),
+                        "has_jwt_token": bool(jwt_token),
+                        "header_count": len(header_tokens),
+                        "duration": duration,
+                        "error_type": "unexpected"
+                    }
+                )
+                
                 return {"error": str(e)}, duration
 
         return tool_function

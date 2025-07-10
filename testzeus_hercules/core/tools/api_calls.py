@@ -228,10 +228,16 @@ async def generic_http_api(
         "Body mode: multipart, urlencoded, raw, binary, or json. (Optional)",
     ] = None,
     headers: Annotated[Dict[str, str], "Additional HTTP headers."] = {},
+    mode: Annotated[str, "Operation mode: 'agent' (default) or 'code'"] = "agent",
 ) -> Annotated[
     Tuple[str, float], "Minified JSON response and call duration (in seconds)."
 ]:
     adapter = get_dual_mode_adapter()
+    
+    if mode == "agent":
+        query_selector = url
+    else:
+        query_selector = url
     
     # Set authentication headers based on auth_type.
     if auth_type:
