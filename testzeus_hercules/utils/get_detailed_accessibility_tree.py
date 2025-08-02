@@ -265,6 +265,33 @@ async def __fetch_dom_info(page: Page, accessibility_tree: dict[str, Any], only_
         "title",
         "aria-controls",
         "aria-describedby",
+        "class",
+        "ng-click",
+        "ng-mouseover",
+        "ng-mouseenter",
+        "ng-mouseleave",
+        "ng-dblclick",
+        "ng-keydown",
+        "ng-keyup",
+        "ng-keypress",
+        "ng-focus",
+        "ng-blur",
+        "ng-change",
+        "ng-submit",
+        "ng-repeat",
+        "ng-if",
+        "ng-show",
+        "ng-hide",
+        "ng-model",
+        "ng-bind",
+        "ng-class",
+        "ng-style",
+        "data-toggle",
+        "data-target",
+        "data-bs-toggle",
+        "data-bs-target",
+        "tabindex",
+        "role",
     ]
     backup_attributes = []  # if the attributes are not found, then try to get these attributes
     tags_to_ignore = [
@@ -415,12 +442,46 @@ async def __fetch_dom_info(page: Page, accessibility_tree: dict[str, Any], only_
                             return attributes_to_values;
                         }
 
+                        // Capture all specified attributes
                         for (const attribute of attributes) {
                             let value = element.getAttribute(attribute);
 
                             if (value) {
                                 attributes_to_values[attribute] = value;
                             }
+                        }
+                        
+                        // Capture all AngularJS attributes dynamically
+                        const angularAttrs = {};
+                        for (const attr of element.attributes) {
+                            if (attr.name.startsWith('ng-')) {
+                                angularAttrs[attr.name] = attr.value;
+                            }
+                        }
+                        if (Object.keys(angularAttrs).length > 0) {
+                            attributes_to_values['angular_attributes'] = angularAttrs;
+                        }
+                        
+                        // Capture all data attributes dynamically
+                        const dataAttrs = {};
+                        for (const attr of element.attributes) {
+                            if (attr.name.startsWith('data-')) {
+                                dataAttrs[attr.name] = attr.value;
+                            }
+                        }
+                        if (Object.keys(dataAttrs).length > 0) {
+                            attributes_to_values['data_attributes'] = dataAttrs;
+                        }
+                        
+                        // Capture all aria attributes dynamically
+                        const ariaAttrs = {};
+                        for (const attr of element.attributes) {
+                            if (attr.name.startsWith('aria-')) {
+                                ariaAttrs[attr.name] = attr.value;
+                            }
+                        }
+                        if (Object.keys(ariaAttrs).length > 0) {
+                            attributes_to_values['aria_attributes'] = ariaAttrs;
                         }
 
                         if (should_fetch_inner_text && element.innerText) {
@@ -1084,6 +1145,21 @@ async def do_get_accessibility_info(page: Page, only_input_fields: bool = False)
                             return cleanName(element.value);
                         }
 
+                        // Return class names for better identification
+                        if (element.className && element.className.trim()) {
+                            return element.className;
+                        }
+
+                        // Check for text content in child elements
+                        if (element.children.length > 0) {
+                            for (const child of element.children) {
+                                if (child.innerText && child.innerText.trim()) {
+                                    const text = cleanName(child.innerText);
+                                    if (text && text !== '') return text;
+                                }
+                            }
+                        }
+
                         if (element.innerText) return cleanName(element.innerText);
                         return '';
                     }
@@ -1104,6 +1180,7 @@ async def do_get_accessibility_info(page: Page, only_input_fields: bool = False)
                         const tagName = element.tagName.toLowerCase();
                         if (tagName === 'button') return 'button';
                         if (tagName === 'a' && element.hasAttribute('href')) return 'link';
+                        if (tagName === 'a' && (element.hasAttribute('ng-click') || element.hasAttribute('onclick'))) return 'button';
                         if (tagName === 'input') {
                             const type = element.type.toLowerCase();
                             switch (type) {
@@ -1146,6 +1223,37 @@ async def do_get_accessibility_info(page: Page, only_input_fields: bool = False)
 
                         if (tagName === 'select') return 'listbox';
                         if (tagName === 'textarea') return 'textbox';
+                        
+                        // Handle AngularJS and other interactive elements
+                        if (element.hasAttribute('ng-click') || element.hasAttribute('onclick')) {
+                            if (tagName === 'h1' || tagName === 'h2' || tagName === 'h3' || tagName === 'h4' || tagName === 'h5' || tagName === 'h6') return 'button';
+                            if (tagName === 'div' || tagName === 'span') return 'button';
+                            if (tagName === 'li') return 'menuitem';
+                        }
+                        
+                        if (element.hasAttribute('ng-mouseover') || element.hasAttribute('onmouseover')) {
+                            if (tagName === 'li') return 'menuitem';
+                            if (tagName === 'div' || tagName === 'span') return 'button';
+                        }
+                        
+                        // Handle menu-specific elements generically based on attributes
+                        if (element.hasAttribute('ng-click') || element.hasAttribute('onclick') ||
+                            element.hasAttribute('ng-mouseover') || element.hasAttribute('onmouseover')) {
+                            if (tagName === 'span') return 'button';
+                            if (tagName === 'li') return 'menuitem';
+                            if (tagName === 'ul') return 'menu';
+                        }
+                        
+                        if (tagName === 'nav') return 'navigation';
+                        if (tagName === 'header') return 'banner';
+                        if (tagName === 'footer') return 'contentinfo';
+                        if (tagName === 'main') return 'main';
+                        if (tagName === 'section') return 'region';
+                        if (tagName === 'article') return 'article';
+                        if (tagName === 'aside') return 'complementary';
+                        if (tagName === 'ul' || tagName === 'ol') return 'list';
+                        if (tagName === 'li') return 'listitem';
+                        
                         return '';
                     }
 
@@ -1173,7 +1281,92 @@ async def do_get_accessibility_info(page: Page, only_input_fields: bool = False)
                         const title = element.getAttribute('title');
                         if (title) node.title = cleanName(title);
 
+                        // Capture additional attributes for better identification
+                        if (element.className && element.className.trim()) {
+                            node.class = element.className;
+                        }
+                        
+                        if (element.id) {
+                            node.id = element.id;
+                        }
+                        
+                        // Capture AngularJS attributes
+                        const angularAttrs = {};
+                        for (const attr of element.attributes) {
+                            if (attr.name.startsWith('ng-')) {
+                                angularAttrs[attr.name] = attr.value;
+                            }
+                        }
+                        if (Object.keys(angularAttrs).length > 0) {
+                            node.angular_attributes = angularAttrs;
+                        }
+                        
+                        // Capture data attributes
+                        const dataAttrs = {};
+                        for (const attr of element.attributes) {
+                            if (attr.name.startsWith('data-')) {
+                                dataAttrs[attr.name] = attr.value;
+                            }
+                        }
+                        if (Object.keys(dataAttrs).length > 0) {
+                            node.data_attributes = dataAttrs;
+                        }
+
                         if (level) node.level = level;
+
+                        // Detect interactive properties
+                        const hasEventHandlers = element.hasAttribute('ng-click') || 
+                                               element.hasAttribute('onclick') ||
+                                               element.hasAttribute('ng-mouseover') ||
+                                               element.hasAttribute('ng-mouseenter') ||
+                                               element.hasAttribute('ng-mouseleave') ||
+                                               element.hasAttribute('ng-dblclick') ||
+                                               element.hasAttribute('ng-keydown') ||
+                                               element.hasAttribute('ng-keyup') ||
+                                               element.hasAttribute('ng-keypress') ||
+                                               element.hasAttribute('ng-focus') ||
+                                               element.hasAttribute('ng-blur') ||
+                                               element.hasAttribute('ng-change') ||
+                                               element.hasAttribute('ng-submit') ||
+                                               element.onclick !== null ||
+                                               element.onmouseover !== null ||
+                                               element.onmouseenter !== null ||
+                                               element.onmouseleave !== null ||
+                                               element.ondblclick !== null ||
+                                               element.onkeydown !== null ||
+                                               element.onkeyup !== null ||
+                                               element.onkeypress !== null ||
+                                               element.onfocus !== null ||
+                                               element.onblur !== null ||
+                                               element.onchange !== null ||
+                                               element.onsubmit !== null;
+
+                        // Check for AngularJS directives that make elements interactive
+                        const hasAngularDirectives = element.hasAttribute('ng-click') || 
+                                                   element.hasAttribute('ng-mouseover') ||
+                                                   element.hasAttribute('ng-repeat') ||
+                                                   element.hasAttribute('ng-if') ||
+                                                   element.hasAttribute('ng-show') ||
+                                                   element.hasAttribute('ng-hide') ||
+                                                   element.hasAttribute('ng-model') ||
+                                                   element.hasAttribute('ng-bind') ||
+                                                   element.hasAttribute('ng-class') ||
+                                                   element.hasAttribute('ng-style');
+
+                        // Check for other interactive attributes
+                        const hasInteractiveAttributes = element.hasAttribute('tabindex') ||
+                                                       element.hasAttribute('data-toggle') ||
+                                                       element.hasAttribute('data-target') ||
+                                                       element.hasAttribute('data-bs-toggle') ||
+                                                       element.hasAttribute('data-bs-target') ||
+                                                       element.hasAttribute('role') ||
+                                                       element.style.cursor === 'pointer' ||
+                                                       element.style.cursor === 'hand';
+
+                        // Set interactive properties
+                        if (hasEventHandlers) node.clickable = true;
+                        if (hasAngularDirectives) node.angular_interactive = true;
+                        if (hasInteractiveAttributes) node.interactive_attributes = true;
 
                         node.children = [];
 

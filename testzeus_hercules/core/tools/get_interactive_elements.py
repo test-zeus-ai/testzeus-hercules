@@ -61,6 +61,41 @@ async def get_interactive_elements() -> Annotated[str, "DOM type dict giving all
             "switch",
             "tab",
             "treeitem",
+            "menubar",
+            "menu",
+            "tablist",
+            "tabpanel",
+            "grid",
+            "gridcell",
+            "row",
+            "rowheader",
+            "columnheader",
+            "searchbox",
+            "spinbutton",
+            "scrollbar",
+            "progressbar",
+            "meter",
+            "toolbar",
+            "tooltip",
+            "dialog",
+            "alertdialog",
+            "alert",
+            "status",
+            "log",
+            "marquee",
+            "timer",
+            "separator",
+            "banner",
+            "complementary",
+            "contentinfo",
+            "form",
+            "main",
+            "navigation",
+            "region",
+            "search",
+            "article",
+            "aside",
+            "section",
         }
 
         if "children" in node:
@@ -76,12 +111,18 @@ async def get_interactive_elements() -> Annotated[str, "DOM type dict giving all
                     child["title"] = current_title
                 elements.extend(flatten_elements(child, current_name, current_title))
 
-        # Include elements with interactive roles or clickable/focusable elements
+        # Include elements with interactive roles, tags, or interactive properties
         if "md" in node and (
             node.get("r", "").lower() in interactive_roles
-            or node.get("tag", "").lower() in {"a", "button", "input", "select", "textarea"}
+            or node.get("tag", "").lower() in {"a", "button", "input", "select", "textarea", "h1", "h2", "h3", "h4", "h5", "h6", "div", "span", "li", "ul", "ol", "nav", "header", "footer", "main", "section", "article", "aside"}
             or node.get("clickable", False)
             or node.get("focusable", False)
+            or node.get("angular_interactive", False)
+            or node.get("interactive_attributes", False)
+            or (node.get("angular_attributes") and len(node.get("angular_attributes", {})) > 0)
+            or (node.get("data_attributes") and len(node.get("data_attributes", {})) > 0)
+            or (node.get("aria_attributes") and len(node.get("aria_attributes", {})) > 0)
+            or (node.get("class") and any(keyword in node.get("class", "").lower() for keyword in ["menu", "nav", "dropdown", "list", "item", "option", "link", "tab", "panel", "btn", "button", "clickable", "interactive"]))
         ):
             new_node = node.copy()
             new_node.pop("children", None)
