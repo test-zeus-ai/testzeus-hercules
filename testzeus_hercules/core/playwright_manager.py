@@ -497,6 +497,16 @@ class PlaywrightManager:
             "--disable-features=IsolateOrigins,site-per-process",
         ]
 
+        # Add certificate error ignoring if configured
+        if get_global_conf().should_ignore_certificate_errors():
+            logger.info("Certificate error ignoring is enabled via IGNORE_CERTIFICATE_ERRORS environment variable")
+            disable_args.extend([
+                "--ignore-certificate-errors",
+                "--ignore-ssl-errors",
+                "--ignore-certificate-errors-spki-list",
+                "--ignore-certificate-errors-spki-list",
+            ])
+
         if not self.device_name:
             w, h = self.user_viewport
             disable_args.append(f"--window-size={w},{h}")
@@ -618,8 +628,19 @@ class PlaywrightManager:
             await self._add_cookies_if_provided()
 
         else:
+            # For non-chromium browsers, we still want to preserve certificate error ignoring
+            # but most other arguments are chromium-specific
             if self.browser_type != "chromium":
-                disable_args = []
+                # Keep only certificate-related arguments for non-chromium browsers
+                certificate_args = []
+                if get_global_conf().should_ignore_certificate_errors():
+                    logger.info("Certificate error ignoring is enabled for non-chromium browser via IGNORE_CERTIFICATE_ERRORS environment variable")
+                    certificate_args = [
+                        "--ignore-certificate-errors",
+                        "--ignore-ssl-errors",
+                        "--ignore-certificate-errors-spki-list",
+                    ]
+                disable_args = certificate_args
 
             browser_type = getattr(self._playwright, self.browser_type)
             await self.prepare_extension()
@@ -781,6 +802,16 @@ class PlaywrightManager:
     ) -> None:
         if disable_args is None:
             disable_args = []
+
+        # Add certificate error ignoring if configured
+        if get_global_conf().should_ignore_certificate_errors():
+            logger.info("Certificate error ignoring is enabled via IGNORE_CERTIFICATE_ERRORS environment variable")
+            disable_args.extend([
+                "--ignore-certificate-errors",
+                "--ignore-ssl-errors",
+                "--ignore-certificate-errors-spki-list",
+                "--ignore-certificate-errors-spki-list",
+            ])
 
         channel_info = (
             f" (channel: {self.browser_channel})" if self.browser_channel else ""

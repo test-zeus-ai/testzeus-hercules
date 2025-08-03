@@ -410,6 +410,7 @@ class BaseConfigManager:
             "PORTKEY_RETRY_COUNT",
             "PORTKEY_TIMEOUT",
             "PORTKEY_CACHE_TTL",
+            "IGNORE_CERTIFICATE_ERRORS",
         ]
 
         for key in relevant_keys:
@@ -715,6 +716,10 @@ class BaseConfigManager:
     def should_skip_wait_for_load_state(self) -> bool:
         """Return whether to skip wait_for_load_state calls."""
         return self._config["NO_WAIT_FOR_LOAD_STATE"].lower().strip() == "true"
+
+    def should_ignore_certificate_errors(self) -> bool:
+        """Check if certificate errors should be ignored during browser launch."""
+        return self._config.get("IGNORE_CERTIFICATE_ERRORS", "false").lower() == "true"
 
     # -------------------------------------------------------------------------
     # Directory creation logic (mirroring your original code)
