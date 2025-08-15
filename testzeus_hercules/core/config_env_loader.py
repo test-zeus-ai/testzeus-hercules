@@ -8,6 +8,7 @@ from testzeus_hercules.core.agent_config_types import (
     ENV_TO_MODEL_CONFIG_MAPPING,
 )
 from testzeus_hercules.utils.logger import logger
+from testzeus_hercules.utils.llm_sanitizer import sanitize_llm_config_for_autogen
 
 
 class ConfigEnvLoader:
@@ -142,6 +143,7 @@ class ConfigEnvLoader:
 
         # Only add llm_config_params if we have values
         if llm_config_params:
+            llm_config_params = sanitize_llm_config_for_autogen(model_name, llm_config_params)
             normalized_config["llm_config_params"] = llm_config_params
 
         return normalized_config
