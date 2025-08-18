@@ -139,11 +139,7 @@ The framework will log warnings when converting deprecated parameters:
 WARNING: Deprecated param 'max_tokens' supplied for gpt-5; auto-translating to 'max_completion_tokens'.
 ```
 
-## NOTE: Please use the updated version of autogen supported for gpt-5
 
-```
-pip install --upgrade ag2==0.9.8.post1
-```
 
 
 ## Testing
@@ -178,17 +174,9 @@ If you're migrating from GPT-4 to GPT-5:
 1. Update model names in your configuration
 2. Replace `max_tokens` with `max_completion_tokens`
 3. Test with smaller token limits first
-4. Monitor API usage and costs
+4. Verify your OpenAI API key has access to GPT-5 models
 
-## Cost Considerations
 
-GPT-5 models have different pricing than GPT-4:
-
-- **gpt-5**: $0.00125 per 1K input tokens, $0.00125 per 1K output tokens
-- **gpt-5-mini**: $0.00025 per 1K input tokens, $0.00025 per 1K output tokens  
-- **gpt-5-nano**: $0.00005 per 1K input tokens, $0.00005 per 1K output tokens
-
-Monitor your usage and adjust token limits accordingly.
 
 ## Support
 
