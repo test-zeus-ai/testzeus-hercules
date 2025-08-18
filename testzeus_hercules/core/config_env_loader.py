@@ -117,7 +117,7 @@ class ConfigEnvLoader:
                     except (ValueError, TypeError):
                         logger.warning(f"Invalid float value for {env_key}: {value}")
                         continue
-                elif config_key in ["cache_seed", "seed", "max_tokens"]:
+                elif config_key in ["cache_seed", "seed", "max_tokens", "max_completion_tokens"]:
                     try:
                         value = int(value)
                     except (ValueError, TypeError):
