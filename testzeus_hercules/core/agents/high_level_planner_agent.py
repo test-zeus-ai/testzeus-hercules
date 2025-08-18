@@ -257,13 +257,23 @@ Available Test Data: $basic_test_information
         system_message = system_message + "\n" + f"Current timestamp is {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         logger.info(f"Planner agent using model: {model_config_list[0]['model']}")
 
+        # Ensure API key is available at both levels for autogen compatibility
+        api_key = model_config_list[0].get('api_key') if model_config_list else None
+        
+        # Create the llm_config with API key at both levels
+        llm_config = {
+            "config_list": model_config_list,
+            **llm_config_params,  # unpack all the name value pairs in llm_config_params as is
+        }
+        
+        # Add API key at the top level if it exists
+        if api_key:
+            llm_config["api_key"] = api_key
+
         self.agent = autogen.AssistantAgent(
             name="planner_agent",
             system_message=system_message,
-            llm_config={
-                "config_list": model_config_list,
-                **llm_config_params,  # unpack all the name value pairs in llm_config_params as is
-            },
+            llm_config=llm_config,
         )
         # add_text_compressor(self.agent)
 

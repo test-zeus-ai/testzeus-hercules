@@ -244,10 +244,14 @@ export LLM_MODEL_PRICING=0.01                 # Model pricing for tracking
 export LLM_MODEL_TEMPERATURE=0.0              # Temperature (0.0-1.0) 
 export LLM_MODEL_CACHE_SEED=12345             # Seed for response caching
 export LLM_MODEL_SEED=67890                   # Random seed for reproducibility
-export LLM_MODEL_MAX_TOKENS=4096              # Maximum tokens in response
+export LLM_MODEL_MAX_TOKENS=4096              # Maximum tokens in response (for GPT-3, GPT-4, Claude)
+export LLM_MODEL_MAX_COMPLETION_TOKENS=4096   # Maximum tokens in response (for GPT-5 models)
 export LLM_MODEL_PRESENCE_PENALTY=0.0         # Presence penalty
 export LLM_MODEL_FREQUENCY_PENALTY=0.0        # Frequency penalty
 export LLM_MODEL_STOP='END'                   # Stop sequence
+
+# Note: For GPT-5 models (gpt-5, gpt-5-mini, gpt-5-nano), use LLM_MODEL_MAX_COMPLETION_TOKENS
+# instead of LLM_MODEL_MAX_TOKENS. The system will automatically handle the conversion.
 ```
 
 ### 2. Configuration File
@@ -335,6 +339,44 @@ Example `agents_llm_config.json`:
       "llm_config_params": {
         "temperature": 0.0,
         "top_p": 0.001
+      }
+    }
+  },
+  "openai_gpt5": {
+    "planner_agent": {
+      "model_name": "gpt-5",
+      "model_api_key": "your-openai-api-key",
+      "model_api_type": "openai",
+      "llm_config_params": {
+        "temperature": 0.0,
+        "max_completion_tokens": 4096
+      }
+    },
+    "nav_agent": {
+      "model_name": "gpt-5-mini",
+      "model_api_key": "your-openai-api-key",
+      "model_api_type": "openai",
+      "llm_config_params": {
+        "temperature": 0.0,
+        "max_completion_tokens": 2048
+      }
+    },
+    "mem_agent": {
+      "model_name": "gpt-5-nano",
+      "model_api_key": "your-openai-api-key",
+      "model_api_type": "openai",
+      "llm_config_params": {
+        "temperature": 0.0,
+        "max_completion_tokens": 1024
+      }
+    },
+    "helper_agent": {
+      "model_name": "gpt-5",
+      "model_api_key": "your-openai-api-key",
+      "model_api_type": "openai",
+      "llm_config_params": {
+        "temperature": 0.0,
+        "max_completion_tokens": 4096
       }
     }
   }

@@ -7,6 +7,7 @@ import traceback
 import uuid
 from string import Template
 from typing import Any, Dict, Optional, Union, cast
+from testzeus_hercules.utils.model_utils import adapt_llm_params_for_model
 
 import autogen  # type: ignore
 import nest_asyncio  # type: ignore
@@ -159,6 +160,21 @@ class SimpleHercules:
         self.nav_agent_config = nav_agent_config
         self.mem_agent_config = mem_agent_config
         self.helper_agent_config = helper_agent_config
+
+        # Adapt LLM parameters for all agents based on their model family
+        from testzeus_hercules.utils.model_utils import adapt_llm_params_for_model
+        
+        # Get model names for parameter adaptation
+        planner_model = self.planner_agent_config["model_config_params"].get("model") or self.planner_agent_config["model_config_params"].get("model_name")
+        nav_model = self.nav_agent_config["model_config_params"].get("model") or self.nav_agent_config["model_config_params"].get("model_name")
+        mem_model = self.mem_agent_config["model_config_params"].get("model") or self.mem_agent_config["model_config_params"].get("model_name")
+        helper_model = self.helper_agent_config["model_config_params"].get("model") or self.helper_agent_config["model_config_params"].get("model_name")
+        
+        # Adapt parameters for each agent
+        self.planner_agent_config["llm_config_params"] = adapt_llm_params_for_model(planner_model, self.planner_agent_config["llm_config_params"])
+        self.nav_agent_config["llm_config_params"] = adapt_llm_params_for_model(nav_model, self.nav_agent_config["llm_config_params"])
+        self.mem_agent_config["llm_config_params"] = adapt_llm_params_for_model(mem_model, self.mem_agent_config["llm_config_params"])
+        self.helper_agent_config["llm_config_params"] = adapt_llm_params_for_model(helper_model, self.helper_agent_config["llm_config_params"])
 
         self.planner_agent_model_config = convert_model_config_to_autogen_format(self.planner_agent_config["model_config_params"])
         self.browser_nav_agent_model_config = convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
@@ -347,10 +363,17 @@ class SimpleHercules:
                 base_name = last_speaker.name.rsplit("_nav_executor", 1)[0]
                 return self.agents_map[f"{base_name}_nav_agent"]
 
+        # Ensure API key is available at both levels for autogen compatibility
+        api_key = self.planner_agent_model_config[0].get('api_key') if self.planner_agent_model_config else None
+        
         gm_llm_config = {
             "config_list": self.planner_agent_model_config,
             **self.planner_agent_config["llm_config_params"],
         }
+        
+        # Add API key at the top level if it exists
+        if api_key:
+            gm_llm_config["api_key"] = api_key
 
         groupchat = autogen.GroupChat(
             agents=[self.agents_map[agent_name] for agent_name in group_participants_names],
@@ -382,14 +405,8 @@ class SimpleHercules:
             )
         return self
 
-    @classmethod
-    def convert_model_config_to_autogen_format(cls, model_config: dict[str, str]) -> list[dict[str, Any]]:
-        env_var: list[dict[str, str]] = [model_config]
-        with tempfile.NamedTemporaryFile(delete=False, mode="w") as temp:
-            json.dump(env_var, temp)
-            temp_file_path = temp.name
+    from testzeus_hercules.utils.model_utils import adapt_llm_params_for_model
 
-        return autogen.config_list_from_json(env_or_file=temp_file_path)
 
     def get_chat_logs_dir(self) -> str | None:
         """

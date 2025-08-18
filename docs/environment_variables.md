@@ -135,10 +135,13 @@ LLM Parameters:
 - `temperature`: Controls randomness in responses (0.0 to 1.0)
 - `seed`: Random seed for reproducibility
 - `cache_seed`: Seed for caching
-- `max_tokens`: Maximum number of tokens in response
+- `max_tokens`: Maximum number of tokens in response (for GPT-3, GPT-4, Claude, and other models)
+- `max_completion_tokens`: Maximum number of tokens in response (for GPT-5 and newer models)
 - `presence_penalty`: Penalty for token presence
 - `frequency_penalty`: Penalty for token frequency
 - `stop`: Custom stop sequences
+
+**Note**: For GPT-5 models (gpt-5, gpt-5-mini, gpt-5-nano), use `max_completion_tokens` instead of `max_tokens`. The system will automatically convert between these parameters based on the model family.
 
 ## Browser Configuration
 
