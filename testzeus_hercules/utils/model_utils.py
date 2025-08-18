@@ -1,8 +1,15 @@
+import re
 from typing import Dict, Any
 from .logger import logger
 
 
-_OPENAI_COMPLETION_FAMILIES = ("gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-5-2025-08-07", "gpt-5-mini-2025-08-07", "gpt-5-nano-2025-08-07")
+def _is_gpt5_model(model_name: str) -> bool:
+    """
+    Check if the model is a GPT-5 variant using regex pattern.
+    Matches: gpt-5, gpt-5-mini, gpt-5-nano, gpt-5-2025-08-07, etc.
+    """
+    return bool(re.match(r'^gpt-5', model_name))
+
 
 def adapt_llm_params_for_model(model_name: str, llm_config: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -14,7 +21,7 @@ def adapt_llm_params_for_model(model_name: str, llm_config: Dict[str, Any]) -> D
     """
     params = dict(llm_config or {})
 
-    if model_name.startswith(_OPENAI_COMPLETION_FAMILIES):
+    if _is_gpt5_model(model_name):
         # GPT-5 and newer models use max_completion_tokens
         if "max_tokens" in params and "max_completion_tokens" not in params:
             params["max_completion_tokens"] = params.pop("max_tokens")
