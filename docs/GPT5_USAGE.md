@@ -111,25 +111,6 @@ result = {
 }
 ```
 
-## Best Practices
-
-### 1. Use Appropriate Token Limits
-
-- **gpt-5**: Up to 128,000 tokens context, 4,096 completion tokens
-- **gpt-5-mini**: Up to 128,000 tokens context, 2,048 completion tokens
-- **gpt-5-nano**: Up to 128,000 tokens context, 1,024 completion tokens
-
-### 2. Error Handling
-
-The framework will log warnings when converting deprecated parameters:
-
-```
-WARNING: Deprecated param 'max_tokens' supplied for gpt-5; auto-translating to 'max_completion_tokens'.
-```
-
-
-
-
 ## Testing
 
 Run the test script to verify GPT-5 support:
