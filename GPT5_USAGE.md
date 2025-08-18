@@ -119,19 +119,7 @@ result = {
 - **gpt-5-mini**: Up to 128,000 tokens context, 2,048 completion tokens
 - **gpt-5-nano**: Up to 128,000 tokens context, 1,024 completion tokens
 
-### 2. Parameter Optimization
-
-```json
-{
-  "llm_config_params": {
-    "temperature": 0.0,           // Deterministic responses
-    "max_completion_tokens": 2048, // Reasonable response length
-    "seed": 12345                 // Reproducible results
-  }
-}
-```
-
-### 3. Error Handling
+### 2. Error Handling
 
 The framework will log warnings when converting deprecated parameters:
 
