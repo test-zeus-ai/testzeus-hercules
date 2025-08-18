@@ -170,7 +170,7 @@ def convert_model_config_to_autogen_format(
     return autogen.config_list_from_json(env_or_file=temp_file_path)
 
 
-#moving func create_multimodal_agent here
+
 def create_multimodal_agent(
     name: str,
     system_message: str = "You are a multimodal conversable agent.",
@@ -263,42 +263,6 @@ def is_agent_planner_termination_message(x: dict[str, str], final_response_callb
             should_terminate = True
 
     return should_terminate
-
-
-# def create_multimodal_agent(
-#     name: str,
-#     system_message: str = "You are a multimodal conversable agent.",
-#     llm_config: Optional[Dict[str, Any]] = None,
-# ) -> MultimodalConversableAgent:
-#     """Create a multimodal conversable agent as a singleton.
-
-#     Args:
-#         name: Agent name
-#         llm_config: LLM configuration
-#         system_message: System prompt message
-
-#     Returns:
-#         MultimodalConversableAgent instance
-#     """
-
-#     # Singleton instance variable
-#     if not hasattr(create_multimodal_agent, "_instance"):
-#         # Get the LLM config for the image comparison agent
-
-#         config_manager = AgentsLLMConfigManager.get_instance()
-#         _mca_agent_config = config_manager.get_agent_config("helper_agent")
-#         _llm_config = [llm_config] or convert_model_config_to_autogen_format(_mca_agent_config["model_config_params"])
-#         if _llm_config:
-#             _llm_config = _llm_config[0]
-
-#         create_multimodal_agent._instance = MultimodalConversableAgent(
-#             name=name,
-#             max_consecutive_auto_reply=1,
-#             human_input_mode="NEVER",
-#             llm_config=_llm_config,
-#             system_message=system_message,
-#         )
-#     return create_multimodal_agent._instance
 
 
 def create_user_proxy(
