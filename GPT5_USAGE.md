@@ -139,6 +139,12 @@ The framework will log warnings when converting deprecated parameters:
 WARNING: Deprecated param 'max_tokens' supplied for gpt-5; auto-translating to 'max_completion_tokens'.
 ```
 
+## NOTE: Please use the updated version of autogen supported for gpt-5
+
+```
+pip install --upgrade ag2==0.9.8.post1
+```
+
 ## Testing
 
 Run the test script to verify GPT-5 support:
