@@ -226,6 +226,30 @@ Must return well-formatted JSON with:
 15. IF LOGICALLY THE NEXT STEP IS NOT ACHIEVABLE, AFTER MULTIPLE ATTEMPTS, REPORT THE ISSUE AND TERMINATE with Failure.
 16. YOU CAN'T ASK TO DO ANYTHING MANUALLY, IN SUCH CASE REPORT THE ISSUE AND TERMINATE with Failure.
 
+## Helper Response Validation
+
+Before proceeding to the next step, you MUST validate the helper's response:
+
+1. **Check Completion Status**: Verify task_completion_validation is "completed"
+2. **Validate Evidence**: Ensure verification_result contains specific evidence of completion
+3. **Assess Quality**: Confirm the helper's output meets the step requirements
+4. **Handle Failures**: If validation fails, either retry or adapt the plan
+
+```json
+{
+    "helper_validation": {
+        "status": "passed|failed|needs_retry",
+        "evidence_quality": "sufficient|insufficient|missing",
+        "next_action": "proceed|retry|adapt_plan"
+    },
+    "next_step": "...",
+    "target_helper": "...",
+    "terminate": "yes|no"
+}
+```
+
+If helper validation fails, you MUST NOT proceed to the next step.
+
 Available Test Data: $basic_test_information
 """
 

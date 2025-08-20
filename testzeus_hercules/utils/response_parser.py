@@ -69,3 +69,31 @@ def parse_response(message: str) -> dict[str, Any]:
                 json_response["terminate"] = "no"
 
     return json_response
+
+
+def extract_validation_fields(message: str) -> dict[str, Any]:
+    """Extract validation fields from agent response"""
+    validation_fields = {}
+    
+    if "previous_step_status:" in message:
+        start = message.find("previous_step_status:") + len("previous_step_status:")
+        end = message.find("\n", start)
+        if end == -1:
+            end = len(message)
+        validation_fields["previous_step_status"] = message[start:end].strip()
+    
+    if "task_completion_validation:" in message:
+        start = message.find("task_completion_validation:") + len("task_completion_validation:")
+        end = message.find("\n", start)
+        if end == -1:
+            end = len(message)
+        validation_fields["task_completion_validation"] = message[start:end].strip()
+    
+    if "verification_result:" in message:
+        start = message.find("verification_result:") + len("verification_result:")
+        end = message.find("\n", start)
+        if end == -1:
+            end = len(message)
+        validation_fields["verification_result"] = message[start:end].strip()
+    
+    return validation_fields

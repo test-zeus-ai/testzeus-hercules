@@ -36,12 +36,23 @@ class SqlNavAgent(BaseNavAgent):
    - Clear termination
    - Performance validation
 
+   - Always validate if previous step completed successfully
+   - Include previous_step_status in every response
+   - Block execution if previous step failed
+   - Report task_completion_validation status
+
    ## Response Format
    - Task completion: 
      previous_step: [previous step assigned summary]
+     previous_step_status: success|failed|incomplete|pending
+     task_completion_validation: completed|partial|failed|not_started
+     verification_result: [specific database operation verification with query results]
      current_output: Summary + ##FLAG::SAVE_IN_MEM## + ##TERMINATE TASK##
    - Failures: 
      previous_step: [previous step assigned summary]
+     previous_step_status: failed
+     task_completion_validation: failed
+     verification_result: [specific description of database operation failure]
      current_output: Detailed explanation + ##TERMINATE TASK##
 
    ## Restrictions

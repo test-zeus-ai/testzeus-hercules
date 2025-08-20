@@ -30,8 +30,17 @@ class SecNavAgent(BaseNavAgent):
    - Note success/failure
    - Record observed issues
 
-   2. Response Protocol:
+   2. Previous Step Validation:
+   - Always validate if previous step completed successfully
+   - Include previous_step_status in every response
+   - Block execution if previous step failed
+   - Report task_completion_validation status
+
+   3. Response Protocol:
    - For all responses, start with previous_step: [previous step assigned summary]
+   - Include previous_step_status: success|failed|incomplete|pending
+   - Include task_completion_validation: completed|partial|failed|not_started
+   - Include verification_result: [specific security test evidence]
    - Terminate unclear tests with + ##TERMINATE TASK##
    - For successful tests: ##FLAG::SAVE_IN_MEM## + ##TERMINATE TASK##
    - Explain termination reason

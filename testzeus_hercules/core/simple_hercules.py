@@ -251,6 +251,8 @@ class SimpleHercules:
             return asyncio.run(geturl())
 
         def my_custom_summary_method(sender: autogen.ConversableAgent, recipient: autogen.ConversableAgent, summary_args: dict = {}):  # type: ignore
+            from testzeus_hercules.core.validation.response_validator import AgentResponseValidator
+            
             self.save_chat_log(sender, recipient)  # type: ignore
             do_we_need_get_url = False
             if isinstance(recipient, autogen.GroupChatManager):
@@ -263,6 +265,13 @@ class SimpleHercules:
             if not last_message or last_message.strip() == "":  # type: ignore
                 return "I received an empty message. This is not an error and is recoverable. Try to reformulate the task..."
             elif "##TERMINATE TASK##" in last_message:
+                validation_result = AgentResponseValidator.validate_response(last_message)
+                
+                if not validation_result["can_terminate"]:
+                    error_msg = AgentResponseValidator.format_validation_error(validation_result)
+                    logger.warning(f"Task termination blocked: {error_msg}")
+                    return error_msg
+                
                 last_message = last_message.replace("##TERMINATE TASK##", "")  # type: ignore
                 if last_message and do_we_need_get_url:
                     last_message += " " + get_url()
