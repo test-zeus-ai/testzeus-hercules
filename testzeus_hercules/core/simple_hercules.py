@@ -18,6 +18,7 @@ from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.agents.api_nav_agent import ApiNavAgent
 from testzeus_hercules.core.agents.browser_nav_agent import BrowserNavAgent
 from testzeus_hercules.core.agents.high_level_planner_agent import PlannerAgent
+from testzeus_hercules.core.agents.mcp_nav_agent import McpNavAgent
 from testzeus_hercules.core.agents.sec_nav_agent import SecNavAgent
 from testzeus_hercules.core.agents.sql_nav_agent import SqlNavAgent
 from testzeus_hercules.core.agents.time_keeper_nav_agent import TimeKeeperNavAgent
@@ -93,6 +94,7 @@ class SimpleHercules:
         self.sec_nav_agent_model_config: Optional[list[Dict[str, Any]]] = None
         self.sql_nav_agent_model_config: Optional[list[Dict[str, Any]]] = None
         self.time_keeper_nav_agent_model_config: Optional[list[Dict[str, Any]]] = None
+        self.mcp_nav_agent_model_config: Optional[list[Dict[str, Any]]] = None
         self.mem_agent_model_config: Optional[list[Dict[str, Any]]] = None
         self.helper_agent_model_config: Optional[list[Dict[str, Any]]] = None
 
@@ -182,6 +184,7 @@ class SimpleHercules:
         self.sec_nav_agent_model_config = convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
         self.sql_nav_agent_model_config = convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
         self.time_keeper_nav_agent_model_config = convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
+        self.mcp_nav_agent_model_config = convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
         self.mem_agent_model_config = convert_model_config_to_autogen_format(self.mem_agent_config["model_config_params"])
         self.helper_agent_model_config = convert_model_config_to_autogen_format(self.helper_agent_config["model_config_params"])
 
@@ -493,6 +496,8 @@ class SimpleHercules:
         agents_map["sql_nav_agent"] = self.__create_sql_nav_agent(agents_map["sql_nav_executor"])
         agents_map["time_keeper_nav_executor"] = self.__create_time_keeper_nav_executor_agent()
         agents_map["time_keeper_nav_agent"] = self.__create_time_keeper_nav_agent(agents_map["time_keeper_nav_executor"])
+        agents_map["mcp_nav_executor"] = self.__create_mcp_nav_executor_agent()
+        agents_map["mcp_nav_agent"] = self.__create_mcp_nav_agent(agents_map["mcp_nav_executor"])
         agents_map["planner_agent"] = self.__create_planner_agent(agents_map["user"])
         return agents_map
 
@@ -793,6 +798,57 @@ class SimpleHercules:
             user_proxy_agent,
         )
         return time_keeper_nav_agent.agent
+
+    def __create_mcp_nav_executor_agent(self) -> autogen.UserProxyAgent:
+        """
+        Create a UserProxyAgent instance for executing MCP operations.
+
+        Returns:
+            autogen.UserProxyAgent: An instance of UserProxyAgent.
+
+        """
+
+        def is_mcp_executor_termination_message(x: dict[str, str]) -> bool:  # type: ignore
+
+            tools_call: Any = x.get("tool_calls", "")
+            if tools_call:
+                chat_messages = self.agents_map["mcp_nav_executor"].chat_messages  # type: ignore
+                # Get the only key from the dictionary
+                agent_key = next(iter(chat_messages))  # type: ignore
+                # Get the chat messages corresponding to the only key
+                messages = chat_messages[agent_key]  # type: ignore
+                return is_agent_stuck_in_loop(messages)  # type: ignore
+            else:
+                logger.info("Terminating MCP executor")
+                return True
+
+        mcp_nav_executor_agent = UserProxyAgent_SequentialFunctionExecution(
+            name="mcp_nav_executor",
+            is_termination_msg=is_mcp_executor_termination_message,
+            human_input_mode="NEVER",
+            llm_config=None,
+            max_consecutive_auto_reply=self.nav_agent_number_of_rounds,
+            code_execution_config={
+                "last_n_messages": 1,
+                "work_dir": "tasks",
+                "use_docker": False,
+            },
+        )
+        logger.info(">>> Created mcp_nav_executor_agent: %s", mcp_nav_executor_agent)
+        return mcp_nav_executor_agent
+
+    def __create_mcp_nav_agent(self, user_proxy_agent: UserProxyAgent_SequentialFunctionExecution) -> autogen.ConversableAgent:
+        """Create a McpNavAgent instance."""
+        if not self.mcp_nav_agent_model_config or not self.nav_agent_config:
+            raise ValueError("MCP nav agent config not initialized")
+
+        mcp_nav_agent = McpNavAgent(
+            self.mcp_nav_agent_model_config,
+            self.nav_agent_config["llm_config_params"],
+            self.nav_agent_config.get("other_settings", {}).get("system_prompt"),
+            user_proxy_agent,
+        )
+        return mcp_nav_agent.agent
 
     def __create_planner_agent(self, assistant_agent: autogen.ConversableAgent) -> autogen.ConversableAgent:
         """Create a Planner Agent instance."""

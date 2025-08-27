@@ -32,13 +32,17 @@ playwright-recaptcha = "^0.5.1"
 junit2html = "^31.0.2"
 aiohttp = "^3.11.7"
 inflection = "^0.5.1"
-ag2 = {extras = ["retrievechat", "ollama", "anthropic", "openai", "groq", "gemini", "lmm", "mistral", "bedrock", "gemini", "openai"], version = "^0.9.8.post1"}
+ag2 = {extras = ["retrievechat", "ollama", "anthropic", "openai", "groq", "gemini", "lmm", "mistral", "bedrock", "gemini", "openai", "mcp"], version = "^0.9.8.post1"}
+mcp = "^1.0.0"
+fastmcp = "^0.10.0"
+psutil = "^5.9.0"
 aiofiles = "^24.1.0"
 chromadb = "^1.0.16"
 sentence-transformers = "^3.4.1"
 unstructured = {extras = ["all-docs"], version = "^0.16.21"}
 httpx = "^0.28.1"
 portkey-ai = "^1.11.1"
+opentelemetry-proto = ">=1.27.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.3"
