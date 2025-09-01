@@ -215,8 +215,17 @@ async def connect_mcp_server(server_name: str, server_config: Dict[str, Any]) ->
         
         async def create_toolkit_and_store(session: ClientSession):
             """Helper function to create and store toolkit."""
+            # Initialize the MCP session
             await session.initialize()
-            toolkit = await create_toolkit(session)
+            # Many MCP servers (including some streamable-http backends) do not
+            # implement resources APIs. Creating the toolkit with resources
+            # enabled can cause a "Method not found" error. Align with the
+            # working reference by disabling resources and enabling tools.
+            toolkit = await create_toolkit(
+                session,
+                use_mcp_resources=False,
+                use_mcp_tools=True,
+            )
             _mcp_sessions[server_name] = session
             _mcp_toolkits[server_name] = toolkit
             # Register MCP tools with Hercules agents if available
