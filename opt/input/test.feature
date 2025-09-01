@@ -1,10 +1,6 @@
-Feature: Test MCP Server Connection and Math Tools
-  Background:
-    Given MCP integration is enabled
-    And MCP server configuration exists
-  
-  Scenario: Connect to MCP server and perform calculations
-    When I check for configured MCP servers
-    Then I should see the "mail" server configured
-    Then search for OPT key from 'shahal@testzeus.com' mail
-    
+Feature: Open Google homepage 
+
+  Scenario: User opens Google homepage
+    Given I have a web browser open
+    When I navigate to "https://www.google.com"
+    Then I should see the Google homepage
