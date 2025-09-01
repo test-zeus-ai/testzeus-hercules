@@ -411,6 +411,12 @@ class BaseConfigManager:
             "PORTKEY_RETRY_COUNT",
             "PORTKEY_TIMEOUT",
             "PORTKEY_CACHE_TTL",
+            # Composio-related environment variables
+            "COMPOSIO_API_KEY",
+            "COMPOSIO_USER_ID", 
+            "COMPOSIO_GMAIL_AUTH_CONFIG_ID",
+            "COMPOSIO_ENABLED",
+            "COMPOSIO_TIMEOUT",
         ]
 
         for key in relevant_keys:
@@ -551,6 +557,10 @@ class BaseConfigManager:
 
         # Add Portkey-related defaults with reasonable values
         self._config.setdefault("ENABLE_PORTKEY", "false")
+        
+        # Add Composio-related defaults
+        self._config.setdefault("COMPOSIO_ENABLED", "false")
+        self._config.setdefault("COMPOSIO_TIMEOUT", "30")
 
         # LLM Model Configuration defaults
         # --------------------------------------------------
@@ -896,6 +906,27 @@ class BaseConfigManager:
                     logger.warning("Invalid PORTKEY_GUARDRAILS JSON, skipping")
 
         return config
+
+    # Add Composio-specific getters
+    def is_composio_enabled(self) -> bool:
+        """Check if Composio integration is enabled."""
+        return self._config.get("COMPOSIO_ENABLED", "false").lower() == "true"
+
+    def get_composio_api_key(self) -> Optional[str]:
+        """Get the Composio API key if configured."""
+        return self._config.get("COMPOSIO_API_KEY")
+
+    def get_composio_user_id(self) -> Optional[str]:
+        """Get the Composio user ID if configured."""
+        return self._config.get("COMPOSIO_USER_ID")
+
+    def get_composio_gmail_auth_config_id(self) -> Optional[str]:
+        """Get the Composio Gmail auth config ID if configured."""
+        return self._config.get("COMPOSIO_GMAIL_AUTH_CONFIG_ID")
+
+    def get_composio_timeout(self) -> float:
+        """Get the Composio timeout in seconds."""
+        return float(self._config.get("COMPOSIO_TIMEOUT", "30"))
 
 
 # ------------------------------------------------------------------------------

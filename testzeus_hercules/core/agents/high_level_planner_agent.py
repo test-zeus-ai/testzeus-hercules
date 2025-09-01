@@ -118,7 +118,7 @@ Must return well-formatted JSON with:
 "is_assert": "boolean - if current step is assertion",
 "assert_summary": "EXPECTED RESULT: x\\nACTUAL RESULT: y (required if is_assert=true)",
 "is_passed": "boolean - assertion success status",
-"target_helper": "'browser'|'api'|'sec'|'sql'|'time_keeper'|'Not_Applicable'"
+"target_helper": "'browser'|'api'|'sec'|'sql'|'time_keeper'|'composio'|'Not_Applicable'"
 }
 
 ## Data Type Requirements
@@ -135,6 +135,7 @@ Must return well-formatted JSON with:
 - Browser: "Find and verify the confirmation message 'Success' appears after the operation is complete."
 - API: "Send a request to retrieve user data and confirm the response contains a user with email 'test@example.com'."
 - SQL: "Retrieve user records matching the specified criteria and verify at least one matching record exists."
+- Composio: "Fetch emails from Gmail and verify at least one email is returned with subject containing 'test' keyword."
 - General: "After the operation, verify [specific condition] before proceeding. If not found within 10 seconds, report failure."
 
 ## Helper Capabilities
@@ -143,6 +144,7 @@ Must return well-formatted JSON with:
 - Security: Security testing operations
 - SQL: Intent-based database operations
 - Time Keeper: Time-related operations and execution pauses
+- Composio: Gmail email operations, external service integrations through Composio platform
 
 ## Test Case Fidelity
 1. Strict Adherence to Test Requirements
