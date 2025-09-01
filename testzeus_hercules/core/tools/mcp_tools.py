@@ -9,7 +9,6 @@ from mcp.client.stdio import stdio_client
 from mcp.client.sse import sse_client
 from mcp.client.streamable_http import streamablehttp_client
 from autogen.mcp import create_toolkit
-
 from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
@@ -17,6 +16,23 @@ from testzeus_hercules.utils.logger import logger
 # Global MCP toolkit storage
 _mcp_toolkits: Dict[str, Any] = {}
 _mcp_sessions: Dict[str, ClientSession] = {}
+_mcp_client_contexts: Dict[str, Any] = {}
+
+# References to Hercules agents to enable native MCP tool registration
+_mcp_llm_agent: Any | None = None
+_mcp_executor_agent: Any | None = None
+
+
+def set_mcp_agents(llm_agent: Any, executor_agent: Any) -> None:
+    """Set the Hercules agents used to register MCP tools for LLM and execution.
+
+    Args:
+        llm_agent: The ConversableAgent that will advertise the tools to the LLM.
+        executor_agent: The UserProxyAgent that will execute the tools.
+    """
+    global _mcp_llm_agent, _mcp_executor_agent
+    _mcp_llm_agent = llm_agent
+    _mcp_executor_agent = executor_agent
 
 
 @tool(agent_names=["mcp_nav_agent"], description="Execute a tool from an MCP server", name="execute_mcp_tool")
@@ -36,49 +52,82 @@ async def execute_mcp_tool(server_name: str, tool_name: str, arguments: Dict[str
         if arguments is None:
             arguments = {}
             
-        toolkit = _mcp_toolkits.get(server_name)
-        if not toolkit:
-            logger.error(f"MCP server '{server_name}' toolkit not available")
-            return {"success": False, "error": f"Server '{server_name}' toolkit not available"}
-        
-        # Find the tool in the toolkit
-        target_tool = None
-        for tool_func in toolkit.tools:
-            if tool_func.name == tool_name:
-                target_tool = tool_func
-                break
-        
-        if not target_tool:
-            logger.error(f"Tool '{tool_name}' not found in server '{server_name}'")
-            return {"success": False, "error": f"Tool '{tool_name}' not found"}
-        
-        # Execute the tool function
+        # Prefer direct session tool call to ensure correct invocation
+        session = _mcp_sessions.get(server_name)
+        if not session:
+            logger.error(f"MCP server '{server_name}' session not available")
+            return {"success": False, "error": f"Server '{server_name}' session not available"}
+
         # Handle nested arguments structure if present
         tool_args = arguments
         if arguments and "arguments" in arguments and isinstance(arguments["arguments"], dict):
             tool_args = arguments["arguments"]
-        
-        if tool_args:
-            result = await target_tool(**tool_args)
-        else:
-            result = await target_tool()
-        
+
+        # Call the tool via MCP session
+        call_result = await session.call_tool(tool_name, tool_args or {})
+
+        # Extract textual content from the MCP response
+        text_parts: List[str] = []
+        try:
+            for item in getattr(call_result, "content", []) or []:
+                text = getattr(item, "text", None)
+                if text is None and hasattr(item, "to_dict"):
+                    # Fallback to dict repr if non-text content
+                    text = str(item.to_dict())
+                if text is None:
+                    text = str(item)
+                text_parts.append(text)
+        except Exception as parse_err:
+            logger.warning(f"Could not parse MCP tool result content: {parse_err}")
+            text_parts.append(str(call_result))
+
+        result_text = "\n".join([p for p in text_parts if p])
         logger.info(f"MCP tool '{tool_name}' executed successfully on server '{server_name}'")
         return {
             "success": True,
-            "result": str(result),
+            "result": result_text,
             "server": server_name,
             "tool": tool_name
         }
         
     except Exception as e:
-        logger.error(f"Error executing MCP tool '{tool_name}' on server '{server_name}': {e}")
-        return {
-            "success": False,
-            "error": str(e),
-            "server": server_name,
-            "tool": tool_name
-        }
+        logger.exception(
+            f"Error executing MCP tool '{tool_name}' on server '{server_name}' via session. Details: {repr(e)}"
+        )
+        # Fallback: try invoking via toolkit wrapper if available
+        try:
+            toolkit = _mcp_toolkits.get(server_name)
+            if not toolkit:
+                raise RuntimeError("Toolkit not available for fallback execution")
+            # Find the tool
+            target_tool = None
+            for tool_func in toolkit.tools:
+                if tool_func.name == tool_name:
+                    target_tool = tool_func
+                    break
+            if not target_tool:
+                raise RuntimeError(f"Tool '{tool_name}' not found in toolkit for fallback execution")
+            tool_args = arguments
+            if arguments and "arguments" in arguments and isinstance(arguments["arguments"], dict):
+                tool_args = arguments["arguments"]
+            result = await target_tool(**(tool_args or {}))
+            return {
+                "success": True,
+                "result": str(result),
+                "server": server_name,
+                "tool": tool_name,
+                "fallback": True,
+            }
+        except Exception as e2:
+            logger.exception(
+                f"Fallback execution failed for tool '{tool_name}' on server '{server_name}'. Details: {repr(e2)}"
+            )
+            return {
+                "success": False,
+                "error": str(e2) or str(e) or "Unknown error",
+                "server": server_name,
+                "tool": tool_name
+            }
 
 
 @tool(agent_names=["mcp_nav_agent"], description="List available tools from an MCP server", name="list_mcp_tools")
@@ -170,39 +219,66 @@ async def connect_mcp_server(server_name: str, server_config: Dict[str, Any]) ->
             toolkit = await create_toolkit(session)
             _mcp_sessions[server_name] = session
             _mcp_toolkits[server_name] = toolkit
+            # Register MCP tools with Hercules agents if available
+            try:
+                if _mcp_llm_agent is not None:
+                    toolkit.register_for_llm(_mcp_llm_agent)
+                else:
+                    logger.warning(
+                        f"MCP LLM agent not set; skipping LLM registration for server '{server_name}'"
+                    )
+                if _mcp_executor_agent is not None:
+                    toolkit.register_for_execution(_mcp_executor_agent)
+                else:
+                    logger.warning(
+                        f"MCP executor agent not set; skipping execution registration for server '{server_name}'"
+                    )
+            except Exception as reg_err:
+                logger.error(
+                    f"Error registering MCP toolkit with agents for server '{server_name}': {reg_err}"
+                )
             logger.info(f"Connected to MCP server '{server_name}' via {transport} with {len(toolkit.tools)} tools available")
             logger.info(f"Available tools: {[tool.name for tool in toolkit.tools]}")
             return True
         
         if transport == "stdio":
-            # STDIO transport
+            # STDIO transport (keep context open for future tool calls)
             command = server_config.get("command", "python")
             args = server_config.get("args", [])
             server_params = StdioServerParameters(command=command, args=args)
-            
-            async with stdio_client(server_params) as (read, write), ClientSession(read, write, read_timeout_seconds=timedelta(seconds=timeout_seconds)) as session:
-                return await create_toolkit_and_store(session)
+
+            client_cm = stdio_client(server_params)
+            read, write = await client_cm.__aenter__()
+            session = ClientSession(read, write, read_timeout_seconds=timedelta(seconds=timeout_seconds))
+            await session.__aenter__()
+            _mcp_client_contexts[server_name] = client_cm
+            return await create_toolkit_and_store(session)
                 
         elif transport == "sse":
-            # Server-Sent Events transport
+            # Server-Sent Events transport (keep context open)
             url = server_config.get("url")
             if not url:
                 raise ValueError(f"SSE transport requires 'url' field in server config for '{server_name}'")
-                
-            async with sse_client(url=url) as streams, ClientSession(*streams, read_timeout_seconds=timedelta(seconds=timeout_seconds)) as session:
-                return await create_toolkit_and_store(session)
+
+            client_cm = sse_client(url=url)
+            read_stream, write_stream = await client_cm.__aenter__()
+            session = ClientSession(read_stream, write_stream, read_timeout_seconds=timedelta(seconds=timeout_seconds))
+            await session.__aenter__()
+            _mcp_client_contexts[server_name] = client_cm
+            return await create_toolkit_and_store(session)
                 
         elif transport == "streamable-http":
-            # Streamable HTTP transport
+            # Streamable HTTP transport (keep context open)
             url = server_config.get("url")
             if not url:
                 raise ValueError(f"Streamable HTTP transport requires 'url' field in server config for '{server_name}'")
-                
-            async with (
-                streamablehttp_client(url) as (read_stream, write_stream, _),
-                ClientSession(read_stream, write_stream, read_timeout_seconds=timedelta(seconds=timeout_seconds)) as session,
-            ):
-                return await create_toolkit_and_store(session)
+
+            client_cm = streamablehttp_client(url)
+            read_stream, write_stream, _ = await client_cm.__aenter__()
+            session = ClientSession(read_stream, write_stream, read_timeout_seconds=timedelta(seconds=timeout_seconds))
+            await session.__aenter__()
+            _mcp_client_contexts[server_name] = client_cm
+            return await create_toolkit_and_store(session)
                 
         else:
             raise ValueError(f"Unsupported transport type '{transport}' for server '{server_name}'. Supported: stdio, sse, streamable-http")
@@ -226,13 +302,19 @@ async def disconnect_mcp_server(server_name: str) -> bool:
         # Remove toolkit and session
         toolkit = _mcp_toolkits.pop(server_name, None)
         session = _mcp_sessions.pop(server_name, None)
+        client_cm = _mcp_client_contexts.pop(server_name, None)
         
         if session:
             try:
                 # Clean up session
                 await session.__aexit__(None, None, None)
-            except:
+            except Exception as _:
                 pass  # Ignore close errors
+        if client_cm:
+            try:
+                await client_cm.__aexit__(None, None, None)
+            except Exception:
+                pass
         
         if toolkit or session:
             logger.info(f"Disconnected from MCP server '{server_name}'")

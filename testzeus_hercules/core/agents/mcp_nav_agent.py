@@ -1,11 +1,6 @@
 """MCP Navigation Agent for Model Context Protocol server interactions."""
 
-import asyncio
 from testzeus_hercules.core.agents.base_nav_agent import BaseNavAgent
-from testzeus_hercules.core.tools.mcp_tools import connect_mcp_server, get_connected_servers, get_mcp_toolkit
-from testzeus_hercules.config import get_global_conf
-from testzeus_hercules.utils.logger import logger
-
 
 class McpNavAgent(BaseNavAgent):
     """MCP Navigation Agent for executing MCP server tools and managing resources."""
@@ -70,76 +65,13 @@ Available Test Data: $basic_test_information
     def __init__(self, model_config_list, llm_config_params, system_prompt, nav_executor, agent_name=None, agent_prompt=None):
         """Initialize MCP Navigation Agent and connect to configured MCP servers."""
         super().__init__(model_config_list, llm_config_params, system_prompt, nav_executor, agent_name, agent_prompt)
-        # Note: MCP connections will be initialized when first needed
+
+        
 
     def register_tools(self) -> None:
         """Register MCP-specific tools and MCP server toolkits for the agent."""
         self.load_tools()
-        
-        # Register MCP toolkits from connected servers
-        self._register_mcp_toolkits()
-        
-        logger.info(f"Registered MCP tools for {self.agent_name}")
 
-    def _register_mcp_toolkits(self) -> None:
-        """Register MCP toolkits from connected servers."""
-        connected_servers = get_connected_servers()
-        
-        for server_name in connected_servers:
-            toolkit = get_mcp_toolkit(server_name)
-            if toolkit:
-                try:
-                    # Register toolkit tools with the agent
-                    toolkit.register_for_llm(self.agent)
-                    logger.info(f"Registered MCP toolkit for server '{server_name}' with {len(toolkit.tools)} tools")
-                except Exception as e:
-                    logger.error(f"Failed to register toolkit for server '{server_name}': {e}")
 
-    def get_configured_servers(self) -> dict:
-        """Get list of configured MCP servers from config."""
-        config = get_global_conf()
-        
-        if not config.is_mcp_enabled():
-            return {}
-            
-        mcp_servers = config.get_mcp_servers()
-        return mcp_servers.get("mcpServers", {}) if mcp_servers else {}
-
-    async def ensure_connections(self) -> None:
-        """Ensure connections to all configured MCP servers."""
-        servers_config = self.get_configured_servers()
-        
-        if not servers_config:
-            logger.warning("No MCP servers configured")
-            return
-        
-        # Connect to any servers that aren't already connected
-        for server_name, server_config in servers_config.items():
-            if server_name not in get_connected_servers():
-                try:
-                    transport = server_config.get("transport", "stdio")
-                    logger.info(f"Connecting to MCP server '{server_name}' via {transport} transport")
-                    
-                    success = await connect_mcp_server(server_name, server_config)
-                    if success:
-                        logger.info(f"Successfully connected to MCP server: {server_name}")
-                        # Re-register toolkits after new connection
-                        self._register_mcp_toolkits()
-                    else:
-                        logger.error(f"Failed to connect to MCP server: {server_name}")
                         
-                except Exception as e:
-                    logger.error(f"Error connecting to MCP server {server_name}: {e}")
-
-    def get_server_status(self) -> dict:
-        """Get status of all connected MCP servers."""
-        connected_servers = get_connected_servers()
-        config = get_global_conf()
-        configured_servers = config.get_mcp_servers().get("mcpServers", {})
-        
-        return {
-            "connected": connected_servers,
-            "configured": list(configured_servers.keys()),
-            "enabled": config.is_mcp_enabled()
-        }
 
