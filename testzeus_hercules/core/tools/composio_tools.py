@@ -245,10 +245,9 @@ def authenticate_composio_user() -> Annotated[str, "Authenticate user with Compo
     
     api_key = config.get_composio_api_key()
     user_id = config.get_composio_user_id()
-    auth_config_id = config.get_composio_gmail_auth_config_id()
     
-    if not api_key or not user_id or not auth_config_id:
-        error_msg = "Missing required Composio configuration (API_KEY, USER_ID, or GMAIL_AUTH_CONFIG_ID)"
+    if not api_key or not user_id:
+        error_msg = "Missing required Composio configuration (API_KEY or USER_ID)"
         logger.error(error_msg)
         return json.dumps({"error": error_msg, "status": "failed"})
     
@@ -256,21 +255,18 @@ def authenticate_composio_user() -> Annotated[str, "Authenticate user with Compo
         # Initialize Composio client
         composio = Composio(api_key=api_key)
         
-        # Initiate connection request
+        # Initiate Gmail toolkit authorization
         start_time = time.time()
-        logger.info(f"Initiating Gmail authentication for user: {user_id}")
+        logger.info(f"Initiating Gmail toolkit authorization for user: {user_id}")
         
-        connection_request = composio.connected_accounts.initiate(
-            user_id=user_id,
-            auth_config_id=auth_config_id,
-        )
+        connection_request = composio.toolkits.authorize(user_id=user_id, toolkit="gmail")
         
         # Get redirect URL for OAuth flow
         redirect_url = connection_request.redirect_url
         
         log_composio_operation("authenticate_user_initiated", {
             "user_id": user_id,
-            "auth_config_id": auth_config_id,
+            "toolkit": "gmail",
             "redirect_url": redirect_url,
             "status": "oauth_initiated"
         })
@@ -285,39 +281,51 @@ def authenticate_composio_user() -> Annotated[str, "Authenticate user with Compo
         }
         
         logger.info(f"OAuth flow initiated. Redirect URL: {redirect_url}")
-        print(f"\\n" + "="*80)
-        print(f"COMPOSIO AUTHENTICATION REQUIRED")
-        print(f"="*80)
-        print(f"Please authorize the app by visiting this URL:")
-        print(f"{redirect_url}")
-        print(f"="*80)
-        print(f"Waiting for authentication to complete...")
+        print(f"\\n🔗 Visit the URL to authorize:")
+        print(f"👉 {redirect_url}")
+        print(f"\\nWaiting for authentication to complete...")
         
         # Wait for the connection to be established
         connected_account = connection_request.wait_for_connection()
         
         execution_time = time.time() - start_time
         
+        # Parse valuable information from the response
+        account_info = {
+            "connected_account_id": connected_account.id,
+            "auth_config_id": connected_account.auth_config.id if connected_account.auth_config else None,
+            "created_at": connected_account.created_at,
+            "updated_at": connected_account.updated_at,
+            "status": connected_account.state.val.status if hasattr(connected_account.state, 'val') else connected_account.data.get('status'),
+            "toolkit": connected_account.toolkit.slug if connected_account.toolkit else "gmail",
+            "user_id": connected_account.user_id,
+            "access_token": connected_account.data.get('access_token', '')[:20] + "..." if connected_account.data.get('access_token') else None,
+            "token_expires_in": connected_account.data.get('expires_in'),
+            "scopes": connected_account.data.get('scope', '').split(' ') if connected_account.data.get('scope') else []
+        }
+        
         # Authentication successful
         auth_response.update({
             "status": "success",
-            "message": f"Connection established successfully! Connected account id: {connected_account.id}",
-            "connected_account_id": connected_account.id,
-            "execution_time": execution_time
+            "message": f"Connection established successfully! Connected account ID: {connected_account.id}",
+            "execution_time": execution_time,
+            "account_info": account_info
         })
         
         log_composio_operation("authenticate_user_completed", {
             "user_id": user_id,
             "connected_account_id": connected_account.id,
+            "auth_config_id": account_info.get("auth_config_id"),
             "execution_time": execution_time,
-            "status": "success"
+            "status": "success",
+            "toolkit": "gmail"
         })
         
         logger.info(f"Gmail authentication successful. Connected account ID: {connected_account.id}")
-        print(f"\\n" + "="*80)
-        print(f"AUTHENTICATION SUCCESSFUL!")
+        print(f"\\n✅ AUTHENTICATION SUCCESSFUL!")
         print(f"Connected account ID: {connected_account.id}")
-        print(f"="*80)
+        print(f"Status: {account_info['status']}")
+        print(f"Scopes: {len(account_info['scopes'])} Gmail permissions granted")
         
         return json.dumps(auth_response, indent=2)
         
@@ -367,14 +375,13 @@ def check_composio_status() -> str:
             "composio_enabled": config.is_composio_enabled(),
             "api_key_configured": bool(config.get_composio_api_key()),
             "user_id_configured": bool(config.get_composio_user_id()),
-            "auth_config_id_configured": bool(config.get_composio_gmail_auth_config_id()),
         }
         
-        if not all([status_data["api_key_configured"], status_data["user_id_configured"], status_data["auth_config_id_configured"]]):
+        if not all([status_data["api_key_configured"], status_data["user_id_configured"]]):
             return json.dumps({
                 "status": "configuration_incomplete",
                 "details": status_data,
-                "message": "Missing required Composio environment variables"
+                "message": "Missing required Composio environment variables (API_KEY, USER_ID)"
             })
         
         # Initialize client and check connection

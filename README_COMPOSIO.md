@@ -14,7 +14,6 @@ Set these environment variables:
 export COMPOSIO_ENABLED=true
 export COMPOSIO_API_KEY=ak_rzcfpaqxV6L1Ap5Lg1K0
 export COMPOSIO_USER_ID=shahal@testzeus.com
-export COMPOSIO_GMAIL_AUTH_CONFIG_ID=ac_q9fZEH2p2h0v
 ```
 
 ### 2. Dependencies
@@ -68,7 +67,6 @@ Validates Composio configuration and Gmail tool availability.
     "composio_enabled": true,
     "api_key_configured": true,
     "user_id_configured": true,
-    "auth_config_id_configured": true,
     "gmail_connected": true,
     "available_tools": ["GMAIL_FETCH_EMAILS"],
     "user_id": "shahal@testzeus.com"

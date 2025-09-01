@@ -414,7 +414,6 @@ class BaseConfigManager:
             # Composio-related environment variables
             "COMPOSIO_API_KEY",
             "COMPOSIO_USER_ID", 
-            "COMPOSIO_GMAIL_AUTH_CONFIG_ID",
             "COMPOSIO_ENABLED",
             "COMPOSIO_TIMEOUT",
         ]
@@ -919,10 +918,6 @@ class BaseConfigManager:
     def get_composio_user_id(self) -> Optional[str]:
         """Get the Composio user ID if configured."""
         return self._config.get("COMPOSIO_USER_ID")
-
-    def get_composio_gmail_auth_config_id(self) -> Optional[str]:
-        """Get the Composio Gmail auth config ID if configured."""
-        return self._config.get("COMPOSIO_GMAIL_AUTH_CONFIG_ID")
 
     def get_composio_timeout(self) -> float:
         """Get the Composio timeout in seconds."""
