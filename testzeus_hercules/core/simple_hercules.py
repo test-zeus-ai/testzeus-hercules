@@ -48,6 +48,7 @@ from testzeus_hercules.utils.sequential_function_call import (
 )
 from testzeus_hercules.utils.timestamp_helper import get_timestamp_str
 from testzeus_hercules.utils.ui_messagetype import MessageType
+from testzeus_hercules.core.tools.mcp_tools import set_mcp_agents
 
 nest_asyncio.apply()  # type: ignore
 from autogen import oai
@@ -500,7 +501,6 @@ class SimpleHercules:
         agents_map["mcp_nav_agent"] = self.__create_mcp_nav_agent(agents_map["mcp_nav_executor"])
         # Provide MCP agents to the MCP toolkit layer for native registration
         try:
-            from testzeus_hercules.core.tools.mcp_tools import set_mcp_agents
 
             set_mcp_agents(agents_map["mcp_nav_agent"], agents_map["mcp_nav_executor"])
         except Exception as e:

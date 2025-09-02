@@ -1,6 +1,5 @@
 """MCP (Model Context Protocol) tools for server communication and tool execution."""
 
-import asyncio
 from datetime import timedelta
 from typing import Any, Dict, List
 
@@ -12,6 +11,7 @@ from autogen.mcp import create_toolkit
 from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
+from testzeus_hercules.config import get_global_conf
 
 # Global MCP toolkit storage
 _mcp_toolkits: Dict[str, Any] = {}
@@ -395,8 +395,6 @@ async def get_configured_mcp_servers() -> Dict[str, Any]:
         Dict containing configured servers and their status
     """
     try:
-        from testzeus_hercules.config import get_global_conf
-        
         config = get_global_conf()
         if not config.is_mcp_enabled():
             return {"success": False, "error": "MCP is disabled in configuration"}
@@ -442,9 +440,7 @@ async def initialize_mcp_connections() -> Dict[str, Any]:
     Returns:
         Dict containing connection results
     """
-    try:
-        from testzeus_hercules.config import get_global_conf
-        
+    try:        
         config = get_global_conf()
         if not config.is_mcp_enabled():
             return {"success": False, "error": "MCP is disabled in configuration"}
