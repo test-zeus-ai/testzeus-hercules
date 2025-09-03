@@ -118,7 +118,7 @@ Must return well-formatted JSON with:
 "is_assert": "boolean - if current step is assertion",
 "assert_summary": "EXPECTED RESULT: x\\nACTUAL RESULT: y (required if is_assert=true)",
 "is_passed": "boolean - assertion success status",
-"target_helper": "'browser'|'api'|'sec'|'sql'|'time_keeper'|'Not_Applicable'"
+"target_helper": "'browser'|'api'|'sec'|'sql'|'time_keeper'|'mcp'|'Not_Applicable'"
 }
 
 ## Data Type Requirements
@@ -135,6 +135,7 @@ Must return well-formatted JSON with:
 - Browser: "Find and verify the confirmation message 'Success' appears after the operation is complete."
 - API: "Send a request to retrieve user data and confirm the response contains a user with email 'test@example.com'."
 - SQL: "Retrieve user records matching the specified criteria and verify at least one matching record exists."
+- MCP: "Execute the MCP tool and verify the response contains the expected result. Confirm tool execution was successful."
 - General: "After the operation, verify [specific condition] before proceeding. If not found within 10 seconds, report failure."
 
 ## Helper Capabilities
@@ -143,6 +144,7 @@ Must return well-formatted JSON with:
 - Security: Security testing operations
 - SQL: Intent-based database operations
 - Time Keeper: Time-related operations and execution pauses
+- MCP: Model Context Protocol server tool execution and resource access
 
 ## Test Case Fidelity
 1. Strict Adherence to Test Requirements
@@ -257,13 +259,23 @@ Available Test Data: $basic_test_information
         system_message = system_message + "\n" + f"Current timestamp is {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         logger.info(f"Planner agent using model: {model_config_list[0]['model']}")
 
+        # Ensure API key is available at both levels for autogen compatibility
+        api_key = model_config_list[0].get('api_key') if model_config_list else None
+        
+        # Create the llm_config with API key at both levels
+        llm_config = {
+            "config_list": model_config_list,
+            **llm_config_params,  # unpack all the name value pairs in llm_config_params as is
+        }
+        
+        # Add API key at the top level if it exists
+        if api_key:
+            llm_config["api_key"] = api_key
+
         self.agent = autogen.AssistantAgent(
             name="planner_agent",
             system_message=system_message,
-            llm_config={
-                "config_list": model_config_list,
-                **llm_config_params,  # unpack all the name value pairs in llm_config_params as is
-            },
+            llm_config=llm_config,
         )
         # add_text_compressor(self.agent)
 

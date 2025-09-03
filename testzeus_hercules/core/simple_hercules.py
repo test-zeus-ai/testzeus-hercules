@@ -7,6 +7,7 @@ import traceback
 import uuid
 from string import Template
 from typing import Any, Dict, Optional, Union, cast
+from testzeus_hercules.utils.model_utils import adapt_llm_params_for_model
 
 import autogen  # type: ignore
 import nest_asyncio  # type: ignore
@@ -17,6 +18,7 @@ from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.agents.api_nav_agent import ApiNavAgent
 from testzeus_hercules.core.agents.browser_nav_agent import BrowserNavAgent
 from testzeus_hercules.core.agents.high_level_planner_agent import PlannerAgent
+from testzeus_hercules.core.agents.mcp_nav_agent import McpNavAgent
 from testzeus_hercules.core.agents.sec_nav_agent import SecNavAgent
 from testzeus_hercules.core.agents.sql_nav_agent import SqlNavAgent
 from testzeus_hercules.core.agents.time_keeper_nav_agent import TimeKeeperNavAgent
@@ -46,6 +48,7 @@ from testzeus_hercules.utils.sequential_function_call import (
 )
 from testzeus_hercules.utils.timestamp_helper import get_timestamp_str
 from testzeus_hercules.utils.ui_messagetype import MessageType
+from testzeus_hercules.core.tools.mcp_tools import set_mcp_agents
 
 nest_asyncio.apply()  # type: ignore
 from autogen import oai
@@ -92,6 +95,7 @@ class SimpleHercules:
         self.sec_nav_agent_model_config: Optional[list[Dict[str, Any]]] = None
         self.sql_nav_agent_model_config: Optional[list[Dict[str, Any]]] = None
         self.time_keeper_nav_agent_model_config: Optional[list[Dict[str, Any]]] = None
+        self.mcp_nav_agent_model_config: Optional[list[Dict[str, Any]]] = None
         self.mem_agent_model_config: Optional[list[Dict[str, Any]]] = None
         self.helper_agent_model_config: Optional[list[Dict[str, Any]]] = None
 
@@ -160,12 +164,28 @@ class SimpleHercules:
         self.mem_agent_config = mem_agent_config
         self.helper_agent_config = helper_agent_config
 
+        # Adapt LLM parameters for all agents based on their model family
+        from testzeus_hercules.utils.model_utils import adapt_llm_params_for_model
+        
+        # Get model names for parameter adaptation
+        planner_model = self.planner_agent_config["model_config_params"].get("model") or self.planner_agent_config["model_config_params"].get("model_name")
+        nav_model = self.nav_agent_config["model_config_params"].get("model") or self.nav_agent_config["model_config_params"].get("model_name")
+        mem_model = self.mem_agent_config["model_config_params"].get("model") or self.mem_agent_config["model_config_params"].get("model_name")
+        helper_model = self.helper_agent_config["model_config_params"].get("model") or self.helper_agent_config["model_config_params"].get("model_name")
+        
+        # Adapt parameters for each agent
+        self.planner_agent_config["llm_config_params"] = adapt_llm_params_for_model(planner_model, self.planner_agent_config["llm_config_params"])
+        self.nav_agent_config["llm_config_params"] = adapt_llm_params_for_model(nav_model, self.nav_agent_config["llm_config_params"])
+        self.mem_agent_config["llm_config_params"] = adapt_llm_params_for_model(mem_model, self.mem_agent_config["llm_config_params"])
+        self.helper_agent_config["llm_config_params"] = adapt_llm_params_for_model(helper_model, self.helper_agent_config["llm_config_params"])
+
         self.planner_agent_model_config = convert_model_config_to_autogen_format(self.planner_agent_config["model_config_params"])
         self.browser_nav_agent_model_config = convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
         self.api_nav_agent_model_config = convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
         self.sec_nav_agent_model_config = convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
         self.sql_nav_agent_model_config = convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
         self.time_keeper_nav_agent_model_config = convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
+        self.mcp_nav_agent_model_config = convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
         self.mem_agent_model_config = convert_model_config_to_autogen_format(self.mem_agent_config["model_config_params"])
         self.helper_agent_model_config = convert_model_config_to_autogen_format(self.helper_agent_config["model_config_params"])
 
@@ -347,10 +367,17 @@ class SimpleHercules:
                 base_name = last_speaker.name.rsplit("_nav_executor", 1)[0]
                 return self.agents_map[f"{base_name}_nav_agent"]
 
+        # Ensure API key is available at both levels for autogen compatibility
+        api_key = self.planner_agent_model_config[0].get('api_key') if self.planner_agent_model_config else None
+        
         gm_llm_config = {
             "config_list": self.planner_agent_model_config,
             **self.planner_agent_config["llm_config_params"],
         }
+        
+        # Add API key at the top level if it exists
+        if api_key:
+            gm_llm_config["api_key"] = api_key
 
         groupchat = autogen.GroupChat(
             agents=[self.agents_map[agent_name] for agent_name in group_participants_names],
@@ -382,14 +409,8 @@ class SimpleHercules:
             )
         return self
 
-    @classmethod
-    def convert_model_config_to_autogen_format(cls, model_config: dict[str, str]) -> list[dict[str, Any]]:
-        env_var: list[dict[str, str]] = [model_config]
-        with tempfile.NamedTemporaryFile(delete=False, mode="w") as temp:
-            json.dump(env_var, temp)
-            temp_file_path = temp.name
+    from testzeus_hercules.utils.model_utils import adapt_llm_params_for_model
 
-        return autogen.config_list_from_json(env_or_file=temp_file_path)
 
     def get_chat_logs_dir(self) -> str | None:
         """
@@ -476,6 +497,16 @@ class SimpleHercules:
         agents_map["sql_nav_agent"] = self.__create_sql_nav_agent(agents_map["sql_nav_executor"])
         agents_map["time_keeper_nav_executor"] = self.__create_time_keeper_nav_executor_agent()
         agents_map["time_keeper_nav_agent"] = self.__create_time_keeper_nav_agent(agents_map["time_keeper_nav_executor"])
+        agents_map["mcp_nav_executor"] = self.__create_mcp_nav_executor_agent()
+        agents_map["mcp_nav_agent"] = self.__create_mcp_nav_agent(agents_map["mcp_nav_executor"])
+        # Provide MCP agents to the MCP toolkit layer for native registration
+        try:
+
+            set_mcp_agents(agents_map["mcp_nav_agent"], agents_map["mcp_nav_executor"])
+        except Exception as e:
+            logger.error(
+                f"Failed to set MCP agents for toolkit registration: {e}"
+            )
         agents_map["planner_agent"] = self.__create_planner_agent(agents_map["user"])
         return agents_map
 
@@ -776,6 +807,57 @@ class SimpleHercules:
             user_proxy_agent,
         )
         return time_keeper_nav_agent.agent
+
+    def __create_mcp_nav_executor_agent(self) -> autogen.UserProxyAgent:
+        """
+        Create a UserProxyAgent instance for executing MCP operations.
+
+        Returns:
+            autogen.UserProxyAgent: An instance of UserProxyAgent.
+
+        """
+
+        def is_mcp_executor_termination_message(x: dict[str, str]) -> bool:  # type: ignore
+
+            tools_call: Any = x.get("tool_calls", "")
+            if tools_call:
+                chat_messages = self.agents_map["mcp_nav_executor"].chat_messages  # type: ignore
+                # Get the only key from the dictionary
+                agent_key = next(iter(chat_messages))  # type: ignore
+                # Get the chat messages corresponding to the only key
+                messages = chat_messages[agent_key]  # type: ignore
+                return is_agent_stuck_in_loop(messages)  # type: ignore
+            else:
+                logger.info("Terminating MCP executor")
+                return True
+
+        mcp_nav_executor_agent = UserProxyAgent_SequentialFunctionExecution(
+            name="mcp_nav_executor",
+            is_termination_msg=is_mcp_executor_termination_message,
+            human_input_mode="NEVER",
+            llm_config=None,
+            max_consecutive_auto_reply=self.nav_agent_number_of_rounds,
+            code_execution_config={
+                "last_n_messages": 1,
+                "work_dir": "tasks",
+                "use_docker": False,
+            },
+        )
+        logger.info(">>> Created mcp_nav_executor_agent: %s", mcp_nav_executor_agent)
+        return mcp_nav_executor_agent
+
+    def __create_mcp_nav_agent(self, user_proxy_agent: UserProxyAgent_SequentialFunctionExecution) -> autogen.ConversableAgent:
+        """Create a McpNavAgent instance."""
+        if not self.mcp_nav_agent_model_config or not self.nav_agent_config:
+            raise ValueError("MCP nav agent config not initialized")
+
+        mcp_nav_agent = McpNavAgent(
+            self.mcp_nav_agent_model_config,
+            self.nav_agent_config["llm_config_params"],
+            self.nav_agent_config.get("other_settings", {}).get("system_prompt"),
+            user_proxy_agent,
+        )
+        return mcp_nav_agent.agent
 
     def __create_planner_agent(self, assistant_agent: autogen.ConversableAgent) -> autogen.ConversableAgent:
         """Create a Planner Agent instance."""

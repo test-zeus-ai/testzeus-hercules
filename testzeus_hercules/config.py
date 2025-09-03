@@ -411,6 +411,10 @@ class BaseConfigManager:
             "PORTKEY_RETRY_COUNT",
             "PORTKEY_TIMEOUT",
             "PORTKEY_CACHE_TTL",
+            # MCP-related environment variables
+            "MCP_SERVERS",
+            "MCP_ENABLED",
+            "MCP_TIMEOUT",
         ]
 
         for key in relevant_keys:
@@ -551,6 +555,11 @@ class BaseConfigManager:
 
         # Add Portkey-related defaults with reasonable values
         self._config.setdefault("ENABLE_PORTKEY", "false")
+        
+        # Add MCP-related defaults
+        self._config.setdefault("MCP_ENABLED", "false")
+        self._config.setdefault("MCP_TIMEOUT", "30")
+        self._config.setdefault("MCP_SERVERS", "{}")
 
         # LLM Model Configuration defaults
         # --------------------------------------------------
@@ -896,6 +905,48 @@ class BaseConfigManager:
                     logger.warning("Invalid PORTKEY_GUARDRAILS JSON, skipping")
 
         return config
+
+    # Add MCP-specific getters
+    def is_mcp_enabled(self) -> bool:
+        """Check if MCP integration is enabled."""
+        return self._config.get("MCP_ENABLED", "false").lower() == "true"
+
+    def get_mcp_timeout(self) -> int:
+        """Get MCP connection timeout in seconds."""
+        return int(self._config.get("MCP_TIMEOUT", "30"))
+
+    def get_mcp_servers(self) -> dict:
+        """Get MCP servers configuration."""
+        try:
+            servers_config = self._config.get("MCP_SERVERS", "")
+            
+            # Check if it's a file path (ends with .json)
+            if servers_config.endswith('.json'):
+                # Try relative to current directory first, then relative to testzeus_hercules
+                file_paths = [
+                    servers_config,
+                    os.path.join(os.path.dirname(__file__), servers_config),
+                    os.path.join('testzeus_hercules', servers_config)
+                ]
+                
+                for file_path in file_paths:
+                    if os.path.exists(file_path):
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            logger.info(f"Loaded MCP servers config from: {file_path}")
+                            return json.load(f)
+                
+                logger.error(f"MCP servers file not found in any of: {file_paths}")
+                return {}
+            else:
+                # Treat as direct JSON string (backward compatibility)
+                return json.loads(servers_config) if servers_config else {}
+                
+        except json.JSONDecodeError as e:
+            logger.warning(f"Invalid MCP_SERVERS JSON: {e}, returning empty config")
+            return {}
+        except Exception as e:
+            logger.error(f"Error reading MCP servers configuration: {e}")
+            return {}
 
 
 # ------------------------------------------------------------------------------

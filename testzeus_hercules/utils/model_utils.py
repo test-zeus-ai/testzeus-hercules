@@ -1,17 +1,21 @@
 import re
 from typing import Dict, Any
+
 from testzeus_hercules.utils.logger import logger
 
 
 def _is_gpt_version_model(model_name: str, version: str) -> bool:
+
     """
     Check if the model is a GPT-5 variant using regex pattern.
     Matches: gpt-5, gpt-5-mini, gpt-5-nano, gpt-5-2025-08-07, etc.
     """
+    
     return bool(re.match(f'^gpt-{version}', model_name))
 
 
 def adapt_llm_params_for_model(model_name: str, model_config_params: Dict[str, Any], llm_config: Dict[str, Any]) -> Dict[str, Any]:
+
     """
     Normalize token-limit params for different providers/families.
     
