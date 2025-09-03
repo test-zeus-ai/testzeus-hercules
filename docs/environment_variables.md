@@ -27,6 +27,7 @@ This document provides a comprehensive guide to all environment variables and co
 - [Advanced Configuration](#advanced-configuration)
   - [Cache and Performance](#cache-and-performance)
   - [Portkey Integration](#portkey-integration)
+  - [MCP Integration](#mcp-integration)
   - [Telemetry and Monitoring](#telemetry-and-monitoring)
   - [Additional Features](#additional-features)
 - [Configuration Priority](#configuration-priority)
@@ -334,6 +335,26 @@ LLM Parameters:
 - `PORTKEY_TIMEOUT`: Timeout for LLM requests in seconds
   - Default: `30.0`
   - Implementation: Controls how long Portkey waits for a response before timing out
+
+### MCP Integration
+- `MCP_ENABLED`: Enable MCP integration
+  - Values: `true`, `false`
+  - Default: `false`
+  - Implementation: Toggles MCP agent and tooling. When enabled, Hercules can connect to configured MCP servers.
+
+- `MCP_SERVERS`: MCP server configuration
+  - Values: Path to a `.json` file or a JSON string
+  - Example (file path): `mcp_servers.json`
+  - Example (JSON string): `{"mcpServers": {"server_name": {"transport": "streamable-http", "url": "https://mcp.composio.dev/composio/server/<SERVER_UUID>/mcp?user_id=<USER_EMAIL>"}}}`
+  - Implementation: If a path ending with `.json` is provided, Hercules attempts to load it from:
+    - The current working directory
+    - Relative to `testzeus_hercules/`
+    - Relative to `testzeus_hercules/config.py` location
+    Otherwise, it treats the value as a JSON string.
+
+- `MCP_TIMEOUT`: MCP read timeout in seconds
+  - Default: `30`
+  - Implementation: Used to set `ClientSession` read timeouts during MCP interactions.
 
 ### Telemetry and Monitoring
 - `ENABLE_TELEMETRY`: Enable usage telemetry

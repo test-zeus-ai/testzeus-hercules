@@ -494,6 +494,50 @@ To configure Hercules in detail:
   cp .env-example .env
   ```
 
+## 🔌 MCP Support
+
+Hercules includes an MCP Navigation Agent that can connect to MCP servers over `stdio`, `sse`, and `streamable-http`. It works out of the box with Composio-generated MCP servers.
+
+- Quick start guide: see `docs/MCP_Usage.md`
+- Composio docs: https://docs.composio.dev/docs/mcp-developers
+
+Minimal setup:
+
+1) Create `mcp_servers.json` at the repo root:
+
+```
+{
+  "mcpServers": {
+    "server_name": {
+      "transport": "streamable-http",
+      "url": "https://mcp.composio.dev/composio/server/<SERVER_UUID>/mcp?user_id=<USER_EMAIL>"
+    }
+  }
+}
+```
+
+2) In `.env`:
+
+```
+MCP_ENABLED=true
+MCP_SERVERS=mcp_servers.json
+MCP_TIMEOUT=30
+```
+
+Then, run Hercules as usual; the MCP agent will initialize and expose tools from the configured server.
+
+### Example Testcase (Simple)
+```
+Feature: Read emails from Gmail
+
+  Scenario: Retrieve OTP from Gmail using MCP
+    Given Gmail is configured using MCP
+    When I connect to Gmail
+    And I read the email with OTP
+```
+For more testcases visit [MCP-Docs](/docs/MCP_Usage.md)
+
+---
 - Hercules is capable of running in two configuration forms:
 
   1. **Using single LLM for all work**
