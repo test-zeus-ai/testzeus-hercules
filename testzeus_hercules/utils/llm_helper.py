@@ -151,18 +151,7 @@ def convert_model_config_to_autogen_format(
     Returns:
         List of configuration dictionaries in Autogen format
     """
-    # Ensure the model config has the required fields for autogen
-    config_for_autogen = {
-        "model": model_config.get("model") or model_config.get("model_name"),
-        "api_key": model_config.get("api_key") or model_config.get("model_api_key"),
-        "base_url": model_config.get("base_url") or model_config.get("model_base_url"),
-        "api_type": model_config.get("api_type") or model_config.get("model_api_type"),
-    }
-    
-    # Remove None values
-    config_for_autogen = {k: v for k, v in config_for_autogen.items() if v is not None}
-    
-    env_var: list[dict[str, str]] = [config_for_autogen]
+    env_var: list[dict[str, str]] = [model_config]
     with tempfile.NamedTemporaryFile(delete=False, mode="w") as temp:
         json.dump(env_var, temp)
         temp_file_path = temp.name
@@ -178,55 +167,32 @@ def create_multimodal_agent(
 ) -> MultimodalConversableAgent:
     """Create a multimodal conversable agent as a singleton.
 
-    Pulls agent config from AgentsLLMConfigManager, adapts provider-specific
-    LLM params (e.g., max_tokens → max_completion_tokens for GPT-5 families),
-    and passes {config_list + adapted params} to Autogen.
+    Args:
+        name: Agent name
+        llm_config: LLM configuration
+        system_message: System prompt message
+
+    Returns:
+        MultimodalConversableAgent instance
     """
+
+    # Singleton instance variable
     if not hasattr(create_multimodal_agent, "_instance"):
-        # === Load config from manager ===
+        # Get the LLM config for the image comparison agent
+
         config_manager = AgentsLLMConfigManager.get_instance()
-        agent_cfg = config_manager.get_agent_config("helper_agent")
+        _mca_agent_config = config_manager.get_agent_config("helper_agent")
+        _llm_config = [llm_config] or convert_model_config_to_autogen_format(_mca_agent_config["model_config_params"])
+        if _llm_config:
+            _llm_config = _llm_config[0]
 
-        model_cfg: Dict[str, Any] = agent_cfg["model_config_params"]
-        llm_params_raw: Dict[str, Any] = agent_cfg["llm_config_params"]
-
-        # Normalize model name
-        model_name: str = model_cfg.get("model") or model_cfg.get("model_name") or DEFAULT_MODEL
-
-        # Adapt llm params (fixes GPT-5 'max_tokens' → 'max_completion_tokens')
-        adapted_llm_params = adapt_llm_params_for_model(model_name, llm_params_raw)
-
-        # Convert model config to autogen format
-        config_list = convert_model_config_to_autogen_format(model_cfg)
-
-        # Base config
-        final_llm_config: Dict[str, Any] = {"config_list": config_list, **adapted_llm_params}
-
-        # === Ensure API key is present at both levels ===
-        import os
-        api_key = model_cfg.get("api_key") or os.getenv("LLM_MODEL_API_KEY")
-        if api_key:
-            # Ensure API key is in the config_list
-            if config_list and len(config_list) > 0:
-                config_list[0]["api_key"] = api_key
-            # Also add it at the top level for autogen compatibility
-            final_llm_config["api_key"] = api_key
-        else:
-            raise ValueError("OPENAI_API_KEY is missing. Please set it in your environment.")
-
-        # === Merge caller overrides (if any) ===
-        if llm_config:
-            final_llm_config.update(llm_config)
-
-        # === Create singleton agent ===
         create_multimodal_agent._instance = MultimodalConversableAgent(
             name=name,
             max_consecutive_auto_reply=1,
             human_input_mode="NEVER",
-            llm_config=final_llm_config,
+            llm_config=_llm_config,
             system_message=system_message,
         )
-
     return create_multimodal_agent._instance
 
 

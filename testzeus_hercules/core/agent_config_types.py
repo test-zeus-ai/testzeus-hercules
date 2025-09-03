@@ -46,7 +46,6 @@ class LLMConfigParams(TypedDict, total=False):
     temperature: float
     seed: Optional[int]
     max_tokens: Optional[int]
-    max_completion_tokens: Optional[int]  # For GPT-5 and newer models
     presence_penalty: Optional[float]
     frequency_penalty: Optional[float]
     stop: Optional[Union[str, list[str]]]
@@ -96,11 +95,6 @@ ENV_TO_MODEL_CONFIG_MAPPING = {
 }
 
 ENV_TO_LLM_PARAMS_MAPPING = {
-    "LLM_MODEL_TEMPERATURE": "temperature",
-    "LLM_MODEL_CACHE_SEED": "cache_seed",
-    "LLM_MODEL_SEED": "seed",
-    "LLM_MODEL_MAX_TOKENS": "max_tokens",
-    "LLM_MODEL_MAX_COMPLETION_TOKENS": "max_completion_tokens",  # For GPT-5 models
     "LLM_MODEL_PRESENCE_PENALTY": "presence_penalty",
     "LLM_MODEL_FREQUENCY_PENALTY": "frequency_penalty",
     "LLM_MODEL_STOP": "stop",
