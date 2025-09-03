@@ -6,7 +6,7 @@ import tempfile
 import traceback
 import uuid
 from string import Template
-from typing import Any, Dict, Optional, Union, cast
+from typing import Any, Dict, Optional, Union
 from testzeus_hercules.utils.model_utils import adapt_llm_params_for_model
 
 import autogen  # type: ignore
@@ -160,9 +160,6 @@ class SimpleHercules:
         self.nav_agent_config = nav_agent_config
         self.mem_agent_config = mem_agent_config
         self.helper_agent_config = helper_agent_config
-
-        # Adapt LLM parameters for all agents based on their model family
-        from testzeus_hercules.utils.model_utils import adapt_llm_params_for_model
         
         # Get model names for parameter adaptation
         planner_model = self.planner_agent_config["model_config_params"].get("model") or self.planner_agent_config["model_config_params"].get("model_name")
@@ -171,10 +168,10 @@ class SimpleHercules:
         helper_model = self.helper_agent_config["model_config_params"].get("model") or self.helper_agent_config["model_config_params"].get("model_name")
         
         # Adapt parameters for each agent
-        self.planner_agent_config["llm_config_params"] = adapt_llm_params_for_model(planner_model, self.planner_agent_config["llm_config_params"])
-        self.nav_agent_config["llm_config_params"] = adapt_llm_params_for_model(nav_model, self.nav_agent_config["llm_config_params"])
-        self.mem_agent_config["llm_config_params"] = adapt_llm_params_for_model(mem_model, self.mem_agent_config["llm_config_params"])
-        self.helper_agent_config["llm_config_params"] = adapt_llm_params_for_model(helper_model, self.helper_agent_config["llm_config_params"])
+        self.planner_agent_config["llm_config_params"] = adapt_llm_params_for_model(planner_model, self.planner_agent_config["model_config_params"])
+        self.nav_agent_config["llm_config_params"] = adapt_llm_params_for_model(nav_model, self.nav_agent_config["model_config_params"])
+        self.mem_agent_config["llm_config_params"] = adapt_llm_params_for_model(mem_model, self.mem_agent_config["model_config_params"])
+        self.helper_agent_config["llm_config_params"] = adapt_llm_params_for_model(helper_model, self.helper_agent_config["model_config_params"])
 
         self.planner_agent_model_config = convert_model_config_to_autogen_format(self.planner_agent_config["model_config_params"])
         self.browser_nav_agent_model_config = convert_model_config_to_autogen_format(self.nav_agent_config["model_config_params"])
@@ -404,9 +401,6 @@ class SimpleHercules:
                 cache=cache,
             )
         return self
-
-    from testzeus_hercules.utils.model_utils import adapt_llm_params_for_model
-
 
     def get_chat_logs_dir(self) -> str | None:
         """

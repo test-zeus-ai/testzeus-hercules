@@ -8,6 +8,7 @@ from testzeus_hercules.core.agents_llm_config import AgentsLLMConfig
 from testzeus_hercules.core.config_env_loader import ConfigEnvLoader
 from testzeus_hercules.core.config_file_loader import ConfigFileLoader
 from testzeus_hercules.core.config_portkey_loader import PortkeyConfigLoader
+from testzeus_hercules.utils.model_utils import adapt_llm_params_for_model
 from testzeus_hercules.utils.logger import logger
 
 
@@ -331,6 +332,8 @@ class AgentsLLMConfigManager:
                 )
                 logger.info(f"Using Portkey with API type: {model_api_type}, provider: {provider}")
             return portkey_config
+        
+        config["llm_config_params"] = adapt_llm_params_for_model(config["model_config_params"]["model"], config["model_config_params"])
 
         return config
 

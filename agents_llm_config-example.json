@@ -95,52 +95,52 @@
             }
 		}
 	},
-    "openai_gpt5": {
-		"planner_agent": {
-			"model_name": "gpt-5",
-			"model_api_key": "",
-			"model_base_url": null,
-            "llm_config_params": {
-                "cache_seed": 1234,
-                "temperature": 0.0,
-                "max_completion_tokens": 4096,
-                "seed": 12345
-            }
-		},
-		"nav_agent": {
-            "model_name": "gpt-5-mini",
-			"model_api_key": "",
-			"model_base_url": null,
-            "llm_config_params": {
-                "cache_seed": 1234,
-                "temperature": 0.0,
-                "max_completion_tokens": 2048,
-                "seed": 12345
-            }
-		},
-		"mem_agent": {
-            "model_name": "gpt-5-nano",
-			"model_api_key": "",
-			"model_base_url": null,
-            "llm_config_params": {
-                "cache_seed": 1234,
-                "temperature": 0.0,
-                "max_completion_tokens": 1024,
-                "seed": 12345
-            }
-		},
-		"helper_agent": {
+    "openai-5": {
+        "planner_agent": {
             "model_name": "gpt-5",
-			"model_api_key": "",
-			"model_base_url": null,
+            "model_api_key": "",
+            "model_base_url": null,
             "llm_config_params": {
                 "cache_seed": 1234,
                 "temperature": 0.0,
                 "max_completion_tokens": 4096,
                 "seed": 12345
             }
-		}
-	},
+        },
+        "nav_agent": {
+            "model_name": "gpt-5-mini",
+            "model_api_key": "",
+            "model_base_url": null,
+            "llm_config_params": {
+                "cache_seed": 1234,
+                "temperature": 0.0,
+                "max_completion_tokens": 4096,
+                "seed": 12345
+            }
+        },
+        "mem_agent": {
+            "model_name": "gpt-5-mini",
+            "model_api_key": "",
+            "model_base_url": null,
+            "llm_config_params": {
+                "cache_seed": 1234,
+                "temperature": 0.0,
+                "max_completion_tokens": 4096,
+                "seed": 12345
+            }
+        },
+        "helper_agent": {
+            "model_name": "gpt-5-mini",
+            "model_api_key": "",
+            "model_base_url": null,
+            "llm_config_params": {
+                "cache_seed": 1234,
+                "temperature": 0.0,
+                "max_completion_tokens": 4096,
+                "seed": 12345
+            }
+        }
+    },
     "azure": {
 		"planner_agent": {
 			"model_name": "gpt-4o",
