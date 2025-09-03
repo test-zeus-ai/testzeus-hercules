@@ -9,7 +9,7 @@ from testzeus_hercules.core.config_env_loader import ConfigEnvLoader
 from testzeus_hercules.core.config_file_loader import ConfigFileLoader
 from testzeus_hercules.core.config_portkey_loader import PortkeyConfigLoader
 from testzeus_hercules.utils.logger import logger
-
+from testzeus_hercules.utils.model_utils import adapt_llm_params_for_model
 
 class AgentsLLMConfigManager:
     """Singleton manager for AgentsLLMConfig instances.
@@ -240,6 +240,8 @@ class AgentsLLMConfigManager:
                 logger.warning("Invalid PORTKEY_GUARDRAILS JSON, skipping")
 
         return portkey_config
+    
+    
 
     def _transform_config_with_portkey(self, config: AgentConfig) -> AgentConfig:
         """Apply Portkey transformation to an agent configuration if Portkey is enabled.
@@ -331,6 +333,8 @@ class AgentsLLMConfigManager:
                 )
                 logger.info(f"Using Portkey with API type: {model_api_type}, provider: {provider}")
             return portkey_config
+        
+        config["llm_config_params"] = adapt_llm_params_for_model(config["model_config_params"]["model"], config["model_config_params"], config["llm_config_params"])
 
         return config
 
