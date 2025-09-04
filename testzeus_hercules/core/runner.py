@@ -204,9 +204,18 @@ class BaseRunner:
         Shuts down the components gracefully.
         """
         logger.info("Shutting down...")
+        # First, shut down all agents while the loop is running
+        try:
+            if self.simple_hercules:
+                await self.simple_hercules.shutdown_agents()
+        except Exception as e:
+            logger.warning(f"Agent shutdown encountered an issue: {e}")
+
+        # Then shut down browser components
         if self.browser_manager:
             await self.browser_manager.stop_playwright()
         PlaywrightManager.close_all_instances()
+        
         self.shutdown_event.set()
 
     async def wait_for_exit(self) -> None:

@@ -15,7 +15,6 @@ from testzeus_hercules.utils.logger import logger
 class BaseNavAgent:
     agent_name: str = "base_nav_agent"
     prompt = "Base Agent"
-    prompt = "Base Agent"
 
     def __init__(self, model_config_list, llm_config_params: dict[str, Any], system_prompt: str | None, nav_executor: autogen.UserProxyAgent, agent_name: str = None, agent_prompt: str | None = None):  # type: ignore
         """
@@ -75,6 +74,7 @@ class BaseNavAgent:
         )
 
         self.register_tools()
+        self.register_shutdown()
 
     def get_ltm(self) -> str | None:
         """
@@ -90,6 +90,23 @@ class BaseNavAgent:
 
         # Register the tools that were dynamically discovered
         return None
+
+    def shutdown(self) -> None:
+        """Register a shutdown handler for this agent.
+
+        By default, attaches a no-op async callable to the agent instance under
+        `_hercules_shutdown`. Specific agents can override to perform cleanup.
+        """
+        async def _shutdown_agent() -> None:  # default no-op
+            return None
+
+        # Attach a shutdown hook to the underlying autogen agent instance
+        try:
+            setattr(self.agent, "_hercules_shutdown", _shutdown_agent)
+        except Exception as e:
+            logger.warning(f"Failed to attach shutdown hook to agent {self.agent_name}: {e}")
+
+    # MCP shutdown is managed centrally in the runner; no agent-level scheduling here.
 
     def load_tools(self, additional_tool_dirs: str = os.getenv("ADDITIONAL_TOOL_DIRS", "")) -> None:
         """
