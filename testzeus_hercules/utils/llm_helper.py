@@ -19,7 +19,6 @@ from autogen.code_utils import content_str
 from testzeus_hercules.core.agents_llm_config_manager import AgentsLLMConfigManager
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.response_parser import parse_response
-from testzeus_hercules.utils.model_utils import adapt_llm_params_for_model
 
 DEFAULT_LMM_SYS_MSG = """You are a helpful AI assistant."""
 DEFAULT_MODEL = "gpt-4o"
@@ -159,6 +158,39 @@ def convert_model_config_to_autogen_format(
     return autogen.config_list_from_json(env_or_file=temp_file_path)
 
 
+def is_agent_planner_termination_message(x: dict[str, str], final_response_callback: callable = None) -> bool:
+    """Check if a message should terminate the planner agent conversation.
+
+    Args:
+        x: Message dictionary
+        final_response_callback: Optional callback for final response
+
+    Returns:
+        bool: True if conversation should terminate
+    """
+    should_terminate = False
+    function: Any = x.get("function", None)
+    if function is not None:
+        return False
+
+    content: Any = x.get("content", "")
+    if content is None:
+        content = ""
+        should_terminate = True
+    else:
+        try:
+            content_json = json.loads(content.replace("```json", "").replace("```", "").strip())
+            _terminate = content_json.get("terminate", "no")
+            final_response = content_json.get("final_response", None)
+            if _terminate == "yes":
+                should_terminate = True
+                if final_response and final_response_callback:
+                    final_response_callback(final_response)
+        except json.JSONDecodeError:
+            should_terminate = True
+
+    return should_terminate
+
 
 def create_multimodal_agent(
     name: str,
@@ -194,41 +226,6 @@ def create_multimodal_agent(
             system_message=system_message,
         )
     return create_multimodal_agent._instance
-
-
-
-def is_agent_planner_termination_message(x: dict[str, str], final_response_callback: callable = None) -> bool:
-    """Check if a message should terminate the planner agent conversation.
-
-    Args:
-        x: Message dictionary
-        final_response_callback: Optional callback for final response
-
-    Returns:
-        bool: True if conversation should terminate
-    """
-    should_terminate = False
-    function: Any = x.get("function", None)
-    if function is not None:
-        return False
-
-    content: Any = x.get("content", "")
-    if content is None:
-        content = ""
-        should_terminate = True
-    else:
-        try:
-            content_json = json.loads(content.replace("```json", "").replace("```", "").strip())
-            _terminate = content_json.get("terminate", "no")
-            final_response = content_json.get("final_response", None)
-            if _terminate == "yes":
-                should_terminate = True
-                if final_response and final_response_callback:
-                    final_response_callback(final_response)
-        except json.JSONDecodeError:
-            should_terminate = True
-
-    return should_terminate
 
 
 def create_user_proxy(

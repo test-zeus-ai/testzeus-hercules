@@ -6,7 +6,7 @@ import tempfile
 import traceback
 import uuid
 from string import Template
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Union, cast
 
 import autogen  # type: ignore
 import nest_asyncio  # type: ignore

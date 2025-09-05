@@ -95,6 +95,10 @@ ENV_TO_MODEL_CONFIG_MAPPING = {
 }
 
 ENV_TO_LLM_PARAMS_MAPPING = {
+    "LLM_MODEL_TEMPERATURE": "temperature",
+    "LLM_MODEL_CACHE_SEED": "cache_seed",
+    "LLM_MODEL_SEED": "seed",
+    "LLM_MODEL_MAX_TOKENS": "max_tokens",
     "LLM_MODEL_PRESENCE_PENALTY": "presence_penalty",
     "LLM_MODEL_FREQUENCY_PENALTY": "frequency_penalty",
     "LLM_MODEL_STOP": "stop",
