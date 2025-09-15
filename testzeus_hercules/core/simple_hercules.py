@@ -48,7 +48,6 @@ from testzeus_hercules.utils.sequential_function_call import (
 )
 from testzeus_hercules.utils.timestamp_helper import get_timestamp_str
 from testzeus_hercules.utils.ui_messagetype import MessageType
-from testzeus_hercules.core.tools.mcp_tools import set_mcp_agents
 
 nest_asyncio.apply()  # type: ignore
 from autogen import oai
@@ -422,26 +421,12 @@ class SimpleHercules:
         # Get paths from config with timestamp
         return get_global_conf().get_source_log_folder_path(self.stake_id)
 
-    async def shutdown_agents(self) -> None:
-        """Shutdown all registered agents by invoking their attached hooks.
-
-        Iterates through `agents_map` and, if an agent exposes `_hercules_shutdown`,
-        awaits it. This relies on BaseNavAgent (or specific agents) to attach
-        an async shutdown hook to their underlying autogen agent instance.
-        """
-        try:
-            for name, agent in (self.agents_map or {}).items():
-                hook = getattr(agent, "_hercules_shutdown", None)
-                if hook:
-                    try:
-                        if callable(hook):
-                            res = hook()
-                            if hasattr(res, "__await__"):
-                                await res
-                    except Exception as e:
-                        logger.warning(f"Agent '{name}' shutdown hook failed: {e}")
-        except Exception as e:
-            logger.warning(f"Failed to shutdown agents: {e}")
+    async def shutdown(self) -> None:
+        """Shutdown the SimpleHercules instance."""
+        await self.clean_up_plan()
+        for agent in self.agents_map.values():
+            if isinstance(agent, autogen.ConversableAgent):
+                await agent.shutdown()
 
     def set_chat_logs_dir(self, chat_logs_dir: str) -> None:
         """
@@ -520,14 +505,6 @@ class SimpleHercules:
         agents_map["time_keeper_nav_agent"] = self.__create_time_keeper_nav_agent(agents_map["time_keeper_nav_executor"])
         agents_map["mcp_nav_executor"] = self.__create_mcp_nav_executor_agent()
         agents_map["mcp_nav_agent"] = self.__create_mcp_nav_agent(agents_map["mcp_nav_executor"])
-        # Provide MCP agents to the MCP toolkit layer for native registration
-        try:
-
-            set_mcp_agents(agents_map["mcp_nav_agent"], agents_map["mcp_nav_executor"])
-        except Exception as e:
-            logger.error(
-                f"Failed to set MCP agents for toolkit registration: {e}"
-            )
         agents_map["planner_agent"] = self.__create_planner_agent(agents_map["user"])
         return agents_map
 

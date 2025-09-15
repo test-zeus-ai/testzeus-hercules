@@ -74,7 +74,6 @@ class BaseNavAgent:
         )
 
         self.register_tools()
-        self.register_shutdown()
 
     def get_ltm(self) -> str | None:
         """
@@ -92,19 +91,8 @@ class BaseNavAgent:
         return None
 
     def shutdown(self) -> None:
-        """Register a shutdown handler for this agent.
-
-        By default, attaches a no-op async callable to the agent instance under
-        `_hercules_shutdown`. Specific agents can override to perform cleanup.
-        """
-        async def _shutdown_agent() -> None:  # default no-op
-            return None
-
-        # Attach a shutdown hook to the underlying autogen agent instance
-        try:
-            setattr(self.agent, "_hercules_shutdown", _shutdown_agent)
-        except Exception as e:
-            logger.warning(f"Failed to attach shutdown hook to agent {self.agent_name}: {e}")
+        """Shutdown the agent."""
+        pass
 
     # MCP shutdown is managed centrally in the runner; no agent-level scheduling here.
 
