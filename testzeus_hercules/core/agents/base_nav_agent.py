@@ -15,7 +15,6 @@ from testzeus_hercules.utils.logger import logger
 class BaseNavAgent:
     agent_name: str = "base_nav_agent"
     prompt = "Base Agent"
-    prompt = "Base Agent"
 
     def __init__(self, model_config_list, llm_config_params: dict[str, Any], system_prompt: str | None, nav_executor: autogen.UserProxyAgent, agent_name: str = None, agent_prompt: str | None = None):  # type: ignore
         """
@@ -90,6 +89,12 @@ class BaseNavAgent:
 
         # Register the tools that were dynamically discovered
         return None
+
+    def shutdown(self) -> None:
+        """Shutdown the agent."""
+        pass
+
+    # MCP shutdown is managed centrally in the runner; no agent-level scheduling here.
 
     def load_tools(self, additional_tool_dirs: str = os.getenv("ADDITIONAL_TOOL_DIRS", "")) -> None:
         """

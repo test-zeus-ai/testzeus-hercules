@@ -92,7 +92,7 @@ class BaseRunner:
     async def clean_up(self) -> None:
         """Clean up resources."""
         if self.simple_hercules:
-            await self.simple_hercules.clean_up_plan()
+            await self.simple_hercules.shutdown()
         if self.browser_manager:
             await self.browser_manager.stop_playwright()
 
@@ -204,9 +204,11 @@ class BaseRunner:
         Shuts down the components gracefully.
         """
         logger.info("Shutting down...")
+        # Then shut down browser components
         if self.browser_manager:
             await self.browser_manager.stop_playwright()
         PlaywrightManager.close_all_instances()
+        
         self.shutdown_event.set()
 
     async def wait_for_exit(self) -> None:
