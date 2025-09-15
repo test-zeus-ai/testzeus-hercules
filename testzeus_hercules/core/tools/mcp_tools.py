@@ -1,19 +1,40 @@
 """MCP (Model Context Protocol) tools for server communication and tool execution."""
 
+from datetime import timedelta
 from typing import Any, Dict, List
 
-from mcp import ClientSession
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
+from mcp.client.sse import sse_client
+from mcp.client.streamable_http import streamablehttp_client
+from autogen.mcp import create_toolkit
 from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
+from testzeus_hercules.config import get_global_conf
 
 # Global MCP toolkit storage
 _mcp_toolkits: Dict[str, Any] = {}
 _mcp_sessions: Dict[str, ClientSession] = {}
 _mcp_client_contexts: Dict[str, Any] = {}
 
+# References to Hercules agents to enable native MCP tool registration
+_mcp_llm_agent: Any | None = None
+_mcp_executor_agent: Any | None = None
 
-# Note: Toolkit registration with agents is handled by McpNavAgent on startup.
+
+def set_mcp_agents(llm_agent: Any, executor_agent: Any) -> None:
+    """Set the Hercules agents used to register MCP tools for LLM and execution.
+
+    Args:
+        llm_agent: The ConversableAgent that will advertise the tools to the LLM.
+        executor_agent: The UserProxyAgent that will execute the tools.
+    """
+    global _mcp_llm_agent, _mcp_executor_agent
+    _mcp_llm_agent = llm_agent
+    _mcp_executor_agent = executor_agent
+
+
 @tool(agent_names=["mcp_nav_agent"], description="Execute a tool from an MCP server", name="execute_mcp_tool")
 async def execute_mcp_tool(server_name: str, tool_name: str, arguments: Dict[str, Any] = None) -> Dict[str, Any]:
     """
@@ -177,6 +198,143 @@ async def get_mcp_resource(server_name: str, resource_uri: str) -> Dict[str, Any
         return {"success": False, "error": str(e), "server": server_name}
 
 
+async def connect_mcp_server(server_name: str, server_config: Dict[str, Any]) -> bool:
+    """
+    Connect to an MCP server and create toolkit using AutoGen MCP integration.
+    
+    Args:
+        server_name: Name of the server for identification
+        server_config: Server configuration containing transport type and connection details
+    
+    Returns:
+        True if connection successful, False otherwise
+    """
+    try:
+        transport = server_config.get("transport", "stdio")
+        timeout_seconds = get_global_conf().get_mcp_timeout()
+        
+        async def create_toolkit_and_store(session: ClientSession):
+            """Helper function to create and store toolkit."""
+            # Initialize the MCP session
+            await session.initialize()
+            # Many MCP servers (including some streamable-http backends) do not
+            # implement resources APIs. Creating the toolkit with resources
+            # enabled can cause a "Method not found" error. Align with the
+            # working reference by disabling resources and enabling tools.
+            toolkit = await create_toolkit(
+                session,
+                use_mcp_resources=False,
+                use_mcp_tools=True,
+            )
+            _mcp_sessions[server_name] = session
+            _mcp_toolkits[server_name] = toolkit
+            # Register MCP tools with Hercules agents if available
+            try:
+                if _mcp_llm_agent is not None:
+                    toolkit.register_for_llm(_mcp_llm_agent)
+                else:
+                    logger.warning(
+                        f"MCP LLM agent not set; skipping LLM registration for server '{server_name}'"
+                    )
+                if _mcp_executor_agent is not None:
+                    toolkit.register_for_execution(_mcp_executor_agent)
+                else:
+                    logger.warning(
+                        f"MCP executor agent not set; skipping execution registration for server '{server_name}'"
+                    )
+            except Exception as reg_err:
+                logger.error(
+                    f"Error registering MCP toolkit with agents for server '{server_name}': {reg_err}"
+                )
+            logger.info(f"Connected to MCP server '{server_name}' via {transport} with {len(toolkit.tools)} tools available")
+            logger.info(f"Available tools: {[tool.name for tool in toolkit.tools]}")
+            return True
+        
+        if transport == "stdio":
+            # STDIO transport (keep context open for future tool calls)
+            command = server_config.get("command", "python")
+            args = server_config.get("args", [])
+            server_params = StdioServerParameters(command=command, args=args)
+
+            client_cm = stdio_client(server_params)
+            read, write = await client_cm.__aenter__()
+            session = ClientSession(read, write, read_timeout_seconds=timedelta(seconds=timeout_seconds))
+            await session.__aenter__()
+            _mcp_client_contexts[server_name] = client_cm
+            return await create_toolkit_and_store(session)
+                
+        elif transport == "sse":
+            # Server-Sent Events transport (keep context open)
+            url = server_config.get("url")
+            if not url:
+                raise ValueError(f"SSE transport requires 'url' field in server config for '{server_name}'")
+
+            client_cm = sse_client(url=url)
+            read_stream, write_stream = await client_cm.__aenter__()
+            session = ClientSession(read_stream, write_stream, read_timeout_seconds=timedelta(seconds=timeout_seconds))
+            await session.__aenter__()
+            _mcp_client_contexts[server_name] = client_cm
+            return await create_toolkit_and_store(session)
+                
+        elif transport == "streamable-http":
+            # Streamable HTTP transport (keep context open)
+            url = server_config.get("url")
+            if not url:
+                raise ValueError(f"Streamable HTTP transport requires 'url' field in server config for '{server_name}'")
+
+            client_cm = streamablehttp_client(url)
+            read_stream, write_stream, _ = await client_cm.__aenter__()
+            session = ClientSession(read_stream, write_stream, read_timeout_seconds=timedelta(seconds=timeout_seconds))
+            await session.__aenter__()
+            _mcp_client_contexts[server_name] = client_cm
+            return await create_toolkit_and_store(session)
+                
+        else:
+            raise ValueError(f"Unsupported transport type '{transport}' for server '{server_name}'. Supported: stdio, sse, streamable-http")
+        
+    except Exception as e:
+        logger.error(f"Failed to connect to MCP server '{server_name}' via {transport}: {e}")
+        return False
+
+
+async def disconnect_mcp_server(server_name: str) -> bool:
+    """
+    Disconnect from an MCP server and clean up resources.
+    
+    Args:
+        server_name: Name of the server to disconnect from
+    
+    Returns:
+        True if disconnection successful, False otherwise
+    """
+    try:
+        # Remove toolkit and session
+        toolkit = _mcp_toolkits.pop(server_name, None)
+        session = _mcp_sessions.pop(server_name, None)
+        client_cm = _mcp_client_contexts.pop(server_name, None)
+        
+        if session:
+            try:
+                # Clean up session
+                await session.__aexit__(None, None, None)
+            except Exception as _:
+                pass  # Ignore close errors
+        if client_cm:
+            try:
+                await client_cm.__aexit__(None, None, None)
+            except Exception:
+                pass
+        
+        if toolkit or session:
+            logger.info(f"Disconnected from MCP server '{server_name}'")
+            return True
+        return False
+        
+    except Exception as e:
+        logger.error(f"Error disconnecting from MCP server '{server_name}': {e}")
+        return False
+
+
 def get_connected_servers() -> List[str]:
     """Get list of currently connected MCP servers."""
     return list(_mcp_toolkits.keys())
@@ -274,4 +432,54 @@ async def get_configured_mcp_servers() -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
-# Note: Initialization of connections moved to McpNavAgent startup.
+@tool(agent_names=["mcp_nav_agent"], description="Initialize connection to configured MCP servers", name="initialize_mcp_connections")
+async def initialize_mcp_connections() -> Dict[str, Any]:
+    """
+    Initialize connections to all configured MCP servers.
+    
+    Returns:
+        Dict containing connection results
+    """
+    try:        
+        config = get_global_conf()
+        if not config.is_mcp_enabled():
+            return {"success": False, "error": "MCP is disabled in configuration"}
+        
+        mcp_servers = config.get_mcp_servers()
+        servers_config = mcp_servers.get("mcpServers", {}) if mcp_servers else {}
+        
+        if not servers_config:
+            return {"success": False, "error": "No MCP servers configured"}
+        
+        # Connect to all configured servers
+        results = {}
+        for server_name, server_config in servers_config.items():
+            try:
+                transport = server_config.get("transport", "stdio")
+                logger.info(f"Connecting to MCP server '{server_name}' via {transport} transport")
+                
+                success = await connect_mcp_server(server_name, server_config)
+                results[server_name] = {
+                    "success": success,
+                    "error": None if success else "Connection failed"
+                }
+                
+            except Exception as e:
+                logger.error(f"Error connecting to MCP server {server_name}: {e}")
+                results[server_name] = {
+                    "success": False,
+                    "error": str(e)
+                }
+        
+        successful_connections = [name for name, result in results.items() if result["success"]]
+        
+        return {
+            "success": True,
+            "results": results,
+            "connected_servers": successful_connections,
+            "connection_count": len(successful_connections)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error initializing MCP connections: {e}")
+        return {"success": False, "error": str(e)}
