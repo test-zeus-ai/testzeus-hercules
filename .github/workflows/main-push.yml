@@ -25,7 +25,7 @@ jobs:
       GEO_API_KEY: ${{ secrets.GEO_API_KEY }}
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
         id: setup_python
