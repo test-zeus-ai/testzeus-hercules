@@ -147,8 +147,8 @@ async def do_entertext(page: Page, selector: str, text_to_enter: str, use_keyboa
         else:
             # Get element properties to determine the best selection strategy
             tag_name = await elem.evaluate("el => el.tagName.toLowerCase()")
-            element_role = await elem.evaluate("el => el.getAttribute('role') || ''")
-            element_type = await elem.evaluate("el => el.type || ''")
+            element_role = await elem.evaluate("el => (el.getAttribute && el.getAttribute('role')) || ''")
+            element_type = await elem.evaluate("el => (el.type || '').toLowerCase()")
             input_roles = ["combobox", "listbox", "dropdown", "spinner", "select"]
             input_types = [
                 "range",
@@ -160,6 +160,15 @@ async def do_entertext(page: Page, selector: str, text_to_enter: str, use_keyboa
                 "option",
             ]
             logger.info(f"element_role: {element_role}, element_type: {element_type}")
+
+        text_input_types = {"text", "search", "email", "password", "url", "tel", "number"}
+        is_text_entry_element = (
+            tag_name == "textarea" or
+            (tag_name == "input" and element_type in text_input_types) or
+            (element_role in {"textbox", "searchbox"})
+        )
+
+        if not is_text_entry_element:
             if element_role in input_roles or element_type in input_types:
                 properties = {
                     "tag_name": tag_name,
