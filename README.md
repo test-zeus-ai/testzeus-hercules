@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/test-zeus-ai-testzeus-hercules-badge.png)](https://mseep.ai/app/test-zeus-ai-testzeus-hercules)
+
 # 💪 Hercules
 
 [![PyPI Total Downloads](https://static.pepy.tech/badge/testzeus-hercules)](https://pepy.tech/projects/testzeus-hercules)
