@@ -118,7 +118,7 @@ Must return well-formatted JSON with:
 "is_assert": "boolean - if current step is assertion",
 "assert_summary": "EXPECTED RESULT: x\\nACTUAL RESULT: y (required if is_assert=true)",
 "is_passed": "boolean - assertion success status",
-"target_helper": "'browser'|'api'|'sec'|'sql'|'time_keeper'|'mcp'|'Not_Applicable'"
+"target_helper": "'browser'|'api'|'sec'|'sql'|'time_keeper'|'agent'|'mcp'|'executor'|'Not_Applicable'"
 }
 
 ## Data Type Requirements
@@ -129,14 +129,19 @@ Must return well-formatted JSON with:
 - is_assert: Must be a boolean (true/false)
 - assert_summary: Must be a string
 - is_passed: Must be a boolean (true/false)
-- target_helper: Must be a string matching one of the allowed values
+- target_helper: Must be a string matching one of the allowed values: 'browser', 'api', 'sec', 'sql', 'time_keeper', 'agent', 'mcp', 'executor', 'Not_Applicable'
 
 ## Closure Nudge Examples
 - Browser: "Find and verify the confirmation message 'Success' appears after the operation is complete."
 - API: "Send a request to retrieve user data and confirm the response contains a user with email 'test@example.com'."
 - SQL: "Retrieve user records matching the specified criteria and verify at least one matching record exists."
 - MCP: "Execute the MCP tool and verify the response contains the expected result. Confirm tool execution was successful."
+- Executor: "Execute the script at 'scripts/extract_data.py'. MANDATORY: Review previous step first. Verify the script completes successfully and returns expected data. Provide Task_Completion_Validation before terminating."
 - General: "After the operation, verify [specific condition] before proceeding. If not found within 10 seconds, report failure."
+
+## Executor Operation Detection
+- When test steps mention executing/running Python scripts or automation workflows from files, route to target_helper: 'executor'
+- Examples: "Run the data extraction script" → use executor helper; "Execute the workflow in automation.py" → use executor helper
 
 ## Helper Capabilities
 - Browser: Navigation, element interaction, state verification, visual validation
@@ -144,7 +149,9 @@ Must return well-formatted JSON with:
 - Security: Security testing operations
 - SQL: Intent-based database operations
 - Time Keeper: Time-related operations and execution pauses
+- Agent: Agent testing and interaction operations, adversarial agent validation
 - MCP: Model Context Protocol server tool execution and resource access
+- Executor: Execute Python automation scripts from files
 
 ## Test Case Fidelity
 1. Strict Adherence to Test Requirements

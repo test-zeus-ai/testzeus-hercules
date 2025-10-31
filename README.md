@@ -64,6 +64,48 @@ Our mission? To **democratize and disrupt test automation**, making top-tier tes
 - **Using vision capabilities to check snapshots and components on the application**  
   _[Watch now](https://youtu.be/EKzllLEguhw)_
 
+#### 🐍 **Python Sandbox Execution**
+- **Execute custom Python scripts directly from Gherkin tests**  
+  Run complex automation workflows, custom business logic, and reusable components with full Playwright access. Perfect for scenarios that need advanced selector strategies, conditional logic, or data processing. [Read the docs](docs/python_sandbox_execution.md)
+
+**Quick Example:**
+```gherkin
+# In your feature file
+And execute the apply_filter function from script at "scripts/apply_filter.py" with filter_type as "Turtle Neck"
+```
+
+```python
+# In opt/scripts/apply_filter.py
+async def apply_filter(filter_type: str) -> dict:
+    """Apply filter with multiple fallback strategies."""
+    # page, logger, and other tools automatically available!
+    await page.wait_for_selector('[data-filter-section]')
+    
+    # Try multiple selector strategies
+    for selector in [f'input[value="{filter_type}"]', 
+                     f'label:has-text("{filter_type}") input']:
+        if await page.locator(selector).count() > 0:
+            await page.locator(selector).click()
+            break
+    
+    return {"status": "success", "filter": filter_type}
+```
+
+**Features:**
+- 🎯 Full Playwright API access
+- 🔒 Multi-tenant security (executor, data, API, restricted modes)
+- 📦 Auto-injected modules (page, browser, logger, asyncio, etc.)
+- 🔄 Reusable across multiple tests
+- ⚙️ Configurable via environment variables
+
+**Configuration:**
+```bash
+# Set tenant for module access
+export SANDBOX_TENANT_ID="executor_agent"  # Full access: requests, pandas, numpy, BeautifulSoup
+
+# Or use CLI
+hercules --sandbox-tenant-id executor_agent --input-file test.feature
+```
 
 ---
 

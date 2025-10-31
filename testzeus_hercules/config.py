@@ -266,6 +266,20 @@ class BaseConfigManager:
             help="Disable automatic acceptance of screen sharing prompts",
             required=False,
         )
+        
+        # Python Sandbox Configuration
+        parser.add_argument(
+            "--sandbox-tenant-id",
+            type=str,
+            help="Sandbox tenant ID for multi-tenant module injection (executor_agent, data_agent, api_agent, etc.)",
+            required=False,
+        )
+        parser.add_argument(
+            "--sandbox-custom-injections",
+            type=str,
+            help='Custom injections JSON for sandbox (e.g., \'{"modules": ["jwt"], "custom_objects": {"API_KEY": "xyz"}}\')',
+            required=False,
+        )
 
         # Parse known args; ignore unknown if you have other custom arguments
         args, _ = parser.parse_known_args()
@@ -327,6 +341,12 @@ class BaseConfigManager:
             os.environ["AUTO_ACCEPT_SCREEN_SHARING"] = "true"
         if args.disable_auto_accept_screen_sharing:
             os.environ["AUTO_ACCEPT_SCREEN_SHARING"] = "false"
+        
+        # Python Sandbox Configuration
+        if args.sandbox_tenant_id:
+            os.environ["SANDBOX_TENANT_ID"] = args.sandbox_tenant_id
+        if args.sandbox_custom_injections:
+            os.environ["SANDBOX_CUSTOM_INJECTIONS"] = args.sandbox_custom_injections
 
     def _merge_from_env(self) -> None:
         """
@@ -415,6 +435,10 @@ class BaseConfigManager:
             "MCP_SERVERS",
             "MCP_ENABLED",
             "MCP_TIMEOUT",
+            # Python Sandbox configuration
+            "SANDBOX_TENANT_ID",
+            "SANDBOX_PACKAGES",
+            "SANDBOX_CUSTOM_INJECTIONS",
         ]
 
         for key in relevant_keys:
@@ -560,6 +584,11 @@ class BaseConfigManager:
         self._config.setdefault("MCP_ENABLED", "false")
         self._config.setdefault("MCP_TIMEOUT", "30")
         self._config.setdefault("MCP_SERVERS", "{}")
+        
+        # Python Sandbox defaults
+        self._config.setdefault("SANDBOX_TENANT_ID", "")  # No default tenant
+        self._config.setdefault("SANDBOX_PACKAGES", "")  # No default packages
+        self._config.setdefault("SANDBOX_CUSTOM_INJECTIONS", "{}")  # No default custom injections
 
         # LLM Model Configuration defaults
         # --------------------------------------------------
@@ -947,6 +976,39 @@ class BaseConfigManager:
         except Exception as e:
             logger.error(f"Error reading MCP servers configuration: {e}")
             return {}
+    
+    # -------------------------------------------------------------------------
+    # Python Sandbox Configuration
+    # -------------------------------------------------------------------------
+    
+    def get_sandbox_tenant_id(self) -> str:
+        """
+        Get the sandbox tenant ID for multi-tenant module injection.
+        
+        Returns:
+            Tenant ID string (e.g., 'executor_agent', 'data_agent', 'api_agent')
+            Empty string means no tenant-specific injections (base only)
+        """
+        return self._config.get("SANDBOX_TENANT_ID", "")
+    
+    def get_sandbox_packages(self) -> str:
+        """
+        Get the comma-separated list of sandbox packages to inject.
+        
+        Returns:
+            Comma-separated package names (e.g., 'requests,pandas,numpy')
+        """
+        return self._config.get("SANDBOX_PACKAGES", "")
+    
+    def get_sandbox_custom_injections(self) -> str:
+        """
+        Get the custom injections JSON string for sandbox.
+        
+        Returns:
+            JSON string with custom modules/objects to inject
+            Example: '{"modules": ["jwt"], "custom_objects": {"API_KEY": "xyz"}}'
+        """
+        return self._config.get("SANDBOX_CUSTOM_INJECTIONS", "{}")
 
 
 # ------------------------------------------------------------------------------
