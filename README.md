@@ -1,5 +1,5 @@
 
-<img width="500" height="500" alt="2" src="https://github.com/user-attachments/assets/9e8c73cf-d0f9-4dc2-b5e6-98f2ce45a601" />
+<img width="100" height="100" alt="2" src="https://github.com/user-attachments/assets/9e8c73cf-d0f9-4dc2-b5e6-98f2ce45a601" />
 
 # 💪 Hercules
 
