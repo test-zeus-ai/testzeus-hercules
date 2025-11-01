@@ -876,6 +876,52 @@ We believe that great quality comes from opinions about a product. So we have in
 
 ---
 
+## 🦾 HyperMind
+
+:jigsaw: Summary
+Hercules now gains the power of the Hypermind — a secure, multi-tenant Python sandbox that lets testers inject custom logic, AI-powered heuristics, and human-crafted intelligence directly into test scenarios.
+When automation hits a wall, the Hypermind takes over — executing scripts with full Playwright access and controlled permissions.
+
+
+
+:gear: Core Capabilities
+Capability	Description
+:brain: Run custom scripts from Gherkin	Invoke Python functions as test steps.
+:earth_africa: Full Playwright access	Direct control over browser, page, and context.
+:jigsaw: Auto-injected utilities	Common tools (logger, asyncio, json, etc.) preloaded.
+:lock: Multi-tenant isolation	Executor, Data, API, and Restricted levels for safety.
+:gear: Dynamic permissions	Control module access via CLI or environment.
+:camera_with_flash: Execution proofs	Pre/post screenshots and JSON execution reports.
+:arrows_counterclockwise: Reusable logic	Use scripts across features or teams.
+
+
+:toolbox: Usage Example
+Gherkin:
+Feature: Product Filtering
+  Scenario: Apply filter using Hypermind Script
+    Given a user is on the URL as https://example.com
+    When execute the hypermind script "scripts/apply_filter.py" with filter_type as "Turtle Neck"
+    Then the script should report successful filter application
+
+
+
+**Python**: opt/scripts/apply_filter.py
+
+    async def apply_filter(filter_type: str) -> dict:
+        """Apply filter with fallback strategies."""
+        await page.wait_for_selector('[data-filter-section]')
+        for selector in [f'input[value="{filter_type}"]', f'label:has-text("{filter_type}") input']:
+            if await page.locator(selector).count() > 0:
+                await page.locator(selector).click()
+                break
+        count = await page.locator('.product-item').count()
+        return {"status": "success", "filter": filter_type, "products": count}
+
+	
+:checkered_flag: Vision
+“When automation falters, Hypermind awakens.”
+Hypermind Scripts represent the next phase of AI-assisted testing — uniting autonomous precision with human adaptability. It’s not just fallback logic; it’s human creativity made executable.
+
 ## 🪙 Token Usage
 
 Hercules is an AI-native solution and relies on LLMs to perform reasoning and actions. Based on our experiments, we have found that a complex use case as below could cost up to **$0.20** using OpenAI's APIs gpt-4o, check the properties printed in testcase output to calculate for your testcase:
