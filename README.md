@@ -1,4 +1,5 @@
-[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/test-zeus-ai-testzeus-hercules-badge.png)](https://mseep.ai/app/test-zeus-ai-testzeus-hercules)
+
+<img width="500" height="500" alt="2" src="https://github.com/user-attachments/assets/9e8c73cf-d0f9-4dc2-b5e6-98f2ce45a601" />
 
 # 💪 Hercules
 
