@@ -896,12 +896,12 @@ Capability	Description
 
 
 :toolbox: Usage Example
-Gherkin:
-Feature: Product Filtering
-  Scenario: Apply filter using Hypermind Script
-    Given a user is on the URL as https://example.com
-    When execute the hypermind script "scripts/apply_filter.py" with filter_type as "Turtle Neck"
-    Then the script should report successful filter application
+**Gherkin**:
+    Feature: Product Filtering
+      Scenario: Apply filter using Hypermind Script
+        Given a user is on the URL as https://example.com
+        When execute the hypermind script "scripts/apply_filter.py" with filter_type as "Turtle Neck"
+        Then the script should report successful filter application
 
 
 
