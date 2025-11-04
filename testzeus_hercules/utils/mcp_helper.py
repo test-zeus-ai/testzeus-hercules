@@ -254,8 +254,8 @@ class MCPHelper:
                     raise ValueError(
                         f"SSE transport requires 'url' field in server config for '{server_name}'"
                     )
-
-                client_cm = sse_client(url=url)
+                headers = server_config.get("headers", None)
+                client_cm = sse_client(url=url, headers=headers)
                 read_stream, write_stream = await getattr(client_cm, "__aenter__")()
                 session = ClientSession(
                     read_stream, write_stream, read_timeout_seconds=timedelta(seconds=timeout_seconds)
@@ -270,8 +270,8 @@ class MCPHelper:
                     raise ValueError(
                         f"Streamable HTTP transport requires 'url' field in server config for '{server_name}'"
                     )
-
-                client_cm = streamablehttp_client(url)
+                headers = server_config.get("headers", None)
+                client_cm = streamablehttp_client(url, headers)
                 read_stream, write_stream, _ = await getattr(client_cm, "__aenter__")()
                 session = ClientSession(
                     read_stream, write_stream, read_timeout_seconds=timedelta(seconds=timeout_seconds)
