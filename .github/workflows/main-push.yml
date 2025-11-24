@@ -24,7 +24,7 @@ jobs:
       LLM_MODEL_API_KEY: ${{ secrets.LLM_MODEL_API_KEY }}
       GEO_API_KEY: ${{ secrets.GEO_API_KEY }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
