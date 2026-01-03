@@ -230,10 +230,56 @@ To set up and run Hercules on a Windows machine:
 - Mistral: Supports any version with function calling and coding capabilities. Mistral-large, Mistral-medium. Only heavey models.
 - OpenAI: Fully compatible with GPT-4o/o3-mini and above. Note: OpenAI GPT-4o-mini is only supported for sub-agents, for planner it is still recommended to use GPT-4o.
 - Ollama: Supported with medium models and function calling. Heavy models only 70b and above.
-- Gemini: [deprecated, because of flaky execution]. Refer: https://testzeuscommunityhq.slack.com/archives/C0828GV2HEC/p1740628636862819
+- Gemini: Can be used. Preferred with LiteLLM as below.
 - Deepseek: only deepseek-chat v3 support.
 - Hosting: supported on AWS bedrock, GCP VertexAI, AzureAI. [tested models, OpenAI, Anthropic Sonet and Haiku, Llamma 60b above with function calling]
-Note: Kindly ensure that the model you are using can handle agentic activities like function calling. For example larger models like OpenAI GPT 4O, Llama >70B, Mistral large etc.
+Note: Kindly ensure that the model you are using can handle agentic activities like function calling. For example larger models like OpenAI GPT 4O, Llama >70B, Mistral large etc. You can use agent_config file as below to fill LiteLLM details [https://docs.litellm.ai/docs/simple_proxy] :
+```JSON
+{
+  "litellm-flash": {
+    "planner_agent": {
+      "model_name": "gemini-2.5-flash",
+      "model_api_key": "sfasdfsadgbw",
+      "model_base_url": "https://litellm-proxydeployment",
+      "llm_config_params": {
+        "cache_seed": 1234,
+        "temperature": 0,
+        "seed": 12345
+      }
+    },
+    "nav_agent":  {
+      "model_name": "gemini-2.5-flash",
+      "model_api_key": "sfasdfsadgbw",
+      "model_base_url": "https://litellm-proxydeployment",
+      "llm_config_params": {
+        "cache_seed": 1234,
+        "temperature": 0,
+        "seed": 12345
+      }
+    },
+    "mem_agent":  {
+      "model_name": "gemini-2.5-flash",
+      "model_api_key": "sfasdfsadgbw",
+      "model_base_url": "https://litellm-proxydeployment",
+      "llm_config_params": {
+        "cache_seed": 1234,
+        "temperature": 0,
+        "seed": 12345
+      }
+    },
+    "helper_agent":  {
+      "model_name": "gemini-2.5-flash",
+      "model_api_key": "sfasdfsadgbw",
+      "model_base_url": "https://litellm-proxydeployment",
+      "llm_config_params": {
+        "cache_seed": 1234,
+        "temperature": 0,
+        "seed": 12345
+      }
+    }
+  }
+}
+```
 
 #### Execution Flow
 
