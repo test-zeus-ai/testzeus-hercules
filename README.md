@@ -385,10 +385,10 @@ For the hardcore enthusiasts, you can use Hercules via the source code to get a 
 
    - Use `make help` to check out possible options.
 
-4. **Install Poetry**
+4. **Install UV**
 
    ```bash
-   make setup-poetry
+   make setup-uv
    ```
 
 5. **Install Dependencies**
