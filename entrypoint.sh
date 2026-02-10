@@ -25,4 +25,4 @@ fi
 export AUTO_MODE=1
 
 # Execute the main application
-exec poetry run python testzeus_hercules
+exec uv run python testzeus_hercules

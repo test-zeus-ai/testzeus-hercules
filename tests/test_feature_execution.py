@@ -45,7 +45,7 @@ def test_feature_execution(feature_folder: str) -> None:
     # Execute Hercules with the updated .env file
     try:
         result = subprocess.run(
-            ["poetry", "run", "python", "-m", "testzeus_hercules"],
+            ["uv", "run", "python", "-m", "testzeus_hercules"],
             check=True,
             capture_output=True,
             text=True,

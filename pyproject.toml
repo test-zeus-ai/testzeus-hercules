@@ -1,75 +1,90 @@
-[tool.poetry]
+[project]
 name = "testzeus-hercules"
 version = "0.2.0"
 description = "Hercules: The World's First Open-Source AI Agent for End-to-End Testing"
-authors = ["Shriyansh Agnihotri <shriyansh@testzeus.com>"]
+authors = [{ name = "Shriyansh Agnihotri", email = "shriyansh@testzeus.com" }]
+requires-python = "<3.13,>=3.10"
 readme = "README.md"
-homepage = "https://testzeus.com/hercules"
-repository = "https://github.com/testzeus/testzeus-hercules"
-documentation = "https://testzeus.com/hercules/docs"
-keywords = ["AI", "end-to-end testing", "automation", "Hercules", "TestZeus"]
-exclude = [
-    "scout/screen_shots/*",
-    "scout/log_files/*",
+keywords = [
+    "AI",
+    "end-to-end testing",
+    "automation",
+    "Hercules",
+    "TestZeus",
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "nest-asyncio>=1.6.0,<2",
+    "pillow>=10.3.0,<11",
+    "playwright<=1.49.0",
+    "pydantic>=2.6.2,<3",
+    "python-dotenv>=1.0.0,<2",
+    "python-json-logger>=2.0.7,<3",
+    "pyyaml>=6.0.1,<7",
+    "sqlalchemy>=2.0.36,<3",
+    "junitparser>=3.2.0,<4",
+    "sentry-sdk>=2.18.0,<3",
+    "playwright-recaptcha>=0.5.1,<0.6",
+    "junit2html>=31.0.2,<32",
+    "aiohttp>=3.13.2,<4",
+    "inflection>=0.5.1,<0.6",
+    "ag2[retrievechat, ollama, anthropic, openai, groq, gemini, lmm, mistral, bedrock, mcp]>=0.10.1,<0.10.5",
+    "mcp>=1.23.3,<2",
+    "psutil>=5.9.0,<6",
+    "aiofiles>=24.1.0,<25",
+    "chromadb>=1.0.16,<2",
+    "sentence-transformers>=3.4.1,<4",
+    "unstructured[all-docs]>=0.16.21,<0.17",
+    "httpx>=0.28.1,<0.29",
+    "portkey-ai>=1.11.1,<2",
+    "opentelemetry-proto>=1.27.0",
+    "starlette>=0.50.0,<0.51",
+    "urllib3>=2.6.1,<3",
+    "pypdf>=6.4.1,<7",
+    "fonttools>=4.61.0,<5",
+    "transformers>=4.57.3,<5",
+    "requests>=2.32.5,<3",
+    "torch>=2.9.1,<3",
 ]
 
-[tool.poetry.dependencies]
-python = "<3.13,>=3.10"
-nest-asyncio = "^1.6.0"
+[project.urls]
+Homepage = "https://testzeus.com/hercules"
+Repository = "https://github.com/testzeus/testzeus-hercules"
+Documentation = "https://testzeus.com/hercules/docs"
 
- 
-pillow = "^10.3.0"
-playwright = "<=1.49.0"
-pydantic = "^2.6.2"
-python-dotenv = "^1.0.0"
-python-json-logger = "^2.0.7"
-pyyaml = "^6.0.1"
+[project.scripts]
+testzeus-hercules = "testzeus_hercules.__main__:main"
 
-sqlalchemy = "^2.0.36"
-junitparser = "^3.2.0"
-sentry-sdk = "^2.18.0"
-playwright-recaptcha = "^0.5.1"
-junit2html = "^31.0.2"
-aiohttp = "^3.13.2"
-inflection = "^0.5.1"
-ag2 = {extras = ["retrievechat", "ollama", "anthropic", "openai", "groq", "gemini", "lmm", "mistral", "bedrock", "gemini", "openai", "mcp"], version = "^0.9.8.post1"}
-mcp = "^1.23.3"
-psutil = "^5.9.0"
-aiofiles = "^24.1.0"
-chromadb = "^1.0.16"
-sentence-transformers = "^3.4.1"
-unstructured = {extras = ["all-docs"], version = "^0.16.21"}
-httpx = "^0.28.1"
-portkey-ai = "^1.11.1"
-opentelemetry-proto = ">=1.27.0"
-starlette = "^0.50.0"
-urllib3 = "^2.6.1"
-pypdf = "^6.4.1"
-fonttools = "^4.61.0"
-transformers = "^4.57.3"
-requests = "^2.32.5"
-torch = "^2.9.1"
+[dependency-groups]
+dev = [
+    "pytest>=8.3.3,<9",
+    "coverage>=7.6.4,<8",
+    "black>=24.10.0,<25",
+    "isort>=5.13.2,<6",
+    "pytest-cov>=6.0.0,<7",
+    "mypy>=1.13.0,<2",
+    "gitchangelog>=3.0.4,<4",
+    "mkdocs>=1.6.1,<2",
+    "ipdb>=0.13.13,<0.14",
+    "twine>=5.1.1,<6",
+    "deptry>=0.21.0,<0.22",
+    "pytest-rerunfailures>=15.0,<16",
+]
 
-[tool.poetry.group.dev.dependencies]
-pytest = "^8.3.3"
-coverage = "^7.6.4"
-black = "^24.10.0"
-isort = "^5.13.2"
-pytest-cov = "^6.0.0"
-mypy = "^1.13.0"
-gitchangelog = "^3.0.4"
-mkdocs = "^1.6.1"
-ipdb = "^0.13.13"
-twine = "^5.1.1"
-deptry = "^0.21.0"
-pytest-rerunfailures = "^15.0"
+[tool.setuptools]
+packages = ["testzeus_hercules"]
+
+[tool.setuptools.package-data]
+testzeus_hercules = ["py.typed"]
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
-
-[tool.poetry.scripts]
-testzeus-hercules = 'testzeus_hercules.__main__:main'
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
 
 [tool.isort]
 profile = "black"
@@ -135,11 +150,11 @@ lint.ignore = [
     "PLR0913", # Too many arguments for function call
     "D106",    # Missing docstring in public nested class
 ]
+lint.mccabe = { max-complexity = 10 }
 exclude = [
     "testzeusagent/db/migrations",
     ".venv/"
 ]
-lint.mccabe = { max-complexity = 10 }
 line-length = 88
 
 [tool.ruff.lint.per-file-ignores]
