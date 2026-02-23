@@ -63,10 +63,6 @@ Documentation = "https://testzeus.com/hercules/docs"
 [project.scripts]
 testzeus-hercules = "testzeus_hercules.__main__:main"
 
-# Note: NLTK security patch (CVE-2025-14009) is applied via nltk_security_patcher.py
-# Note: diskcache CVE-2025-69872 - JSONDisk patch not applied (breaks autogen ChatCompletion cache).
-# Mitigate by restricting write access to cache directories.
-
 [dependency-groups]
 dev = [
     "pytest>=8.3.3,<9",

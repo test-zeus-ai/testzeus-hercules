@@ -31,6 +31,11 @@ _VALID_LLM_CONFIG_TOP_LEVEL = frozenset({
 })
 
 
+class MissingApiKeyError(ValueError):
+    def __init__(self) -> None:
+        super().__init__("LLM_MODEL_API_KEY is missing. Please set it in your environment.")
+
+
 def build_llm_config_for_ag2(
     config_list: list[dict[str, Any]],
     llm_config_params: dict[str, Any],
@@ -223,14 +228,16 @@ def create_multimodal_agent(
             if config_list and len(config_list) > 0:
                 config_list[0]["api_key"] = api_key
         else:
-            raise ValueError("OPENAI_API_KEY is missing. Please set it in your environment.")
+            raise MissingApiKeyError()
 
         # Base config (AG2 0.11+ compatible)
         final_llm_config: Dict[str, Any] = build_llm_config_for_ag2(config_list, adapted_llm_params)
 
         # === Merge caller overrides (if any) ===
         if llm_config:
-            final_llm_config.update(llm_config)
+            # Apply overrides at parameter level through whitelist filtering
+            merged_params = {**adapted_llm_params, **llm_config}
+            final_llm_config = build_llm_config_for_ag2(config_list, merged_params)
 
         # === Create singleton agent ===
         create_multimodal_agent._instance = MultimodalConversableAgent(
