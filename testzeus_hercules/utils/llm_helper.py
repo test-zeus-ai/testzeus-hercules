@@ -1,6 +1,5 @@
 import copy
 import json
-import tempfile
 from typing import Any, Dict, List, Optional, Union
 
 import autogen
@@ -23,6 +22,29 @@ from testzeus_hercules.utils.model_utils import adapt_llm_params_for_model
 
 DEFAULT_LMM_SYS_MSG = """You are a helpful AI assistant."""
 DEFAULT_MODEL = "gpt-4o"
+
+# AG2 0.11+ LLMConfig: model/api_key/base_url/api_type belong in config_list, not top-level
+_VALID_LLM_CONFIG_TOP_LEVEL = frozenset({
+    "max_tokens", "temperature", "top_p", "check_every_ms", "allow_format_str_template",
+    "response_format", "timeout", "seed", "cache_seed", "parallel_tool_calls",
+    "tools", "functions", "routing_method",
+})
+
+
+def build_llm_config_for_ag2(
+    config_list: list[dict[str, Any]],
+    llm_config_params: dict[str, Any],
+) -> dict[str, Any]:
+    """Build llm_config dict for AG2 0.11+ with only valid top-level kwargs."""
+    filtered: dict[str, Any] = {}
+    for k, v in llm_config_params.items():
+        if k in _VALID_LLM_CONFIG_TOP_LEVEL:
+            filtered[k] = v
+        elif k == "max_completion_tokens" and "max_tokens" not in filtered:
+            filtered["max_tokens"] = v  # AG2 LLMConfig uses max_tokens
+        elif k == "max_tokens_to_sample" and "max_tokens" not in filtered:
+            filtered["max_tokens"] = v  # AG2 LLMConfig uses max_tokens
+    return {"config_list": config_list, **filtered}
 
 
 class MultimodalConversableAgent(ConversableAgent):
@@ -143,7 +165,7 @@ class MultimodalConversableAgent(ConversableAgent):
 def convert_model_config_to_autogen_format(
     model_config: dict[str, str],
 ) -> list[dict[str, Any]]:
-    """Convert model configuration to Autogen format.
+    """Convert model configuration to Autogen/AG2 format.
 
     Args:
         model_config: Raw model configuration dictionary
@@ -158,16 +180,11 @@ def convert_model_config_to_autogen_format(
         "base_url": model_config.get("base_url") or model_config.get("model_base_url"),
         "api_type": model_config.get("api_type") or model_config.get("model_api_type"),
     }
-    
+
     # Remove None values
     config_for_autogen = {k: v for k, v in config_for_autogen.items() if v is not None}
-    
-    env_var: list[dict[str, str]] = [config_for_autogen]
-    with tempfile.NamedTemporaryFile(delete=False, mode="w") as temp:
-        json.dump(env_var, temp)
-        temp_file_path = temp.name
 
-    return autogen.config_list_from_json(env_or_file=temp_file_path)
+    return [config_for_autogen]
 
 
 
@@ -199,20 +216,17 @@ def create_multimodal_agent(
         # Convert model config to autogen format
         config_list = convert_model_config_to_autogen_format(model_cfg)
 
-        # Base config
-        final_llm_config: Dict[str, Any] = {"config_list": config_list, **adapted_llm_params}
-
-        # === Ensure API key is present at both levels ===
+        # === Ensure API key is present in config_list ===
         import os
         api_key = model_cfg.get("api_key") or os.getenv("LLM_MODEL_API_KEY")
         if api_key:
-            # Ensure API key is in the config_list
             if config_list and len(config_list) > 0:
                 config_list[0]["api_key"] = api_key
-            # Also add it at the top level for autogen compatibility
-            final_llm_config["api_key"] = api_key
         else:
             raise ValueError("OPENAI_API_KEY is missing. Please set it in your environment.")
+
+        # Base config (AG2 0.11+ compatible)
+        final_llm_config: Dict[str, Any] = build_llm_config_for_ag2(config_list, adapted_llm_params)
 
         # === Merge caller overrides (if any) ===
         if llm_config:

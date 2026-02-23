@@ -35,6 +35,7 @@ from testzeus_hercules.core.tools.get_url import geturl
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.detect_llm_loops import is_agent_stuck_in_loop
 from testzeus_hercules.utils.llm_helper import (
+    build_llm_config_for_ag2,
     convert_model_config_to_autogen_format,
     create_multimodal_agent,
     extract_target_helper,
@@ -371,17 +372,10 @@ class SimpleHercules:
                 base_name = last_speaker.name.rsplit("_nav_executor", 1)[0]
                 return self.agents_map[f"{base_name}_nav_agent"]
 
-        # Ensure API key is available at both levels for autogen compatibility
-        api_key = self.planner_agent_model_config[0].get('api_key') if self.planner_agent_model_config else None
-        
-        gm_llm_config = {
-            "config_list": self.planner_agent_model_config,
-            **self.planner_agent_config["llm_config_params"],
-        }
-        
-        # Add API key at the top level if it exists
-        if api_key:
-            gm_llm_config["api_key"] = api_key
+        gm_llm_config = build_llm_config_for_ag2(
+            self.planner_agent_model_config,
+            self.planner_agent_config["llm_config_params"],
+        )
 
         groupchat = autogen.GroupChat(
             agents=[self.agents_map[agent_name] for agent_name in group_participants_names],
@@ -948,10 +942,10 @@ class SimpleHercules:
             # Skip memory agent creation when dynamic LTM is disabled
             return None
 
-        llm_config = {
-            "config_list": self.mem_agent_model_config,
-            **self.mem_agent_config["llm_config_params"],
-        }
+        llm_config = build_llm_config_for_ag2(
+            self.mem_agent_model_config,
+            self.mem_agent_config["llm_config_params"],
+        )
 
         # Initialize memory system
         namespace = f"{self.stake_id}_{config.timestamp}"
@@ -985,10 +979,10 @@ class SimpleHercules:
         Returns:
             autogen.ConversableAgent: An instance of ConversableAgent for providing assistance.
         """
-        llm_config = {
-            "config_list": self.helper_agent_model_config,
-            **self.helper_agent_config["llm_config_params"],  # type: ignore
-        }
+        llm_config = build_llm_config_for_ag2(
+            self.helper_agent_model_config,
+            self.helper_agent_config["llm_config_params"],
+        )
 
         # helper_agent = autogen.ConversableAgent(
         #     name="helper_agent",

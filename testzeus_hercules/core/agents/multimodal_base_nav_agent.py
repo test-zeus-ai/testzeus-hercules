@@ -44,14 +44,13 @@ class MultimodalBaseNavAgent(BaseNavAgent):
             system_message = Template(system_message).substitute(basic_test_information=user_ltm)
         logger.info(f"Nav agent {agent_name} using model: {model_config_list[0]['model']}")
 
+        from testzeus_hercules.utils.llm_helper import build_llm_config_for_ag2
+
         # Use MultimodalConversableAgent instead of ConversableAgent
         self.agent = MultimodalConversableAgent(
             name=agent_name,
             system_message=system_message,
-            llm_config={
-                "config_list": model_config_list,
-                **llm_config_params,  # unpack all the name value pairs in llm_config_params as is
-            },
+            llm_config=build_llm_config_for_ag2(model_config_list, llm_config_params),
             human_input_mode="NEVER",
         )
 
