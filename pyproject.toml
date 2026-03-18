@@ -66,7 +66,7 @@ testzeus-hercules = "testzeus_hercules.__main__:main"
 dev = [
     "pytest>=8.3.3,<9",
     "coverage>=7.6.4,<8",
-    "black>=24.10.0,<25",
+    "black>=26.3.1,<27",
     "isort>=5.13.2,<6",
     "pytest-cov>=6.0.0,<7",
     "mypy>=1.13.0,<2",
@@ -170,3 +170,11 @@ ignore-decorators = ["typing.overload"]
 
 [tool.ruff.lint.pylint]
 allow-magic-value-types = ["int", "str", "float", "bytes"]
+
+# Security constraints for transitive dependencies (Dependabot alerts)
+[tool.uv]
+override-dependencies = [
+    "pyasn1>=0.6.3",
+    "PyJWT>=2.12.0",
+    "pypdf>=6.8.0",
+]
