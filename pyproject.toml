@@ -64,7 +64,7 @@ testzeus-hercules = "testzeus_hercules.__main__:main"
 
 [dependency-groups]
 dev = [
-    "pytest>=8.3.3,<9",
+    "pytest>=8.3.3,<10",
     "coverage>=7.6.4,<8",
     "black>=26.3.1,<27",
     "isort>=5.13.2,<6",
