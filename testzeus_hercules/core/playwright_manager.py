@@ -1104,6 +1104,9 @@ class PlaywrightManager:
 
     async def close_browser_context(self) -> None:
         if self._browser_context:
+            # Collect video rename info before closing (path() is valid before close,
+            # but the file is still locked by Chromium on Windows until context closes)
+            video_renames = []
             if self._record_video:
                 pages = self._browser_context.pages
                 for page in pages:
@@ -1117,18 +1120,10 @@ class PlaywrightManager:
                             video_dir = os.path.dirname(video_path)
                             safe_url = page.url.replace("://", "_").replace("/", "_").replace(".", "_") if not page.url else "video_of"
                             new_video_path = os.path.join(video_dir, f"{safe_url}_{video_name}")
-
-                            # rename asynchronously
-                            def rename_file(src, dst):
-                                os.rename(src, dst)
-
-                            await asyncio.to_thread(rename_file, video_path, new_video_path)
-                            self._latest_video_path = new_video_path
-                            logger.info(f"Video recorded at {new_video_path}")
+                            video_renames.append((video_path, new_video_path))
                     except Exception as e:
-
                         traceback.print_exc()
-                        logger.error(f"Could not finalize video: {e}")
+                        logger.error(f"Could not prepare video rename: {e}")
 
             # Stop and save tracing before closing context
             if self._enable_tracing:
@@ -1150,6 +1145,17 @@ class PlaywrightManager:
 
             await self._browser_context.close()
             self._browser_context = None
+
+            # Rename videos after context is closed so Chromium has released the file
+            # lock (fixes WinError 32 on Windows)
+            for video_path, new_video_path in video_renames:
+                try:
+                    await asyncio.to_thread(os.rename, video_path, new_video_path)
+                    self._latest_video_path = new_video_path
+                    logger.info(f"Video recorded at {new_video_path}")
+                except Exception as e:
+                    traceback.print_exc()
+                    logger.error(f"Could not finalize video: {e}")
 
     async def update_processing_state(self, processing_state: str) -> None:
         pass
