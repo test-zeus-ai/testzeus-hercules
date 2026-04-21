@@ -1,6 +1,6 @@
 [project]
 name = "testzeus-hercules"
-version = "0.2.0"
+version = "0.2.2"
 description = "Hercules: The World's First Open-Source AI Agent for End-to-End Testing"
 authors = [{ name = "Shriyansh Agnihotri", email = "shriyansh@testzeus.com" }]
 requires-python = ">=3.11,<3.14"
