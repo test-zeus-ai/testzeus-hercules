@@ -81,20 +81,9 @@ release: ## Create a new tag for release.
 	@echo "WARNING: This operation will create a version tag and push to GitHub"
 	@( \
 	  read -p "Version bump (patch, minor, major)? : " BUMP; \
-	  python -c "import re, sys; \
-	    content = open('pyproject.toml').read(); \
-	    version_match = re.search(r'version = \"([^\"]+)\"', content); \
-	    if not version_match: sys.exit(1); \
-	    current = version_match.group(1).split('.'); \
-	    if sys.argv[1] == 'patch': current[2] = str(int(current[2])+1); \
-	    elif sys.argv[1] == 'minor': current[1] = str(int(current[1])+1); current[2] = '0'; \
-	    elif sys.argv[1] == 'major': current[0] = str(int(current[0])+1); current[1] = current[2] = '0'; \
-	    new_version = '.'.join(current); \
-	    new_content = re.sub(r'version = \"[^\"]+\"', f'version = \"{new_version}\"', content); \
-	    open('pyproject.toml', 'w').write(new_content); \
-	    print(new_version)" $$BUMP > .tmp_version; \
+	  uv run python -c "import re, sys; content = open('pyproject.toml').read(); m = re.search(r'version = \"([^\"]+)\"', content); (m or sys.exit(1)); v = m.group(1).split('.'); idx = {'major': 0, 'minor': 1, 'patch': 2}[sys.argv[1]]; v[idx] = str(int(v[idx]) + 1); v[idx+1:] = ['0'] * (2 - idx); nv = '.'.join(v); open('pyproject.toml', 'w').write(re.sub(r'version = \"[^\"]+\"', f'version = \"{nv}\"', content)); print(nv)" $$BUMP > .tmp_version; \
 	  read -p "Do you want to continue? (y/n) : " CONTINUE; \
-	  [ $$CONTINUE = "y" ] || exit 1; \
+	  [ "$$CONTINUE" = "y" ] || exit 1; \
 	  VERSION=$$(cat .tmp_version); \
 	  echo "New Version: $$VERSION"; \
 	  git add pyproject.toml; \
