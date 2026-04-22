@@ -54,6 +54,7 @@ dependencies = [
     "cryptography>=46.0.7,<47",
     "anthropic>=0.87.0",
     "python-multipart>=0.0.26",
+    "lxml>=6.1.0",
 ]
 
 [project.urls]
