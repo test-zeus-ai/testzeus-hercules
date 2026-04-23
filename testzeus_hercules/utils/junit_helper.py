@@ -315,7 +315,7 @@ def run_test() -> None:
     cost_metric = {
         "usage_including_cached_inference": {
             "total_cost": 0.12923500000000002,
-            "gpt-4o-2024-08-06": {
+            "gpt-5.4-2026-03-05": {
                 "cost": 0.12923500000000002,
                 "prompt_tokens": 45362,
                 "completion_tokens": 1583,
@@ -324,7 +324,7 @@ def run_test() -> None:
         },
         "usage_excluding_cached_inference": {
             "total_cost": 0.11612000000000003,
-            "gpt-4o-2024-08-06": {
+            "gpt-5.4-2026-03-05": {
                 "cost": 0.11612000000000003,
                 "prompt_tokens": 41220,
                 "completion_tokens": 1307,
