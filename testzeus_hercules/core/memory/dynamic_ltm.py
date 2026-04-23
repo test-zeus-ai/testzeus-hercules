@@ -162,7 +162,7 @@ I work strictly with data that has been explicitly stored in my memory.""",
                 "task": "qa",
                 "docs_path": self.static_data_list,
                 "chunk_token_size": 20000,
-                "model": self.llm_config.get("config_list", [{}])[0].get("model", "gpt-5.4-mini"),
+                "model": self.llm_config.get("config_list", [{}])[0].get("model", "gpt-5.4-nano"),
                 "collection_name": f"ad{namespace}",  # Use namespace in collection name
                 "get_or_create": self.reuse_vector_db,  # Use config to determine get_or_create
                 "persist_dir": self.vector_db_path,  # Set persistence directory
