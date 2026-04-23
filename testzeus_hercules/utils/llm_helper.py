@@ -22,7 +22,7 @@ from testzeus_hercules.utils.response_parser import parse_response
 from testzeus_hercules.utils.model_utils import adapt_llm_params_for_model
 
 DEFAULT_LMM_SYS_MSG = """You are a helpful AI assistant."""
-DEFAULT_MODEL = "gpt-4o"
+DEFAULT_MODEL = "gpt-5.4"
 
 
 class MultimodalConversableAgent(ConversableAgent):

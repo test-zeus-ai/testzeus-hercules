@@ -593,7 +593,7 @@ class BaseConfigManager:
         # LLM Model Configuration defaults
         # --------------------------------------------------
         # Core model settings
-        self._config.setdefault("LLM_MODEL_NAME", "gpt-4o")
+        self._config.setdefault("LLM_MODEL_NAME", "gpt-5.4")
         self._config.setdefault("LLM_MODEL_API_KEY", None)  # No default for security
         self._config.setdefault("LLM_MODEL_API_TYPE", "openai")
         # self._config.setdefault("LLM_MODEL_BASE_URL", "https://api.openai.com/v1")

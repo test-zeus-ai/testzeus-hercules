@@ -127,7 +127,7 @@ class SimpleHercules:
         Args:
             planner_agent_config: dict[str, Any]: A dictionary containing the configuration parameters for the planner agent. For example:
                 {
-                    "model_name": "gpt-4o",
+                    "model_name": "gpt-5.4",
                     "model_api_key": "",
                     "model_base_url": null,
                     "system_prompt": ["optional prompt unless you want to use the built in"],

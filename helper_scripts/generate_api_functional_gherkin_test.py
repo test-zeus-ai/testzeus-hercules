@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 # how to run
-# python helper_scripts/generate_api_functional_gherkin_test.py tests/test_features/ApiTesting/api_spec.yml --output=helper_scripts/output --model=gpt-4o --number_of_testcase=50
+# python helper_scripts/generate_api_functional_gherkin_test.py tests/test_features/ApiTesting/api_spec.yml --output=helper_scripts/output --model=gpt-5.4 --number_of_testcase=50
 
 import os
 import sys
