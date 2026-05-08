@@ -157,6 +157,8 @@ class BaseConfigManager:
         )
         parser.add_argument(
             "--llm-model-base-url",
+            "--llm-base-url",
+            dest="llm_model_base_url",
             type=str,
             help="Base URL for the LLM API.",
             required=False,
