@@ -5,6 +5,7 @@ import json
 import os
 from typing import Any, Dict, List, Literal, Optional, Union
 
+import yaml
 from dotenv import load_dotenv
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.timestamp_helper import get_timestamp_str
@@ -115,12 +116,81 @@ class BaseConfigManager:
     # Internal Helpers
     # -------------------------------------------------------------------------
 
+    def _load_cli_config_file(self, config_file_path: str) -> None:
+        """Load CLI config file values into the config dictionary before env merging.
+
+        Supported formats: YAML (.yaml/.yml) and JSON (.json).
+        CLI flags still win because they are applied after this method runs.
+        """
+        if not os.path.exists(config_file_path):
+            logger.error(f"Config file not found: {config_file_path}")
+            exit(1)
+
+        _, ext = os.path.splitext(config_file_path)
+        with open(config_file_path, "r", encoding="utf-8") as f:
+            if ext.lower() in {".yaml", ".yml"}:
+                loaded_config = yaml.safe_load(f) or {}
+            elif ext.lower() == ".json":
+                loaded_config = json.load(f)
+            else:
+                logger.error("Unsupported config file format. Use .yaml, .yml, or .json")
+                exit(1)
+
+        if not isinstance(loaded_config, dict):
+            logger.error("Config file must contain a top-level mapping/object")
+            exit(1)
+
+        key_mapping = {
+            "input_file": "INPUT_GHERKIN_FILE_PATH",
+            "output_path": "JUNIT_XML_BASE_PATH",
+            "test_data_path": "TEST_DATA_PATH",
+            "project_base": "PROJECT_SOURCE_ROOT",
+            "llm_model": "LLM_MODEL_NAME",
+            "llm_model_api_key": "LLM_MODEL_API_KEY",
+            "llm_model_base_url": "LLM_MODEL_BASE_URL",
+            "llm_model_api_type": "LLM_MODEL_API_TYPE",
+            "llm_temperature": "LLM_MODEL_TEMPERATURE",
+            "agents_llm_config_file": "AGENTS_LLM_CONFIG_FILE",
+            "agents_llm_config_file_ref_key": "AGENTS_LLM_CONFIG_FILE_REF_KEY",
+            "enable_portkey": "ENABLE_PORTKEY",
+            "portkey_api_key": "PORTKEY_API_KEY",
+            "portkey_strategy": "PORTKEY_STRATEGY",
+            "bulk": "EXECUTE_BULK",
+            "reuse_vector_db": "REUSE_VECTOR_DB",
+            "browser": "BROWSER_TYPE",
+            "browser_type": "BROWSER_TYPE",
+            "browser_channel": "BROWSER_CHANNEL",
+            "browser_path": "BROWSER_PATH",
+            "browser_version": "BROWSER_VERSION",
+            "headless": "HEADLESS",
+            "record_video": "RECORD_VIDEO",
+            "take_screenshots": "TAKE_SCREENSHOTS",
+            "save_proofs": "TAKE_SCREENSHOTS",
+            "capture_network": "CAPTURE_NETWORK",
+            "ignore_certificate_errors": "IGNORE_CERTIFICATE_ERRORS",
+            "log_level": "LOG_LEVEL",
+            "dont_close_browser": "DONT_CLOSE_BROWSER",
+            "token_verbose": "TOKEN_VERBOSE",
+            "sandbox_tenant_id": "SANDBOX_TENANT_ID",
+            "sandbox_custom_injections": "SANDBOX_CUSTOM_INJECTIONS",
+        }
+
+        for key, value in loaded_config.items():
+            mapped_key = key_mapping.get(key, key.upper())
+            if isinstance(value, bool):
+                self._config[mapped_key] = str(value).lower()
+            elif value is not None:
+                self._config[mapped_key] = str(value)
+
+        logger.info(f"Loaded CLI config file: {config_file_path}")
+
     def _parse_arguments(self) -> None:
         """
         Parse Hercules-specific command-line arguments
         and place them into the environment for consistency.
         """
         parser = argparse.ArgumentParser(description="Hercules: The World's First Open-Source AI Agent for End-to-End Testing")
+        parser.add_argument("--config", type=str, help="Path to a YAML/JSON Hercules config file.", required=False)
         # Basic path configuration
         parser.add_argument("--input-file", type=str, help="Path to the input file.", required=False)
         parser.add_argument(
@@ -283,6 +353,9 @@ class BaseConfigManager:
 
         # Parse known args; ignore unknown if you have other custom arguments
         args, _ = parser.parse_known_args()
+
+        if args.config:
+            self._load_cli_config_file(args.config)
 
         # Basic path configuration
         if args.input_file:
