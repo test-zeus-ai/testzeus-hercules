@@ -3,8 +3,9 @@
 import asyncio
 
 from testzeus_hercules.core.agents.base_nav_agent import BaseNavAgent
-from testzeus_hercules.utils.mcp_helper import MCPHelper, set_mcp_agents
 from testzeus_hercules.utils.logger import logger
+from testzeus_hercules.utils.mcp_helper import MCPHelper
+
 
 class McpNavAgent(BaseNavAgent):
     """MCP Navigation Agent for executing MCP server tools and managing resources."""
@@ -101,14 +102,12 @@ Available Test Data: $basic_test_information
 """
 
     def register_tools(self) -> None:
-        """Register MCP-specific tools and MCP server toolkits for the agent."""
         self.load_tools()
         try:
-            self._mcp_init_task = asyncio.create_task(set_mcp_agents(self, self.nav_executor))
+            self._mcp_init_task = asyncio.create_task(MCPHelper.instance().register_agent_tools(self))
         except Exception as e:
             logger.error("Failed to schedule MCP initialization: %s", e)
 
     async def shutdown(self) -> None:
-        """Shutdown the agent."""
         await MCPHelper.instance().destroy()
         await super().shutdown()

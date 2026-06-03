@@ -10,10 +10,20 @@ from typing import Any, Dict, List, Optional, cast
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.client.sse import sse_client
-from mcp.client.streamable_http import streamablehttp_client
-from autogen.mcp import create_toolkit
+from mcp.client.streamable_http import streamable_http_client
+from langchain_core.tools import StructuredTool
+
 from testzeus_hercules.config import get_global_conf
+from testzeus_hercules.utils.langchain_tools import merge_tools
 from testzeus_hercules.utils.logger import logger
+
+class MCPToolkit:
+    """Lightweight MCP tool catalog for LangGraph agents."""
+
+    def __init__(self, tools: list[Any]) -> None:
+        self.tools = tools
+
+
 
 class MCPHelper:
     """Singleton manager for MCP connections, toolkits, and tool execution."""
@@ -25,9 +35,7 @@ class MCPHelper:
         self._mcp_sessions: Dict[str, ClientSession] = {}
         self._mcp_client_contexts: Dict[str, Any] = {}
 
-        # References to Hercules agents to enable native MCP tool registration
-        self._mcp_llm_agent: Optional[Any] = None
-        self._mcp_executor_agent: Optional[Any] = None
+        self._nav_agent: Optional[Any] = None
 
     @classmethod
     def instance(cls) -> "MCPHelper":
@@ -47,12 +55,42 @@ class MCPHelper:
             cls._instance = None
         return True
 
-    async def set_mcp_agents(self, llm_agent: Any, executor_agent: Any) -> bool:
-        """Set the Hercules agents used to register MCP tools for LLM and execution."""
-        self._mcp_llm_agent = llm_agent
-        self._mcp_executor_agent = executor_agent
+    async def register_agent_tools(self, nav_agent: Any) -> bool:
+        """Connect MCP serveres and attach tools to a navigation agent."""
+        self._nav_agent = nav_agent
         connection_result = await self.initialize_mcp_connections()
-        return connection_result["success"]
+        if connection_result.get("success") and nav_agent is not None:
+            self._attach_tools_to_agent(nav_agent)
+        return bool(connection_result.get("success"))
+    
+    async def set_mcp_agents(self, llm_agent: Any, executor_agent: Any) -> bool:
+        """Backward-compatible entry point for MCP registration."""
+        return await self.register_agent_tools(llm_agent)
+    
+    def _attach_tools_to_agent(self, nav_agent: Any) -> None:
+        mcp_tools: list[StructuredTool] = []
+        for server_name, toolkit in self._mcp_toolkits.items():
+            for mcp_tool in toolkit.tools:
+                tool_name = getattr(mcp_tool, "name", str(mcp_tool))
+                description = getattr(mcp_tool, "description", None) or tool_name
+
+                async def _call_tool(
+                    _server: str = server_name,
+                    _tool: str = tool_name,
+                    **kwargs: Any,
+                ) -> str:
+                    result = await self.execute_mcp_tool(_server, _tool, kwargs)
+                    if result.get("success"):
+                        return str(result.get("error", "MCP tool execution failed"))
+                    
+                mcp_tools.append(
+                    StructuredTool.from_funtion(
+                        coroutine=_call_tool,
+                        name=f"mmcp_{server_name}_{tool_name}",
+                        description=description,
+                    )
+                )
+        nav_agent.tools = merge_tools(getattr(nav_agent, "tools", []), mcp_tools)
 
     async def execute_mcp_tool(
         self,
@@ -102,39 +140,13 @@ class MCPHelper:
             logger.exception(
                 f"Error executing MCP tool '{tool_name}' on server '{server_name}' via session. Details: {repr(e)}"
             )
-            # Fallback via toolkit wrapper if available
-            try:
-                toolkit = self._mcp_toolkits.get(server_name)
-                if not toolkit:
-                    raise RuntimeError("Toolkit not available for fallback execution")
-                target_tool = None
-                for tool_func in toolkit.tools:
-                    if tool_func.name == tool_name:
-                        target_tool = tool_func
-                        break
-                if not target_tool:
-                    raise RuntimeError(f"Tool '{tool_name}' not found in toolkit for fallback execution")
-                tool_args = arguments or {}
-                if arguments and "arguments" in arguments and isinstance(arguments["arguments"], dict):
-                    tool_args = cast(Dict[str, Any], arguments["arguments"]) or {}
-                result = await target_tool(**tool_args)
-                return {
-                    "success": True,
-                    "result": str(result),
-                    "server": server_name,
-                    "tool": tool_name,
-                    "fallback": True,
-                }
-            except Exception as e2:
-                logger.exception(
-                    f"Fallback execution failed for tool '{tool_name}' on server '{server_name}'. Details: {repr(e2)}"
-                )
-                return {
-                    "success": False,
-                    "error": str(e2) or str(e) or "Unknown error",
-                    "server": server_name,
-                    "tool": tool_name,
-                }
+            return {
+                "success": False,
+                "error": str(e),
+                "server": server_name,
+                "tool": tool_name,
+
+            }
 
     async def list_mcp_tools(self, server_name: str) -> Dict[str, Any]:
         """List all available tools from a specific MCP server toolkit."""
@@ -145,9 +157,9 @@ class MCPHelper:
 
             tool_list = [
                 {
-                    "name": tool.name,
-                    "description": tool.description,
-                    "signature": tool.function_schema,
+                    "name": getattr(tool, "name", str(tool)),
+                    "description": getattr(tool, "description", ""),
+                    "signature": getattr(tool, "inputSchema", getattr(tool, "funtion_schema", {})),
                 }
                 for tool in toolkit.tools
             ]
@@ -198,41 +210,25 @@ class MCPHelper:
             return {"success": False, "error": str(e), "server": server_name}
 
     async def connect_mcp_server(self, server_name: str, server_config: Dict[str, Any]) -> bool:
-        """Connect to an MCP server and create toolkit using AutoGen MCP integration."""
+        """Connect to an MCP server and register tools for LangGraph agents."""
         try:
             transport = server_config.get("transport", "stdio")
             timeout_seconds = get_global_conf().get_mcp_timeout()
 
             async def create_toolkit_and_store(session: ClientSession) -> bool:
                 await session.initialize()
-                toolkit = await create_toolkit(
-                    session,
-                    use_mcp_resources=False,
-                    use_mcp_tools=True,
-                )
+                toolkit = await session.list_tools()
                 self._mcp_sessions[server_name] = session
                 self._mcp_toolkits[server_name] = toolkit
-                try:
-                    if self._mcp_llm_agent is not None:
-                        toolkit.register_for_llm(self._mcp_llm_agent)
-                    else:
-                        logger.warning(
-                            f"MCP LLM agent not set; skipping LLM registration for server '{server_name}'"
-                        )
-                    if self._mcp_executor_agent is not None:
-                        toolkit.register_for_execution(self._mcp_executor_agent)
-                    else:
-                        logger.warning(
-                            f"MCP executor agent not set; skipping execution registration for server '{server_name}'"
-                        )
-                except Exception as reg_err:
-                    logger.error(
-                        f"Error registering MCP toolkit with agents for server '{server_name}': {reg_err}"
-                    )
+                if self._nav_agent is not None:
+                    self._attach_tools_to_agent(self._nav_agent)
                 logger.info(
-                    f"Connected to MCP server '{server_name}' via {transport} with {len(toolkit.tools)} tools available"
+                    "Connected to MCP server '%s' via %s tools",
+                    server_name,
+                    transport,
+                    len(toolkit.tools),
                 )
-                logger.info(f"Available tools: {[tool.name for tool in toolkit.tools]}")
+                logger.info(f"Available tools: %s", [getattr(t, "name", t) for t in toolkit.tools])
                 return True
 
             client_cm: Any = None
@@ -271,7 +267,7 @@ class MCPHelper:
                         f"Streamable HTTP transport requires 'url' field in server config for '{server_name}'"
                     )
                 headers = server_config.get("headers", None)
-                client_cm = streamablehttp_client(url, headers)
+                client_cm = streamable_http_client(url, headers)
                 read_stream, write_stream, _ = await getattr(client_cm, "__aenter__")()
                 session = ClientSession(
                     read_stream, write_stream, read_timeout_seconds=timedelta(seconds=timeout_seconds)
@@ -339,7 +335,7 @@ class MCPHelper:
                 "server": server_name,
                 "status": "connected",
                 "tool_count": len(toolkit.tools),
-                "tools": [tool.name for tool in toolkit.tools],
+                "tools": [getattr(tool, "name", str(tool)) for tool in toolkit.tools],
             }
 
         except Exception as e:

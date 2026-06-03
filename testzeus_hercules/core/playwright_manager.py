@@ -1861,6 +1861,57 @@ class PlaywrightManager:
                 traceback.print_exc()
                 logger.error(f"Failed to add cookies to browser context: {e}")
 
+    async def detect_active_tab_page(self) -> Optional[Page]:
+        """
+        Detect which page is the active/focused tab in the browser.
+        
+        This is crucial for supporting keyboard tab switching (Control+2, Control+Tab, etc.)
+        After the user presses a tab-switching key combination, the browser switches tabs
+        at the UI level, but Playwright needs to know which Page object corresponds to the
+        now-active browser tab.
+        
+        Returns:
+            The Page object corresponding to the active browser tab, or None if detection fails
+        """
+        context = await self.get_browser_context()
+        pages = [p for p in context.pages if not p.is_closed()]
+        
+        if not pages:
+            return None
+        
+        # Try to find the active page by checking document.hidden
+        # In a browser, document.hidden is false for the active tab and true for background tabs
+        active_page = None
+        for page in pages:
+            try:
+                is_hidden = await page.evaluate("document.hidden")
+                logger.debug(f"Page {page.url} - document.hidden: {is_hidden}")
+                if not is_hidden:
+                    active_page = page
+                    break
+            except Exception as e:
+                logger.warning(f"Failed to check document.hidden for {page.url}: {e}")
+                continue
+        
+        if active_page:
+            logger.info(f"Detected active page (via document.hidden): {active_page.url}")
+            return active_page
+        
+        # Fallback: Try each page with bring_to_front() and see which one is already responsive
+        for page in pages:
+            try:
+                await page.bring_to_front()
+                await page.wait_for_load_state("domcontentloaded", timeout=2000)
+                await page.evaluate("1")
+                logger.info(f"Active page detected via bring_to_front: {page.url}")
+                return page
+            except Exception as e:
+                logger.debug(f"Page {page.url} not responsive: {e}")
+                continue
+        
+        logger.warning("Could not detect active page, returning None")
+        return None
+
     async def reuse_or_create_tab(self, force_new_tab: bool = False) -> Page:
         """
         Reuse an existing tab or create a new one if needed.
@@ -1885,7 +1936,13 @@ class PlaywrightManager:
             await self.setup_console_logging(page)
             return page
 
-        # Try to reuse existing tab (use the most recent one)
+        # Try to detect which tab is actually active (important after keyboard tab switching)
+        active_page = await self.detect_active_tab_page()
+        if active_page:
+            logger.info(f"Using detected active page: {active_page.url}")
+            return active_page
+
+        # Fallback: Try to reuse the most recent tab if active detection failed
         page = pages[-1]  # The most recently used page
 
         try:
@@ -1900,14 +1957,6 @@ class PlaywrightManager:
             # Simple check (the timeout is applied at a higher level)
             await page.evaluate("1")
             logger.info(f"Reusing existing tab with URL: {page.url}")
-            # try:
-            #     # Bring the tab to the front
-            #     await page.bring_to_front()
-            # except Exception as e:
-
-            #     traceback.print_exc()
-            #     # Don't let bring_to_front failures prevent tab reuse
-            #     logger.warning(f"Failed to bring tab to front, but continuing: {e}")
 
             return page
         except Exception as e:

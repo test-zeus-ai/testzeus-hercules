@@ -5,23 +5,13 @@ import time
 import traceback
 from typing import Annotated, Dict, Union
 
-from autogen import UserProxyAgent
 from PIL import Image
+from langchain_core.messages import AIMessage
 from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.llm_helper import create_multimodal_agent
 from testzeus_hercules.utils.logger import logger
-
-# Create a UserProxyAgent for the image comparison agent
-image_ex_user_proxy = UserProxyAgent(
-    name="image_ex_user_proxy",
-    system_message="A human admin requesting image comparison.",
-    human_input_mode="NEVER",
-    max_consecutive_auto_reply=0,
-    code_execution_config={"use_docker": False},
-)
-
 
 @tool(
     agent_names=["browser_nav_agent"],
@@ -122,17 +112,8 @@ async def compare_visual_screenshot(
         )
 
         logger.debug(f"Comparison prompt: {message}")
-        chat_response = await image_ex_user_proxy.a_initiate_chat(
-            image_agent, message=message
-        )
-
-        # chat_response = await asyncio.to_thread(image_ex_user_proxy.initiate_chat, image_agent, message=message)
-
-        last_message = None
-        for msg in reversed(chat_response.chat_history):
-            if msg.get("role") == "user":
-                last_message = msg.get("content")
-                break
+        ai_response = await image_agent.ainvoke(message)
+        last_message = str(ai_response.content) if isinstance(ai_response, AIMessage) else str(ai_response)
 
         if not last_message:
             error_msg = "No response received from image comparison agent"
@@ -149,8 +130,7 @@ async def compare_visual_screenshot(
         # Save the comparison data
         await _write_comparison_to_file(comparison_data, comparison_file)
 
-        # log cost of the comparison
-        logger.info(f"Cost of comparison: {chat_response.cost}")
+        logger.info("Visual comparison completed")
 
         # Return the comparison results
         return (
@@ -256,15 +236,8 @@ async def validate_visual_feature(
 
         logger.debug(f"Validation prompt: {validation_prompt}")
 
-        chat_response = await asyncio.to_thread(
-            image_ex_user_proxy.initiate_chat, image_agent, message=validation_prompt
-        )
-
-        last_message = None
-        for msg in reversed(chat_response.chat_history):
-            if msg.get("role") == "user":
-                last_message = msg.get("content")
-                break
+        ai_response = await image_agent.ainvoke(validation_prompt)
+        last_message = str(ai_response.content) if isinstance(ai_response, AIMessage) else str(ai_response)
 
         if not last_message:
             error_msg = "No response received from image analysis agent"
@@ -290,7 +263,7 @@ async def validate_visual_feature(
         await _write_comparison_to_file(validation_data, validation_file)
 
         # log cost of the validation
-        logger.info(f"Cost of validation: {chat_response.cost}")
+        logger.info("Visual validation completed")
 
         return (
             f"Feature validation saved to {validation_file}\n"

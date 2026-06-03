@@ -30,6 +30,10 @@ def parse_response(message: str) -> dict[str, Any]:
     message = message.replace("\\n", "\n")
     message = message.replace("\n", " ")  # type: ignore
 
+    import re
+    json_match = re.search(r'\{.*\}', message, re.DOTALL)
+    if json_match:
+        message = json_match.group(0)
     try:
         json_response: dict[str, Any] = json.loads(message)
     except Exception as e:

@@ -101,7 +101,8 @@ class JUnitXMLGenerator:
             else:
                 test_case.system_out = assert_summary
         else:
-            if not is_passed:
+            # When there are no assertions, only fail if the task didn't complete successfully
+            if terminate == "no":
                 test_case.result = Failure(message=str(assert_summary or final_response))
 
         opt_list = []

@@ -19,7 +19,7 @@ class PortkeyConfigLoader:
     - Caching (both simple and semantic)
     - Guardrails for content filtering
 
-    See: https://docs.ag2.ai/docs/ecosystem/portkey for more details
+    See: https://docs.portkey.ai/docs/integrations/libraries/langchain for more details
     """
 
     def __init__(self) -> None:

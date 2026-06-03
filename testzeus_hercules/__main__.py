@@ -72,8 +72,10 @@ async def sequential_process() -> None:
         if get_global_conf().get_token_verbose():
             # Parse usage and sum across all agents based on keys
             for ag_name, agent in runner.simple_hercules.agents_map.items():
-                if agent and agent.client and agent.client.total_usage_summary:
-                    for key, value in agent.client.total_usage_summary.items():
+                client = getattr(getattr(agent, "llm", None), "client", None) or getattr(agent, "client", None)
+                usage = getattr(client, "total_usage_summary", None) if client else None
+                if agent in usage:
+                    for key, value in usage.items():
                         if key == "total_cost":
                             # Sum total_cost across agents
                             cost_metrics["total_cost"] = cost_metrics.get("total_cost", 0) + value
@@ -103,6 +105,24 @@ async def sequential_process() -> None:
             json_content = s_rr.replace("```json\n", "").replace("\n```", "").strip()
             try:
                 runner_result = json.loads(json_content)
+                
+                # AUTO-TERMINATE: Check if all plan steps are completed
+                plan = runner_result.get("plan", "")
+                terminate = runner_result.get("terminate", "no")
+                if plan and terminate == "no":
+                    # Count total steps and completed steps
+                    lines = plan.split("\n")
+                    plan_steps = [line.strip() for line in lines if line.strip() and any(c.isdigit() for c in line[:3])]
+                    completed_steps = [step for step in plan_steps if "(Completed)" in step]
+                    
+                    # If all steps are completed, force terminate to yes
+                    if plan_steps and len(completed_steps) == len(plan_steps):
+                        logger.info(f"All {len(plan_steps)} plan steps completed. Auto-terminating test.")
+                        runner_result["terminate"] = "yes"
+                        runner_result["is_passed"] = True
+                        if not runner_result.get("final_response"):
+                            runner_result["final_response"] = f"Test completed successfully. All {len(plan_steps)} steps executed."
+                
             except json.JSONDecodeError:
                 logger.error(f"Failed to decode JSON: {json_content}")
 

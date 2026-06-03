@@ -52,7 +52,7 @@ class BaseRunner:
 
     async def initialize(self) -> None:
         """
-        Initializes components for the system, including the Autogen wrapper and the Playwright manager.
+        Initializes components for the system, including the LangGraph orchestrator and the Playwright manager.
         """
         if not self.stake_id:
             raise ValueError("stake_id is required")
@@ -105,18 +105,26 @@ class BaseRunner:
 
     async def save_chat_logs(self, agents_map: Dict[str, Any]) -> None:
         """Save chat logs to files."""
-        if not self.planner_agent_name in agents_map:
-            return
-
-        messages = agents_map[self.planner_agent_name].chat_messages
-        messages_str_keys: Dict[str, List[Dict[str, Any]]] = {str(key): value for key, value in messages.items()}
         res_output_thoughts_logs_di: Dict[str, List[Dict[str, Any]]] = {}
-
-        for key, value in messages_str_keys.items():
-            if self.planner_agent_name in res_output_thoughts_logs_di:
-                res_output_thoughts_logs_di[self.planner_agent_name].extend(value)
-            else:
-                res_output_thoughts_logs_di[self.planner_agent_name] = value.copy()
+        if self.simple_hercules and self.simple_hercules._last_graph_result:
+            res_output_thoughts_logs_di[self.planner_agent_name] = list(
+                self.simple_hercules._last_graph_result.chat_history
+            )
+        elif self.planner_agent_name in agents_map:
+            planner = agents_map[self.planner_agent_name]
+            messages_str_keys: Dict[str, List[Dict[str, Any]]] = {}
+            if hasattr(planner, "chat_messages"):
+                messages = planner.chat_messages
+                messages_str_keys: Dict[str, List[Dict[str, Any]]] = {
+                    str(key): value for key, value in messages.items()
+                }
+            for key, value in messages_str_keys.items():
+                if self.planner_agent_name in res_output_thoughts_logs_di:
+                    res_output_thoughts_logs_di[self.planner_agent_name].extend(value)
+                else:
+                    res_output_thoughts_logs_di[self.planner_agent_name] = value.copy()
+        else:
+            return
 
         for key, vals in res_output_thoughts_logs_di.items():
             # logger.debug(f"Planner chat log: {key} : {vals}")
@@ -151,7 +159,7 @@ class BaseRunner:
 
     async def process_command(self, command: str) -> tuple[Any, float]:
         """
-        Processes a command, interacting with the Autogen wrapper and Playwright manager.
+        Processes a command via the LangGraph orchestrator and Playwright manager.
 
         Args:
             command (str): The command to process.
@@ -184,9 +192,9 @@ class BaseRunner:
             if result is not None:
                 logger.info(f'Command "{command}" took: {elapsed_time} seconds.')
                 # Get trace paths from config
-                chat_history = result.chat_history  # type: ignore
-                last_message = chat_history[-1] if chat_history else None  # type: ignore
-                if last_message and "terminate" in last_message and last_message["terminate"] == "yes":
+                chat_history = getattr(result, "chat_history", [])
+                last_message = chat_history[-1] if chat_history else None  
+                if last_message and last_message.get("terminate") == "yes":
                     logger.info(f"Final message: {last_message}")
 
             await self.browser_manager.command_completed(command, elapsed_time)  # type: ignore

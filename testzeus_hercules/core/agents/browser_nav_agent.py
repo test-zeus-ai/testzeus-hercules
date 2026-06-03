@@ -1,10 +1,7 @@
-from testzeus_hercules.core.agents.base_nav_agent import BaseNavAgent
-from testzeus_hercules.core.agents.multimodal_base_nav_agent import (
-    MultimodalBaseNavAgent,
-)
+from testzeus_hercules.core.agents.multimodal_base_nav_agent import MultimodalBaseNavAgent
 
 
-class BrowserNavAgent(BaseNavAgent):
+class BrowserNavAgent(MultimodalBaseNavAgent):
     agent_name: str = "browser_nav_agent"
     prompt = """# Web Navigation Agent
 
@@ -21,6 +18,10 @@ You are a smart and specialized web navigation agent tasked with executing preci
 - interact with browser only using the tools provided.
 
 ## Core Rules
+
+### NAVIGATION FIRST
+0. If the current page URL is about:blank or empty, you MUST call open_url FIRST before any other tool. Never call get_page_text or get_interactive_elements on a blank page.
+
 
 ### TASK BOUNDARIES
 1. Execute ONLY web navigation tasks; never attempt other types of tasks

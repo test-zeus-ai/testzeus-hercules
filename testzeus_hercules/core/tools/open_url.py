@@ -14,9 +14,9 @@ from testzeus_hercules.utils.logger import logger
 @tool(
     agent_names=["browser_nav_agent"],
     description="""Opens specified URL in browser. Returns new page URL or error message.""",
-    name="openurl",
+    name="open_url",
 )
-async def openurl(
+async def open_url(
     url: Annotated[
         str,
         "URL to navigate to. Value must include the protocol (http:// or https://).",
@@ -74,7 +74,7 @@ async def openurl(
 
             # Log successful navigation
             await browser_logger.log_browser_interaction(
-                tool_name="openurl",
+                tool_name="open_url",
                 action="navigate",
                 interaction_type="navigation",
                 success=True,
@@ -96,7 +96,7 @@ async def openurl(
                 title = await page.title()
                 # Log successful navigation (from cache)
                 await browser_logger.log_browser_interaction(
-                    tool_name="openurl",
+                    tool_name="open_url",
                     action="navigate",
                     interaction_type="navigation",
                     success=True,
@@ -145,7 +145,7 @@ async def openurl(
 
         # Log successful navigation
         await browser_logger.log_browser_interaction(
-            tool_name="openurl",
+            tool_name="open_url",
             action="navigate",
             interaction_type="navigation",
             success=True,
@@ -165,7 +165,7 @@ async def openurl(
     except PlaywrightTimeoutError as pte:
         # Log navigation timeout
         await browser_logger.log_browser_interaction(
-            tool_name="openurl",
+            tool_name="open_url",
             action="navigate",
             interaction_type="navigation",
             success=False,
@@ -185,7 +185,7 @@ async def openurl(
         traceback.print_exc()
         # Log navigation error
         await browser_logger.log_browser_interaction(
-            tool_name="openurl",
+            tool_name="open_url",
             action="navigate",
             interaction_type="navigation",
             success=False,
