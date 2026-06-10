@@ -1,6 +1,6 @@
-Feature: Check search and filtering on the Wrangler website
-  Scenario: product search
-    When I navigate to [$.testdata.A wrangler testcase.url]
-    When the user clicks on Search icon
-    And the user enters mens jeans in the search input field and press "Enter" key
-    Then products should be displayed
+Scenario:User opens Google homepageUser opens Google homepage
+    Given I have a web browser open
+    When I navigate to "https://www.google.com"
+    Then I should see the Google homepage
+    And I should see a search bar
+    And the page title should contain "Google"

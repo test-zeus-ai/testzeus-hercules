@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import re
 from typing import Any, Dict, List, Literal, Optional, Union
 
 import yaml
@@ -289,6 +290,25 @@ class BaseConfigManager:
             required=False,
         )
         parser.add_argument(
+            "--guided",
+            action="store_true",
+            help="Interactive test builder (natural language → Gherkin)",
+            required=False,
+        )
+        parser.add_argument(
+            "--test",
+            type=str,
+            default=None,
+            help='Test description for guided mode (e.g. --test "Open google.com")',
+            required=False,
+        )
+        parser.add_argument(
+            "--dry-run",
+            action="store_true",
+            help="Generate Gherkin from --test without executing the test",
+            required=False,
+        )
+        parser.add_argument(
             "--reuse-vector-db",
             action="store_true",
             help="Reuse existing vector DB instead of creating fresh one",
@@ -398,6 +418,12 @@ class BaseConfigManager:
         # Test execution options
         if args.bulk:
             os.environ["EXECUTE_BULK"] = "true"
+        if args.guided:
+            os.environ["GUIDED_MODE"] = "true"
+        if args.test:
+            os.environ["GUIDED_TEST_DESCRIPTION"] = args.test
+        if args.dry_run:
+            os.environ["GUIDED_DRY_RUN"] = "true"
         if args.reuse_vector_db:
             os.environ["REUSE_VECTOR_DB"] = "true"
 
@@ -484,6 +510,9 @@ class BaseConfigManager:
             "GEO_PROVIDER",
             "GEO_API_KEY",
             "EXECUTE_BULK",
+            "GUIDED_MODE",
+            "GUIDED_TEST_DESCRIPTION",
+            "GUIDED_DRY_RUN",
             "USE_DYNAMIC_LTM",
             "REUSE_VECTOR_DB",
             "ENABLE_BROWSER_LOGS",
@@ -564,15 +593,25 @@ class BaseConfigManager:
                 logger.error(f"Invalid numeric value in Portkey configuration: {e}")
                 exit(1)
 
-        if (llm_model_name and llm_model_api_key) and (agents_llm_config_file or agents_llm_config_file_ref_key):
-            logger.error("Provide either LLM_MODEL_NAME and LLM_MODEL_API_KEY together, " "or AGENTS_LLM_CONFIG_FILE and AGENTS_LLM_CONFIG_FILE_REF_KEY together, not both.")
+        if llm_model_name or llm_model_api_key:
+            logger.error(
+                "Direct LLM_MODEL_* configuration is not supported. "
+                "Use AGENTS_LLM_CONFIG_FILE=agents_llm_config.json with "
+                "AGENTS_LLM_CONFIG_FILE_REF_KEY=litellm."
+            )
             exit(1)
 
-        if (not llm_model_name or not llm_model_api_key) and (not agents_llm_config_file or not agents_llm_config_file_ref_key):
+        if not agents_llm_config_file or not agents_llm_config_file_ref_key:
             logger.error(
-                "Either LLM_MODEL_NAME and LLM_MODEL_API_KEY must be set together, "
-                "or AGENTS_LLM_CONFIG_FILE and AGENTS_LLM_CONFIG_FILE_REF_KEY must be set together. "
-                "Use --llm-model and --llm-model-api-key in hercules command."
+                "AGENTS_LLM_CONFIG_FILE and AGENTS_LLM_CONFIG_FILE_REF_KEY must be set. "
+                "Use agents_llm_config.json with AGENTS_LLM_CONFIG_FILE_REF_KEY=litellm."
+            )
+            exit(1)
+
+        if agents_llm_config_file_ref_key != "litellm":
+            logger.error(
+                "Only the 'litellm' provider is supported. "
+                "Set AGENTS_LLM_CONFIG_FILE_REF_KEY=litellm."
             )
             exit(1)
 
@@ -624,6 +663,9 @@ class BaseConfigManager:
         self._config.setdefault("GEO_API_KEY", None)
         self._config.setdefault("REACTION_DELAY_TIME", "0.1")
         self._config.setdefault("EXECUTE_BULK", "false")
+        self._config.setdefault("GUIDED_MODE", "false")
+        self._config.setdefault("GUIDED_TEST_DESCRIPTION", "")
+        self._config.setdefault("GUIDED_DRY_RUN", "false")
         self._config.setdefault("ENABLE_PLAYWRIGHT_TRACING", "false")
         self._config.setdefault("REUSE_VECTOR_DB", "false")
         self._config.setdefault("USE_DYNAMIC_LTM", "false")
@@ -709,6 +751,38 @@ class BaseConfigManager:
         """Return the underlying config dictionary."""
         return self._config
 
+
+
+    def get_langchain_cfg(self) -> dict:
+        """Return model config in LangChain-compatible format for create_chat_model()."""
+        from testzeus_hercules.utils.llm_helper import convert_model_config_to_langchain_format
+        if self._config.get("AGENTS_LLM_CONFIG_FILE"):
+            from testzeus_hercules.core.agents_llm_config_manager import AgentsLLMConfigManager
+            agent_cfg = AgentsLLMConfigManager.get_instance().get_agent_config("planner_agent")
+            return convert_model_config_to_langchain_format(agent_cfg["model_config_params"])
+        model_cfg = {
+            "model":          self._config.get("LLM_MODEL_NAME"),
+            "model_api_key":  self._config.get("LLM_MODEL_API_KEY"),
+            "model_base_url": self._config.get("LLM_MODEL_BASE_URL"),
+            "model_api_type": self._config.get("LLM_MODEL_API_TYPE"),
+        }
+        return convert_model_config_to_langchain_format(model_cfg)
+
+    def get_adapted_llm_params(self) -> dict:
+        """Return adapted LLM params (temperature, max_tokens, etc.) for create_chat_model()."""
+        from testzeus_hercules.utils.model_utils import adapt_llm_params_for_model
+        model_name = self._config.get("LLM_MODEL_NAME", "gpt-4o")
+        raw_params = {k: v for k, v in {
+            "temperature":       self._config.get("LLM_MODEL_TEMPERATURE"),
+            "max_tokens":        self._config.get("LLM_MODEL_MAX_TOKENS"),
+            "seed":              self._config.get("LLM_MODEL_SEED"),
+            "cache_seed":        self._config.get("LLM_MODEL_CACHE_SEED"),
+            "presence_penalty":  self._config.get("LLM_MODEL_PRESENCE_PENALTY"),
+            "frequency_penalty": self._config.get("LLM_MODEL_FREQUENCY_PENALTY"),
+            "stop":              self._config.get("LLM_MODEL_STOP"),
+        }.items() if v is not None}
+        return adapt_llm_params_for_model(model_name, raw_params)
+
     def get_mode(self) -> str:
         return self._config["MODE"]
 
@@ -786,6 +860,19 @@ class BaseConfigManager:
         """Return whether tests should be executed in bulk mode"""
         return self._config["EXECUTE_BULK"].lower().strip() == "true"
 
+    def should_run_guided(self) -> bool:
+        """Return whether guided test builder mode is enabled."""
+        return self._config["GUIDED_MODE"].lower().strip() == "true"
+
+    def get_guided_test_description(self) -> str | None:
+        """Return the test description passed via --test, if any."""
+        value = self._config.get("GUIDED_TEST_DESCRIPTION", "")
+        return value if value else None
+
+    def should_dry_run(self) -> bool:
+        """Return whether to generate Gherkin only without executing tests."""
+        return self._config.get("GUIDED_DRY_RUN", "false").lower().strip() == "true"
+
     def should_enable_tracing(self) -> bool:
         """Check if Playwright tracing should be enabled"""
         return self._config.get("ENABLE_PLAYWRIGHT_TRACING", "false").lower() == "true"
@@ -856,7 +943,7 @@ class BaseConfigManager:
 
     def get_junit_xml_base_path(self) -> str:
         """Get path to junit XML output folder"""
-        return self.paths["junit_xml"]
+        return self.get_trace_path()["junit_xml"]
 
     def get_test_data_path(self) -> str:
         path = self._config["TEST_DATA_PATH"]

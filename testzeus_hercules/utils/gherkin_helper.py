@@ -77,14 +77,14 @@ async def split_feature_file(input_file: str, output_dir: str, dont_append_heade
         already_visited_scenarios[o_scenario_title] += 1
 
         if dont_append_header and i > 0:
-            file_content = f"{prev_comment_lines}\n{all_scenarios[i]}{scenario_title}{f_scenario}"
+            file_content = f"{prev_comment_lines}\n{all_scenarios[i]} {scenario_title}\n{f_scenario}"
         else:
-            file_content = f"{feature_header}\n\n{prev_comment_lines}\n{all_scenarios[i]}{scenario_title}{f_scenario}"
+            file_content = f"{feature_header}\n\n{prev_comment_lines}\n{all_scenarios[i]} {scenario_title}\n{f_scenario}"
 
         async with aiofiles.open(output_file, "w") as f:
             await f.write(file_content)
         prev_comment_lines = comment_lines
-        prev_comment_lines = comment_lines
+        
 
         scenario_di = {
             "feature": feature_name,

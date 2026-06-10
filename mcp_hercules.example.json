@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "testzeus-hercules": {
+      "command": "/path/to/testzeus-hercules/.venv/bin/python",
+      "args": ["-u", "-m", "testzeus_hercules.mcp_server"],
+      "cwd": "/path/to/testzeus-hercules",
+      "env": {
+        "AGENTS_LLM_CONFIG_FILE": "agents_llm_config.json",
+        "AGENTS_LLM_CONFIG_FILE_REF_KEY": "litellm"
+      }
+    }
+  }
+}

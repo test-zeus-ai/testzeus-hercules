@@ -2,63 +2,48 @@ import asyncio
 import json
 import os
 
-import aiofiles
 from junit2htmlreport.runner import run as prepare_html
 from testzeus_hercules.config import get_global_conf, set_global_conf
 from testzeus_hercules.core.runner import SingleCommandInputRunner
 from testzeus_hercules.telemetry import EventData, EventType, add_event
-from testzeus_hercules.utils.gherkin_helper import (
-    process_feature_file,
-    serialize_feature_file,
-)
+from testzeus_hercules.utils.gherkin_helper import process_feature_file, serialize_feature_file
 from testzeus_hercules.utils.junit_helper import JUnitXMLGenerator, build_junit_xml
+from testzeus_hercules.utils.gherkin_generator import generate_gherkin_from_description, print_feature_block
+from testzeus_hercules.utils.litellm_helper import get_litellm_chat_model
+from testzeus_hercules.utils.llm_helper import parse_agent_response
 from testzeus_hercules.utils.logger import logger
+from testzeus_hercules.utils.test_builder import run_guided_mode
 
 
 async def sequential_process() -> None:
-    """
-    sequential_process function to process feature files, run test cases, and generate JUnit XML results.
-
-    This function performs the following steps:
-    1. Processes the feature file to get a list of features.
-    2. Retrieves the input Gherkin file path and extracts the feature file name.
-    3. Initializes an empty list to store test results.
-    4. Constructs the final result file name for the JUnit XML output.
-    5. Iterates over each feature in the list of features:
-        a. Extracts the file path, feature name, and scenario ID.
-        b. Serializes the feature file into a command.
-        c. Logs the start of the test case execution.
-        d. Runs the test case using SingleCommandInputRunner.
-        e. Collects the test result, execution time, and cost metrics.
-        f. Parses the JSON content from the runner's chat history.
-        g. Logs the completion of the test case.
-        h. Builds the JUnit XML for the test case and appends it to the results list.
-    6. Merges all JUnit XML results into a single file.
-    7. Logs the location of the final result file.
-    """
     dont_close_browser = get_global_conf().get_dont_close_browser()
     list_of_feats = await process_feature_file(dont_append_header=dont_close_browser)
     input_gherkin_file_path = get_global_conf().get_input_gherkin_file_path()
-    # get name of the feature file using os package
     feature_file_name = os.path.basename(input_gherkin_file_path)
 
     result_of_tests = []
-
     add_event(EventType.RUN, EventData(detail="Total Runs: " + str(len(list_of_feats))))
+
+    if not list_of_feats:
+        logger.error(
+            "No scenarios found in feature file: %s. "
+            "Ensure the file contains at least one 'Scenario:' block.",
+            input_gherkin_file_path,
+        )
+        raise SystemExit(1)
+
     for feat in list_of_feats:
         file_path = feat["output_file"]
         feature_name = feat["feature"]
         scenario = feat["scenario"]
-        # sanatise stake_id
         stake_id = scenario.replace(" ", "_").replace(":", "_").replace("/", "_").replace("\\", "_").replace(".", "_")
 
-        # TODO: remove the following set default hack later.
         get_global_conf().set_default_test_id(stake_id)
 
         cmd = await serialize_feature_file(file_path)
-
         logger.info(f"Running testcase: {stake_id}")
         logger.info(f"testcase details: {cmd}")
+
         runner = SingleCommandInputRunner(
             stake_id=stake_id,
             command=cmd,
@@ -70,61 +55,48 @@ async def sequential_process() -> None:
         cost_metrics = {}
 
         if get_global_conf().get_token_verbose():
-            # Parse usage and sum across all agents based on keys
             for ag_name, agent in runner.simple_hercules.agents_map.items():
                 client = getattr(getattr(agent, "llm", None), "client", None) or getattr(agent, "client", None)
                 usage = getattr(client, "total_usage_summary", None) if client else None
-                if agent in usage:
+                if usage and ag_name in usage:
                     for key, value in usage.items():
                         if key == "total_cost":
-                            # Sum total_cost across agents
                             cost_metrics["total_cost"] = cost_metrics.get("total_cost", 0) + value
                         elif isinstance(value, dict):
-                            if ag_name not in cost_metrics:
-                                cost_metrics[ag_name] = {}
-                            if key not in cost_metrics[ag_name]:
-                                cost_metrics[ag_name][key] = {
-                                    "cost": 0,
-                                    "prompt_tokens": 0,
-                                    "completion_tokens": 0,
-                                    "total_tokens": 0,
-                                }
-
+                            cost_metrics.setdefault(ag_name, {}).setdefault(key, {
+                                "cost": 0, "prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0,
+                            })
                             cost_metrics[ag_name][key]["cost"] += value.get("cost", 0)
                             cost_metrics[ag_name][key]["prompt_tokens"] += value.get("prompt_tokens", 0)
                             cost_metrics[ag_name][key]["completion_tokens"] += value.get("completion_tokens", 0)
                             cost_metrics[ag_name][key]["total_tokens"] += value.get("total_tokens", 0)
                         else:
-                            # For unexpected keys, just add them as-is
                             cost_metrics[ag_name][key] = cost_metrics.get(key, 0) + value
 
         execution_time = runner.execution_time
 
-        if runner.result and runner.result.summary:
-            s_rr = runner.result.summary
-            json_content = s_rr.replace("```json\n", "").replace("\n```", "").strip()
-            try:
-                runner_result = json.loads(json_content)
-                
-                # AUTO-TERMINATE: Check if all plan steps are completed
-                plan = runner_result.get("plan", "")
-                terminate = runner_result.get("terminate", "no")
-                if plan and terminate == "no":
-                    # Count total steps and completed steps
-                    lines = plan.split("\n")
-                    plan_steps = [line.strip() for line in lines if line.strip() and any(c.isdigit() for c in line[:3])]
-                    completed_steps = [step for step in plan_steps if "(Completed)" in step]
-                    
-                    # If all steps are completed, force terminate to yes
-                    if plan_steps and len(completed_steps) == len(plan_steps):
-                        logger.info(f"All {len(plan_steps)} plan steps completed. Auto-terminating test.")
-                        runner_result["terminate"] = "yes"
-                        runner_result["is_passed"] = True
-                        if not runner_result.get("final_response"):
-                            runner_result["final_response"] = f"Test completed successfully. All {len(plan_steps)} steps executed."
-                
-            except json.JSONDecodeError:
-                logger.error(f"Failed to decode JSON: {json_content}")
+        if runner.result:
+            summary = runner.result.summary
+            if summary:
+                runner_result = parse_agent_response(summary)
+            elif getattr(runner.result, "terminate", "no") == "yes":
+                runner_result = {"terminate": "yes", "is_passed": False, "final_response": "Test ended without planner output."}
+
+            plan = runner_result.get("plan", "")
+            if plan and runner_result.get("terminate") == "no":
+                lines = plan.split("\n") if isinstance(plan, str) else []
+                plan_steps = [line.strip() for line in lines if line.strip() and any(c.isdigit() for c in line[:3])]
+                completed_steps = [step for step in plan_steps if "(Completed)" in step]
+                if plan_steps and len(completed_steps) == len(plan_steps):
+                    logger.info(f"All {len(plan_steps)} plan steps completed. Auto-terminating test.")
+                    runner_result["terminate"] = "yes"
+                    runner_result["is_passed"] = True
+                    if not runner_result.get("final_response"):
+                        runner_result["final_response"] = (
+                            f"Test completed successfully. All {len(plan_steps)} steps executed."
+                        )
+            if summary and not runner_result:
+                logger.warning("Could not parse planner result from test output; marking as incomplete.")
 
         logger.info(f"Run completed for testcase: {scenario}")
         if cost_metrics:
@@ -149,135 +121,86 @@ async def sequential_process() -> None:
         )
 
     final_result_file_name = f"{get_global_conf().get_junit_xml_base_path()}/{feature_file_name}_result.xml"
-
     await JUnitXMLGenerator.merge_junit_xml(result_of_tests, final_result_file_name)
     logger.info(f"Results published in junitxml file: {final_result_file_name}")
 
-    # building html from junitxml
     final_result_html_file_name = f"{get_global_conf().get_junit_xml_base_path()}/{feature_file_name}_result.html"
     prepare_html([final_result_file_name, final_result_html_file_name])
     logger.info(f"Results published in html file: {final_result_html_file_name}")
 
 
-async def process_test_directory(test_dir: str) -> None:
-    """
-    Process a single test directory by updating config paths and running sequential_process
-
-    Args:
-        test_dir (str): Path to the test directory to process
-    """
-    # Update config paths for this test directory
-    test_dir_name = os.path.basename(test_dir)
-    test_config = {
-        "PROJECT_SOURCE_ROOT": test_dir,
-        "INPUT_GHERKIN_FILE_PATH": os.path.join(test_dir, "input", f"{test_dir_name}.feature"),
-        "TEST_DATA_PATH": os.path.join(test_dir, "test_data"),
-    }
-
-    # Update the singleton config
-    set_global_conf(test_config, override=True)
-    logger.info(f"Processing test directory: {test_dir}")
-    await sequential_process()
+def _print_banner() -> None:
+    print(r"""
+ #######   //  ########
+   ###    //        ##
+   ###   //___     ##
+   ###      //   ##
+   ###     //   ##
+   ###    //   #########
+""")
 
 
 async def a_main() -> None:
-    """
-    Main function that checks for bulk execution flag and runs tests accordingly
-    """
+    _print_banner()
 
-    def is_width_gt_120() -> bool:
-        try:
-            columns = os.get_terminal_size().columns
-        except OSError:
-            columns = 120
-        return columns >= 120
+    cfg = get_global_conf()
+    guided_test = cfg.get_guided_test_description()
 
-    if is_width_gt_120():
-        print(
-            """
-                                                 /$$      /$$/$$                 /$$
-                                                | $$  /$ | $| $$                | $$
-                                                | $$ /$$$| $| $$$$$$$  /$$$$$$ /$$$$$$
-                                                | $$/$$ $$ $| $$__  $$|____  $|_  $$_/
-                 ==+=+####                      | $$$$_  $$$| $$  \ $$ /$$$$$$$ | $$
-                +=+ ##  ##                      | $$$/ \  $$| $$  | $$/$$__  $$ | $$ /$$
-                #*  %*+ ###                     | $$/   \  $| $$  | $|  $$$$$$$ |  $$$$/
-            #----=+**##***#**##%%               |__/     \__|__/  |__/\_______/  \___/
-            #===============------*=*
-            *=====+%#%+===========*==#
-            *===##%###%###*=======*=+-=
-            +==##=*#%@%%%##%======+=*=--+         /$$
-          ##==+%-+%@@#*%%%%%#=======*===-+       |__/
-         *+*==*#+#@@%---@%%##====+==*=*****#      /$$ /$$$$$$$             /$$$$$$/$$$$ /$$   /$$
-          +*==+%=*%@@*=%%%%##====+==+*===*##     | $$/$$_____/            | $$_  $$_  $| $$  | $$
-           #===#####%@%##%#%=====+=+=**+*###     | $|  $$$$$$             | $$ \ $$ \ $| $$  | $$
-           *====+#%%##%#%%#======+=+==#**#%%     | $$\____  $$            | $$ | $$ | $| $$  | $$
-           +=========++==========+=+==#**##%     | $$/$$$$$$$/            | $$ | $$ | $|  $$$$$$$
-           +=====================+=+==***##%     |__|_______/             |__/ |__/ |__/\____  $$
-           %#++++++++***+===++==+==+==***#%%                                           /$$  | $$
-            %**%%*+***************#+==+***%%                                          |  $$$$$$/
-            %#*%#% %**********###*++++=#**%%                                          \______/
-            ###%%%#%**********######++*%**#%@
-           %++=+###@**********####%   #+++*##
-            #***##% #*********####    #+++#%#     /$$$$$$ /$$   /$$ /$$$$$$  /$$$$$$  /$$$$$$  /$$$$$$$ /$$$$$$
-            %#**%%  #*********####    %#*#@%%    /$$__  $| $$  | $$/$$__  $$/$$__  $$/$$__  $$/$$_____//$$__  $$
-            %#**%%    @%%%%%%%%%%%    %**#%%    | $$  \ $| $$  | $| $$  \__| $$  \ $| $$  \ $|  $$$$$$| $$$$$$$$
-            %**#%      %####%##%      #**##%    | $$  | $| $$  | $| $$     | $$  | $| $$  | $$\____  $| $$_____/
-            %**%%      %####%##%      #**##%    | $$$$$$$|  $$$$$$| $$     | $$$$$$$|  $$$$$$//$$$$$$$|  $$$$$$$
-            #*#%%      #####%##%      #**%%     | $$____/ \______/|__/     | $$____/ \______/|_______/ \_______/
-            #*##%       ####%##@      #**%%     | $$                       | $$
-            #*#%@       ####%##@      #*#%@     | $$                       | $$
-           %#*%%        %###%%%%      #*%%      |__/                       |__/
-           +##%@        %###%%%       ###*#      /$$$$
-           +*+*         %###%#%       @%*+#     /$$  $$
-           **#+**#% @   %###%#%    %%%%%*+#     |__/\ $$
-                 @@@@@@@%###%#%   #*++++#           /$$/
-               @@@@@@@@@@%###%#%                   /$$/
-             @@@@@@@@@@%+=####%##==++*%@@%        |__/
-         @@@@@@@@@@@*=====++*%*=====%@@@@@@@@     /$$
-      @@@@@@@@@@@*===============*@@@@@@@@@@@    |__/
-     @@@@@@@@@*================%@@@@@@@@@+%@@
-     @@@@@@@@+=++*+=========*%@@@@@@@@%%%%@@@
-     @@@@@@@%**+=====++*++%@@@@@@@@@@*%@@@@
-     @@@@@@@%###****++==+@@@@@@@@@@%%%@@@       /$$$$$$$                  /$$$$$$  /$$$$$$  /$$
-         @@@ %%%#####**@@@@@@@@%*#@@@@         | $$__  $$                /$$__  $$/$$__  $|  $$
-                   %%%#@@@@@@@%%%%@@           | $$  \ $$ /$$$$$$       | $$  \ $| $$  \ $|  $$
-                       @@@@@@@@@@@             | $$  | $$/$$__  $$      | $$  | $| $$$$$$$|  $$
-                        @@@@@@@                | $$  | $| $$  \ $$      | $$  | $| $$__  $| __/
-                                               | $$  | $| $$  | $$      | $$/$$ $| $$  | $$
-                                               | $$$$$$$|  $$$$$$/      |  $$$$$$| $$  | $$ /$$
-                                               |_______/ \______/        \____ $$|__/  |__| __/
-                                                                                \__/
-            """
-        )
+    if cfg.should_run_guided() or guided_test:
+        if cfg.should_dry_run():
+            if not guided_test:
+                logger.error("--dry-run requires --test with a description.")
+                raise SystemExit(1)
+            feature = await generate_gherkin_from_description(guided_test)
+            print_feature_block(feature)
+            return
 
-    # Check bulk execution flag instead of directory existence
+        llm = get_litellm_chat_model("planner_agent")
+        feature_path = await run_guided_mode(llm, test_description=guided_test)
+        set_global_conf({"INPUT_GHERKIN_FILE_PATH": feature_path}, override=True)
+        logger.info("Running generated test...")
+        await sequential_process()
+        return
+
     if get_global_conf().should_execute_bulk():
         project_base = get_global_conf().get_project_source_root()
         tests_dir = os.path.join(project_base, "tests")
 
-        if os.path.isdir(tests_dir) and os.listdir(tests_dir):
-            logger.info(f"Bulk execution: Processing tests directory at {tests_dir}")
+        if not (os.path.isdir(tests_dir) and os.listdir(tests_dir)):
+            logger.error("Bulk execution requested but no tests directory found at: %s", tests_dir)
+            raise SystemExit(1)
 
-            for test_folder in os.listdir(tests_dir):
-                test_dir = os.path.join(tests_dir, test_folder)
-                if os.path.isdir(test_dir):
-                    logger.info(f"Processing test folder: {test_folder}")
-                    await process_test_directory(test_dir)
-        else:
-            logger.error(
-                "Bulk execution requested but no tests directory found at: %s",
-                tests_dir,
-            )
-            exit(1)
-    else:
-        # Single test case execution
-        logger.info("Single test execution mode")
-        await sequential_process()
+        logger.info(f"Bulk execution: Processing tests directory at {tests_dir}")
+        for test_folder in os.listdir(tests_dir):
+            test_dir = os.path.join(tests_dir, test_folder)
+            if os.path.isdir(test_dir):
+                logger.info(f"Processing test folder: {test_folder}")
+                test_dir_name = os.path.basename(test_dir)
+                set_global_conf(
+                    {
+                        "PROJECT_SOURCE_ROOT": test_dir,
+                        "INPUT_GHERKIN_FILE_PATH": os.path.join(test_dir, "input", f"{test_dir_name}.feature"),
+                        "TEST_DATA_PATH": os.path.join(test_dir, "test_data"),
+                    },
+                    override=True,
+                )
+                await sequential_process()
+        return
+
+    logger.info("Single test execution mode")
+    await sequential_process()
 
 
 def main() -> None:
-    asyncio.run(a_main())
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        loop.create_task(a_main())
+    else:
+        asyncio.run(a_main())
 
 
 if __name__ == "__main__":  # pragma: no cover

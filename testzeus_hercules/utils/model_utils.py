@@ -67,5 +67,14 @@ def adapt_llm_params_for_model(model_name: str, llm_config: Dict[str, Any]) -> D
         if "max_tokens" not in params:
             params["max_tokens"] = 4096
     
+    # Strip OpenAI o-series only params for non o-series models
+    o_series_only_params = ["reasoning_effort", "reasoning_summary"]
+    is_o_series = bool(re.match(r'^o[0-9]', model_name or ""))
+    if not is_o_series:
+        for p in o_series_only_params:
+            if p in params:
+                logger.info("Removing o-series param '%s' for non-o-series model %s.", p, model_name)
+                params.pop(p)
+
     params["model"] = model_name
     return params

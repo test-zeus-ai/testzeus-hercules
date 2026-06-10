@@ -17,6 +17,16 @@ from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.utils.langchain_tools import merge_tools
 from testzeus_hercules.utils.logger import logger
 
+from mcp_helper import get_mcp_config, set_mcp_config
+
+  def main():
+      config = get_mcp_config()
+      # Start server logic here
+      print(f"Starting server with config: {config}")
+
+  if __name__ == "__main__":
+      main()
+
 class MCPToolkit:
     """Lightweight MCP tool catalog for LangGraph agents."""
 
@@ -81,10 +91,10 @@ class MCPHelper:
                 ) -> str:
                     result = await self.execute_mcp_tool(_server, _tool, kwargs)
                     if result.get("success"):
-                        return str(result.get("error", "MCP tool execution failed"))
+                        return str(result.get("result", "MCP tool executed successfully"))
                     
                 mcp_tools.append(
-                    StructuredTool.from_funtion(
+                    StructuredTool.from_function(
                         coroutine=_call_tool,
                         name=f"mmcp_{server_name}_{tool_name}",
                         description=description,

@@ -5,15 +5,16 @@ from typing import Any, Dict, Literal, Optional, TypedDict, Union
 # 1. Add the new type to this Literal
 # 2. Update relevant configuration handling code
 ModelAPIType = Literal[
-    "openai",  # OpenAI API
-    "anthropic",  # Anthropic API (Claude)
-    "azure",  # Azure OpenAI
-    "mistral",  # Mistral AI
-    "groq",  # Groq API
-    "ollama",  # Ollama local models
-    "google",  # Google AI (Gemini, PaLM)
-    "deepseek",  # DeepSeek AI
-    "bedrock",  # AWS Bedrock
+   "litellm"
+   # "openai",  # OpenAI API
+   # "anthropic",  # Anthropic API (Claude)
+   # "azure",  # Azure OpenAI
+   # "mistral",  # Mistral AI
+   #"groq",  # Groq API
+    #"ollama",  # Ollama local models
+    #"google",  # Google AI (Gemini, PaLM)
+    #"deepseek",  # DeepSeek AI
+    #"bedrock",  # AWS Bedrock
     # Add new API types here
 ]
 
@@ -24,7 +25,7 @@ class ModelConfig(TypedDict, total=False):
     model_name: str
     model_api_key: Optional[str]
     model_base_url: Optional[str]
-    model_api_type: Optional[ModelAPIType]
+    model_api_type: Optional[ModelAPIType]  
     model_api_version: Optional[str]
     model_project_id: Optional[str]
     model_region: Optional[str]

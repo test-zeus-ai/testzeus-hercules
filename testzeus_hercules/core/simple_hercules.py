@@ -37,7 +37,6 @@ from testzeus_hercules.core.tools import *  # noqa: F403
 from testzeus_hercules.core.tools.get_url import geturl
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.detect_llm_loops import is_agent_stuck_in_loop
-from testzeus_hercules.utils.detect_llm_loops import is_agent_stuck_in_loop
 from testzeus_hercules.utils.llm_helper import (
     GraphChatResult,
     convert_model_config_to_langchain_format,
@@ -96,7 +95,6 @@ class SimpleHercules:
         self.mem_agent_config: Optional[Dict[str, Any]] = None
         self.helper_agent_config: Optional[Dict[str, Any]] = None
         self.stake_id = stake_id
-        self.chat_logs_dir = get_global_conf().get_source_log_folder_path(self.stake_id)
         self.save_chat_logs_to_files = save_chat_logs_to_files
         self.memory: Optional[DynamicLTM] = None
         self._graph = None
@@ -133,12 +131,7 @@ class SimpleHercules:
 
         from testzeus_hercules.utils.model_utils import adapt_llm_params_for_model
 
-        for cfg, key in [
-            (planner_agent_config, "planner"),
-            (nav_agent_config, "nav"),
-            (mem_agent_config, "mem"),
-            (helper_agent_config, "helper"),
-        ]:
+        for cfg in [planner_agent_config, nav_agent_config, mem_agent_config, helper_agent_config]:
             model = cfg["model_config_params"].get("model") or cfg["model_config_params"].get("model_name")
             cfg["llm_config_params"] = adapt_llm_params_for_model(model, cfg["llm_config_params"])
 
@@ -166,8 +159,6 @@ class SimpleHercules:
         agents["time_keeper_nav_agent"] = TimeKeeperNavAgent(nav_model, nav_llm, nav_prompt)
         agents["mcp_nav_agent"] = McpNavAgent(nav_model, nav_llm, nav_prompt)
         agents["executor_nav_agent"] = ExecutorNavAgent(nav_model, nav_llm, nav_prompt)
-
-        helper_model = convert_model_config_to_langchain_format(self.helper_agent_config["model_config_params"])
         agents["helper_agent"] = create_multimodal_agent(
             name="image-comparer",
             system_message=(
@@ -216,16 +207,98 @@ class SimpleHercules:
             final_response=str(parsed.get("final_response", "")),
         )
 
+    def _extract_tokens(self, response: Any) -> dict[str, Any]:
+        usage = None
+        if hasattr(response, "response_metadata"):
+            usage = response.response_metadata.get("token_usage")
+        if not usage:
+            usage = getattr(response, "usage_metadata", None)
+        if not usage:
+            usage = getattr(response, "usage", None)
+        return usage or {}
+
+    # Patterns that indicate a context/token limit error across OpenAI, Gemini, Anthropic via LiteLLM
+    _CONTEXT_LIMIT_PATTERNS = (
+        "context_length_exceeded",
+        "maximum context length",
+        "context window",
+        "too many tokens",
+        "max_tokens",
+        "token limit",
+        "reduce the length",
+    )
+
+    def _is_context_limit_error(self, e: Exception) -> bool:
+        msg = str(e).lower()
+        return any(p in msg for p in self._CONTEXT_LIMIT_PATTERNS)
+
+    def _compress_messages(self, messages: list[AnyMessage]) -> list[AnyMessage]:
+        """
+        Compress entire message history into a single HumanMessage summary.
+        Called only as a last resort when context limit is hit.
+        Each message is reduced to one line capped at 300 chars.
+        """
+        lines = []
+        for m in messages:
+            content = str(getattr(m, "content", "") or "")
+            if not content:
+                continue
+            # Include tool call names if present
+            tool_calls = getattr(m, "tool_calls", [])
+            if tool_calls:
+                names = ", ".join(tc.get("name", "") for tc in tool_calls if isinstance(tc, dict))
+                content = f"[tool_calls: {names}] {content}"
+            lines.append(f"[{m.type}] {content[:300]}")
+        summary = "\n".join(lines)
+        return [HumanMessage(content=f"COMPRESSED HISTORY (context limit reached):\n{summary}")]
+
+    async def _ainvoke_with_context_fallback(
+        self, llm: Any, messages: list[AnyMessage], system_message: str
+    ) -> Any:
+        """
+        Invoke LLM normally. If context limit is hit, compress all messages
+        into a single summary and retry once. Raises on any other error.
+        """
+        try:
+            raise Exception("context_length_exceeded")
+        except Exception as e:
+            if not self._is_context_limit_error(e):
+                raise
+            return await llm.ainvoke(messages)
+            compressed = self._compress_messages(messages)
+            retry_messages = [SystemMessage(content=system_message), *compressed]
+            return await llm.ainvoke(retry_messages)
+
     async def _planner_node(self, state: AgentState) -> dict[str, Any]:
         self._planner_turns += 1
         if self._planner_turns > self.planner_number_of_rounds:
             return {"terminate": "yes", "messages": [AIMessage(content='{"terminate":"yes","final_response":"Max planner rounds exceeded"}')]}
 
         planner: PlannerAgent = self.agents_map["planner_agent"]
-        response = await planner.llm.ainvoke(
-            [SystemMessage(content=planner.system_message), *state["messages"]],
+        # Trim and truncate history to avoid context limit on proxy
+        recent = state["messages"][-3:]
+        trimmed = []
+        for m in recent:
+            mc = getattr(m, "content", "") or ""
+            if isinstance(mc, str) and len(mc) > 2000:
+                try:
+                    # Preserve required fields (e.g. tool_call_id for ToolMessage)
+                    extra = {k: v for k, v in m.__dict__.items() 
+                             if k not in ("content", "type") and not k.startswith("_")}
+                    m = m.__class__(content=mc[:2000] + "...[truncated]", **extra)
+                except Exception:
+                    pass  # keep original if truncation fails
+            trimmed.append(m)
+        messages = [SystemMessage(content=planner.system_message), *trimmed]
+        logger.warning("[PLANNER_DEBUG] sending %d messages, system_msg_len=%d", len(messages), len(planner.system_message))
+        response = await self._ainvoke_with_context_fallback(
+            planner.llm, messages, planner.system_message
         )
+
+        state["messages"].append(HumanMessage(content="x" * 100000))
+
         content = str(response.content) if response.content else ""
+        logger.warning("[PLANNER_DEBUG] raw response type=%s content=%s kwargs=%s tool_calls=%s", type(response), repr(getattr(response, "content", response))[:300], repr(getattr(response, "additional_kwargs", {}))[:300], repr(getattr(response, "tool_calls", []))[:200])
         planner.on_planner_message(content)
         self.save_to_memory(content)
 
@@ -240,11 +313,10 @@ class SimpleHercules:
 
         plan = parsed.get("plan")
         if plan is not None and isinstance(plan, list):
-            plan_text = format_plan_steps(plan)
-            self._notify_from_parsed(parsed, plan_text, MessageType.PLAN)
+            self._notify_from_parsed(parsed, format_plan_steps(plan), MessageType.PLAN)
         elif parsed.get("next_step"):
             self._notify_from_parsed(parsed, str(parsed["next_step"]), MessageType.STEP)
-        elif not parsed.get("next_step") and updates["terminate"] != "yes":
+        elif updates["terminate"] != "yes":
             self._notify_from_parsed(parsed, "Received no response, terminating..", MessageType.INFO)
 
         if updates["terminate"] == "yes" and parsed.get("final_response"):
@@ -254,36 +326,13 @@ class SimpleHercules:
 
     async def _helper_node(self, state: AgentState) -> dict[str, Any]:
         helper = self._get_helper_agent(state)
-        
-        system_message = getattr(helper, "system_message", "")
-        llm = helper.llm
         tools = getattr(helper, "tools", [])
-        
-        logger.info(f"[HELPER_NODE_DEBUG] Helper agent: {helper.agent_name}")
-        logger.info(f"[HELPER_NODE_DEBUG] Available tools: {[t.name for t in tools] if tools else 'NONE'}")
-        logger.info(f"[HELPER_NODE_DEBUG] Number of tools: {len(tools)}")
-        
-        llm_with_tools = llm.bind_tools(tools) if tools else llm
-        
-        messages = list(state.get("messages", []))
-        logger.info(f"[HELPER_NODE_DEBUG] Messages count: {len(messages)}")
-        if messages:
-            logger.info(f"[HELPER_NODE_DEBUG] Last message type: {type(messages[-1]).__name__}")
-        
-        logger.info(f"[HELPER_NODE_DEBUG] Invoking LLM with {len(tools)} tools bound")
-        
-        response = await llm_with_tools.ainvoke(
-            [
-                SystemMessage(content=system_message),
-                *messages,
-            ]
+        llm_with_tools = helper.llm.bind_tools(tools) if tools else helper.llm
+        system_message = getattr(helper, "system_message", "")
+        messages = [SystemMessage(content=system_message), *state.get("messages", [])]
+        response = await self._ainvoke_with_context_fallback(
+            llm_with_tools, messages, system_message
         )
-        
-        logger.info(f"[HELPER_NODE_DEBUG] LLM response type: {type(response).__name__}")
-        logger.info(f"[HELPER_NODE_DEBUG] LLM response has tool_calls: {hasattr(response, 'tool_calls') and bool(response.tool_calls)}")
-        if hasattr(response, 'tool_calls') and response.tool_calls:
-            logger.info(f"[HELPER_NODE_DEBUG] Tool calls: {[tc.get('name') if isinstance(tc, dict) else tc.name for tc in response.tool_calls]}")
-        
         return {
             "messages": [response],
             "helper_rounds": state.get("helper_rounds", 0) + 1,
@@ -292,21 +341,7 @@ class SimpleHercules:
     async def _tools_node(self, state: AgentState) -> dict[str, Any]:
         helper = self._get_helper_agent(state)
         tools = getattr(helper, "tools", [])
-        
-        logger.info(f"[TOOLS_NODE_DEBUG] Creating ToolNode for agent: {helper.agent_name}")
-        logger.info(f"[TOOLS_NODE_DEBUG] Tools available to ToolNode: {[t.name for t in tools] if tools else 'NONE'}")
-        logger.info(f"[TOOLS_NODE_DEBUG] Number of tools: {len(tools)}")
-        
-        if state.get("messages"):
-            last_msg = state["messages"][-1]
-            logger.info(f"[TOOLS_NODE_DEBUG] Last message type: {type(last_msg).__name__}")
-            if hasattr(last_msg, 'tool_calls') and last_msg.tool_calls:
-                logger.info(f"[TOOLS_NODE_DEBUG] Tool calls in message: {[tc.get('name') if isinstance(tc, dict) else tc.name for tc in last_msg.tool_calls]}")
-        
-        tool_node = ToolNode(tools)
-        result = await tool_node.ainvoke(state)
-        
-        logger.info(f"[TOOLS_NODE_DEBUG] ToolNode execution complete")
+        result = await ToolNode(tools).ainvoke(state)
         return cast(dict[str, Any], result)
 
     def _route_after_planner(self, state: AgentState) -> Literal["helper", "end"]:
@@ -328,8 +363,7 @@ class SimpleHercules:
         if isinstance(last, AIMessage) and last.tool_calls:
             if state.get("helper_rounds", 0) >= self.nav_agent_number_of_rounds:
                 return "planner"
-            history = messages_to_chat_history(messages)
-            if is_agent_stuck_in_loop(history):
+            if is_agent_stuck_in_loop(messages_to_chat_history(messages)):
                 return "planner"
             return "tools"
         content = str(getattr(last, "content", "") or "")
@@ -355,23 +389,11 @@ class SimpleHercules:
         graph.add_node("planner", self._planner_node)
         graph.add_node("helper", self._helper_node)
         graph.add_node("tools", self._tools_node)
-
         graph.set_entry_point("planner")
-        graph.add_conditional_edges(
-            "planner",
-            self._route_after_planner,
-            {"helper": "helper", "end": END},
-        )
-        graph.add_conditional_edges(
-            "helper",
-            self._route_after_helper,
-            {"tools": "tools", "planner": "planner"},
-        )
+        graph.add_conditional_edges("planner", self._route_after_planner, {"helper": "helper", "end": END})
+        graph.add_conditional_edges("helper", self._route_after_helper, {"tools": "tools", "planner": "planner"})
         graph.add_edge("tools", "helper")
         return graph.compile()
-
-    def get_chat_logs_dir(self) -> str | None:
-        return get_global_conf().get_source_log_folder_path(self.stake_id)
 
     async def shutdown(self) -> None:
         await self.clean_up_plan()
@@ -381,15 +403,10 @@ class SimpleHercules:
                 if asyncio.iscoroutine(result):
                     await result
         from testzeus_hercules.utils.mcp_helper import MCPHelper
-
         await MCPHelper.destroy()
 
-    def set_chat_logs_dir(self, chat_logs_dir: str) -> None:
-        self.chat_logs_dir = chat_logs_dir
-
     def save_to_memory(self, content: str) -> None:
-        config = get_global_conf()
-        if not config.should_use_dynamic_ltm():
+        if not get_global_conf().should_use_dynamic_ltm():
             return
         if self.memory:
             self.memory.save_content(content)
@@ -397,19 +414,15 @@ class SimpleHercules:
             logger.warning("Memory system not initialized")
 
     async def clean_up_plan(self) -> None:
-        config = get_global_conf()
-        if config.should_use_dynamic_ltm() and self.memory:
+        if get_global_conf().should_use_dynamic_ltm() and self.memory:
             self.memory.clear()
         self._planner_turns = 0
         logger.info("Plan cleaned up.")
 
     async def _query_memory(self, context: str) -> str:
-        config = get_global_conf()
-        if not config.should_use_dynamic_ltm():
+        if not get_global_conf().should_use_dynamic_ltm() or not self.memory:
             return ""
-        if self.memory:
-            return await self.memory.query(context)
-        return ""
+        return await self.memory.query(context)
 
     async def process_command(
         self,
@@ -423,10 +436,8 @@ class SimpleHercules:
             command=command,
             current_url_prompt_segment=current_url_prompt_segment,
         )
-        config = get_global_conf()
-        if config.should_use_dynamic_ltm():
-            mem_fetch = await self._query_memory(prompt)
-            prompt += "\n\nEXTRA INFORMATION: " + mem_fetch
+        if get_global_conf().should_use_dynamic_ltm():
+            prompt += "\n\nEXTRA INFORMATION: " + await self._query_memory(prompt)
 
         logger.info("Prompt for command: %s", prompt)
         try:
@@ -441,18 +452,26 @@ class SimpleHercules:
                 "terminate": "no",
                 "helper_rounds": 0,
             }
-            final_state = await self._graph.ainvoke(initial)
+            final_state = await self._graph.ainvoke(initial, config={"recursion_limit": 500})
             messages = final_state.get("messages", [])
             history = messages_to_chat_history(messages)
-            if history and is_agent_planner_termination_message(str(history[-1].get("content", ""))):
-                history[-1]["terminate"] = "yes"
-            result = GraphChatResult(chat_history=history, messages=messages)
+            terminate = str(final_state.get("terminate", "no"))
+            for entry in reversed(history):
+                content = str(entry.get("content", ""))
+                if is_agent_planner_termination_message(content):
+                    entry["terminate"] = "yes"
+                    break
+            result = GraphChatResult(
+                chat_history=history,
+                messages=messages,
+                terminate=terminate,
+            )
             self._last_graph_result = result
-            print("\n\nFINAL HISTORY:")
-            for i, msg in enumerate(history):
-                print(f"{i}: {msg}")
             return result
         except openai.BadRequestError as bre:
-            logger.error('Unable to process command: "%s". %s', command, bre)
+            if self._is_context_limit_error(bre):
+                logger.error('Context limit exceeded even after compression for command: "%s". %s', command, bre)
+            else:
+                logger.error('Unable to process command: "%s". %s', command, bre)
             traceback.print_exc()
         return None

@@ -42,9 +42,9 @@ def create_chat_model(
     model_name = model_config.get("model") or model_config.get("model_name") or DEFAULT_MODEL
     adapted = adapt_llm_params_for_model(model_name, dict(llm_config_params))
 
-    api_key = model_config.get("api_key") or model_config.get("model_api_key") or os.getenv("LLM_MODEL_API_KEY")
+    api_key = model_config.get("api_key") or model_config.get("model_api_key") or os.getenv("MODEL_API_KEY")
     if not api_key:
-        raise ValueError("LLM API key is missing. Set LLM_MODEL_API_KEY or model_api_key in config.")
+        raise ValueError("LLM API key is missing. Set MODEL_API_KEY or model_api_key in config.")
     
     kwargs: dict[str, Any] = {
         "model": model_name,
@@ -117,6 +117,7 @@ def create_multimodal_agent(
         adapted_llm_params = adapt_llm_params_for_model(model_name, llm_params_raw)
         langchain_cfg = convert_model_config_to_langchain_format(model_cfg)
         llm = create_chat_model(langchain_cfg, adapted_llm_params)
+
         if llm_config:
             pass #reserved for caller overrides
         create_multimodal_agent._instance = MultimodalAgent(
@@ -172,11 +173,11 @@ def parse_agent_response(content: str) -> Dict[str, Any]:
             "target_helper": content_json.get("target_helper", "Not_Applicable"),
             "terminate": content_json.get("terminate"),
             "final_response": content_json.get("final_response"),
-            "is_assert": content_json.get("plais_assert", False),
+            "is_assert": content_json.get("is_assert", False),
             "is_passed": content_json.get("is_passed", False),
             "assert_summary": content_json.get("assert_summary", ""),
             "is_terminated": content_json.get("is_terminated", False),
-            "its_completed": content_json.get("is_commpleted", False),
+            "is_completed": content_json.get("is_completed", False),
         }
     except Exception:
         logger.error("Failed to parse agent response %s", content)
@@ -201,6 +202,48 @@ def messages_to_chat_history(messages: list[BaseMessage]) -> list[dict[str, Any]
         history.append(entry)
     return history
 
+def _looks_like_planner_json(parsed: dict[str, Any]) -> bool:
+    return any(key in parsed for key in ("terminate", "next_step", "plan", "target_helper"))
+
+
+def _is_non_planner_content(content: str) -> bool:
+    stripped = content.strip()
+    if not stripped:
+        return True
+    if stripped.startswith(("import ", "from ", "In []:", "```python")):
+        return True
+    if "def run_task" in stripped or "sync_playwright" in stripped:
+        return True
+    if "##TERMINATE TASK##" in stripped:
+        return True
+    return False
+
+
+def extract_planner_summary(messages: list[BaseMessage]) -> str:
+    """Return the best planner JSON string from graph messages (not helper/tool output)."""
+    termination_summary: str | None = None
+    last_planner: str | None = None
+
+    for msg in reversed(messages):
+        if not isinstance(msg, AIMessage) or getattr(msg, "tool_calls", None):
+            continue
+        content = str(msg.content or "").strip()
+        if _is_non_planner_content(content):
+            continue
+        try:
+            parsed = parse_response(content)
+        except Exception:
+            continue
+        if not _looks_like_planner_json(parsed):
+            continue
+        last_planner = content
+        if parsed.get("terminate") == "yes":
+            termination_summary = content
+            break
+
+    return termination_summary or last_planner or ""
+
+
 @dataclass
 class GraphChatResult:
     """Result object compatible with runner expectations. """
@@ -208,11 +251,14 @@ class GraphChatResult:
     chat_history: list[dict[str, Any]] = field(default_factory=list)
     messages: list[BaseMessage] = field(default_factory=list)
     cost: dict[str, Any] = field(default_factory=dict)
+    terminate: str = "no"
 
     @property
     def summary(self) -> str:
-        for msg in reversed(self.messages):
-            if isinstance(msg, AIMessage) and msg.content:
-                return str(msg.content)
+        planner_summary = extract_planner_summary(self.messages)
+        if planner_summary:
+            return planner_summary
+        if self.terminate == "yes":
+            return json.dumps({"terminate": "yes", "final_response": "Test ended without planner JSON."})
         return ""
     

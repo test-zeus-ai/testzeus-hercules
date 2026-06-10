@@ -166,3 +166,4 @@ testzeus-hercules/**/*.feature
 **/bugreport*
 **/node_modules
 **/*.db
+**/context

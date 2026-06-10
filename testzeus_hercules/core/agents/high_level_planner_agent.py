@@ -1,29 +1,44 @@
-import os
-from datetime import datetime
 from string import Template
 from typing import Any
+
 from langchain_openai import ChatOpenAI
 
-from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.tools import StructuredTool
-
-from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.memory.static_ltm import get_user_ltm
-from testzeus_hercules.utils.llm_helper import create_chat_model
 from testzeus_hercules.utils.logger import logger
 
 
 class PlannerAgent:
-   agent_name: str = "planner_agent"
+    agent_name: str = "planner_agent"
 
-   def __init__(self, model_config: dict, llm_config_params, system_prompt=None):
-    self.model = model_config.get("model")
-    self.llm_config_params = llm_config_params
-    
-    base_prompt = system_prompt or self.prompt
-    
-    # Force strict JSON output
-    json_instruction = """CRITICAL INSTRUCTION: You MUST respond ONLY with a valid JSON object. No preamble, no explanation, no markdown. Your entire response must be parseable JSON.
+    def __init__(self, model_config: dict, llm_config_params: dict, system_prompt: str | None = None) -> None:
+        base_prompt = system_prompt or self.prompt
+        user_ltm = get_user_ltm()
+        print("===== LTM =====")
+        print(user_ltm)
+        print("===============")
+
+        self.system_message = Template(base_prompt).safe_substitute(
+            basic_test_information=user_ltm if user_ltm else "No test data provided"
+        )
+        self.system_message = self._json_instruction + self.system_message
+
+        # Normalize model key: ChatOpenAI expects 'model', not 'model_name'
+        normalized = dict(model_config)
+        if "model_name" in normalized and "model" not in normalized:
+            normalized["model"] = normalized.pop("model_name")
+        elif "model_name" in normalized:
+            normalized.pop("model_name")
+        valid_keys = {"model", "api_key", "base_url", "temperature", "max_tokens"}
+        filtered = {k: v for k, v in normalized.items() if k in valid_keys}
+
+        # llm_config_params: drop keys unsupported by non-OpenAI models
+        unsupported_keys = {"reasoning_effort", "seed"}
+        safe_llm_params = {k: v for k, v in llm_config_params.items() if k not in unsupported_keys}
+
+        safe_llm_params.pop("model", None)  # avoid duplicate with filtered
+        self.llm = ChatOpenAI(**filtered, **safe_llm_params)
+
+    _json_instruction = """CRITICAL INSTRUCTION: You MUST respond ONLY with a valid JSON object. No preamble, no explanation, no markdown. Your entire response must be parseable JSON.
 
 IMPORTANT RULES:
 - Set "terminate": "no" when you still have steps to execute
@@ -37,16 +52,8 @@ Use this exact format:
 DO NOT include any text before or after the JSON object.
 
 """
-    self.system_message = json_instruction + base_prompt
-    self.system_prompt = self.system_message
 
-    from langchain_openai import ChatOpenAI
-    valid_keys = {"model", "api_key", "base_url", "temperature", "max_tokens"}
-    clean_config = {k: v for k, v in model_config.items() if k in valid_keys}
-    self.llm = ChatOpenAI(**clean_config)
-
-   prompt = """# Test Execution Task Planner
-   
+    prompt = """# Test Execution Task Planner
 
 You are a test execution task planner that processes (Steps file) or (Gherkin BDD feature) tasks and executes them through appropriate helpers. You are the backbone of the test execution state machine, directing primitive helper agents that depend on your detailed guidance.
 
@@ -280,38 +287,9 @@ Must return well-formatted JSON with:
 
 Available Test Data: $basic_test_information
 """
-   def _init_(
-         self,
-         model_config: dict[str, Any],
-         llm_config_params: dict[str, Any],
-         system_prompt: str | None,
-      ) -> None:
-         user_ltm = self.get_ltm()
-         system_mesage = self.prompt
 
-         if system_prompt and len(system_prompt) > 0:
-            system_mesage = "\n".join(system_prompt) if isinstance(system_prompt, list) else system_prompt
-            logger.info(f"Using custom system prompt for PlannerAgent: {system_mesage}")
-
-         config = get_global_conf()
-         if not config.should_use_dynamic_ltm() and user_ltm:
-            user_ltm = "\n" + user_ltm
-            system_message = Template(system_mesage).substitute(basic_test_information=user_ltm)
-            
-         system_mesage = system_mesage + "\n" + f"Current timestamp is {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-         logger.info(f"Planner agent using model: {model_config.get('model')}")
-
-         self.system_message = system_mesage
-         self.llm: BaseChatModel = create_chat_model(model_config, llm_config_params)
-         self.tols: list[StructuredTool] = []
-
-   def get_ltm(self) -> str | None:
-       return get_user_ltm()
-    
-   def on_planner_message(self, message:str) -> None:
-       from testzeus_hercules.core.post_process_responses import(
+    def on_planner_message(self, message: str) -> None:
+        from testzeus_hercules.core.post_process_responses import (
             final_reply_callback_planner_agent as print_message_as_planner,
         )
-
-       print_message_as_planner(message=message)
-                
+        print_message_as_planner(message=message)

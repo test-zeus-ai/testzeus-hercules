@@ -1,0 +1,22 @@
+# Load the 14B coding model
+FROM qwen2.5-coder:14b
+
+PARAMETER num_ctx 131072
+
+# We include .Tools and .ToolCalls so Ollama's API allows the request
+TEMPLATE """{{ if .System }}<|im_start|>system
+{{ .System }}<|im_end|>
+{{ end }}{{ if .Tools }}<|im_start|>system
+Available tools: {{ .Tools }}<|im_end|>
+{{ end }}{{ if .Prompt }}<|im_start|>user
+{{ .Prompt }}<|im_end|>
+{{ end }}<|im_start|>assistant
+{{ .Response }}{{ if .ToolCalls }}{{ .ToolCalls }}{{ end }}<|im_end|>"""
+
+# Hard boundaries to prevent JSON generation
+SYSTEM """You are a software engineering assistant running inside Claude Code.
+CRITICAL DIRECTIONS:
+1. Do not use native JSON object tool-calling or functional JSON schemas. 
+2. Never format your file edits, tool responses, or code modifications as a JSON string.
+3. Always output your code blocks using the raw text or custom XML block syntax (<str_replace_editor>, etc.) requested by the Claude Code terminal environment."""
+
