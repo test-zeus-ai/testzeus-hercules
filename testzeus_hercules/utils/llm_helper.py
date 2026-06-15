@@ -214,8 +214,6 @@ def _is_non_planner_content(content: str) -> bool:
         return True
     if "def run_task" in stripped or "sync_playwright" in stripped:
         return True
-    if "##TERMINATE TASK##" in stripped:
-        return True
     return False
 
 

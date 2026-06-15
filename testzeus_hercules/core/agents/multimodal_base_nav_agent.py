@@ -32,6 +32,8 @@ class MultimodalBaseNavAgent(BaseNavAgent):
         system_message = system_message + "\n" + f"Current timestamp is {datetime.now().strftime("%Y/%m/%d %H:%M:%S")}"
         config = get_global_conf()
 
+        logger.warning("[SYSTEM_PROMPT_DEBUG] agent=%s user_ltm=%r system_message_tail=%r",
+            self.agent_name, user_ltm, system_message[-200:])
         if not config.should_use_dynamic_ltm() and user_ltm:
             user_ltm = "\n" + user_ltm
             system_message = Template(system_message).substitute(basic_test_information=user_ltm)

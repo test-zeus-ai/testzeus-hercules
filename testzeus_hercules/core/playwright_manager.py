@@ -158,7 +158,7 @@ class PlaywrightManager:
         take_screenshots: Optional[bool] = None,
         cdp_config: Optional[Dict] = None,
         cdp_reuse_tabs: Optional[bool] = False,  # New parameter to control tab reuse
-        cdp_navigate_on_connect: Optional[bool] = True,  # New parameter to control navigation
+        cdp_navigate_on_connect: Optional[bool] = None,  # New parameter to control navigation
         record_video: Optional[bool] = None,
         video_dir: Optional[str] = None,
         log_requests_responses: Optional[bool] = None,
@@ -528,8 +528,8 @@ class PlaywrightManager:
 
             # Only navigate if explicitly configured to do so
             if self.cdp_navigate_on_connect:
-                logger.info("Navigating to Google as specified in configuration.")
-                await page.goto("https://www.google.com", timeout=120000)
+                logger.info("Navigating to configured homepage on CDP connection.")
+                await page.goto(self._homepage, timeout=120000)
             else:
                 logger.info("Skipping navigation on CDP connection as configured.")
 
@@ -961,14 +961,23 @@ class PlaywrightManager:
         try:
             context = await self.get_browser_context()
 
-            # 1. Prefer tracked page
-            if self.current_page and not self.current_page.is_closed():
-                return self.current_page
-
-            # 2. Fallback to existing pages
             pages = [p for p in context.pages if not p.is_closed()]
 
+            # 1. Prefer tracked page, but refresh it if a different tab is active.
+            if self.current_page and not self.current_page.is_closed():
+                if len(pages) > 1:
+                    active_page = await self.detect_active_tab_page()
+                    if active_page and active_page != self.current_page:
+                        self.current_page = active_page
+                return self.current_page
+
+            # 2. Fallback to the active tab if one can be detected.
             if pages:
+                active_page = await self.detect_active_tab_page()
+                if active_page and not active_page.is_closed():
+                    self.current_page = active_page
+                    return self.current_page
+
                 self.current_page = pages[-1]
                 return self.current_page
 
@@ -1952,11 +1961,21 @@ class PlaywrightManager:
 
         # 2. SAFE fallback: use tracked page
         if self.current_page and not self.current_page.is_closed():
+            if len(pages) > 1:
+                active_page = await self.detect_active_tab_page()
+                if active_page and not active_page.is_closed():
+                    self.current_page = active_page
+                    logger.info(f"Using active page: {self.current_page.url}")
+                    return self.current_page
             logger.info(f"Using tracked page: {self.current_page.url}")
             return self.current_page
 
-        # 3. fallback: deterministic selection (NOT last-used guessing)
-        page = pages[0]  # IMPORTANT CHANGE: NOT pages[-1]
+        # 3. fallback: deterministic selection with active-tab preference
+        page = pages[0]
+        if len(pages) > 1:
+            active_page = await self.detect_active_tab_page()
+            if active_page and not active_page.is_closed():
+                page = active_page
 
         try:
             await page.wait_for_load_state("domcontentloaded")

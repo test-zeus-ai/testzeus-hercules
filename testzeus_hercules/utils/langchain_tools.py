@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from typing import Any, Callable
+from typing import Annotated, Any, Callable, get_args, get_origin
 
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field, create_model
@@ -12,16 +12,26 @@ from pydantic import BaseModel, Field, create_model
 from testzeus_hercules.core.tools.tool_registry import tool_registry
 from testzeus_hercules.utils.logger import logger
 
-def _annotations_to_field(annotation:Any, description:str = "") -> tuple[Any,Any]:
-    """Map Annotated types to pydantic Field defaults."""
-    default = ...
-    if hasattr(annotation, "__metadata__") and annotation.__metadata__:
-        meta = annotation.__metadata__[0]
-        if isinstance(meta, str):
-            description = meta or description
-            origin = getattr(annotation, "__origin__", annotation)
-            return (origin, Field(default=default, description=description))
-        return (annotation, Field(default=default, description=description))
+
+def _annotation_to_type_and_description(annotation: Any, description: str = "") -> tuple[Any, str]:
+    """Map Annotated[T, "description"] to the base type and field description."""
+    if annotation is inspect.Parameter.empty:
+        return str, description
+
+    if get_origin(annotation) is Annotated:
+        args = get_args(annotation)
+        if not args:
+            return Any, description
+
+        base_type = args[0]
+        for metadata in args[1:]:
+            if isinstance(metadata, str):
+                description = metadata or description
+                break
+        return base_type, description
+
+    return annotation, description
+
 
 def _build_args_schema(func: Callable[..., Any], tool_name: str) -> type[BaseModel] | None:
     sig = inspect.signature(func)
@@ -33,16 +43,17 @@ def _build_args_schema(func: Callable[..., Any], tool_name: str) -> type[BaseMod
             fields[param_name] = (str, Field(description=param_name))
             continue
         ann = param.annotation
-        if getattr  (param, "default", inspect.Parameter.empty) is not inspect.Parameter.empty:
-            default_val = param.default
-            origin = getattr(ann, "__origin__", ann)
-            desc = ""
-            if hasattr(ann, "__metadata__") and ann.__metadata__ and isinstance(ann.__metadata__[0], str):
-                desc = ann.__metadata__[0]
-            fields[param_name] = (origin, Field(default=default_val, description=desc))
-        else: 
-            origin, field = _annotations_to_field(ann, param_name)
-            fields[param_name] = (origin, field)
+        field_type, description = _annotation_to_type_and_description(ann, param_name)
+        if getattr(param, "default", inspect.Parameter.empty) is not inspect.Parameter.empty:
+            fields[param_name] = (
+                field_type,
+                Field(default=param.default, description=description),
+            )
+        else:
+            fields[param_name] = (
+                field_type,
+                Field(default=..., description=description),
+            )
     if not fields:
         return None
     return create_model(f"{tool_name}_args", **fields) #type: ignore[call-overload]

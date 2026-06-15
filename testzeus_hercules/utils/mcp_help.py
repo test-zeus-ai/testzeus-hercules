@@ -17,14 +17,14 @@ from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.utils.langchain_tools import merge_tools
 from testzeus_hercules.utils.logger import logger
 
-from mcp_helper import get_mcp_config, set_mcp_config
+#from mcp_helper import get_mcp_config, set_mcp_config
 
-  def main():
-      config = get_mcp_config()
+def main():
+    config = get_mcp_config()
       # Start server logic here
-      print(f"Starting server with config: {config}")
+    print(f"Starting server with config: {config}")
 
-  if __name__ == "__main__":
+    if __name__ == "__main__":
       main()
 
 class MCPToolkit:

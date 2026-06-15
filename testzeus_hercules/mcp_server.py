@@ -1,6 +1,26 @@
 """
 TestZeus Hercules MCP Server (streamable-http transport)
 Compatible with: Claude Code, Cursor, Windsurf, any MCP-over-HTTP client.
+
+Run:
+    python mcp_server.py
+
+Config block for mcp_servers (e.g. agents_llm_config.json):
+    {
+        "mcpServers": {
+            "testzeus-hercules": {
+                "transport": "streamable-http",
+                "url": "http://localhost:8000/mcp"
+            }
+        }
+    }
+
+Environment variables (all optional):
+    TESTZEUS_ROOT     – repo root, default cwd
+    TESTZEUS_PYTHON   – python executable, default sys.executable
+    MCP_HOST          – bind host,  default 0.0.0.0
+    MCP_PORT          – bind port,  default 8000
+    MCP_PATH          – URL path,   default /mcp
 """
 
 from __future__ import annotations
@@ -28,6 +48,16 @@ def _feature_path() -> Path:
 
 def _result_dir() -> Path:
     return Path(_hercules_root()) / "opt" / "output"
+
+def _mcp_host() -> str:
+    return os.getenv("MCP_HOST", "0.0.0.0")
+
+def _mcp_port() -> int:
+    return int(os.getenv("MCP_PORT", "8000"))
+
+def _mcp_path() -> str:
+    path = os.getenv("MCP_PATH", "/mcp")
+    return path if path.startswith("/") else f"/{path}"
 
 # ── FastMCP server ─────────────────────────────────────────────────────────────
 
@@ -210,3 +240,45 @@ async def get_test_results(run_id: str = "") -> str:
         results["html_report_path"] = str(html_files[0])
 
     return json.dumps(results, indent=2)
+
+
+# ── entrypoint ────────────────────────────────────────────────────────────────
+
+if __name__ == "__main__":
+    host = _mcp_host()
+    port = _mcp_port()
+    path = _mcp_path()
+    print(f"Starting TestZeus Hercules MCP server on http://{host}:{port}{path}")
+    print(f"Add to your mcp_servers config:")
+    print(json.dumps({
+        "mcpServers": {
+            "testzeus-hercules": {
+                "transport": "streamable-http",
+                "url": f"http://{host}:{port}{path}",
+            }
+        }
+    }, indent=4))
+    mcp.run(transport="streamable-http", host=host, port=port, path=path)
+
+
+def main() -> None:
+    """Entrypoint for the testzeus-hercules-mcp console script."""
+    host = _mcp_host()
+    port = _mcp_port()
+    path = _mcp_path()
+    print(f"Starting TestZeus Hercules MCP server on http://{host}:{port}{path}")
+    print("Add to your mcp_servers config:")
+    import json as _json
+    print(_json.dumps({
+        "mcpServers": {
+            "testzeus-hercules": {
+                "transport": "streamable-http",
+                "url": f"http://{host}:{port}{path}",
+            }
+        }
+    }, indent=4))
+    mcp.run(transport="streamable-http", host=host, port=port, path=path)
+
+
+if __name__ == "__main__":
+    main()

@@ -53,6 +53,12 @@ async def press_key_combination(
 
     await browser_manager.wait_for_load_state_if_enabled(page=page)
 
+    if keys[-1].lower() == "tab" and any(key.lower() in {"control", "alt", "meta"} for key in keys[:-1]):
+        active_page = await browser_manager.detect_active_tab_page()
+        if active_page and not active_page.is_closed():
+            browser_manager.current_page = active_page
+            page = active_page
+
     await browser_manager.take_screenshots("press_key_combination_end", page)
     if dom_changes_detected:
         return f"Key {key_combination} executed successfully.\n As a consequence of this action, new elements have appeared in view:{dom_changes_detected}. This means that the action is not yet executed and needs further interaction. Get all_fields DOM to complete the interaction."
