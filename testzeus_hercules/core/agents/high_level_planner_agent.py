@@ -17,9 +17,7 @@ class PlannerAgent:
         print(user_ltm)
         print("===============")
 
-        self.system_message = Template(base_prompt).safe_substitute(
-            basic_test_information=user_ltm if user_ltm else "No test data provided"
-        )
+        self.system_message = Template(base_prompt).safe_substitute(basic_test_information=user_ltm if user_ltm else "No test data provided")
         self.system_message = self._json_instruction + self.system_message
 
         # Normalize model key: ChatOpenAI expects 'model', not 'model_name'
@@ -45,6 +43,8 @@ IMPORTANT RULES:
 - Set "terminate": "yes" ONLY after a helper has confirmed the task is done
 - NEVER set terminate to "yes" on your first response
 - Always delegate to a helper first before terminating
+- When a helper response contains "##TERMINATE TASK##", treat the assigned next_step as completed.
+- NEVER return the same next_step again after a successful helper "##TERMINATE TASK##" response. Either move to the next incomplete step or set "terminate": "yes".
 
 Use this exact format:
 {"plan": "...", "next_step": "...", "terminate": "no", "final_response": "", "is_assert": false, "assert_summary": "", "is_passed": false, "target_helper": "browser"}
@@ -298,4 +298,5 @@ Available Test Data: $basic_test_information
         from testzeus_hercules.core.post_process_responses import (
             final_reply_callback_planner_agent as print_message_as_planner,
         )
+
         print_message_as_planner(message=message)

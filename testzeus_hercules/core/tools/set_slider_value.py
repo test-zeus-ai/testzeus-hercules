@@ -16,6 +16,20 @@ from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
 
 
+def _normalize_slider_entry(entry: Any) -> tuple[str, str]:
+    if isinstance(entry, dict):
+        value_to_set = None
+        for key in ("value_to_set", "value_to_fill"):
+            if key in entry and entry[key] is not None:
+                value_to_set = entry[key]
+                break
+        if value_to_set is None:
+            raise ValueError("Entry must contain value_to_set.")
+        return str(entry["selector"]), str(value_to_set)
+    if isinstance(entry, (list, tuple)) and len(entry) >= 2:
+        return str(entry[0]), str(entry[1])
+    raise ValueError("Entry must contain selector and value_to_set.")
+
 async def custom_set_slider_value(page: Page, selector: str, value_to_set: float) -> None:
     """
     Sets the value of a range slider input element to a specified value.
@@ -77,14 +91,15 @@ async def custom_set_slider_value(page: Page, selector: str, value_to_set: float
 
 async def setslider(
     entry: Annotated[
-        tuple[str, str],
-        "tuple containing 'selector' and 'value_to_fill' in ('selector', 'value_to_fill') format, selector is md attribute value of the dom element to interact, md is an ID and 'value_to_fill' is the value or text of the option to select",
+        Dict[str, str],
+        "Dictionary containing 'selector' and 'value_to_set'. "
+        "selector is the md attribute value of the DOM element to interact with, "
+        "and value_to_set is the slider value to set.",
     ],
 ) -> Annotated[str, "Explanation of the outcome of this operation."]:
     logger.info(f"Setting slider value: {entry}")
 
-    selector: str = entry[0]
-    value_to_set: str = entry[1]
+    selector, value_to_set = _normalize_slider_entry(entry)
 
     try:
         value_float = float(value_to_set)
@@ -259,20 +274,26 @@ async def do_setslider(page: Page, selector: str, value_to_set: float) -> dict[s
 )
 async def bulk_set_slider(
     entries: Annotated[
-        List[List[str]],
-        "List of tuple containing 'selector' and 'value_to_fill' in [('selector', 'value_to_fill'), ..] format, selector is md attribute value of the dom element to interact, md is an ID and 'value_to_fill' is the value or text of the option to select",
+        List[Dict[str, str]],
+        "List of dictionaries containing 'selector' and 'value_to_set'.",
     ],
 ) -> Annotated[
     List[Dict[str, str]],
     "List of dictionaries, each containing 'selector' and the result of the operation.",
 ]:
     results: List[Dict[str, str]] = []
+
     logger.info("Executing bulk Set Slider Command")
+
     for entry in entries:
-        if len(entry) != 2:
-            logger.error(f"Invalid entry format: {entry}. Expected [selector, value]")
-            continue
-        result = await setslider((entry[0], entry[1]))  # Create tuple with explicit values
-        results.append({"selector": entry[0], "result": result})
+        selector, _ = _normalize_slider_entry(entry)
+        result = await setslider(entry)
+
+        results.append(
+            {
+                "selector": selector,
+                "result": result,
+            }
+        )
 
     return results

@@ -2,7 +2,7 @@ import asyncio
 import inspect
 import traceback
 from dataclasses import dataclass
-from typing import Annotated, List, Tuple  # noqa: UP035
+from typing import Annotated, Any, Dict, List  # noqa: UP035
 
 from playwright.async_api import ElementHandle, Page
 from testzeus_hercules.config import get_global_conf  # Add this import
@@ -16,16 +16,33 @@ from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
 
 
+def _normalize_date_time_entry(entry: Any) -> tuple[str, str]:
+    if isinstance(entry, dict):
+        input_value = None
+        for key in ("value_to_fill", "input_value"):
+            if key in entry and entry[key] is not None:
+                input_value = entry[key]
+                break
+        if input_value is None:
+            raise ValueError("Entry must contain value_to_fill.")
+        return str(entry["selector"]), str(input_value)
+    if isinstance(entry, (list, tuple)) and len(entry) >= 2:
+        return str(entry[0]), str(entry[1])
+    raise ValueError("Entry must contain selector and value_to_fill.")
+
 async def set_date_time_value(
     entry: Annotated[
-        tuple,
-        "tuple containing 'selector' and 'value_to_fill' in ('selector', 'value_to_fill') format, selector is md attribute value of the dom element to interact, md is an ID and 'value_to_fill' is the value or text of the option to select",
-    ]
+        Dict[str, str],
+        (
+            "Dictionary containing 'selector' and 'value_to_fill'. "
+            "Selector is the md attribute value of the DOM element and "
+            "value_to_fill is the date/time value to enter."
+        ),
+    ],
 ) -> Annotated[str, "Operation result"]:
     add_event(EventType.INTERACTION, EventData(detail="SetInputValue"))
     logger.info(f"Setting input value: {entry}")
-    selector: str = entry[0]
-    input_value: str = entry[1]
+    selector, input_value = _normalize_date_time_entry(entry)
 
     if "md=" not in selector:
         selector = f"[md='{selector}']"
@@ -120,18 +137,28 @@ async def do_set_date_time_value(page: Page, selector: str, input_value: str) ->
 )
 async def bulk_set_date_time_value(
     entries: Annotated[
-        List[List[str]],
-        "List of tuple containing 'selector' and 'value_to_fill' in [('selector', 'value_to_fill'), ..] format, selector is md attribute value of the dom element to interact, md is an ID and 'value_to_fill' is the value or text of the option to select",
-    ]  # noqa: UP006
+        List[Dict[str, str]],
+        "List of dictionaries containing 'selector' and 'value_to_fill'.",
+    ]
 ) -> Annotated[
     List[dict],
     "List of dictionaries, each containing 'selector' and the result of the operation.",
-]:  # noqa: UP006
+]:
     add_event(EventType.INTERACTION, EventData(detail="BulkSetInputValue"))
-    results: List[dict[str, str]] = []  # noqa: UP006
+
+    results: List[dict[str, str]] = []
+
     logger.info("Executing bulk set input value command")
+
     for entry in entries:
-        result = await set_date_time_value(entry)  # Use dictionary directly
-        results.append({"selector": entry[0], "result": result})
+        selector, _ = _normalize_date_time_entry(entry)
+        result = await set_date_time_value(entry)
+
+        results.append(
+            {
+                "selector": selector,
+                "result": result,
+            }
+        )
 
     return results

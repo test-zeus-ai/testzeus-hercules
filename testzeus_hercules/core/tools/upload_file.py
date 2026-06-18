@@ -2,7 +2,7 @@ import asyncio
 import inspect
 import traceback
 from dataclasses import dataclass
-from typing import Annotated, Dict, List, Tuple  # noqa: UP035
+from typing import Annotated, Dict, List  # noqa: UP035
 
 from playwright.async_api import ElementHandle, Page
 from testzeus_hercules.config import get_global_conf
@@ -15,8 +15,6 @@ from testzeus_hercules.utils.dom_mutation_observer import subscribe, unsubscribe
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
 
-# Remove UploadFileEntry TypedDict class
-
 
 @tool(
     agent_names=["browser_nav_agent"],
@@ -24,16 +22,17 @@ from testzeus_hercules.utils.ui_messagetype import MessageType
     description="Click and Upload a file to a file input element on the page.",
 )
 async def click_and_upload_file(
-    entry: Annotated[
-        List[str],
-        "tuple containing 'selector' and 'file_path' in ('selector', 'file_path') format, selector is md attribute value of the dom element to interact, md is an ID and 'file_path' is the file_path to upload",
+    selector: Annotated[
+        str,
+        "Selector using md attribute; give only the md ID value.",
+    ],
+    file_path: Annotated[
+        str,
+        "Path of the file to upload.",
     ],
 ) -> Annotated[str, "Explanation of the outcome of this operation."]:
     add_event(EventType.INTERACTION, EventData(detail="UploadFile"))
-    logger.info(f"Uploading file: {entry}")
-
-    selector: str = entry[0]
-    file_path: str = entry[1]
+    logger.info(f"Uploading file: selector={selector}, file_path={file_path}")
 
     if "md=" not in selector:
         selector = f"[md='{selector}']"
@@ -175,33 +174,3 @@ async def click_and_upload(page: Page, selector: str, file_path: str) -> dict[st
         traceback.print_exc()
         error = f"Error uploading file to selector '{selector}'."
         return {"summary_message": error, "detailed_message": f"{error} Error: {e}"}
-
-
-# @tool(
-#     agent_names=["browser_nav_agent"],
-#     name="bulk_click_and_upload_file",
-#     description="Click and Uploads files to multiple file input elements on the page.",
-# )
-# async def bulk_click_and_upload_file(
-#     entries: Annotated[
-#         List[List[str]],
-#         "List of tuples, each containing ('selector', 'file_path'). 'selector' is the md attribute value of the DOM element to interact with (md is an ID), and 'file_path' is the path to the file to upload",
-#     ]
-# ) -> Annotated[
-#     List[Dict[str, str]],
-#     "List of dictionaries, each containing 'selector' and the result of the operation.",
-# ]:
-#     add_event(EventType.INTERACTION, EventData(detail="BulkUploadFile"))
-#     results: List[Dict[str, str]] = []
-#     logger.info("Executing bulk upload file command")
-
-#     for entry in entries:
-#         if len(entry) != 2:
-#             logger.error(
-#                 f"Invalid entry format: {entry}. Expected [selector, file_path]"
-#             )
-#             continue
-#         result = await click_and_upload_file(entry)
-#         results.append({"selector": entry[0], "result": result})
-
-#     return results

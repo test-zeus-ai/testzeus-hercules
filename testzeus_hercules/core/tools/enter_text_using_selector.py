@@ -1,7 +1,7 @@
 import asyncio
 import inspect
 import traceback
-from typing import Annotated, Dict, List, Tuple
+from typing import Annotated, Any, Dict, List
 
 from playwright.async_api import Page
 from testzeus_hercules.config import get_global_conf  # Add this import
@@ -19,6 +19,20 @@ from testzeus_hercules.utils.js_helper import block_ads, get_js_with_element_fin
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
 
+
+def _normalize_enter_text_entry(entry: Any) -> tuple[str, str]:
+    if isinstance(entry, dict):
+        text_to_enter = None
+        for key in ("text_to_enter", "value_to_fill", "text"):
+            if key in entry and entry[key] is not None:
+                text_to_enter = entry[key]
+                break
+        if text_to_enter is None:
+            raise ValueError("Entry must contain text_to_enter.")
+        return str(entry["selector"]), str(text_to_enter)
+    if isinstance(entry, (list, tuple)) and len(entry) >= 2:
+        return str(entry[0]), str(entry[1])
+    raise ValueError("Entry must contain selector and text_to_enter.")
 
 async def custom_fill_element(page: Page, selector: str, text_to_enter: str) -> None:
     selector = f"{selector}"  # Ensures the selector is treated as a string
@@ -58,15 +72,18 @@ async def custom_fill_element(page: Page, selector: str, text_to_enter: str) -> 
 
 async def entertext(
     entry: Annotated[
-        tuple[str, str],
-        "tuple containing 'selector' and 'value_to_fill' in ('selector', 'value_to_fill') format, selector is md attribute value of the dom element to interact, md is an ID and 'value_to_fill' is the value or text of the option to select",
+        Dict[str, str],
+        (
+            "Dictionary containing 'selector' and 'text_to_enter'. "
+            "Selector is the md attribute value of the DOM element and "
+            "text_to_enter is the text to enter."
+        ),
     ],
 ) -> Annotated[str, "Text entry result"]:
     add_event(EventType.INTERACTION, EventData(detail="EnterText"))
     logger.info(f"Entering text: {entry}")
 
-    selector: str = entry[0]
-    text_to_enter: str = entry[1]
+    selector, text_to_enter = _normalize_enter_text_entry(entry)
 
     if "md=" not in selector:
         selector = f"[md='{selector}']"
@@ -254,8 +271,8 @@ async def do_entertext(page: Page, selector: str, text_to_enter: str, use_keyboa
 )
 async def bulk_enter_text(
     entries: Annotated[
-        List[List[str]],
-        "List of tuple containing 'selector' and 'value_to_fill' in [('selector', 'value_to_fill'), ..] format, selector is md attribute value of the dom element to interact, md is an ID and 'value_to_fill' is the value or text",
+        List[Dict[str, str]],
+        "List of dictionaries containing 'selector' and 'text_to_enter'.",
     ],
 ) -> Annotated[
     List[Dict[str, str]],
@@ -265,10 +282,13 @@ async def bulk_enter_text(
     results: List[Dict[str, str]] = []
     logger.info("Executing bulk set input value command")
     for entry in entries:
-        if len(entry) != 2:
-            logger.error(f"Invalid entry format: {entry}. Expected [selector, value]")
-            continue
-        result = await entertext((entry[0], entry[1]))  # Create tuple with explicit values
-        results.append({"selector": entry[0], "result": result})
+        selector, _ = _normalize_enter_text_entry(entry)
+        result = await entertext(entry)
 
+        results.append(
+            {
+                "selector": selector,
+                "result": result,
+            }
+        )
     return results
