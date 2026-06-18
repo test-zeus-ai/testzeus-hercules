@@ -225,15 +225,19 @@ To set up and run Hercules on a Windows machine:
 
 
 #### Supported AI Models for TestZeus-Hercules
-- Anthropic: Compatible with Haiku 3.5 and above.
-- Groq: Supports any version with function calling and coding capabilities.
-- Mistral: Supports any version with function calling and coding capabilities. Mistral-large, Mistral-medium. Only heavey models.
-- OpenAI: Fully compatible with GPT-4o/o3-mini and above. Note: OpenAI GPT-4o-mini is only supported for sub-agents, for planner it is still recommended to use GPT-4o.
-- Ollama: Supported with medium models and function calling. Heavy models only 70b and above.
-- Gemini: Can be used. Preferred with LiteLLM as below.
-- Deepseek: only deepseek-chat v3 support.
-- Hosting: supported on AWS bedrock, GCP VertexAI, AzureAI. [tested models, OpenAI, Anthropic Sonet and Haiku, Llamma 60b above with function calling]
-Note: Kindly ensure that the model you are using can handle agentic activities like function calling. For example larger models like OpenAI GPT 4O, Llama >70B, Mistral large etc. You can use agent_config file as below to fill LiteLLM details [https://docs.litellm.ai/docs/simple_proxy] :
+- OpenAI: Use models with reliable tool-calling support, such as GPT-4o,
+  GPT-4.1, o-series models, or GPT-5 family models where available.
+- Anthropic: Use Claude models with tool-calling support.
+- Gemini / Vertex AI: Supported through OpenAI-compatible gateways such as
+  LiteLLM. Keep tool schemas simple; tuple-style public tool inputs are not
+  provider-safe.
+- Groq, Mistral, Ollama, DeepSeek, Bedrock, Azure, and other providers can be
+  used when they support OpenAI-compatible chat and function/tool calling.
+
+The planner model should be strong at structured JSON reasoning. Navigation
+models must support tool calling. Advanced users can configure model routing
+through `agents_llm_config.json`, including LiteLLM proxy details:
+[https://docs.litellm.ai/docs/simple_proxy](https://docs.litellm.ai/docs/simple_proxy).
 ```JSON
 {
   "litellm-flash": {
@@ -286,10 +290,17 @@ Note: Kindly ensure that the model you are using can handle agentic activities l
 Upon running the command:
 
 - Hercules will start and attempt to open a web browser (default is Chromium).
-- It will prepare a plan of execution based on the feature file steps provided.
-- The plan internally expands the brief steps mentioned in the feature file into a more elaborated version.
-- Hercules detects assertions in the feature file and plans the validation of expected results with the execution happening during the test run.
-- All the steps, once elaborated, are passed to different tools based on the type of execution requirement of the step. For example, if a step wants to click on a button and capture the feedback, it will be passed to the `click_using_selector` tool.
+- `SimpleHercules` creates a LangGraph state graph for the run.
+- The planner node turns the feature file into strict JSON containing the
+  current plan, `next_step`, `target_helper`, and assertion fields.
+- The executor node routes the planner's `target_helper` to a navigation helper
+  such as `browser_nav_agent`, `api_nav_agent`, `sec_nav_agent`, `sql_nav_agent`,
+  `time_keeper_nav_agent`, `mcp_nav_agent`, or `executor_nav_agent`.
+- Navigation helpers bind registered LangChain `StructuredTool` objects and run
+  a bounded tool-call loop. Browser tasks use tools such as `open_url`, `click`,
+  `get_interactive_elements`, `bulk_enter_text`, and `bulk_select_option`.
+- Helper responses are fed back to the planner until the planner terminates or
+  routes to assertion handling.
 
 #### Output and Logs
 
@@ -709,7 +720,13 @@ For example: If you would like to run with a "Headful" browser, you can set the 
   }
   ```
 
-- The key is the name of the spec that is passed in `AGENTS_LLM_CONFIG_FILE_REF_KEY`, whereas the Hercules information is passed in sub-dicts `planner_agent` and `nav_agent`.
+- The top-level key is the provider/profile name passed in
+  `AGENTS_LLM_CONFIG_FILE_REF_KEY`.
+- `planner_agent` config is used by the planner node.
+- `nav_agent` config is shared by browser, API, security, SQL, time keeper,
+  MCP, and executor navigation helpers.
+- `mem_agent` config is used only when dynamic long-term memory is enabled.
+- `helper_agent` config is used by visual/multimodal helper flows.
 
 - **Note**: This option should be ignored until you are sure what you are doing. Discuss with us while playing around with these options in our Slack communication. Join us at our [Slack](https://join.slack.com/t/testzeuscommunityhq/shared_invite/zt-376oeo99x-3RAWe_C0H7x9zP0rtACcPA)
 
@@ -795,69 +812,72 @@ Note: If you are looking for native app test automation, we've got you covered, 
 
 ## 🦾 Architecture
 
-### Multi-Agentic Solution
+Hercules runs on a LangGraph state-machine architecture. The public interface
+is still Gherkin in, reports out, but the runtime is structured as planner,
+executor, and assertion graph nodes.
 
-Hercules leverages a multi-agent architecture based on the AutoGen framework. Building on the foundation provided by the AutoGen framework, Hercules's architecture leverages the interplay between tools and agents. Each tool embodies an atomic action, a fundamental building block that, when executed, returns a natural language description of its outcome. This granularity allows Hercules to flexibly assemble these tools to tackle complex web automation workflows.
+For the detailed architecture and current tool formats, see
+[ARCHITECTURE.md](ARCHITECTURE.md).
 
-#### System View
+### Runtime Flow
 
-![Architecture Diagram](statics/assets/hercules-architecture.jpg)
+1. `runner.py` sends a Gherkin scenario or command to `SimpleHercules`.
+2. `SimpleHercules` runs a LangGraph `StateGraph` with `planner`, `executor`,
+   and `assertion` nodes.
+3. `PlannerAgent` returns strict JSON containing `plan`, `next_step`,
+   `target_helper`, `terminate`, and assertion fields.
+4. The executor routes `target_helper` to the appropriate navigation agent:
+   browser, API, security, SQL, time keeper, MCP, executor, or visual helper.
+5. Navigation agents bind LangChain `StructuredTool` objects to their LLM and
+   run a bounded tool-call loop.
+6. Tool results are returned to the helper agent, then summarized back to the
+   planner until the planner terminates or enters assertion handling.
 
-The diagram above shows the configuration chosen on top of AutoGen architecture. The tools can be partitioned differently, but this is the one that we chose for the time being. We chose to use tools that map to what humans learn about the web browser rather than allow the LLM to write code as it pleases. We see the use of configured tools to be safer and more predictable in its outcomes. Certainly, it can click on the wrong things, but at least it is not going to execute malicious unknown code.
+### Tools Library
 
+Hercules tools are regular Python functions registered with `@tool(...)`.
+At runtime, `testzeus_hercules/utils/langchain_tools.py` converts them into
+LangChain `StructuredTool` objects with Pydantic argument schemas.
 
-#### Agents
+Tool inputs are intentionally simple for provider compatibility:
 
-At the moment, there are two agents:
+- Use scalar values such as `str`, `float`, `bool`.
+- Use `List[Dict[str, str]]` for bulk browser actions.
+- Avoid public tuple inputs because some providers reject the generated
+  `prefixItems` JSON Schema.
+- No-argument tools use explicit empty schemas so LangChain does not infer a
+  fake `kwargs` argument from wrappers.
 
-1. **Planner Agent**: Executes the planning and decomposition of tasks.
-2. **Browser Navigation Agent**: Embodies all the tools for interacting with the web browser.
+### Browser Tools and DOM Format
 
-#### Tools Library
+Hercules injects an `md` attribute into DOM elements and uses that value as the
+primary browser selector. Browser sensing tools return compact JSON or cleaned
+text instead of raw page HTML.
 
-At the core of Hercules's capabilities is the Tools Library, a repository of well-defined actions that Hercules can perform; for now, web actions. These tools are grouped into two main categories:
+Current browser sensing tools include:
 
-- **Sensing Tools**: Tools like `get_dom_with_content_type` and `geturl` that help Hercules understand the current state of the webpage or the browser.
-- **Action Tools**: Tools that allow Hercules to interact with and manipulate the web environment, such as `click`, `enter_text`, and `openurl`.
+- `get_interactive_elements`: compact clickable/focusable/input-like nodes
+- `get_input_fields`: compact form and input nodes
+- `get_page_text`: cleaned visible page text
+- `geturl`: active page URL
 
-Each tool is created with the intention to be as conversational as possible, making the interactions with LLMs more intuitive and error-tolerant. For instance, rather than simply returning a boolean value, a tool might explain in natural language what happened during its execution, enabling the LLM to better understand the context and correct course if necessary.
+Current browser action tools include:
 
-##### Implemented Tools
+- `open_url`
+- `click`
+- `hover`
+- `press_key_combination`
+- `bulk_enter_text`
+- `bulk_select_option`
+- `bulk_set_slider`
+- `bulk_set_date_time_value`
+- `click_and_upload_file`
+- `test_page_accessibility`
+- `captcha_solver`
 
-- **Sensing Tools**
-
-  - `geturl`: Fetches and returns the current URL.
-  - `get_dom_with_content_type`: Retrieves the HTML DOM of the active page based on the specified content type.
-    - `text_only`: Extracts the inner text of the HTML DOM. Responds with text output.
-    - `input_fields`: Extracts the interactive elements in the DOM (button, input, textarea, etc.) and responds with a compact JSON object.
-    - `all_fields`: Extracts all the fields in the DOM and responds with a compact JSON object.
-  - `get_user_input`: Provides the orchestrator with a mechanism to receive user feedback to disambiguate or seek clarity on fulfilling their request.
-
-- **Action Tools**
-
-  - `click`: Given a DOM query selector, this will click on it.
-  - `enter_text`: Enters text in a field specified by the provided DOM query selector.
-  - `enter_text_and_click`: Optimized method that combines `enter_text` and `click` tools.
-  - `bulk_enter_text`: Optimized method that wraps `enter_text` method so that multiple text entries can be performed in one shot.
-  - `openurl`: Opens the given URL in the current or new tab.
-
-#### DOM Distillation
-
-Hercules's approach to managing the vast landscape of HTML DOM is methodical and essential for efficiency. We've introduced **DOM Distillation** to pare down the DOM to just the elements pertinent to the user's task.
-
-In practice, this means taking the expansive DOM and delivering a more digestible JSON snapshot. This isn't about just reducing size; it's about honing in on relevance, serving the LLMs only what's necessary to fulfill a request. So far, we have three content types:
-
-1. **Text Only**: For when the mission is information retrieval, and the text is the target. No distractions.
-2. **Input Fields**: Zeroing in on elements that call for user interaction. It's about streamlining actions.
-3. **All Content**: The full scope of distilled DOM, encompassing all elements when the task demands a comprehensive understanding.
-
-It's a surgical procedure, carefully removing extraneous information while preserving the structure and content needed for the agent's operation. Of course, with any distillation, there could be casualties, but the idea is to refine this over time to limit/eliminate them.
-
-Since we can't rely on all web page authors to use best practices, such as adding unique IDs to each HTML element, we had to inject our own attribute (`md`) in every DOM element. We can then guide the LLM to rely on using `md` in the generated DOM queries.
-
-To cut down on some of the DOM noise, we use the **DOM Accessibility Tree** rather than the regular HTML DOM. The accessibility tree, by nature, is geared towards helping screen readers, which is closer to the mission of web automation than plain old HTML DOM.
-
-The distillation process is a work in progress. We look to refine this process and condense the DOM further, aiming to make interactions faster, cost-effective, and more accurate.
+DOM output is deliberately compacted because very large or deeply nested DOM
+payloads can cause provider-side `INVALID_ARGUMENT` or token-limit errors,
+especially on complex applications such as Salesforce Lightning.
 
 ---
 ### Non-Functional Capabilities
