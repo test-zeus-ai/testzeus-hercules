@@ -8,7 +8,7 @@
 [![CI Test](https://github.com/test-zeus-ai/testzeus-hercules/actions/workflows/main-test.yml/badge.svg)](https://github.com/test-zeus-ai/testzeus-hercules/actions/workflows/main-test.yml)
 [![Slack](https://img.shields.io/badge/slack-TestZeus-brightgreen.svg?logo=slack)](https://join.slack.com/t/testzeuscommunityhq/shared_invite/zt-376oeo99x-3RAWe_C0H7x9zP0rtACcPA)
 
-Testing modern web applications can be difficult, with frequent changes and complex features making it hard to keep up. That's where **Hercules** comes in. Hercules is the world's first open-source testing agent, built to handle the toughest testing tasks so you don't have to. It turns simple, easy-to-write Gherkin steps into fully automated **end to end** tests—no coding skills needed. Whether you're working with tricky platforms like Salesforce or running tests in your CI/CD pipeline, Hercules adapts to your needs and takes care of the details. With Hercules, testing becomes simple, reliable, and efficient, helping teams everywhere deliver better software. Here's a quick demo of lead creation using natural english language test (without any code):
+Testing modern web applications can be difficult, with frequent changes and complex features making it hard to keep up. That's where **Hercules** comes in. Hercules is the world's first open-source testing agent, built to handle the toughest testing tasks so you don't have to. It turns simple, easy-to-write Gherkin steps into fully automated **end to end** tests—no coding skills needed. Whether you're working with tricky enterprise platforms or running tests in your CI/CD pipeline, Hercules adapts to your needs and takes care of the details. With Hercules, testing becomes simple, reliable, and efficient, helping teams everywhere deliver better software. Here's a quick demo of lead creation using natural english language test (without any code):
 
 ![HerculesUsage](statics/LeadcreationDemo.gif)
 
@@ -316,22 +316,16 @@ Once the execution is completed:
 Here's a sample feature file:
 
 ```gherkin
-Feature: Account Creation in Salesforce
+Feature: Product Search on Demo Store
 
- Scenario: Successfully create a new account
+ Scenario: Successfully find a product
 
-   Given I am on the Salesforce login page
-   When I enter my username "user@example.com" and password "securePassword"
-   And I click on the "Log In" button
-   And I navigate to the "Accounts" tab
-   And I click on the "New" button
-   And I fill in the "Account Name" field with "Test Account"
-   And I select the "Account Type" as "Customer"
-   And I fill in the "Website" field with "www.testaccount.com"
-   And I fill in the "Phone" field with "123-456-7890"
-   And I click on the "Save" button
-   Then I should see a confirmation message "Account Test Account created successfully"
-   And I should see "Test Account" listed in the account records
+   Given I am on the demo store home page
+   When I enter "wireless headphones" in the search field
+   And I click on the "Search" button
+   And I open the first matching product result
+   Then I should see the product details page
+   And I should see "wireless headphones" in the product title or description
 ```
 
 #### Sample Result Screenshot
@@ -745,9 +739,9 @@ Hercules makes testing as simple as Gherkin in, results out. Just feed your end-
 
 With Hercules, you're harnessing the power of open source with zero licensing fees. Feel free to dive into the code, contribute, or customize it to your heart's content. Hercules is as free as it is mighty, giving you the flexibility and control you need.
 
-### Salesforce Ready
+### Enterprise UI Ready
 
-Built to handle the most intricate UIs, Hercules conquers Salesforce and other complex platforms with ease. Whether it's complicated DOM or running your SOQL or Apex, Hercules is ready and configurable.
+Built to handle intricate enterprise UIs and other complex platforms with ease. Whether it's complicated DOM or multi-step business workflows, Hercules is ready and configurable.
 
 ### No Code Required
 
@@ -877,7 +871,7 @@ Current browser action tools include:
 
 DOM output is deliberately compacted because very large or deeply nested DOM
 payloads can cause provider-side `INVALID_ARGUMENT` or token-limit errors,
-especially on complex applications such as Salesforce Lightning.
+especially on complex enterprise applications.
 
 ---
 ### Non-Functional Capabilities
@@ -993,22 +987,17 @@ Hypermind Scripts represent the next phase of AI-assisted testing — uniting au
 Hercules is an AI-native solution and relies on LLMs to perform reasoning and actions. Based on our experiments, we have found that a complex use case as below could cost up to **$0.20** using OpenAI's APIs gpt-4o, check the properties printed in testcase output to calculate for your testcase:
 
 ```gherkin
-Feature: Account Creation in Salesforce
+Feature: Product Checkout on Demo Store
 
- Scenario: Successfully create a new account
+ Scenario: Add a product to cart and verify checkout summary
 
-   Given I am on the Salesforce login page
-   When I enter my username "user@example.com" and password "securePassword"
-   And I click on the "Log In" button
-   And I navigate to the "Accounts" tab
-   And I click on the "New" button
-   And I fill in the "Account Name" field with "Test Account"
-   And I select the "Account Type" as "Customer"
-   And I fill in the "Website" field with "www.testaccount.com"
-   And I fill in the "Phone" field with "123-456-7890"
-   And I click on the "Save" button
-   Then I should see a confirmation message "Account Test Account created successfully"
-   And I should see "Test Account" listed in the account records
+   Given I am on the demo store home page
+   When I search for "wireless headphones"
+   And I open the first matching product result
+   And I add the product to the cart
+   And I open the cart
+   Then I should see the selected product in the cart
+   And the cart total should be displayed
 ```
 
 ---
@@ -1080,7 +1069,7 @@ Join us at our [Slack](https://join.slack.com/t/testzeuscommunityhq/shared_invit
 
 ## ✍️ Examples
 
-- **Salesforce Examples**: [Link](tests/test_not_for_ci/ebikes/ebikes.feature)
+- **E-bikes Example**: [Link](tests/test_not_for_ci/ebikes/ebikes.feature)
 - **Wrangler Example**: [Link](tests/future_test_features/productSearch/productSearch.feature)
 
 ---
@@ -1094,7 +1083,7 @@ Hercules would not have been possible without the great work from the following 
 3. [Agent Q](https://arxiv.org/abs/2408.07199)
 4. [Autogen](https://arxiv.org/pdf/2308.08155)
 
-The Hercules project is inferred and enhanced over the existing project of [Agent-E](https://github.com/EmergenceAI/Agent-E). We have improved lots of cases to make it capable of doing testing, especially in the area of complex DOM navigation and iframes. We have also added new tools and abilities (like Salesforce navigation) to Hercules so that it can perform better work over the base framework we had picked.
+The Hercules project is inferred and enhanced over the existing project of [Agent-E](https://github.com/EmergenceAI/Agent-E). We have improved lots of cases to make it capable of doing testing, especially in the area of complex DOM navigation and iframes. We have also added new tools and abilities for complex enterprise navigation so that Hercules can perform better work over the base framework we had picked.
 
 Hercules also picks some inspiration from the legacy TestZeus repo [here](https://www.testzeus.org).
 
