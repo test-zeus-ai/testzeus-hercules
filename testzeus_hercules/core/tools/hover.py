@@ -18,15 +18,21 @@ from testzeus_hercules.utils.logger import logger
 
 @tool(
     agent_names=["browser_nav_agent"],
-    description="""Hovers over element. Returns tooltip details.""",
+    description=(
+        "Hovers over an element and returns tooltip or hover-revealed details. "
+        "Use this whenever the task says to hover. Prefer the numeric md id from "
+        "get_interactive_elements, but visible descriptions like 'first User Avatar image' "
+        "are also accepted."
+    ),
     name="hover",
 )
 async def hover(
-    selector: Annotated[str, "selector using md attribute, just give the md ID value"],
+    selector: Annotated[str, "Numeric md id, CSS selector, or visible element description to hover"],
     wait_before_execution: Annotated[float, "Wait time in seconds before hover"] = 0.0,
 ) -> Annotated[str, "Result of hover action with tooltip text"]:
     logger.info(f'Executing HoverElement with "{selector}" as the selector')
-    if "md=" not in selector:
+    selector = selector.strip()
+    if selector.isdigit():
         selector = f"[md='{selector}']"
     add_event(EventType.INTERACTION, EventData(detail="hover"))
     # Initialize PlaywrightManager and get the active browser page
@@ -40,7 +46,8 @@ async def hover(
 
     await browser_manager.take_screenshots(f"{function_name}_start", page)
 
-    await browser_manager.highlight_element(selector)
+    if _is_query_selector(selector):
+        await browser_manager.highlight_element(selector)
 
     dom_changes_detected = None
 
@@ -94,7 +101,7 @@ async def do_hover(page: Page, selector: str, wait_before_execution: float) -> d
         await browser_manager.wait_for_load_state_if_enabled(page=page)
 
         # Find the element
-        element = await page.query_selector(selector)
+        element, resolved_selector = await resolve_hover_element(page, selector)
         if not element:
             # Initialize selector logger with proof path
             selector_logger = get_browser_logger(get_global_conf().get_proof_path())
@@ -109,7 +116,7 @@ async def do_hover(page: Page, selector: str, wait_before_execution: float) -> d
             )
             raise ValueError(f'Element with selector: "{selector}" not found')
 
-        logger.info(f'Element with selector: "{selector}" is found. Scrolling it into view if needed.')
+        logger.info(f'Element with selector: "{resolved_selector}" is found. Scrolling it into view if needed.')
         try:
             await element.scroll_into_view_if_needed(timeout=200)
             logger.info(f'Element with selector: "{selector}" is scrolled into view. Waiting for the element to be visible.')
@@ -144,8 +151,8 @@ async def do_hover(page: Page, selector: str, wait_before_execution: float) -> d
         # Wait briefly to allow any tooltips to appear
         await asyncio.sleep(0.2)
 
-        # Capture tooltip information
-        tooltip_text = await get_tooltip_text(page)
+        # Capture tooltip/hover-revealed information
+        tooltip_text = await get_tooltip_text(page, resolved_selector)
 
         # Log successful selector interaction
         await selector_logger.log_selector_interaction(
@@ -159,7 +166,7 @@ async def do_hover(page: Page, selector: str, wait_before_execution: float) -> d
             additional_data={"tooltip_text": tooltip_text} if tooltip_text else None,
         )
 
-        msg = f'Executed hover action on element with selector: "{selector}".'
+        msg = f'Executed hover action on element with selector: "{resolved_selector}".'
         if tooltip_text:
             msg += f' Tooltip shown: "{tooltip_text}".'
 
@@ -188,21 +195,80 @@ async def do_hover(page: Page, selector: str, wait_before_execution: float) -> d
         return {"summary_message": msg, "detailed_message": f"{msg}. Error: {e}"}
 
 
-async def get_tooltip_text(page: Page) -> str:
+async def get_tooltip_text(page: Page, selector: str = "") -> str:
     # JavaScript code to find tooltip elements
     js_code = """
-    () => {
+    (selector) => {
+        function isVisible(element) {
+            if (!element) return false;
+            const style = window.getComputedStyle(element);
+            const rect = element.getBoundingClientRect();
+            return (
+                style.display !== 'none' &&
+                style.visibility !== 'hidden' &&
+                style.opacity !== '0' &&
+                rect.width > 0 &&
+                rect.height > 0
+            );
+        }
+
+        function collectVisibleText(root) {
+            if (!root) return '';
+            const parts = [];
+            const elements = Array.from(root.querySelectorAll('*'));
+            if (elements.length === 0) elements.push(root);
+            for (const element of elements) {
+                if (isVisible(element)) {
+                    const hasVisibleTextChild = Array.from(element.children || []).some((child) => {
+                        const childText = (child.innerText || child.textContent || '').trim();
+                        return isVisible(child) && childText;
+                    });
+                    if (hasVisibleTextChild) continue;
+                    const text = (element.innerText || element.textContent || '').replace(/\\s+/g, ' ').trim();
+                    if (text) parts.push(text);
+                }
+            }
+            if (parts.length === 0 && isVisible(root)) {
+                const text = (root.innerText || root.textContent || '').replace(/\\s+/g, ' ').trim();
+                if (text) parts.push(text);
+            }
+            return [...new Set(parts)].join('\\n').trim();
+        }
+
+        // Search near the hovered element first. Many hover UIs reveal captions
+        // in the same container instead of using role="tooltip".
+        if (selector) {
+            let hovered = null;
+            try {
+                hovered = document.querySelector(selector);
+            } catch (error) {
+                hovered = null;
+            }
+            if (hovered) {
+                const containers = [
+                    hovered.closest('.figure'),
+                    hovered.parentElement,
+                    hovered.nextElementSibling,
+                    hovered
+                ].filter(Boolean);
+                for (const container of containers) {
+                    const text = collectVisibleText(container);
+                    if (text) return text;
+                }
+            }
+        }
+
         // Search for elements with role="tooltip"
         let tooltip = document.querySelector('[role="tooltip"]');
-        if (tooltip && tooltip.innerText) {
+        if (tooltip && isVisible(tooltip) && tooltip.innerText) {
             return tooltip.innerText.trim();
         }
 
         // Search for common tooltip classes
-        let tooltipClasses = ['tooltip', 'ui-tooltip', 'tooltip-inner'];
+        let tooltipClasses = ['tooltip', 'ui-tooltip', 'tooltip-inner', 'figcaption'];
         for (let cls of tooltipClasses) {
             tooltip = document.querySelector('.' + cls);
-            if (tooltip && tooltip.innerText) {
+            if (tooltip && isVisible(tooltip) && tooltip.innerText) {
                 return tooltip.innerText.trim();
             }
         }
@@ -211,13 +277,107 @@ async def get_tooltip_text(page: Page) -> str:
     }
     """
     try:
-        tooltip_text = await page.evaluate(js_code)
+        tooltip_text = await page.evaluate(js_code, selector)
         return tooltip_text
     except Exception as e:
 
         traceback.print_exc()
         logger.error(f"Error retrieving tooltip text: {e}")
         return ""
+
+
+def _is_query_selector(selector: str) -> bool:
+    return selector.startswith(("[", "#", ".", "xpath=", "text="))
+
+
+async def resolve_hover_element(page: Page, selector: str) -> tuple[ElementHandle | None, str]:
+    if _is_query_selector(selector):
+        try:
+            element = await page.query_selector(selector)
+            if element:
+                return element, selector
+        except Exception:
+            pass
+
+    resolved = await page.evaluate_handle(
+        """
+        (rawSelector) => {
+            function isVisible(element) {
+                if (!element) return false;
+                const style = window.getComputedStyle(element);
+                const rect = element.getBoundingClientRect();
+                return (
+                    style.display !== 'none' &&
+                    style.visibility !== 'hidden' &&
+                    style.opacity !== '0' &&
+                    rect.width > 0 &&
+                    rect.height > 0
+                );
+            }
+
+            const raw = String(rawSelector || '').trim();
+            const lowered = raw.toLowerCase();
+            const ordinalWords = [
+                ['first', 0], ['1st', 0],
+                ['second', 1], ['2nd', 1],
+                ['third', 2], ['3rd', 2]
+            ];
+            let ordinal = 0;
+            for (const [word, index] of ordinalWords) {
+                if (new RegExp(`\\\\b${word}\\\\b`).test(lowered)) {
+                    ordinal = index;
+                    break;
+                }
+            }
+
+            const target = lowered
+                .replace(/\\b(first|1st|second|2nd|third|3rd|the|a|an|image|img|element|button|link|field|over|hover|on)\\b/g, ' ')
+                .replace(/\\s+/g, ' ')
+                .trim();
+
+            const candidates = Array.from(
+                document.querySelectorAll('[md], img, button, a, input, select, textarea, [role]')
+            ).filter(isVisible);
+
+            function textFor(element) {
+                return [
+                    element.getAttribute('alt'),
+                    element.getAttribute('aria-label'),
+                    element.getAttribute('title'),
+                    element.getAttribute('name'),
+                    element.innerText,
+                    element.textContent
+                ].filter(Boolean).join(' ').replace(/\\s+/g, ' ').trim().toLowerCase();
+            }
+
+            const scored = candidates
+                .map((element, index) => {
+                    const text = textFor(element);
+                    let score = 0;
+                    if (target && text === target) score += 100;
+                    if (target && text.includes(target)) score += 50;
+                    if (target && target.includes(text) && text.length > 2) score += 25;
+                    if (lowered.includes('avatar') && text.includes('avatar')) score += 40;
+                    if (lowered.includes('image') && element.tagName.toLowerCase() === 'img') score += 20;
+                    if (element.hasAttribute('md')) score += 5;
+                    return {element, score, index};
+                })
+                .filter((item) => item.score > 0)
+                .sort((a, b) => b.score - a.score || a.index - b.index);
+
+            return scored[ordinal]?.element || scored[0]?.element || null;
+        }
+        """,
+        selector,
+    )
+    element = resolved.as_element()
+    if not element:
+        return None, selector
+
+    md = await element.get_attribute("md")
+    if md:
+        return element, f"[md='{md}']"
+    return element, selector
 
 
 async def perform_playwright_hover(element: ElementHandle, selector: str) -> None:
@@ -232,4 +392,4 @@ async def perform_playwright_hover(element: ElementHandle, selector: str) -> Non
     - None
     """
     logger.info("Performing Playwright hover on element with selector: %s", selector)
-    await element.hover(force=True, timeout=200)
+    await element.hover(force=True, timeout=1000)

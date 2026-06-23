@@ -48,7 +48,7 @@ async def download_file(url: str, dest: Path) -> None:
     """Download a file from a URL to a destination path."""
     logger.info(f"Downloading {url} to {dest}")
     file_logger(f"Downloading {url} to {dest}")
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(follow_redirects=True) as client:
         async with client.stream("GET", url) as response:
             response.raise_for_status()
             with open(dest, "wb") as f:

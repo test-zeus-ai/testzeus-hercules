@@ -62,7 +62,7 @@ def _encode_image_path(path: str) -> dict[str, Any]:
         data = base64.b64encode(f.read()).decode("utf-8")
     ext = os.path.splitext(path)[1].lower().lstrip(".") or "png"
     mime = "jpeg" if ext in ("jpg", "jpeg") else ext
-    return {"type": "image_url", "image_url": {"url": f"data:image/{mime};base64, {data}"}}
+    return {"type": "image_url", "image_url": {"url": f"data:image/{mime};base64,{data.strip()}"}}
 
 def build_multimodal_human_message(text: str) -> HumanMessage:
     """Build a human message with inline image paths (<img path>)."""

@@ -108,6 +108,7 @@ async def execute_select_cte_query_sql(
       Check for this in your code to handle errors gracefully.
 
     """
+    engine: AsyncEngine = None
     try:
         # Ensure only SELECT queries are allowed
         query_lower = query.strip().lower()
@@ -125,8 +126,9 @@ async def execute_select_cte_query_sql(
                     await connection.execute(text(f"USE {schema_name}"))
                 # For SQLite, schema_name setting is not applicable
 
-            result = await connection.execute(text(query), params or {})
-            rows = [dict(row) for row in result]
+            safe_params = params if isinstance(params, dict) else {}
+            result = await connection.execute(text(query), safe_params)
+            rows = [dict(row._mapping) for row in result]
             return rows
     except SQLAlchemyError as e:
 
@@ -139,4 +141,7 @@ async def execute_select_cte_query_sql(
         logger.error(f"An unexpected error occurred: {e}")
         return {"error": str(e)}
     finally:
-        await engine.dispose()
+        try:
+            await engine.dispose()
+        except Exception:
+            pass

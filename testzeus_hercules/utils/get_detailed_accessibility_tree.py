@@ -292,8 +292,10 @@ async def __fetch_dom_info(page: Page, accessibility_tree: dict[str, Any], only_
                 for child in node["children"]:
                     await process_node(child)
 
-            # Use 'name' attribute from the accessibility node as 'md'
-            md_temp: str = node.get("keyshortcuts")  # type: ignore
+            # Accessibility snapshots expose injected md through keyshortcuts;
+            # the DOM snapshot path already has md directly on the node.
+            md_source = node.get("keyshortcuts") or node.get("md")
+            md_temp = str(md_source) if md_source is not None else ""
 
             # If the name has multiple mds, take the last one
             if md_temp and is_space_delimited_md(md_temp):
@@ -307,7 +309,7 @@ async def __fetch_dom_info(page: Page, accessibility_tree: dict[str, Any], only_
                 # logger.error(f"'name attribute contains \"{node.get('name')}\", which is not a valid numeric md. Adding node as is: {node}")
                 return node.get("name")
 
-            if node["role"] == "menuitem":
+            if node.get("role") == "menuitem":
                 return node.get("name")
 
             if node.get("role") == "dialog" and node.get("modal") == True:  # noqa: E712

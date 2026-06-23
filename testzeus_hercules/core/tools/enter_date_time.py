@@ -112,8 +112,8 @@ async def do_set_date_time_value(page: Page, selector: str, input_value: str) ->
         tag_name = await element.evaluate("el => el.tagName.toLowerCase()")
         input_type = await element.evaluate("el => el.type")
 
-        if tag_name == "input" and input_type in ["date", "time", "datetime-local"]:
-            # For date, time, or datetime-local inputs, set the value directly
+        if tag_name == "input":
+            # For any input type, set the value directly
             await element.fill(input_value)
             element_outer_html = await get_element_outer_html(element, page)
             success_msg = f"Success. Value '{input_value}' set in the input with selector '{selector}'"
@@ -122,7 +122,7 @@ async def do_set_date_time_value(page: Page, selector: str, input_value: str) ->
                 "detailed_message": f"{success_msg}. Outer HTML: {element_outer_html}",
             }
         else:
-            error = f"Error: Input type '{input_type}' not supported for setting value."
+            error = f"Error: Element type '{tag_name}' not supported for setting value."
             return {"summary_message": error, "detailed_message": error}
     except Exception as e:
         traceback.print_exc()

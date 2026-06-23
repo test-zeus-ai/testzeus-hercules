@@ -174,8 +174,66 @@ async def interact_with_element_select_type(
 
     # Strategy 1: Standard HTML select element
     if tag_name == "select":
-        await element.select_option(value=option_value)
+        option_match = await element.evaluate(
+            """
+            (el, desired) => {
+                const normalizedDesired = String(desired).trim();
+                const options = Array.from(el.options).map((option) => ({
+                    value: option.value,
+                    text: option.text.trim(),
+                    label: option.label ? option.label.trim() : "",
+                    disabled: option.disabled
+                }));
+                return (
+                    options.find((option) => option.value === normalizedDesired && !option.disabled) ||
+                    options.find((option) => option.text === normalizedDesired && !option.disabled) ||
+                    options.find((option) => option.label === normalizedDesired && !option.disabled) ||
+                    null
+                );
+            }
+            """,
+            option_value,
+        )
+        if not option_match:
+            available_options = await element.evaluate(
+                """
+                (el) => Array.from(el.options).map((option) => ({
+                    value: option.value,
+                    text: option.text.trim(),
+                    disabled: option.disabled
+                }))
+                """
+            )
+            error = (
+                f"Error: Option '{option_value}' not found in selector '{selector}'. "
+                f"Available options: {available_options}"
+            )
+            await selector_logger.log_selector_interaction(
+                tool_name="select_option",
+                selector=selector,
+                action="select",
+                selector_type="css" if "md=" in selector else "custom",
+                alternative_selectors=alternative_selectors,
+                element_attributes=element_attributes,
+                success=False,
+                error_message=error,
+            )
+            return {"summary_message": error, "detailed_message": error}
+
+        await element.select_option(value=option_match["value"])
         await page.wait_for_load_state("domcontentloaded", timeout=1000)
+        selected_state = await element.evaluate(
+            """
+            (el) => {
+                const selectedOption = el.selectedOptions && el.selectedOptions[0];
+                return {
+                    value: el.value,
+                    text: selectedOption ? selectedOption.text.trim() : "",
+                    selectedIndex: el.selectedIndex
+                };
+            }
+            """
+        )
         await selector_logger.log_selector_interaction(
             tool_name="select_option",
             selector=selector,
@@ -186,10 +244,16 @@ async def interact_with_element_select_type(
             success=True,
             additional_data={
                 "element_type": "select",
-                "selected_value": option_value,
+                "requested_value": option_value,
+                "selected_value": selected_state.get("value", ""),
+                "selected_text": selected_state.get("text", ""),
+                "selected_index": selected_state.get("selectedIndex", ""),
             },
         )
-        success_msg = f"Success. Option '{option_value}' selected in the dropdown with selector '{selector}'"
+        success_msg = (
+            f"Success. Dropdown selector '{selector}' selected option text "
+            f"'{selected_state.get('text', '')}' with value '{selected_state.get('value', '')}'"
+        )
         return {
             "summary_message": success_msg,
             "detailed_message": f"{success_msg}. Outer HTML: {element_outer_html}",

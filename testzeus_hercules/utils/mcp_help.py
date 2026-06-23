@@ -7,6 +7,7 @@ via the `@tool` decorator which delegate to the singleton instance.
 
 from datetime import timedelta
 from typing import Any, Dict, List, Optional, cast
+import httpx
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.client.sse import sse_client
@@ -44,6 +45,7 @@ class MCPHelper:
         self._mcp_toolkits: Dict[str, Any] = {}
         self._mcp_sessions: Dict[str, ClientSession] = {}
         self._mcp_client_contexts: Dict[str, Any] = {}
+        self._mcp_http_clients: Dict[str, httpx.AsyncClient] = {}
 
         self._nav_agent: Optional[Any] = None
 
@@ -233,7 +235,7 @@ class MCPHelper:
                 if self._nav_agent is not None:
                     self._attach_tools_to_agent(self._nav_agent)
                 logger.info(
-                    "Connected to MCP server '%s' via %s tools",
+                    "Connected to MCP server '%s' via %s transport with %s tools",
                     server_name,
                     transport,
                     len(toolkit.tools),
@@ -277,7 +279,10 @@ class MCPHelper:
                         f"Streamable HTTP transport requires 'url' field in server config for '{server_name}'"
                     )
                 headers = server_config.get("headers", None)
-                client_cm = streamable_http_client(url, headers)
+                http_client = httpx.AsyncClient(headers=headers) if headers else None
+                if http_client is not None:
+                    self._mcp_http_clients[server_name] = http_client
+                client_cm = streamable_http_client(url, http_client=http_client)
                 read_stream, write_stream, _ = await getattr(client_cm, "__aenter__")()
                 session = ClientSession(
                     read_stream, write_stream, read_timeout_seconds=timedelta(seconds=timeout_seconds)
@@ -301,6 +306,7 @@ class MCPHelper:
             toolkit = self._mcp_toolkits.pop(server_name, None)
             session = self._mcp_sessions.pop(server_name, None)
             client_cm = self._mcp_client_contexts.pop(server_name, None)
+            http_client = self._mcp_http_clients.pop(server_name, None)
 
             if session:
                 try:
@@ -310,6 +316,11 @@ class MCPHelper:
             if client_cm:
                 try:
                     await client_cm.__aexit__(None, None, None)
+                except Exception:
+                    pass
+            if http_client:
+                try:
+                    await http_client.aclose()
                 except Exception:
                     pass
 

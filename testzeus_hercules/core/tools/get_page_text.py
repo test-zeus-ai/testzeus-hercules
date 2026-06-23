@@ -174,6 +174,24 @@ async def get_filtered_text_content(page: Page) -> str:
             return textContent;
         }
 
+        function getVisibleText(root) {
+            if (!root) return '';
+            let textContent = '';
+
+            if (root.innerText) {
+                textContent += root.innerText + '\\n';
+            }
+
+            const allNodes = root.querySelectorAll ? root.querySelectorAll('*') : [];
+            allNodes.forEach(node => {
+                if (node.shadowRoot) {
+                    textContent += getVisibleText(node.shadowRoot);
+                }
+            });
+
+            return textContent;
+        }
+
         /**
         * Recursively gather text from iframes, also skipping <script> & <style>.
         */
@@ -186,9 +204,8 @@ async def get_filtered_text_content(page: Page) -> str:
             try {
                 const iframeDoc = iframe.contentDocument;
                 if (iframeDoc) {
-                // Grab text from iframe body, docElement, plus nested iframes
-                iframeText += getTextSkippingScriptsStyles(iframeDoc.body);
-                iframeText += getTextSkippingScriptsStyles(iframeDoc.documentElement);
+                // Grab visible text from iframe body plus nested iframes
+                iframeText += getVisibleText(iframeDoc.body);
                 iframeText += getTextFromIframes(iframeDoc);
                 }
             } catch (err) {
@@ -242,9 +259,8 @@ async def get_filtered_text_content(page: Page) -> str:
             processElementsInIframes(document, selector);
         });
 
-        // 2) Collect text from the main document
-        let textContent = getTextSkippingScriptsStyles(document.body);
-        textContent += getTextSkippingScriptsStyles(document.documentElement);
+        // 2) Collect visible text from the main document
+        let textContent = getVisibleText(document.body);
 
         // 3) Collect text from iframes
         textContent += getTextFromIframes(document);
@@ -263,7 +279,7 @@ async def get_filtered_text_content(page: Page) -> str:
         textContent = textContent + ' ' + altTextsString;
 
         // Optional: sanitize whitespace, if needed
-        // const sanitizeString = (input) => input.replace(/\s+/g, ' ');
+        // const sanitizeString = (input) => input.replace(/\\s+/g, ' ');
         // textContent = sanitizeString(textContent);
 
         return textContent;

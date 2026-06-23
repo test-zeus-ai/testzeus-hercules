@@ -258,7 +258,7 @@ if __name__ == "__main__":
             }
         }
     }, indent=4))
-    mcp.run(transport="streamable-http", host=host, port=port, path=path)
+    mcp.run(transport="streamable-http")
 
 
 def main() -> None:
@@ -277,7 +277,7 @@ def main() -> None:
             }
         }
     }, indent=4))
-    mcp.run(transport="streamable-http", host=host, port=port, path=path)
+    mcp.run(transport="streamable-http")
 
 
 if __name__ == "__main__":

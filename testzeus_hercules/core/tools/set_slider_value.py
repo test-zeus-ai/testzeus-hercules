@@ -52,7 +52,8 @@ async def custom_set_slider_value(page: Page, selector: str, value_to_set: float
                 """
             (inputParams) => {
                 /*INJECT_FIND_ELEMENT_IN_SHADOW_DOM*/
-                const { selector, value_to_set } = inputParams;
+                const { selector } = inputParams;
+                let sliderValue = Number(inputParams.value_to_set);
                 const element = findElementInShadowDOMAndIframes(document, selector);
                 if (!element) {
                     throw new Error(`Element not found: ${selector}`);
@@ -65,17 +66,17 @@ async def custom_set_slider_value(page: Page, selector: str, value_to_set: float
                 const max = parseFloat(element.max) || 100;
                 const step = parseFloat(element.step) || 1;
                 // Clamp the value within the allowed range
-                value_to_set = Math.max(min, Math.min(max, value_to_set));
+                sliderValue = Math.max(min, Math.min(max, sliderValue));
                 // Adjust value to the nearest step
-                value_to_set = min + Math.round((value_to_set - min) / step) * step;
+                sliderValue = min + Math.round((sliderValue - min) / step) * step;
                 // Set the value
-                element.value = value_to_set;
+                element.value = sliderValue;
                 // Dispatch input and change events to simulate user interaction
                 const inputEvent = new Event('input', { bubbles: true });
                 const changeEvent = new Event('change', { bubbles: true });
                 element.dispatchEvent(inputEvent);
                 element.dispatchEvent(changeEvent);
-                return `Value set for ${selector}`;
+                return `Value set for ${selector}: ${sliderValue}`;
             }
             """
             ),
