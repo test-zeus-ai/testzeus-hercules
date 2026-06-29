@@ -72,6 +72,8 @@ class AgentState(TypedDict, total=False):
     total_prompt_tokens: int
     total_completion_tokens: int
     total_steps: int
+    total_cost: float
+    cost_available: bool
     step_timings: list[dict[str, Any]]
     completed_step_signatures: list[str]
     last_helper_response: str
@@ -217,6 +219,25 @@ class SimpleHercules:
             usage = getattr(response, "usage", None)
         return usage or {}
 
+    def _extract_response_cost(self, response: Any) -> float | None:
+        sources: list[Any] = [
+            getattr(response, "response_metadata", None),
+            getattr(response, "usage_metadata", None),
+            getattr(response, "usage", None),
+        ]
+        for source in sources:
+            if not isinstance(source, dict):
+                continue
+            for key in ("total_cost", "response_cost", "cost"):
+                value = source.get(key)
+                if value is None:
+                    continue
+                try:
+                    return float(value)
+                except (TypeError, ValueError):
+                    logger.warning("[TOKEN_COUNT] Ignoring invalid response cost %r", value)
+        return None
+
     def _token_counts(self, response: Any) -> tuple[int, int]:
         usage = self._extract_tokens(response)
         prompt_tokens = int(usage.get("prompt_tokens", 0) or usage.get("input_tokens", 0) or 0)
@@ -225,7 +246,8 @@ class SimpleHercules:
 
     def _record_nav_token_usage(self, agent_name: str, response: Any) -> None:
         prompt_tokens, completion_tokens = self._token_counts(response)
-        if not prompt_tokens and not completion_tokens:
+        response_cost = self._extract_response_cost(response)
+        if not prompt_tokens and not completion_tokens and response_cost is None:
             return
         entry = {
             "node": "executor",
@@ -235,6 +257,8 @@ class SimpleHercules:
             "completion_tokens": completion_tokens,
             "total_tokens": prompt_tokens + completion_tokens,
         }
+        if response_cost is not None:
+            entry["cost"] = response_cost
         self._nav_token_log.append(entry)
         logger.info("[TOKEN_COUNT] %s", entry)
 
@@ -399,6 +423,9 @@ class SimpleHercules:
             "completion_tokens": completion_tokens,
             "total_tokens": prompt_tokens + completion_tokens,
         }
+        response_cost = self._extract_response_cost(response)
+        if response_cost is not None:
+            step_entry["cost"] = response_cost
         logger.info("[TOKEN_COUNT] %s", step_entry)
 
         content = str(response.content) if response.content else ""
@@ -420,35 +447,10 @@ class SimpleHercules:
         is_passed = bool(parsed.get("is_passed", False))
         plan = str(parsed.get("plan") or state.get("plan", ""))
 
-        completed_step_signatures = set(state.get("completed_step_signatures", []))
-        next_step_signature = self._step_signature(next_step) if next_step else ""
-        if terminate != "yes" and next_step_signature and next_step_signature in completed_step_signatures:
+        if terminate != "yes" and next_step and self._step_signature(next_step) in set(state.get("completed_step_signatures", [])):
             logger.warning(
-                "[PLANNER_LOOP_GUARD] Planner repeated an already completed step; forcing terminal success. step=%s",
+                "[PLANNER_REPEAT_NOTICE] Planner repeated an already completed step; allowing execution to continue. step=%s",
                 next_step[:200],
-            )
-            next_step = ""
-            target_helper = "not_applicable"
-            terminate = "yes"
-            final_response = "The helper already completed the repeated step successfully; " "stopping to avoid re-running the same test action."
-            is_assert = True
-            is_passed = True
-            assert_summary = (
-                "EXPECTED RESULT: completed helper steps are not executed again.\n"
-                "ACTUAL RESULT: the planner repeated an already completed successful step, "
-                "so execution was stopped before re-running it."
-            )
-            content = json.dumps(
-                {
-                    "plan": plan,
-                    "next_step": next_step,
-                    "terminate": terminate,
-                    "final_response": final_response,
-                    "is_assert": is_assert,
-                    "assert_summary": assert_summary,
-                    "is_passed": is_passed,
-                    "target_helper": "Not_Applicable",
-                }
             )
 
         if next_step:
@@ -480,6 +482,8 @@ class SimpleHercules:
             "step_token_log": state.get("step_token_log", []) + [step_entry],
             "total_prompt_tokens": state.get("total_prompt_tokens", 0) + prompt_tokens,
             "total_completion_tokens": state.get("total_completion_tokens", 0) + completion_tokens,
+            "total_cost": float(state.get("total_cost", 0.0) or 0.0) + (response_cost or 0.0),
+            "cost_available": bool(state.get("cost_available", False) or response_cost is not None),
             "step_timings": state.get("step_timings", [])
             + [
                 {
@@ -543,9 +547,41 @@ class SimpleHercules:
         if asyncio.iscoroutine(result):
             await result
 
+    async def _get_live_current_url(self) -> str:
+        try:
+            from testzeus_hercules.core.playwright_manager import PlaywrightManager
+
+            managers: list[Any] = []
+            stake_manager = PlaywrightManager._instances.get(self.stake_id)
+            if stake_manager is not None:
+                managers.append(stake_manager)
+            default_manager = PlaywrightManager._default_instance
+            if default_manager is not None and default_manager not in managers:
+                managers.append(default_manager)
+
+            for manager in managers:
+                get_current_url = getattr(manager, "get_current_url", None)
+                if get_current_url is None:
+                    continue
+                current_url = get_current_url()
+                if asyncio.iscoroutine(current_url):
+                    current_url = await current_url
+                if current_url:
+                    return str(current_url)
+        except Exception as e:
+            logger.debug("[EXECUTOR] Unable to refresh current browser URL: %s", e)
+        return ""
+
+    async def _resolve_current_url(self, target_helper: str, state: AgentState) -> str:
+        fallback_url = str(state.get("current_url") or "").strip()
+        if target_helper not in {"browser", "agent"}:
+            return fallback_url
+        live_url = (await self._get_live_current_url()).strip()
+        return live_url or fallback_url
+
     async def _build_helper_task(self, next_step: str, target_helper: str, state: AgentState) -> str:
         task = next_step
-        current_url = str(state.get("current_url") or "").strip()
+        current_url = await self._resolve_current_url(target_helper, state)
         if target_helper in {"browser", "agent"} and current_url:
             task = f"{task}\n\nCurrent Page: {current_url}"
 
@@ -611,16 +647,23 @@ class SimpleHercules:
         prompt_tokens = int(final_state.get("total_prompt_tokens", 0) or 0)
         completion_tokens = int(final_state.get("total_completion_tokens", 0) or 0)
         total_tokens = prompt_tokens + completion_tokens
+        langgraph_usage: dict[str, Any] = {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens,
+        }
+        usage: dict[str, Any] = {
+            "langgraph": langgraph_usage,
+        }
+        if final_state.get("cost_available"):
+            total_cost = float(final_state.get("total_cost", 0.0) or 0.0)
+            usage["total_cost"] = total_cost
+            langgraph_usage["cost"] = total_cost
+        else:
+            usage["cost_unavailable"] = True
+            langgraph_usage["cost_unavailable"] = True
         return {
-            "usage_including_cached_inference": {
-                "total_cost": 0.0,
-                "langgraph": {
-                    "cost": 0.0,
-                    "prompt_tokens": prompt_tokens,
-                    "completion_tokens": completion_tokens,
-                    "total_tokens": total_tokens,
-                },
-            }
+            "usage_including_cached_inference": usage,
         }
 
     # ------------------------------------------------------------------
@@ -677,9 +720,13 @@ class SimpleHercules:
         nav_prompt_tokens = sum(int(entry.get("prompt_tokens", 0) or 0) for entry in nav_token_entries)
         nav_completion_tokens = sum(int(entry.get("completion_tokens", 0) or 0) for entry in nav_token_entries)
         nav_total_tokens = nav_prompt_tokens + nav_completion_tokens
+        nav_cost_entries = [float(entry["cost"]) for entry in nav_token_entries if "cost" in entry]
+        nav_cost = sum(nav_cost_entries)
         executor_entry["prompt_tokens"] = nav_prompt_tokens
         executor_entry["completion_tokens"] = nav_completion_tokens
         executor_entry["total_tokens"] = nav_total_tokens
+        if nav_cost_entries:
+            executor_entry["cost"] = nav_cost
 
         logger.info("[EXECUTOR] %s response: %s", agent_name, helper_response[:300])
 
@@ -696,15 +743,22 @@ class SimpleHercules:
         if step_signature and self._helper_response_succeeded(helper_response) and step_signature not in completed_step_signatures:
             completed_step_signatures.append(step_signature)
 
+        current_url = str(state.get("current_url") or "")
+        if target_helper in {"browser", "agent"}:
+            current_url = (await self._get_live_current_url()) or current_url
+
         elapsed = time.perf_counter() - start
 
         return {
             "messages": messages,
             "completed_step_signatures": completed_step_signatures,
             "last_helper_response": helper_response,
+            "current_url": current_url,
             "step_token_log": state.get("step_token_log", []) + [executor_entry],
             "total_prompt_tokens": int(state.get("total_prompt_tokens", 0) or 0) + nav_prompt_tokens,
             "total_completion_tokens": int(state.get("total_completion_tokens", 0) or 0) + nav_completion_tokens,
+            "total_cost": float(state.get("total_cost", 0.0) or 0.0) + nav_cost,
+            "cost_available": bool(state.get("cost_available", False) or nav_cost_entries),
             "total_steps": state.get("total_steps", 0) + 1,
             "step_timings": state.get("step_timings", [])
             + [
@@ -804,10 +858,10 @@ class SimpleHercules:
             refresh_required = False
             skipped_tool_count = 0
 
-            for tc in tool_calls:
-                tool_name = self._tool_call_name(tc)
-                tool_args = self._tool_call_args(tc)
-                tool_id = self._tool_call_id(tc, tool_name)
+            for tool_call in tool_calls:
+                tool_name = self._tool_call_name(tool_call)
+                tool_args = self._tool_call_args(tool_call)
+                tool_id = self._tool_call_id(tool_call, tool_name)
 
                 tool_obj = tool_map.get(tool_name)
                 if tool_obj is None:
@@ -815,7 +869,7 @@ class SimpleHercules:
                 else:
                     tool_result = await self._execute_tool_call(tool_obj, tool_name, tool_args)
 
-                executed_tool_calls.append(tc)
+                executed_tool_calls.append(tool_call)
                 tool_messages.append(ToolMessage(content=tool_result, tool_call_id=tool_id))
 
                 if self._requires_state_refresh(agent_name, tool_name, tool_result):
@@ -989,6 +1043,8 @@ class SimpleHercules:
                 "step_token_log": [],
                 "total_prompt_tokens": 0,
                 "total_completion_tokens": 0,
+                "total_cost": 0.0,
+                "cost_available": False,
                 "step_timings": [],
                 "completed_step_signatures": [],
                 "last_helper_response": "",

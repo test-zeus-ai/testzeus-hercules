@@ -39,10 +39,14 @@ def test_mcp_nav_agent_awaits_tool_registration(monkeypatch) -> None:
 def test_mcp_dynamic_tool_returns_explicit_failure(monkeypatch) -> None:
     async def run() -> None:
         helper = MCPHelper()
-        helper._mcp_toolkits["local"] = SimpleNamespace(tools=[SimpleNamespace(name="explode", description="boom")])
+        helper._mcp_toolkits["local"] = SimpleNamespace(
+            tools=[SimpleNamespace(name="explode", description="boom")]
+        )
         nav_agent = SimpleNamespace(tools=[])
 
-        async def fake_execute_mcp_tool(server_name: str, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        async def fake_execute_mcp_tool(
+            server_name: str, tool_name: str, arguments: dict[str, Any]
+        ) -> dict[str, Any]:
             return {"success": False, "error": "kaboom"}
 
         monkeypatch.setattr(helper, "execute_mcp_tool", fake_execute_mcp_tool)
@@ -51,6 +55,53 @@ def test_mcp_dynamic_tool_returns_explicit_failure(monkeypatch) -> None:
         result = await nav_agent.tools[0].coroutine()
 
         assert result == "[MCP TOOL ERROR] local.explode: kaboom"
+
+    asyncio.run(run())
+
+
+def test_mcp_dynamic_tool_preserves_input_schema(monkeypatch) -> None:
+    async def run() -> None:
+        helper = MCPHelper()
+        helper._mcp_toolkits["local"] = SimpleNamespace(
+            tools=[
+                SimpleNamespace(
+                    name="search",
+                    description="search docs",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "query": {"type": "string", "description": "Search query"},
+                            "limit": {
+                                "type": "integer",
+                                "description": "Maximum results",
+                            },
+                        },
+                        "required": ["query"],
+                    },
+                )
+            ]
+        )
+        nav_agent = SimpleNamespace(tools=[])
+        seen_args: list[dict[str, Any]] = []
+
+        async def fake_execute_mcp_tool(
+            server_name: str, tool_name: str, arguments: dict[str, Any]
+        ) -> dict[str, Any]:
+            seen_args.append(arguments)
+            return {"success": True, "result": "done"}
+
+        monkeypatch.setattr(helper, "execute_mcp_tool", fake_execute_mcp_tool)
+        helper._attach_tools_to_agent(nav_agent)
+
+        tool = nav_agent.tools[0]
+        assert tool.args_schema["properties"]["query"]["type"] == "string"
+        assert tool.args_schema["properties"]["limit"]["type"] == "integer"
+        assert tool.args_schema["required"] == ["query"]
+
+        result = await tool.ainvoke({"query": "accounts", "limit": 3})
+
+        assert result == "done"
+        assert seen_args == [{"query": "accounts", "limit": 3}]
 
     asyncio.run(run())
 

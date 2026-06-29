@@ -6,6 +6,7 @@ via the `@tool` decorator which delegate to the singleton instance.
 """
 
 import asyncio
+import copy
 from datetime import timedelta
 from typing import Any, Dict, List, Optional, cast
 import httpx
@@ -83,32 +84,55 @@ class MCPHelper:
     async def set_mcp_agents(self, llm_agent: Any, executor_agent: Any) -> bool:
         """Backward-compatible entry point for MCP registration."""
         return await self.register_agent_tools(llm_agent)
-    
+
+    @staticmethod
+    def _get_tool_input_schema(mcp_tool: Any) -> dict[str, Any]:
+        schema = None
+        if isinstance(mcp_tool, dict):
+            schema = mcp_tool.get("inputSchema") or mcp_tool.get("input_schema")
+        else:
+            schema = getattr(mcp_tool, "inputSchema", None) or getattr(mcp_tool, "input_schema", None)
+
+        if hasattr(schema, "model_dump"):
+            schema = schema.model_dump()
+        if not isinstance(schema, dict):
+            return {"type": "object", "properties": {}}
+
+        schema_copy = copy.deepcopy(schema)
+        schema_copy.setdefault("type", "object")
+        schema_copy.setdefault("properties", {})
+        return schema_copy
+
+    def _build_mcp_tool_coroutine(self, server_name: str, tool_name: str) -> Any:
+        async def _call_tool(**kwargs: Any) -> str:
+            result = await self.execute_mcp_tool(server_name, tool_name, kwargs)
+            success = bool(result.get("success"))
+            if success:
+                return str(
+                    result.get("result", "MCP tool executed successfully")
+                )
+            return (
+                f"[MCP TOOL ERROR] {server_name}.{tool_name}: "
+                f"{result.get('error', 'unknown MCP tool failure')}"
+            )
+
+        return _call_tool
+
     def _attach_tools_to_agent(self, nav_agent: Any) -> None:
         mcp_tools: list[StructuredTool] = []
         for server_name, toolkit in self._mcp_toolkits.items():
             for mcp_tool in toolkit.tools:
                 tool_name = getattr(mcp_tool, "name", str(mcp_tool))
                 description = getattr(mcp_tool, "description", None) or tool_name
-
-                async def _call_tool(
-                    _server: str = server_name,
-                    _tool: str = tool_name,
-                    **kwargs: Any,
-                ) -> str:
-                    result = await self.execute_mcp_tool(_server, _tool, kwargs)
-                    if result.get("success"):
-                        return str(result.get("result", "MCP tool executed successfully"))
-                    return (
-                        f"[MCP TOOL ERROR] {_server}.{_tool}: "
-                        f"{result.get('error', 'unknown MCP tool failure')}"
-                    )
+                args_schema = self._get_tool_input_schema(mcp_tool)
                     
                 mcp_tools.append(
                     StructuredTool.from_function(
-                        coroutine=_call_tool,
+                        coroutine=self._build_mcp_tool_coroutine(server_name, tool_name),
                         name=f"mmcp_{server_name}_{tool_name}",
                         description=description,
+                        args_schema=args_schema,
+                        infer_schema=False,
                     )
                 )
         nav_agent.tools = merge_tools(getattr(nav_agent, "tools", []), mcp_tools)

@@ -625,7 +625,8 @@ class BaseConfigManager:
                 logger.error(f"Invalid numeric value in Portkey configuration: {e}")
                 exit(1)
 
-        if llm_model_name or llm_model_api_key:
+        has_legacy_direct_llm_config = bool(llm_model_name or llm_model_api_key)
+        if has_legacy_direct_llm_config:
             logger.warning("LLM_MODEL_* is deprecated. Please migrate to " "AGENTS_LLM_CONFIG_FILE.")
 
         if bool(agents_llm_config_file) != bool(agents_llm_config_file_ref_key):

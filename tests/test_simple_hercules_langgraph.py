@@ -27,7 +27,9 @@ class FakeLLM:
 
 
 class FakeAgent:
-    def __init__(self, name: str, responses: list[AIMessage], tools: list[Any] | None = None) -> None:
+    def __init__(
+        self, name: str, responses: list[AIMessage], tools: list[Any] | None = None
+    ) -> None:
         self.agent_name = name
         self.system_message = f"{name} system"
         self.llm = FakeLLM(responses)
@@ -58,7 +60,9 @@ def test_executor_routes_every_target_helper_to_expected_agent(monkeypatch) -> N
             )
             for agent_name in set(helper_targets.values())
         }
-        monkeypatch.setattr(hercules, "_query_memory", lambda _context: _async_value(""))
+        monkeypatch.setattr(
+            hercules, "_query_memory", lambda _context: _async_value("")
+        )
 
         for target_helper, expected_agent in helper_targets.items():
             state = {
@@ -92,8 +96,12 @@ def test_nav_agent_executes_multiple_non_stale_tool_calls_in_order() -> None:
             return "second result"
 
         tools = [
-            StructuredTool.from_function(func=first_tool, name="first", description="first"),
-            StructuredTool.from_function(func=second_tool, name="second", description="second"),
+            StructuredTool.from_function(
+                func=first_tool, name="first", description="first"
+            ),
+            StructuredTool.from_function(
+                func=second_tool, name="second", description="second"
+            ),
         ]
         agent = FakeAgent(
             "api_nav_agent",
@@ -134,13 +142,23 @@ def test_nav_agent_reports_invalid_tool_arguments() -> None:
                 ),
                 AIMessage(content="current_output: handled\n##TERMINATE TASK##"),
             ],
-            [StructuredTool.from_function(func=first_tool, name="first", description="first")],
+            [
+                StructuredTool.from_function(
+                    func=first_tool, name="first", description="first"
+                )
+            ],
         )
 
-        result = await _hercules()._run_nav_agent(agent, "call malformed", "api_nav_agent")
+        result = await _hercules()._run_nav_agent(
+            agent, "call malformed", "api_nav_agent"
+        )
 
         assert "##TERMINATE TASK##" in result
-        tool_messages = [message for message in agent.llm.calls[1] if isinstance(message, ToolMessage)]
+        tool_messages = [
+            message
+            for message in agent.llm.calls[1]
+            if isinstance(message, ToolMessage)
+        ]
         assert tool_messages
         assert "expected tool arguments to be a dict" in tool_messages[-1].content
 
@@ -153,7 +171,10 @@ def test_browser_stale_dom_guard_skips_later_tool_calls() -> None:
 
         def click() -> str:
             calls.append("click")
-            return "Success. As a consequence of this action, new elements have appeared " "in view. Get all_fields DOM to complete the interaction."
+            return (
+                "Success. As a consequence of this action, new elements have appeared "
+                "in view. Get all_fields DOM to complete the interaction."
+            )
 
         def get_page_text() -> str:
             calls.append("get_page_text")
@@ -161,7 +182,9 @@ def test_browser_stale_dom_guard_skips_later_tool_calls() -> None:
 
         tools = [
             StructuredTool.from_function(func=click, name="click", description="click"),
-            StructuredTool.from_function(func=get_page_text, name="get_page_text", description="read"),
+            StructuredTool.from_function(
+                func=get_page_text, name="get_page_text", description="read"
+            ),
         ]
         agent = FakeAgent(
             "browser_nav_agent",
@@ -178,12 +201,18 @@ def test_browser_stale_dom_guard_skips_later_tool_calls() -> None:
             tools,
         )
 
-        result = await _hercules()._run_nav_agent(agent, "click then read", "browser_nav_agent")
+        result = await _hercules()._run_nav_agent(
+            agent, "click then read", "browser_nav_agent"
+        )
 
         assert calls == ["click"]
         assert "##TERMINATE TASK##" in result
         second_call_messages = agent.llm.calls[1]
-        assert any(isinstance(message, HumanMessage) and "browser state changed" in message.content for message in second_call_messages)
+        assert any(
+            isinstance(message, HumanMessage)
+            and "browser state changed" in message.content
+            for message in second_call_messages
+        )
 
     asyncio.run(run())
 
@@ -222,14 +251,58 @@ def test_helper_task_includes_current_url_and_dynamic_memory(monkeypatch) -> Non
     asyncio.run(run())
 
 
+def test_helper_task_prefers_live_current_url(monkeypatch) -> None:
+    async def run() -> None:
+        hercules = _hercules()
+
+        async def fake_live_url() -> str:
+            return "https://example.test/live"
+
+        async def fake_query_memory(context: str) -> str:
+            assert "Current Page: https://example.test/live" in context
+            assert "https://example.test/stale" not in context
+            return ""
+
+        monkeypatch.setattr(hercules, "_get_live_current_url", fake_live_url)
+        monkeypatch.setattr(hercules, "_query_memory", fake_query_memory)
+
+        helper_task = await hercules._build_helper_task(
+            "click the login button",
+            "browser",
+            {"current_url": "https://example.test/stale"},
+        )
+
+        assert "Current Page: https://example.test/live" in helper_task
+
+    asyncio.run(run())
+
+
 def test_cost_metrics_include_langgraph_token_totals() -> None:
-    metrics = _hercules()._build_cost_metrics({"total_prompt_tokens": 7, "total_completion_tokens": 11})
+    metrics = _hercules()._build_cost_metrics(
+        {"total_prompt_tokens": 7, "total_completion_tokens": 11}
+    )
 
     usage = metrics["usage_including_cached_inference"]["langgraph"]
     assert usage["prompt_tokens"] == 7
     assert usage["completion_tokens"] == 11
     assert usage["total_tokens"] == 18
-    assert metrics["usage_including_cached_inference"]["total_cost"] == 0.0
+    assert metrics["usage_including_cached_inference"]["cost_unavailable"] is True
+    assert "total_cost" not in metrics["usage_including_cached_inference"]
+
+
+def test_cost_metrics_include_provider_cost_when_available() -> None:
+    metrics = _hercules()._build_cost_metrics(
+        {
+            "total_prompt_tokens": 7,
+            "total_completion_tokens": 11,
+            "total_cost": 0.42,
+            "cost_available": True,
+        }
+    )
+
+    usage = metrics["usage_including_cached_inference"]
+    assert usage["total_cost"] == 0.42
+    assert usage["langgraph"]["cost"] == 0.42
 
 
 def test_executor_accumulates_nav_agent_token_usage(monkeypatch) -> None:
@@ -244,14 +317,21 @@ def test_executor_accumulates_nav_agent_token_usage(monkeypatch) -> None:
                         "token_usage": {
                             "prompt_tokens": 13,
                             "completion_tokens": 7,
-                        }
+                        },
+                        "response_cost": 0.03,
                     },
                 )
             ],
-            [StructuredTool.from_function(func=lambda: "unused", name="available", description="available")],
+            [
+                StructuredTool.from_function(
+                    func=lambda: "unused", name="available", description="available"
+                )
+            ],
         )
         hercules.agents_map = {"api_nav_agent": agent}
-        monkeypatch.setattr(hercules, "_query_memory", lambda _context: _async_value(""))
+        monkeypatch.setattr(
+            hercules, "_query_memory", lambda _context: _async_value("")
+        )
 
         result = await hercules._executor_node(
             {
@@ -271,8 +351,53 @@ def test_executor_accumulates_nav_agent_token_usage(monkeypatch) -> None:
         assert executor_entry["prompt_tokens"] == 13
         assert executor_entry["completion_tokens"] == 7
         assert executor_entry["total_tokens"] == 20
+        assert executor_entry["cost"] == 0.03
         assert result["total_prompt_tokens"] == 113
         assert result["total_completion_tokens"] == 57
+        assert result["total_cost"] == 0.03
+        assert result["cost_available"] is True
+
+    asyncio.run(run())
+
+
+def test_repeated_completed_planner_step_does_not_force_success() -> None:
+    async def run() -> None:
+        next_step = "Click the Continue button"
+        planner_payload = {
+            "plan": "Continue through a multi-page form.",
+            "next_step": next_step,
+            "target_helper": "browser",
+            "terminate": "no",
+            "is_assert": False,
+            "is_passed": False,
+        }
+        hercules = _hercules()
+        hercules.agents_map = {
+            "planner_agent": SimpleNamespace(
+                system_message="planner system",
+                llm=FakeLLM([AIMessage(content=json.dumps(planner_payload))]),
+                on_planner_message=lambda _content: None,
+            )
+        }
+
+        result = await hercules._planner_node(
+            {
+                "messages": [HumanMessage(content="root task")],
+                "planner_turn": 0,
+                "completed_step_signatures": [hercules._step_signature(next_step)],
+                "step_token_log": [],
+                "step_timings": [],
+                "total_prompt_tokens": 0,
+                "total_completion_tokens": 0,
+                "total_cost": 0.0,
+                "cost_available": False,
+            }
+        )
+
+        assert result["next_step"] == next_step
+        assert result["target_helper"] == "browser"
+        assert result["terminate"] == "no"
+        assert result["is_passed"] is False
 
     asyncio.run(run())
 
@@ -282,14 +407,26 @@ def test_nav_agent_max_rounds_returns_explicit_error() -> None:
         agent = FakeAgent(
             "api_nav_agent",
             [
-                AIMessage(content="", tool_calls=[{"name": "missing", "args": {}, "id": "call_1"}]),
-                AIMessage(content="", tool_calls=[{"name": "missing", "args": {}, "id": "call_2"}]),
+                AIMessage(
+                    content="",
+                    tool_calls=[{"name": "missing", "args": {}, "id": "call_1"}],
+                ),
+                AIMessage(
+                    content="",
+                    tool_calls=[{"name": "missing", "args": {}, "id": "call_2"}],
+                ),
             ],
-            [StructuredTool.from_function(func=lambda: "unused", name="available", description="available")],
+            [
+                StructuredTool.from_function(
+                    func=lambda: "unused", name="available", description="available"
+                )
+            ],
         )
         hercules = SimpleHercules(stake_id="test", browser_nav_max_chat_round=2)
 
-        result = await hercules._run_nav_agent(agent, "do impossible thing", "api_nav_agent")
+        result = await hercules._run_nav_agent(
+            agent, "do impossible thing", "api_nav_agent"
+        )
 
         assert result.startswith("[ERROR] api_nav_agent max nav rounds")
         assert "[empty or tool-calls-only assistant response]" in result
@@ -311,7 +448,9 @@ def test_graph_chat_result_summary_uses_terminal_planner_json() -> None:
                 content="",
                 tool_calls=[{"name": "tool", "args": {}, "id": "call_1"}],
             ),
-            AIMessage(content=json.dumps({"terminate": "no", "next_step": "keep going"})),
+            AIMessage(
+                content=json.dumps({"terminate": "no", "next_step": "keep going"})
+            ),
             AIMessage(content=json.dumps(terminal)),
         ],
         terminate="yes",

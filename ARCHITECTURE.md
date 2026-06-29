@@ -38,8 +38,8 @@ The planner returns strict JSON. Current examples should use fields like:
 
 ```json
 {
-  "plan": "Open Salesforce and create an account.",
-  "next_step": "Navigate to Accounts and click New.",
+  "plan": "Open the demo store and search for a product.",
+  "next_step": "Navigate to the demo store and search for wireless headphones.",
   "target_helper": "browser",
   "terminate": "no",
   "is_assert": false,
