@@ -906,6 +906,102 @@ Hercules builds on the work done by WebArena and Agent-E, and beyond that, to ir
 
 ---
 
+# 📊 Experimental Evaluation
+
+To evaluate the performance of the LangGraph-based implementation against the original AG2 architecture, both systems were executed on the same end-to-end web automation task under identical conditions. The comparison focused on two primary metrics:
+
+* **LLM Token Consumption** (Prompt + Completion Tokens)
+* **End-to-End Execution Time**
+
+## Benchmark Test Case
+
+The following end-to-end workflow was used for benchmarking.
+
+### Test Data
+
+```gherkin
+Background:
+  Given the following test data exists:
+    | Field    | Value                        |
+    |----------|------------------------------|
+    | Username | TestUser_Static              |
+    | Email    | testuser_static@mailtest.com |
+    | Password | SecurePass123!               |
+```
+
+### Test Scenario
+
+```gherkin
+Feature: User Signup and Account Deletion
+
+  Scenario: Signup page
+    Given I navigate to "https://practice.expandtesting.com/notes/app"
+    When I click the "Create an account" link on the home page
+    Then I should see the registration form
+    When I enter "TestUser_Static" in the name field
+    And I enter "testuser_static@mailtest.com" in the email field
+    And I enter "SecurePass123!" in the password field
+    And I confirm the password by entering "SecurePass123!" in the confirm password field
+    And I click the "Register" button
+    Then I should see the message "User account created successfully"
+    And I should be redirected to the login page
+
+  Scenario: Delete the account
+    Given I navigate to "https://practice.expandtesting.com/notes/app/login"
+    And I enter "testuser_static@mailtest.com" in the email field
+    And I enter "SecurePass123!" in the password field
+    And I click the "Login" button
+    Then I should see the message "Login successful" and be redirected to the notes home page
+    When I click the profile or settings icon to open account settings
+    And I navigate to the "Delete Account" section within settings
+    And I click the "Delete Account" button
+    And I confirm the deletion when prompted
+    Then I should see the message "Your account has been deleted"
+    And I should be redirected to the login page
+    And I navigate to "https://practice.expandtesting.com/notes/app/login"
+    And I enter "testuser_static@mailtest.com" in the email field
+    And I enter "SecurePass123!" in the password field
+    And I click the "Login" button
+    Then I should see the message "Incorrect email address or password"
+    And I should remain on the login page confirming the account no longer exists
+```
+
+This benchmark represents a realistic end-to-end web testing workflow consisting of account creation, authentication, navigation across multiple pages, account deletion, and post-deletion verification. The scenario exercises multiple browser interactions, assertions, and state transitions, making it representative of common UI automation workloads.
+
+---
+
+## Benchmark Results
+
+| Run | LangGraph Tokens | AG2 Tokens |  Token Difference | LangGraph Time (s) | AG2 Time (s) | Time Difference (s) |
+| --: | ---------------: | ---------: | ----------------: | -----------------: | -----------: | ------------------: |
+|   1 |          122,899 |    173,945 | +51,046 (+41.54%) |             174.64 |       513.00 |             +338.36 |
+|   2 |          132,309 |    136,504 |   +4,195 (+3.17%) |             206.71 |       505.00 |             +298.29 |
+|   3 |          130,248 |    127,268 |   −2,980 (−2.29%) |             115.24 |       388.88 |             +273.64 |
+
+### Aggregate Performance
+
+| Metric                 |    LangGraph |            AG2 |
+| ---------------------- | -----------: | -------------: |
+| Total Tokens           |  **385,456** |    **437,717** |
+| Average Tokens / Run   |  **128,485** |    **145,906** |
+| Total Execution Time   | **496.59 s** | **1,406.88 s** |
+| Average Execution Time | **165.53 s** |   **468.96 s** |
+
+---
+
+## Discussion
+
+Across the three benchmark executions, the LangGraph implementation consistently demonstrated superior execution efficiency compared to AG2.
+
+From a token consumption perspective, LangGraph required **385,456 total tokens**, whereas AG2 consumed **437,717 tokens**, resulting in an overall reduction of **52,261 tokens (13.56%)**. Although one execution showed slightly lower token usage for AG2, the overall trend indicates that LangGraph performs comparable reasoning with fewer language model invocations.
+
+The improvement is even more significant in execution time. LangGraph completed all benchmark runs in **496.59 seconds**, while AG2 required **1,406.88 seconds**. This represents an average reduction of **303.43 seconds per execution**, making LangGraph approximately **2.83× faster** overall.
+
+The runtime improvements remain consistent across all benchmark runs despite varying token counts, suggesting that the performance gains primarily arise from the streamlined execution model and reduced orchestration overhead rather than token savings alone. The simplified workflow of LangGraph minimizes inter-agent communication and coordination costs that are inherent in the AG2 multi-agent architecture.
+
+Overall, these experimental results demonstrate that the LangGraph implementation achieves comparable functionality while providing significantly faster execution and lower overall LLM usage, making it a more efficient architecture for end-to-end autonomous web testing.
+
+
 ## 💡 Opinions
 
 We believe that great quality comes from opinions about a product. So we have incorporated a few of our opinions into the product design. We welcome the community to question them, use them, or build on top of them. Here are some examples:

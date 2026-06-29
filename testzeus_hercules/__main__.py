@@ -65,24 +65,29 @@ async def sequential_process() -> None:
             summary = runner.result.summary
             if summary:
                 runner_result = parse_agent_response(summary)
+                if not runner_result:
+                    logger.warning("Could not parse planner result from test output; marking as incomplete.")
             elif getattr(runner.result, "terminate", "no") == "yes":
-                runner_result = {"terminate": "yes", "is_passed": False, "final_response": "Test ended without planner output."}
-
-            plan = runner_result.get("plan", "")
-            if plan and runner_result.get("terminate") == "no":
-                lines = plan.split("\n") if isinstance(plan, str) else []
-                plan_steps = [line.strip() for line in lines if line.strip() and any(c.isdigit() for c in line[:3])]
-                completed_steps = [step for step in plan_steps if "(Completed)" in step]
-                if plan_steps and len(completed_steps) == len(plan_steps):
-                    logger.info(f"All {len(plan_steps)} plan steps completed. Auto-terminating test.")
-                    runner_result["terminate"] = "yes"
-                    runner_result["is_passed"] = True
-                    if not runner_result.get("final_response"):
-                        runner_result["final_response"] = (
-                            f"Test completed successfully. All {len(plan_steps)} steps executed."
-                        )
-            if summary and not runner_result:
-                logger.warning("Could not parse planner result from test output; marking as incomplete.")
+                runner_result = {
+                    "terminate": "yes",
+                    "is_passed": False,
+                    "final_response": "Test ended without planner output.",
+                }
+            else:
+                # runner.result exists but produced neither a summary nor a clean
+                # termination signal — this is an unexpected runner state, not a
+                # controlled failure. Mark it failed explicitly so it surfaces in
+                # CI rather than drifting through as an empty result.
+                logger.error(
+                    "runner.result present but has no summary and did not terminate "
+                    "cleanly for scenario: %s. Marking as failed.",
+                    scenario,
+                )
+                runner_result = {
+                    "terminate": "yes",
+                    "is_passed": False,
+                    "final_response": "Unexpected runner state: no summary, no clean termination.",
+                }
 
         logger.info(f"Run completed for testcase: {scenario}")
         if cost_metrics:
