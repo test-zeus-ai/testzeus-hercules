@@ -19,50 +19,110 @@ from testzeus_hercules.utils.response_parser import parse_response
 
 DEFAULT_LLM_SYS_MSG = "You are a helpful AI assistant."
 DEFAULT_MODEL = "gpt-4o"
+DEFAULT_LLM_REQUEST_TIMEOUT_SECONDS = 60.0
+DEFAULT_LLM_MAX_RETRIES = 1
 
-def convert_model_config_to_langchain_format(model_config: dict[str, str]) -> dict[str, Any]:
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None or raw == "":
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        logger.warning("Invalid %s=%r; using default %.1fs.", name, raw, default)
+        return default
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None or raw == "":
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        logger.warning("Invalid %s=%r; using default %d.", name, raw, default)
+        return default
+
+
+def get_llm_request_timeout_seconds() -> float:
+    """Return the hard per-request LLM timeout in seconds."""
+    return _env_float(
+        "LLM_REQUEST_TIMEOUT",
+        _env_float("PORTKEY_TIMEOUT", DEFAULT_LLM_REQUEST_TIMEOUT_SECONDS),
+    )
+
+
+def get_llm_max_retries() -> int:
+    """Return the default number of provider retries for LLM calls."""
+    return _env_int("LLM_MAX_RETRIES", DEFAULT_LLM_MAX_RETRIES)
+
+
+def convert_model_config_to_langchain_format(
+    model_config: dict[str, str],
+) -> dict[str, Any]:
     """Normalise model configuration for LangChain ChatOpenAI."""
-    return { 
+    return {
         k: v
-        for k, v in{
+        for k, v in {
             "model": model_config.get("model") or model_config.get("model_name"),
             "api_key": model_config.get("api_key") or model_config.get("model_api_key"),
-            "base_url": model_config.get("base_url") or model_config.get("model_base_url"),
-            "api_type": model_config.get("api_type") or model_config.get("model_api_type"),
+            "base_url": model_config.get("base_url")
+            or model_config.get("model_base_url"),
+            "api_type": model_config.get("api_type")
+            or model_config.get("model_api_type"),
         }.items()
         if v is not None
     }
 
+
 def create_chat_model(
-        model_config: dict[str, Any],
-        llm_config_params: dict[str, Any] | None = None,
+    model_config: dict[str, Any],
+    llm_config_params: dict[str, Any] | None = None,
 ) -> BaseChatModel:
-    """Create a LangChain chat model from Hercules agent configuration. """
+    """Create a LangChain chat model from Hercules agent configuration."""
     llm_config_params = llm_config_params or {}
-    model_name = model_config.get("model") or model_config.get("model_name") or DEFAULT_MODEL
+    model_name = (
+        model_config.get("model") or model_config.get("model_name") or DEFAULT_MODEL
+    )
     adapted = adapt_llm_params_for_model(model_name, dict(llm_config_params))
 
-    api_key = model_config.get("api_key") or model_config.get("model_api_key") or os.getenv("MODEL_API_KEY")
+    api_key = (
+        model_config.get("api_key")
+        or model_config.get("model_api_key")
+        or os.getenv("MODEL_API_KEY")
+    )
     if not api_key:
-        raise ValueError("LLM API key is missing. Set MODEL_API_KEY or model_api_key in config.")
-    
+        raise ValueError(
+            "LLM API key is missing. Set MODEL_API_KEY or model_api_key in config."
+        )
+
     kwargs: dict[str, Any] = {
         "model": model_name,
         "api_key": api_key,
         **adapted,
     }
+    if kwargs.get("timeout") is None:
+        kwargs["timeout"] = get_llm_request_timeout_seconds()
+    if kwargs.get("max_retries") is None:
+        kwargs["max_retries"] = get_llm_max_retries()
     base_url = model_config.get("base_url") or model_config.get("model_base_url")
     if base_url:
         kwargs["base_url"] = base_url
-    
+
     return ChatOpenAI(**kwargs)
 
-def _encode_image_path(path: str) -> dict[str, Any]: 
+
+def _encode_image_path(path: str) -> dict[str, Any]:
     with open(path, "rb") as f:
         data = base64.b64encode(f.read()).decode("utf-8")
     ext = os.path.splitext(path)[1].lower().lstrip(".") or "png"
     mime = "jpeg" if ext in ("jpg", "jpeg") else ext
-    return {"type": "image_url", "image_url": {"url": f"data:image/{mime};base64,{data.strip()}"}}
+    return {
+        "type": "image_url",
+        "image_url": {"url": f"data:image/{mime};base64,{data.strip()}"},
+    }
+
 
 def build_multimodal_human_message(text: str) -> HumanMessage:
     """Build a human message with inline image paths (<img path>)."""
@@ -86,6 +146,7 @@ def build_multimodal_human_message(text: str) -> HumanMessage:
         parts.append({"type": "text", "text": text})
     return HumanMessage(content=parts)
 
+
 @dataclass
 class MultimodalAgent:
     """Lightweighr multimodal agent wrapper used byy comparison tools."""
@@ -100,12 +161,15 @@ class MultimodalAgent:
             build_multimodal_human_message(user_content),
         ]
         result = await self.llm.ainvoke(messages)
-        return result if isinstance(result, AIMessage) else AIMessage(content=str(result))
-    
+        return (
+            result if isinstance(result, AIMessage) else AIMessage(content=str(result))
+        )
+
+
 def create_multimodal_agent(
     name: str,
     system_message: str = "You are a multimodal conversable agent.",
-        llm_config: Optional[Dict[str, Any]] = None
+    llm_config: Optional[Dict[str, Any]] = None,
 ) -> MultimodalAgent:
     """Create a multimodal agent singleton for visual comparison helpers."""
     if not hasattr(create_multimodal_agent, "_instance"):
@@ -113,19 +177,23 @@ def create_multimodal_agent(
         agent_cfg = config_manager.get_agent_config("helper_agent")
         model_cfg: Dict[str, Any] = agent_cfg["model_config_params"]
         llm_params_raw: Dict[str, Any] = agent_cfg["llm_config_params"]
-        model_name: str = model_cfg.get("model") or model_cfg.get("model_name") or DEFAULT_MODEL
+        model_name: str = (
+            model_cfg.get("model") or model_cfg.get("model_name") or DEFAULT_MODEL
+        )
         adapted_llm_params = adapt_llm_params_for_model(model_name, llm_params_raw)
         langchain_cfg = convert_model_config_to_langchain_format(model_cfg)
         llm = create_chat_model(langchain_cfg, adapted_llm_params)
 
         if llm_config:
-            pass #reserved for caller overrides
+            pass  # reserved for caller overrides
         create_multimodal_agent._instance = MultimodalAgent(
             name=name,
             llm=llm,
             system_message=system_message,
-            )
+        )
     return create_multimodal_agent._instance
+
+
 def is_agent_planner_termination_message(
     content: str,
     final_response_callback: Callable[[str], None] | None = None,
@@ -141,6 +209,7 @@ def is_agent_planner_termination_message(
         return True
     return False
 
+
 def process_chat_target_helper(content: Any) -> Any:
     """Process and parse message content."""
     if isinstance(content, str):
@@ -154,6 +223,7 @@ def process_chat_target_helper(content: Any) -> Any:
         return content
     return content
 
+
 def extract_target_helper(message: str) -> Optional[str]:
     """Extract target helper from message."""
     try:
@@ -162,8 +232,9 @@ def extract_target_helper(message: str) -> Optional[str]:
     except Exception:
         return None
 
+
 def parse_agent_response(content: str) -> Dict[str, Any]:
-    """Parse planner/helper agent JSON response fields."""        
+    """Parse planner/helper agent JSON response fields."""
 
     try:
         content_json = parse_response(content)
@@ -182,13 +253,15 @@ def parse_agent_response(content: str) -> Dict[str, Any]:
     except Exception:
         logger.error("Failed to parse agent response %s", content)
         return {}
-    
+
+
 def format_plan_steps(plan: list[str]) -> str:
-    """Format plan steps with numbering. """
+    """Format plan steps with numbering."""
     return "\n".join([f"{idx + 1}. {step}" for idx, step in enumerate(plan)])
 
+
 def messages_to_chat_history(messages: list[BaseMessage]) -> list[dict[str, Any]]:
-    """Convert LangChain messages to legacy chat_history dicts for runner telemetry. """
+    """Convert LangChain messages to legacy chat_history dicts for runner telemetry."""
     history: list[dict[str, Any]] = []
     for msg in messages:
         role = "assistant"
@@ -202,8 +275,11 @@ def messages_to_chat_history(messages: list[BaseMessage]) -> list[dict[str, Any]
         history.append(entry)
     return history
 
+
 def _looks_like_planner_json(parsed: dict[str, Any]) -> bool:
-    return any(key in parsed for key in ("terminate", "next_step", "plan", "target_helper"))
+    return any(
+        key in parsed for key in ("terminate", "next_step", "plan", "target_helper")
+    )
 
 
 def _is_non_planner_content(content: str) -> bool:
@@ -244,7 +320,7 @@ def extract_planner_summary(messages: list[BaseMessage]) -> str:
 
 @dataclass
 class GraphChatResult:
-    """Result object compatible with runner expectations. """
+    """Result object compatible with runner expectations."""
 
     chat_history: list[dict[str, Any]] = field(default_factory=list)
     messages: list[BaseMessage] = field(default_factory=list)
@@ -257,6 +333,10 @@ class GraphChatResult:
         if planner_summary:
             return planner_summary
         if self.terminate == "yes":
-            return json.dumps({"terminate": "yes", "final_response": "Test ended without planner JSON."})
+            return json.dumps(
+                {
+                    "terminate": "yes",
+                    "final_response": "Test ended without planner JSON.",
+                }
+            )
         return ""
-    

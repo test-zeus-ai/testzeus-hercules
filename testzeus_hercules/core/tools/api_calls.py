@@ -220,16 +220,21 @@ async def generic_http_api(
         Any,
         "Authentication value: for 'basic' provide [username, password]; for others, provide a string. (Optional)",
     ] = None,
-    query_params: Annotated[Dict[str, Any], "URL query parameters."] = {},
+    query_params: Annotated[
+        Optional[Dict[str, Any]], "URL query parameters."
+    ] = None,
     body: Annotated[Any, "Request payload."] = None,
     body_mode: Annotated[
         str,
         "Body mode: multipart, urlencoded, raw, binary, or json. (Optional)",
     ] = None,
-    headers: Annotated[Dict[str, str], "Additional HTTP headers."] = {},
+    headers: Annotated[Optional[Dict[str, str]], "Additional HTTP headers."] = None,
 ) -> Annotated[
     Tuple[str, float], "Minified JSON response and call duration (in seconds)."
 ]:
+    request_headers = dict(headers or {})
+    request_query_params = dict(query_params or {})
+
     # Set authentication headers based on auth_type.
     if auth_type:
         auth_type = auth_type.lower()
@@ -240,21 +245,21 @@ async def generic_http_api(
         ):
             creds = f"{auth_value[0]}:{auth_value[1]}"
             token = base64.b64encode(creds.encode()).decode()
-            headers["Authorization"] = f"Basic {token}"
+            request_headers["Authorization"] = f"Basic {token}"
         elif auth_type == "jwt":
-            headers["Authorization"] = f"JWT {auth_value}"
+            request_headers["Authorization"] = f"JWT {auth_value}"
         elif auth_type == "form_login":
-            headers["X-Form-Login"] = auth_value
+            request_headers["X-Form-Login"] = auth_value
         elif auth_type == "bearer":
-            headers["Authorization"] = f"Bearer {auth_value}"
+            request_headers["Authorization"] = f"Bearer {auth_value}"
         elif auth_type == "api_key":
-            headers["x-api-key"] = auth_value
+            request_headers["x-api-key"] = auth_value
 
     return await _send_request(
         method,
         url,
-        query_params=query_params,
+        query_params=request_query_params,
         body=body,
         body_mode=body_mode,
-        headers=headers,
+        headers=request_headers,
     )

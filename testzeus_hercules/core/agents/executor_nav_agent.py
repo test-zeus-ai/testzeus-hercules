@@ -6,7 +6,7 @@ from testzeus_hercules.utils.logger import logger
 
 class ExecutorNavAgent(BaseNavAgent):
     """Executor Navigation Agent for running Python sandbox scripts."""
-    
+
     agent_name: str = "executor_nav_agent"
     prompt = """### Executor Navigation Agent
 
@@ -234,4 +234,3 @@ Available Test Data: $basic_test_information
         """Shutdown the agent."""
         await super().shutdown()
         logger.info(f"{self.agent_name} shutdown complete")
-

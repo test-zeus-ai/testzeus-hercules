@@ -54,24 +54,10 @@ async def sequential_process() -> None:
         runner_result = {}
         cost_metrics = {}
 
-        if get_global_conf().get_token_verbose():
-            for ag_name, agent in runner.simple_hercules.agents_map.items():
-                client = getattr(getattr(agent, "llm", None), "client", None) or getattr(agent, "client", None)
-                usage = getattr(client, "total_usage_summary", None) if client else None
-                if usage and ag_name in usage:
-                    for key, value in usage.items():
-                        if key == "total_cost":
-                            cost_metrics["total_cost"] = cost_metrics.get("total_cost", 0) + value
-                        elif isinstance(value, dict):
-                            cost_metrics.setdefault(ag_name, {}).setdefault(key, {
-                                "cost": 0, "prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0,
-                            })
-                            cost_metrics[ag_name][key]["cost"] += value.get("cost", 0)
-                            cost_metrics[ag_name][key]["prompt_tokens"] += value.get("prompt_tokens", 0)
-                            cost_metrics[ag_name][key]["completion_tokens"] += value.get("completion_tokens", 0)
-                            cost_metrics[ag_name][key]["total_tokens"] += value.get("total_tokens", 0)
-                        else:
-                            cost_metrics[ag_name][key] = cost_metrics.get(key, 0) + value
+        if runner.result and getattr(runner.result, "cost", None):
+            cost_metrics = runner.result.cost
+        elif get_global_conf().get_token_verbose():
+            logger.warning("Token verbose enabled, but LangGraph result did not include cost metrics.")
 
         execution_time = runner.execution_time
 

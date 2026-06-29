@@ -5,6 +5,7 @@ connection, toolkit, and tool-execution logic. Thin tool wrappers are exposed
 via the `@tool` decorator which delegate to the singleton instance.
 """
 
+import asyncio
 from datetime import timedelta
 from typing import Any, Dict, List, Optional, cast
 import httpx
@@ -61,11 +62,15 @@ class MCPHelper:
         """Destroy the singleton instance and disconnect from all MCP servers."""
         if cls._instance is None:
             return True
+        success = True
         try:
             await cls._instance._disconnect_all_servers()
+        except (Exception, asyncio.CancelledError) as e:
+            success = False
+            logger.warning("Error while destroying MCP helper: %s", e)
         finally:
             cls._instance = None
-        return True
+        return success
 
     async def register_agent_tools(self, nav_agent: Any) -> bool:
         """Connect MCP serveres and attach tools to a navigation agent."""
@@ -94,6 +99,10 @@ class MCPHelper:
                     result = await self.execute_mcp_tool(_server, _tool, kwargs)
                     if result.get("success"):
                         return str(result.get("result", "MCP tool executed successfully"))
+                    return (
+                        f"[MCP TOOL ERROR] {_server}.{_tool}: "
+                        f"{result.get('error', 'unknown MCP tool failure')}"
+                    )
                     
                 mcp_tools.append(
                     StructuredTool.from_function(
@@ -296,8 +305,9 @@ class MCPHelper:
                     f"Unsupported transport type '{transport}' for server '{server_name}'. Supported: stdio, sse, streamable-http"
                 )
 
-        except Exception as e:
+        except (Exception, asyncio.CancelledError) as e:
             logger.error(f"Failed to connect to MCP server '{server_name}' via {transport}: {e}")
+            await self.disconnect_mcp_server(server_name)
             return False
 
     async def disconnect_mcp_server(self, server_name: str) -> bool:
@@ -430,7 +440,7 @@ class MCPHelper:
                     logger.info(f"Connecting to MCP server '{name}' via {transport} transport")
                     success = await self.connect_mcp_server(name, srv_conf)
                     results[name] = {"success": success, "error": None if success else "Connection failed"}
-                except Exception as e:
+                except (Exception, asyncio.CancelledError) as e:
                     logger.error(f"Error connecting to MCP server {name}: {e}")
                     results[name] = {"success": False, "error": str(e)}
 
@@ -457,6 +467,7 @@ class MCPHelper:
         self._mcp_toolkits.clear()
         self._mcp_sessions.clear()
         self._mcp_client_contexts.clear()
+        self._mcp_http_clients.clear()
 
 
 # Compatibility function to set agents using the singleton instance

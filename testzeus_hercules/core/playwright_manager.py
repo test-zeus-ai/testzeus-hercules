@@ -415,8 +415,13 @@ class PlaywrightManager:
         plus locale, timezone, geolocation, color scheme, etc.
         """
         user_dir: str = os.environ.get("BROWSER_STORAGE_DIR", "")
+        crash_dir = os.path.join(get_global_conf().get_project_temp_path(), "crashpad")
+        os.makedirs(crash_dir, exist_ok=True)
 
         disable_args = [
+            "--disable-breakpad",
+            "--disable-crash-reporter",
+            "--disable-crashpad",
             "--disable-session-crashed-bubble",
             "--disable-notifications",
             "--no-sandbox",
@@ -433,6 +438,7 @@ class PlaywrightManager:
             "--window-position=0,0",
             "--disable-web-security",
             "--disable-features=IsolateOrigins,site-per-process",
+            f"--crash-dumps-dir={crash_dir}",
         ]
 
         if get_global_conf().should_ignore_certificate_errors():

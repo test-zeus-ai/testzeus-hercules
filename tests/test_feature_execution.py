@@ -1,6 +1,7 @@
 import os
 import shutil
 import subprocess
+import sys
 import pytest
 from tests.test_base import setup_test_environment, copy_feature_files, compare_results
 from dotenv.main import dotenv_values
@@ -10,6 +11,16 @@ from dotenv.main import dotenv_values
 def get_feature_folders() -> list[str]:
     test_features_dir = os.path.join(os.path.dirname(__file__), "test_features")
     return [name for name in os.listdir(test_features_dir) if os.path.isdir(os.path.join(test_features_dir, name))]
+
+
+def get_default_playwright_browsers_path(home: str) -> str:
+    if os.environ.get("PLAYWRIGHT_BROWSERS_PATH"):
+        return os.environ["PLAYWRIGHT_BROWSERS_PATH"]
+    if sys.platform == "darwin":
+        return os.path.join(home, "Library", "Caches", "ms-playwright")
+    if os.name == "nt":
+        return os.path.join(home, "AppData", "Local", "ms-playwright")
+    return os.path.join(home, ".cache", "ms-playwright")
 
 
 # Parameterize the test function to run for each feature folder
@@ -40,18 +51,28 @@ def test_feature_execution(feature_folder: str) -> None:
     load_env_in_dict["TOKEN_VERBOSE"] = "true"
     load_env_in_dict["GEO_PROVIDER"] = "maps_co"
     load_env_in_dict["LOAD_EXTRA_TOOLS"] = "true"
+    load_env_in_dict["RECORD_VIDEO"] = "false"
+    load_env_in_dict["ENABLE_UBLOCK_EXTENSION"] = "false"
     load_env_in_dict["LANG"] = "en_US.UTF-8"
+    real_home = os.path.expanduser("~")
+    load_env_in_dict["PLAYWRIGHT_BROWSERS_PATH"] = get_default_playwright_browsers_path(real_home)
+    load_env_in_dict["NLTK_DATA"] = os.path.join(real_home, "nltk_data")
+    load_env_in_dict["HOME"] = current_test_data_path
+    load_env_in_dict["BROWSER_STORAGE_DIR"] = os.path.join(current_test_data_path, "browser-profile")
+    load_env_in_dict["MPLCONFIGDIR"] = os.path.join(current_test_data_path, "matplotlib")
+    load_env_in_dict["XDG_CACHE_HOME"] = os.path.join(current_test_data_path, ".cache")
 
     # Execute Hercules with the updated .env file
     try:
         result = subprocess.run(
-            ["uv", "run", "python", "-m", "testzeus_hercules"],
+            [sys.executable, "-m", "testzeus_hercules"],
             check=True,
             capture_output=True,
             text=True,
             encoding="utf-8",
             errors="replace",
             env=load_env_in_dict,
+            cwd=os.path.dirname(os.path.dirname(__file__)),
         )
         print(f"Standard Output:\n{result.stdout}")
         print(f"Standard Error:\n{result.stderr}")

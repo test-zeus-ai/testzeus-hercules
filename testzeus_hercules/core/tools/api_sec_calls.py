@@ -237,9 +237,9 @@ for tag, explanation in security_terms_explanation.items():
             ] = "",
             bearer_token: Annotated[str, "Optional Bearer token for authentication."] = "",
             header_tokens: Annotated[
-                List[str],
+                Optional[List[str]],
                 "Optional list of header tokens in 'Key=Value' format.",
-            ] = [],
+            ] = None,
             jwt_token: Annotated[str, "Optional JWT token for authentication."] = "",
             # output_dir: Annotated[
             #     str, "Optional output directory for results."

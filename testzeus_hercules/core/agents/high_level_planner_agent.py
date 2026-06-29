@@ -5,19 +5,30 @@ from langchain_openai import ChatOpenAI
 
 from testzeus_hercules.core.memory.static_ltm import get_user_ltm
 from testzeus_hercules.utils.logger import logger
+from testzeus_hercules.utils.llm_helper import (
+    get_llm_max_retries,
+    get_llm_request_timeout_seconds,
+)
 
 
 class PlannerAgent:
     agent_name: str = "planner_agent"
 
-    def __init__(self, model_config: dict, llm_config_params: dict, system_prompt: str | None = None) -> None:
+    def __init__(
+        self,
+        model_config: dict,
+        llm_config_params: dict,
+        system_prompt: str | None = None,
+    ) -> None:
         base_prompt = system_prompt or self.prompt
         user_ltm = get_user_ltm()
         print("===== LTM =====")
         print(user_ltm)
         print("===============")
 
-        self.system_message = Template(base_prompt).safe_substitute(basic_test_information=user_ltm if user_ltm else "No test data provided")
+        self.system_message = Template(base_prompt).safe_substitute(
+            basic_test_information=user_ltm if user_ltm else "No test data provided"
+        )
         self.system_message = self._json_instruction + self.system_message
 
         # Normalize model key: ChatOpenAI expects 'model', not 'model_name'
@@ -26,14 +37,28 @@ class PlannerAgent:
             normalized["model"] = normalized.pop("model_name")
         elif "model_name" in normalized:
             normalized.pop("model_name")
-        valid_keys = {"model", "api_key", "base_url", "temperature", "max_tokens"}
+        valid_keys = {
+            "model",
+            "api_key",
+            "base_url",
+            "temperature",
+            "max_tokens",
+            "timeout",
+            "max_retries",
+        }
         filtered = {k: v for k, v in normalized.items() if k in valid_keys}
 
         # llm_config_params: drop keys unsupported by non-OpenAI models
         unsupported_keys = {"reasoning_effort", "seed"}
-        safe_llm_params = {k: v for k, v in llm_config_params.items() if k not in unsupported_keys}
+        safe_llm_params = {
+            k: v for k, v in llm_config_params.items() if k not in unsupported_keys
+        }
 
         safe_llm_params.pop("model", None)  # avoid duplicate with filtered
+        if "timeout" not in filtered and safe_llm_params.get("timeout") is None:
+            safe_llm_params["timeout"] = get_llm_request_timeout_seconds()
+        if "max_retries" not in filtered and safe_llm_params.get("max_retries") is None:
+            safe_llm_params["max_retries"] = get_llm_max_retries()
         self.llm = ChatOpenAI(**filtered, **safe_llm_params)
 
     _json_instruction = """CRITICAL INSTRUCTION: You MUST respond ONLY with a valid JSON object. No preamble, no explanation, no markdown. Your entire response must be parseable JSON.

@@ -10,7 +10,13 @@ from typing import Any, Dict, Literal, Optional, TypedDict
 
 import nest_asyncio
 import openai
-from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import (
+    AIMessage,
+    AnyMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
 from langgraph.graph import END, StateGraph
 
 from testzeus_hercules.config import get_global_conf
@@ -33,6 +39,7 @@ from testzeus_hercules.utils.llm_helper import (
     GraphChatResult,
     convert_model_config_to_langchain_format,
     create_multimodal_agent,
+    get_llm_request_timeout_seconds,
 )
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.response_parser import parse_response
@@ -68,6 +75,7 @@ class AgentState(TypedDict, total=False):
     step_timings: list[dict[str, Any]]
     completed_step_signatures: list[str]
     last_helper_response: str
+    current_url: str
 
 
 class SimpleHercules:
@@ -93,6 +101,7 @@ class SimpleHercules:
         self.memory: Optional[DynamicLTM] = None
         self._graph = None
         self._last_graph_result: GraphChatResult | None = None
+        self._nav_token_log: list[dict[str, Any]] = []
 
     @staticmethod
     def _step_signature(step: str) -> str:
@@ -145,7 +154,12 @@ class SimpleHercules:
 
         from testzeus_hercules.utils.model_utils import adapt_llm_params_for_model
 
-        for cfg in [planner_agent_config, nav_agent_config, mem_agent_config, helper_agent_config]:
+        for cfg in [
+            planner_agent_config,
+            nav_agent_config,
+            mem_agent_config,
+            helper_agent_config,
+        ]:
             model = cfg["model_config_params"].get("model") or cfg["model_config_params"].get("model_name")
             cfg["llm_config_params"] = adapt_llm_params_for_model(model, cfg["llm_config_params"])
 
@@ -155,6 +169,10 @@ class SimpleHercules:
 
     async def _initialize_agents(self) -> dict[str, Any]:
         agents: dict[str, Any] = {}
+        if self.nav_agent_config is None:
+            raise ValueError("Navigation agent config is not initialized.")
+        if self.planner_agent_config is None:
+            raise ValueError("Planner agent config is not initialized.")
         nav_cfg = self.nav_agent_config
         nav_model = convert_model_config_to_langchain_format(nav_cfg["model_config_params"])
         nav_llm = nav_cfg["llm_config_params"]
@@ -180,6 +198,8 @@ class SimpleHercules:
 
         config = get_global_conf()
         if config.should_use_dynamic_ltm():
+            if self.mem_agent_config is None:
+                raise ValueError("Memory agent config is not initialized.")
             mem_model = convert_model_config_to_langchain_format(self.mem_agent_config["model_config_params"])
             llm_config = {**mem_model, **self.mem_agent_config["llm_config_params"]}
             namespace = f"{self.stake_id}_{config.timestamp}"
@@ -196,6 +216,27 @@ class SimpleHercules:
         if not usage:
             usage = getattr(response, "usage", None)
         return usage or {}
+
+    def _token_counts(self, response: Any) -> tuple[int, int]:
+        usage = self._extract_tokens(response)
+        prompt_tokens = int(usage.get("prompt_tokens", 0) or usage.get("input_tokens", 0) or 0)
+        completion_tokens = int(usage.get("completion_tokens", 0) or usage.get("output_tokens", 0) or 0)
+        return prompt_tokens, completion_tokens
+
+    def _record_nav_token_usage(self, agent_name: str, response: Any) -> None:
+        prompt_tokens, completion_tokens = self._token_counts(response)
+        if not prompt_tokens and not completion_tokens:
+            return
+        entry = {
+            "node": "executor",
+            "agent": agent_name,
+            "turn": len([item for item in self._nav_token_log if item.get("agent") == agent_name]) + 1,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": prompt_tokens + completion_tokens,
+        }
+        self._nav_token_log.append(entry)
+        logger.info("[TOKEN_COUNT] %s", entry)
 
     # Patterns that indicate a context/token limit error across OpenAI, Gemini, Anthropic via LiteLLM
     _CONTEXT_LIMIT_PATTERNS = (
@@ -227,24 +268,81 @@ class SimpleHercules:
         summary = "\n".join(lines)
         return [HumanMessage(content=f"COMPRESSED HISTORY (context limit reached):\n{summary}")]
 
-    async def _ainvoke_with_context_fallback(self, llm: Any, messages: list[AnyMessage], system_message: str) -> Any:
+    async def _llm_ainvoke(self, llm: Any, messages: list[AnyMessage], agent_name: str) -> Any:
+        timeout = get_llm_request_timeout_seconds()
         try:
-            return await llm.ainvoke(messages)
+            return await asyncio.wait_for(llm.ainvoke(messages), timeout=timeout)
+        except asyncio.TimeoutError as e:
+            raise TimeoutError(f"{agent_name} LLM call timed out after {timeout:g}s") from e
+
+    async def _ainvoke_with_context_fallback(
+        self,
+        llm: Any,
+        messages: list[AnyMessage],
+        system_message: str,
+        agent_name: str,
+    ) -> Any:
+        try:
+            return await self._llm_ainvoke(llm, messages, agent_name)
         except Exception as e:
             if not self._is_context_limit_error(e):
                 raise
             compressed = self._compress_messages(messages)
             retry_messages = [SystemMessage(content=system_message), *compressed]
-            return await llm.ainvoke(retry_messages)
+            return await self._llm_ainvoke(llm, retry_messages, agent_name)
 
     def _log_model_call(self, agent_name: str, messages: list[AnyMessage]) -> None:
-        serialized = [{"role": getattr(message, "type", message.__class__.__name__), "content": getattr(message, "content", "")} for message in messages]
         has_system = bool(messages and isinstance(messages[0], SystemMessage))
         logger.warning(
             "[MODEL_CALL] agent=%s system_present=%s",
             agent_name,
             has_system,
         )
+
+    def _planner_timeout_result(
+        self,
+        state: AgentState,
+        messages: list[AnyMessage],
+        turn: int,
+        start: float,
+        error: TimeoutError,
+    ) -> dict[str, Any]:
+        elapsed = time.perf_counter() - start
+        final_response = str(error)
+        assert_summary = "EXPECTED RESULT: planner receives a timely model response.\n" f"ACTUAL RESULT: {final_response}."
+        content = json.dumps(
+            {
+                "plan": state.get("plan", ""),
+                "next_step": "",
+                "terminate": "yes",
+                "final_response": final_response,
+                "is_assert": True,
+                "assert_summary": assert_summary,
+                "is_passed": False,
+                "target_helper": "Not_Applicable",
+            }
+        )
+        logger.error("[PLANNER_TIMEOUT] %s", final_response)
+        notify_planner_messages(final_response, message_type=MessageType.ANSWER)
+        return {
+            "planner_turn": turn,
+            "messages": messages + [AIMessage(content=content)],
+            "next_step": "",
+            "target_helper": "not_applicable",
+            "terminate": "yes",
+            "final_response": final_response,
+            "is_assert": True,
+            "assert_summary": assert_summary,
+            "is_passed": False,
+            "step_timings": state.get("step_timings", [])
+            + [
+                {
+                    "node": "planner",
+                    "turn": turn,
+                    "duration": elapsed,
+                }
+            ],
+        }
 
     # ------------------------------------------------------------------
     # Planner node — uses PlannerAgent with its full system prompt
@@ -282,12 +380,18 @@ class SimpleHercules:
             messages = [SystemMessage(content=planner.system_message)] + messages
 
         self._log_model_call("planner_agent", messages)
-        response = await self._ainvoke_with_context_fallback(planner.llm, messages, planner.system_message)
+        try:
+            response = await self._ainvoke_with_context_fallback(
+                planner.llm,
+                messages,
+                planner.system_message,
+                "planner_agent",
+            )
+        except TimeoutError as e:
+            return self._planner_timeout_result(state, messages, turn, start, e)
 
         # Token accounting
-        usage = self._extract_tokens(response)
-        prompt_tokens = usage.get("prompt_tokens", 0) or usage.get("input_tokens", 0)
-        completion_tokens = usage.get("completion_tokens", 0) or usage.get("output_tokens", 0)
+        prompt_tokens, completion_tokens = self._token_counts(response)
         step_entry = {
             "node": "planner",
             "turn": turn,
@@ -401,11 +505,123 @@ class SimpleHercules:
         "agent": "browser_nav_agent",
     }
 
+    _BROWSER_STATE_CHANGING_TOOLS = {
+        "open_url",
+        "click",
+        "bulk_enter_text",
+        "bulk_select_option",
+        "bulk_set_date_time_value",
+        "bulk_set_slider",
+        "click_and_upload_file",
+        "drag_and_drop",
+        "entertext",
+        "hover",
+        "press_key_combination",
+        "set_current_geo_location",
+    }
+
+    _STATE_REFRESH_MARKERS = (
+        "as a consequence of this action",
+        "get all_fields dom",
+        "retrieve dom again",
+        "retrieving dom again",
+        "new elements have appeared",
+        "page has changed",
+    )
+
     def _lookup_browser_tool(self, tool_name: str) -> Any | None:
         for tool_entry in tool_registry.get("browser_nav_agent", []):
             if tool_entry.get("name") == tool_name:
                 return tool_entry.get("func")
         return None
+
+    async def _ensure_nav_agent_ready(self, nav_agent: Any) -> None:
+        ensure_tools_ready = getattr(nav_agent, "ensure_tools_ready", None)
+        if ensure_tools_ready is None:
+            return
+        result = ensure_tools_ready()
+        if asyncio.iscoroutine(result):
+            await result
+
+    async def _build_helper_task(self, next_step: str, target_helper: str, state: AgentState) -> str:
+        task = next_step
+        current_url = str(state.get("current_url") or "").strip()
+        if target_helper in {"browser", "agent"} and current_url:
+            task = f"{task}\n\nCurrent Page: {current_url}"
+
+        memory_context = await self._query_memory(task)
+        if memory_context:
+            task = f"{task}\n\nEXTRA INFORMATION: {memory_context}"
+        return task
+
+    @staticmethod
+    def _tool_call_name(tc: Any) -> str:
+        name = tc.get("name") if isinstance(tc, dict) else getattr(tc, "name", "")
+        return str(name or "")
+
+    @staticmethod
+    def _tool_call_args(tc: Any) -> dict[str, Any]:
+        args = tc.get("args", {}) if isinstance(tc, dict) else getattr(tc, "args", {})
+        return args if isinstance(args, dict) else {"__invalid_tool_args__": args}
+
+    @staticmethod
+    def _tool_call_id(tc: Any, fallback: str) -> str:
+        return tc.get("id", fallback) if isinstance(tc, dict) else getattr(tc, "id", fallback)
+
+    def _tool_call_for_history(self, tc: Any) -> dict[str, Any]:
+        name = self._tool_call_name(tc)
+        return {
+            "name": name,
+            "args": self._tool_call_args(tc),
+            "id": self._tool_call_id(tc, name),
+        }
+
+    def _ai_message_with_tool_calls(self, response: Any, tool_calls: list[Any]) -> AIMessage:
+        return AIMessage(
+            content=getattr(response, "content", "") or "",
+            tool_calls=[self._tool_call_for_history(tc) for tc in tool_calls],
+        )
+
+    def _requires_state_refresh(self, agent_name: str, tool_name: str, tool_result: str) -> bool:
+        if agent_name != "browser_nav_agent":
+            return False
+        lower_result = tool_result.lower()
+        if any(marker in lower_result for marker in self._STATE_REFRESH_MARKERS):
+            return True
+        return tool_name in self._BROWSER_STATE_CHANGING_TOOLS and "[error]" not in lower_result and "[tool error]" not in lower_result and "unable to" not in lower_result
+
+    async def _execute_tool_call(self, tool_obj: Any, tool_name: str, tool_args: dict[str, Any]) -> str:
+        if "__invalid_tool_args__" in tool_args:
+            return f"[TOOL ERROR] {tool_name}: expected tool arguments to be a dict, " f"got {type(tool_args['__invalid_tool_args__']).__name__}."
+        try:
+            coroutine_fn = getattr(tool_obj, "coroutine", None)
+            if coroutine_fn and asyncio.iscoroutinefunction(coroutine_fn):
+                tool_result = await coroutine_fn(**tool_args)
+            elif asyncio.iscoroutinefunction(getattr(tool_obj, "func", None)):
+                tool_result = await tool_obj.func(**tool_args)
+            else:
+                fn = getattr(tool_obj, "func", tool_obj)
+                tool_result = fn(**tool_args)
+            return str(tool_result)
+        except Exception as te:
+            logger.warning("[EXECUTOR] tool %s error: %s", tool_name, te)
+            return f"[TOOL ERROR] {tool_name}: {te}"
+
+    def _build_cost_metrics(self, final_state: dict[str, Any]) -> dict[str, Any]:
+        prompt_tokens = int(final_state.get("total_prompt_tokens", 0) or 0)
+        completion_tokens = int(final_state.get("total_completion_tokens", 0) or 0)
+        total_tokens = prompt_tokens + completion_tokens
+        return {
+            "usage_including_cached_inference": {
+                "total_cost": 0.0,
+                "langgraph": {
+                    "cost": 0.0,
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "total_tokens": total_tokens,
+                },
+            }
+        }
 
     # ------------------------------------------------------------------
     # Executor node — runs the full nav-agent tool loop for next_step
@@ -454,7 +670,16 @@ class SimpleHercules:
 
         logger.info("[EXECUTOR] routing to %s | step: %s", agent_name, next_step[:200])
 
-        helper_response = await self._run_nav_agent(nav_agent, next_step, agent_name)
+        helper_task = await self._build_helper_task(next_step, target_helper, state)
+        nav_token_start = len(self._nav_token_log)
+        helper_response = await self._run_nav_agent(nav_agent, helper_task, agent_name)
+        nav_token_entries = self._nav_token_log[nav_token_start:]
+        nav_prompt_tokens = sum(int(entry.get("prompt_tokens", 0) or 0) for entry in nav_token_entries)
+        nav_completion_tokens = sum(int(entry.get("completion_tokens", 0) or 0) for entry in nav_token_entries)
+        nav_total_tokens = nav_prompt_tokens + nav_completion_tokens
+        executor_entry["prompt_tokens"] = nav_prompt_tokens
+        executor_entry["completion_tokens"] = nav_completion_tokens
+        executor_entry["total_tokens"] = nav_total_tokens
 
         logger.info("[EXECUTOR] %s response: %s", agent_name, helper_response[:300])
 
@@ -478,6 +703,8 @@ class SimpleHercules:
             "completed_step_signatures": completed_step_signatures,
             "last_helper_response": helper_response,
             "step_token_log": state.get("step_token_log", []) + [executor_entry],
+            "total_prompt_tokens": int(state.get("total_prompt_tokens", 0) or 0) + nav_prompt_tokens,
+            "total_completion_tokens": int(state.get("total_completion_tokens", 0) or 0) + nav_completion_tokens,
             "total_steps": state.get("total_steps", 0) + 1,
             "step_timings": state.get("step_timings", [])
             + [
@@ -494,6 +721,7 @@ class SimpleHercules:
         Run a nav agent's full multi-turn tool-calling loop.
         Exits when the agent outputs ##TERMINATE TASK## or rounds are exhausted.
         """
+        await self._ensure_nav_agent_ready(nav_agent)
         tools = getattr(nav_agent, "tools", [])
         llm = getattr(nav_agent, "llm", None)
         system_msg = getattr(nav_agent, "system_message", "You are a helpful agent.")
@@ -504,12 +732,15 @@ class SimpleHercules:
         if not tools:
             # No tools registered — bare LLM call
             try:
-                resp = await llm.ainvoke(
+                resp = await self._llm_ainvoke(
+                    llm,
                     [
                         SystemMessage(content=system_msg),
                         HumanMessage(content=task),
-                    ]
+                    ],
+                    agent_name,
                 )
+                self._record_nav_token_usage(agent_name, resp)
                 return str(getattr(resp, "content", "") or "")
             except Exception as e:
                 return f"[ERROR] {agent_name} bare LLM call failed: {e}"
@@ -519,12 +750,15 @@ class SimpleHercules:
         except Exception as e:
             logger.warning("[EXECUTOR] bind_tools failed for %s: %s", agent_name, e)
             try:
-                resp = await llm.ainvoke(
+                resp = await self._llm_ainvoke(
+                    llm,
                     [
                         SystemMessage(content=system_msg),
                         HumanMessage(content=task),
-                    ]
+                    ],
+                    agent_name,
                 )
+                self._record_nav_token_usage(agent_name, resp)
                 return str(getattr(resp, "content", "") or "")
             except Exception as e2:
                 return f"[ERROR] {agent_name} fallback LLM call failed: {e2}"
@@ -537,58 +771,84 @@ class SimpleHercules:
 
         for _turn in range(self.nav_agent_number_of_rounds):
             try:
-                response = await llm_with_tools.ainvoke(messages)
+                response = await self._llm_ainvoke(llm_with_tools, messages, agent_name)
+                self._record_nav_token_usage(agent_name, response)
             except Exception as e:
                 if not self._is_context_limit_error(e):
                     logger.error("[EXECUTOR] %s LLM error: %s", agent_name, e)
                     return f"[ERROR] {agent_name} LLM error: {e}"
                 messages = self._compress_messages(messages)
                 try:
-                    response = await llm_with_tools.ainvoke([SystemMessage(content=system_msg)] + messages)
+                    response = await self._llm_ainvoke(
+                        llm_with_tools,
+                        [SystemMessage(content=system_msg)] + messages,
+                        agent_name,
+                    )
+                    self._record_nav_token_usage(agent_name, response)
                 except Exception as e2:
                     return f"[ERROR] {agent_name} after compress: {e2}"
 
-            messages.append(response)
-
             content_str = str(getattr(response, "content", "") or "")
             if "##TERMINATE TASK##" in content_str:
+                messages.append(response)
                 return content_str
 
             tool_calls = getattr(response, "tool_calls", []) or []
             if not tool_calls:
                 # No tools called and no terminate — agent is done
+                messages.append(response)
                 return content_str
 
+            tool_messages: list[ToolMessage] = []
+            executed_tool_calls: list[Any] = []
+            refresh_required = False
+            skipped_tool_count = 0
+
             for tc in tool_calls:
-                tool_name = tc.get("name") if isinstance(tc, dict) else getattr(tc, "name", "")
-                tool_args = tc.get("args", {}) if isinstance(tc, dict) else getattr(tc, "args", {})
-                tool_id = tc.get("id", tool_name) if isinstance(tc, dict) else getattr(tc, "id", tool_name)
+                tool_name = self._tool_call_name(tc)
+                tool_args = self._tool_call_args(tc)
+                tool_id = self._tool_call_id(tc, tool_name)
 
                 tool_obj = tool_map.get(tool_name)
                 if tool_obj is None:
                     tool_result = f"[ERROR] Tool '{tool_name}' not found."
                 else:
-                    try:
-                        coroutine_fn = getattr(tool_obj, "coroutine", None)
-                        if coroutine_fn and asyncio.iscoroutinefunction(coroutine_fn):
-                            tool_result = await coroutine_fn(**tool_args)
-                        elif asyncio.iscoroutinefunction(getattr(tool_obj, "func", None)):
-                            tool_result = await tool_obj.func(**tool_args)
-                        else:
-                            fn = getattr(tool_obj, "func", tool_obj)
-                            tool_result = fn(**tool_args)
-                        tool_result = str(tool_result)
-                    except Exception as te:
-                        tool_result = f"[TOOL ERROR] {tool_name}: {te}"
-                        logger.warning("[EXECUTOR] tool %s error: %s", tool_name, te)
+                    tool_result = await self._execute_tool_call(tool_obj, tool_name, tool_args)
 
-                messages.append(ToolMessage(content=tool_result, tool_call_id=tool_id))
+                executed_tool_calls.append(tc)
+                tool_messages.append(ToolMessage(content=tool_result, tool_call_id=tool_id))
 
-        # Max rounds — return last AI content
+                if self._requires_state_refresh(agent_name, tool_name, tool_result):
+                    refresh_required = True
+                    skipped_tool_count = len(tool_calls) - len(executed_tool_calls)
+                    logger.warning(
+                        "[EXECUTOR] %s tool %s changed browser state; skipped %s stale tool call(s).",
+                        agent_name,
+                        tool_name,
+                        skipped_tool_count,
+                    )
+                    break
+
+            if refresh_required:
+                messages.append(self._ai_message_with_tool_calls(response, executed_tool_calls))
+            else:
+                messages.append(response)
+            messages.extend(tool_messages)
+
+            if refresh_required:
+                messages.append(
+                    HumanMessage(content=(f"{agent_name} skipped {skipped_tool_count} remaining " "tool call(s) because browser state changed. Re-read the " "current page/DOM before continuing."))
+                )
+
+        # Max rounds — return an explicit failure, even when the last response only had tool calls.
+        last_ai_content = ""
         for m in reversed(messages):
-            if isinstance(m, AIMessage):
-                return str(getattr(m, "content", "") or "")
-        return f"[{agent_name}] Max nav rounds ({self.nav_agent_number_of_rounds}) reached."
+            if isinstance(m, AIMessage) and str(getattr(m, "content", "") or "").strip():
+                last_ai_content = str(getattr(m, "content", "") or "")
+                break
+        if not last_ai_content:
+            last_ai_content = "[empty or tool-calls-only assistant response]"
+        return f"[ERROR] {agent_name} max nav rounds ({self.nav_agent_number_of_rounds}) " f"reached before ##TERMINATE TASK##. Last assistant response: {last_ai_content}"
 
     # ------------------------------------------------------------------
     # Assertion node — trusts planner's is_assert/is_passed/assert_summary
@@ -651,8 +911,16 @@ class SimpleHercules:
         graph.add_node("executor", self._executor_node)
         graph.add_node("assertion", self._assertion_node)
         graph.set_entry_point("planner")
-        graph.add_conditional_edges("planner", self._route_after_planner, {"executor": "executor", "assertion": "assertion", "end": END})
-        graph.add_conditional_edges("executor", self._route_after_executor, {"planner": "planner", "assertion": "assertion"})
+        graph.add_conditional_edges(
+            "planner",
+            self._route_after_planner,
+            {"executor": "executor", "assertion": "assertion", "end": END},
+        )
+        graph.add_conditional_edges(
+            "executor",
+            self._route_after_executor,
+            {"planner": "planner", "assertion": "assertion"},
+        )
         graph.add_edge("assertion", END)
         return graph.compile()
 
@@ -724,6 +992,7 @@ class SimpleHercules:
                 "step_timings": [],
                 "completed_step_signatures": [],
                 "last_helper_response": "",
+                "current_url": current_url or "",
             }
             final_state = await self._graph.ainvoke(initial, config={"recursion_limit": 2000})
 
@@ -752,13 +1021,18 @@ class SimpleHercules:
             result = GraphChatResult(
                 chat_history=history,
                 messages=messages,
+                cost=self._build_cost_metrics(final_state),
                 terminate=terminate,
             )
             self._last_graph_result = result
             return result
         except openai.BadRequestError as bre:
             if self._is_context_limit_error(bre):
-                logger.error('Context limit exceeded even after compression for command: "%s". %s', command, bre)
+                logger.error(
+                    'Context limit exceeded even after compression for command: "%s". %s',
+                    command,
+                    bre,
+                )
             else:
                 logger.error('Unable to process command: "%s". %s', command, bre)
             traceback.print_exc()
