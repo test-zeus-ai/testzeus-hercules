@@ -231,8 +231,10 @@ To set up and run Hercules on a Windows machine:
 - Gemini / Vertex AI: Supported through OpenAI-compatible gateways such as
   LiteLLM. Keep tool schemas simple; tuple-style public tool inputs are not
   provider-safe.
+  -Gemma: Supported models include gemma-4-26b-a4b-it and others like it 
 - Groq, Mistral, Ollama, DeepSeek, Bedrock, Azure, and other providers can be
   used when they support OpenAI-compatible chat and function/tool calling.
+  -Local: Models that dont respond in json text like qwen3 are supported.
 
 The planner model should be strong at structured JSON reasoning. Navigation
 models must support tool calling. Advanced users can configure model routing

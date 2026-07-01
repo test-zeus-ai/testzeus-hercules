@@ -220,4 +220,4 @@ These are based on the **combined full-run total** (Signup_page + Delete_the_acc
 **Overall verdict:**
 - **LangGraph is only marginally better, not dramatically better** — roughly **2-3% faster** and **~5% cheaper** on tokens once the AG2 outlier run is excluded.
 - The widely-different 27%-faster headline number is mostly an artifact of one slow AG2 page load, not a structural advantage of LangGraph's orchestration.
-- If you exclude noisy runs, the two frameworks land within single digits of each other on every axis (speed, tokens, step count) — this is a case of LangGraph having a **small, consistent edge**, not AG2 being meaningfully worse.
+- If you exclude noisy runs, the two frameworks land within single digits of each other on every axis (speed, tokens, step count) — this is a case of LangGraph having a **small, consistent edge**, not AG2 being meaningfully worse. 
