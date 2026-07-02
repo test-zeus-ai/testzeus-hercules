@@ -234,7 +234,8 @@ To set up and run Hercules on a Windows machine:
   -Gemma: Supported models include gemma-4-26b-a4b-it and others like it 
 - Groq, Mistral, Ollama, DeepSeek, Bedrock, Azure, and other providers can be
   used when they support OpenAI-compatible chat and function/tool calling.
-  -Local: Models that dont respond in json text like qwen3 are supported.
+- Local: Models that dont respond in json text like qwen3 are supported changes to the model can be made in the File called Modelfile(located
+  in /docs/Migration/Modelfile).
 
 The planner model should be strong at structured JSON reasoning. Navigation
 models must support tool calling. Advanced users can configure model routing
