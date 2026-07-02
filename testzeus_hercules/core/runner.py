@@ -87,9 +87,7 @@ class BaseRunner:
         res_output_thoughts_logs_di: Dict[str, List[Dict[str, Any]]] = {}
 
         if self.simple_hercules and self.simple_hercules._last_graph_result:
-            res_output_thoughts_logs_di[self.planner_agent_name] = list(
-                self.simple_hercules._last_graph_result.chat_history
-            )
+            res_output_thoughts_logs_di[self.planner_agent_name] = list(self.simple_hercules._last_graph_result.chat_history)
         elif self.planner_agent_name in agents_map:
             planner = agents_map[self.planner_agent_name]
             if hasattr(planner, "chat_messages"):

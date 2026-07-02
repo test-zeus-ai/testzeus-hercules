@@ -53,8 +53,7 @@ async def __inject_attributes(page: Page) -> None:
     'aria-keyshortcuts' is choosen because it is not widely used aria attribute.
     """
 
-    last_md = await page.evaluate(
-        """() => {
+    last_md = await page.evaluate("""() => {
             // A recursive function to handle elements in DOM, shadow DOM, and iframes
             const processElements = (elements, idCounter) => {
                 elements.forEach(element => {
@@ -233,8 +232,7 @@ async def __inject_attributes(page: Page) -> None:
 
             return id;
         };
-        """
-    )
+        """)
     logger.debug(f"Added MD into {last_md} elements")
 
 
@@ -643,8 +641,7 @@ async def __cleanup_dom(page: Page) -> None:
     from 'orig-aria-keyshortcuts'.
     """
     logger.debug("Cleaning up the DOM's previous injections")
-    await page.evaluate(
-        """() => {
+    await page.evaluate("""() => {
             // Recursive function to process elements in DOM, shadow DOM, and iframes
             const processElements = (parent) => {
                 // Select all elements with the 'md' attribute in the current parent (regular DOM or shadow DOM)
@@ -685,8 +682,7 @@ async def __cleanup_dom(page: Page) -> None:
             processElements(document);
         };
 
-    """
-    )
+    """)
     logger.debug("DOM cleanup complete")
 
 

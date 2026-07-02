@@ -30,6 +30,7 @@ def _normalize_slider_entry(entry: Any) -> tuple[str, str]:
         return str(entry[0]), str(entry[1])
     raise ValueError("Entry must contain selector and value_to_set.")
 
+
 async def custom_set_slider_value(page: Page, selector: str, value_to_set: float) -> None:
     """
     Sets the value of a range slider input element to a specified value.
@@ -48,8 +49,7 @@ async def custom_set_slider_value(page: Page, selector: str, value_to_set: float
     selector = f"{selector}"  # Ensures the selector is treated as a string
     try:
         result = await page.evaluate(
-            get_js_with_element_finder(
-                """
+            get_js_with_element_finder("""
             (inputParams) => {
                 /*INJECT_FIND_ELEMENT_IN_SHADOW_DOM*/
                 const { selector } = inputParams;
@@ -78,8 +78,7 @@ async def custom_set_slider_value(page: Page, selector: str, value_to_set: float
                 element.dispatchEvent(changeEvent);
                 return `Value set for ${selector}: ${sliderValue}`;
             }
-            """
-            ),
+            """),
             {"selector": selector, "value_to_set": value_to_set},
         )
         logger.debug(f"custom_set_slider_value result: {result}")
@@ -93,9 +92,7 @@ async def custom_set_slider_value(page: Page, selector: str, value_to_set: float
 async def setslider(
     entry: Annotated[
         Dict[str, str],
-        "Dictionary containing 'selector' and 'value_to_set'. "
-        "selector is the md attribute value of the DOM element to interact with, "
-        "and value_to_set is the slider value to set.",
+        "Dictionary containing 'selector' and 'value_to_set'. " "selector is the md attribute value of the DOM element to interact with, " "and value_to_set is the slider value to set.",
     ],
 ) -> Annotated[str, "Explanation of the outcome of this operation."]:
     logger.info(f"Setting slider value: {entry}")
@@ -192,14 +189,12 @@ async def do_setslider(page: Page, selector: str, value_to_set: float) -> dict[s
         element_attributes = await selector_logger.get_element_attributes(elem_handle)
 
         # Get slider properties before setting value
-        slider_props = await elem_handle.evaluate(
-            """element => ({
+        slider_props = await elem_handle.evaluate("""element => ({
             min: parseFloat(element.min) || 0,
             max: parseFloat(element.max) || 100,
             step: parseFloat(element.step) || 1,
             type: element.type
-        })"""
-        )
+        })""")
 
         if slider_props["type"] != "range":
             # Log failed selector interaction for non-range input

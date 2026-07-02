@@ -1,9 +1,9 @@
-"""Dynamic long-term memory using ChromaDB and langChain. """
+"""Dynamic long-term memory using ChromaDB and langChain."""
 
 from __future__ import annotations
 
 import datetime
-import os 
+import os
 import shutil
 import tempfile
 import traceback
@@ -13,7 +13,6 @@ from typing import Any, Dict, List, Optional
 import chromadb
 from chromadb.utils import embedding_functions
 from langchain_core.messages import HumanMessage, SystemMessage
-
 from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.memory.static_data_loader import get_test_data_file_paths
 from testzeus_hercules.utils.llm_helper import create_chat_model
@@ -24,6 +23,7 @@ from unstructured.partition.auto import partition
 RAG_SYSTEM_REPORT = """Role:
 I am a memory retrieval agent designed to assist other agents by retrieving information explicitly stored in my memory.
 Provide only information from retrieved context. NEVER invent Data."""
+
 
 class DynamicLTM:
     _instances: Dict[str, "DynamicLTM"] = {}
@@ -43,11 +43,11 @@ class DynamicLTM:
         instance = super().__new__(cls)
         isinstance._initialize(namespace, llm_config)
         return instance
-    
+
     def _initialize(
-            self, 
-            namespace: str, 
-            llm_config:Optional[Dict[str, Any]] = None,
+        self,
+        namespace: str,
+        llm_config: Optional[Dict[str, Any]] = None,
     ) -> None:
         self.namespace = namespace
         self.static_data_list = get_test_data_file_paths()
@@ -67,7 +67,7 @@ class DynamicLTM:
 
         if not self.use_dynamic_ltm:
             return
-        
+
         if not self.resuse_vector_db and os.path.exists(self.vector_db_path):
             try:
                 shutil.rmtree(self.vector_db_path)
@@ -95,7 +95,7 @@ class DynamicLTM:
             if self._collection is None or self._collection.count() > 0:
                 return
             for path in self.static_data_list:
-                try: 
+                try:
                     if os.path.isfile(path):
                         elements = partition(path)
                         text = "\n".join(str(el) for el in elements if isinstance(el, (Text, Title, NarrativeText)))
@@ -104,7 +104,7 @@ class DynamicLTM:
                 except Exception as exc:
                     logger.warning("Failed to ingest static LTM file %s: %s", path, exc)
 
-        def _process_content(self, content:str, is_text: bool = True) -> str:
+        def _process_content(self, content: str, is_text: bool = True) -> str:
             try:
                 if is_text:
                     temp_file = os.path.join(tempfile.gettempdir(), f"temp_{uuid.uuid4()}.txt")
@@ -118,8 +118,8 @@ class DynamicLTM:
                 return "\n".join(processed) if processed else content
             except Exception:
                 return content
-            
-        def save_content(self, content: str, is_text:bool = True) -> None:
+
+        def save_content(self, content: str, is_text: bool = True) -> None:
             if not self.use_dynamic_ltm or not content.strip() or self._collection is None:
                 return
             try:
@@ -135,17 +135,14 @@ class DynamicLTM:
                 traceback.print_exc()
                 logger.error("Error saving content to memory: %s", exc)
 
-        async def query (self, context: str) -> str:
+        async def query(self, context: str) -> str:
             if not self.use_dynamic_ltm or self._collection is None or self._llm is None:
                 return ""
             try:
-                results = self._collection.query(query_texts =[context], n_results=5)
+                results = self._collection.query(query_texts=[context], n_results=5)
                 docs = results.get("documents", [[]])[0] if results else []
                 context_text = "\n".join(docs) if docs else ""
-                problem = (
-                    "EQUIP me with all the relevant INFROMATION, ENVIRONMENT DATA, TEST DATA "
-                    f"TEST DEPENDANCIES TO SOLVE THE TASK: {context}"
-                )
+                problem = "EQUIP me with all the relevant INFROMATION, ENVIRONMENT DATA, TEST DATA " f"TEST DEPENDANCIES TO SOLVE THE TASK: {context}"
                 response = await self._llm.ainvoke(
                     [
                         SystemMessage(content=RAG_SYSTEM_REPORT),
@@ -156,11 +153,11 @@ class DynamicLTM:
             except Exception as exc:
                 logger.query("LTM query failed %s", exc)
                 return ""
-            
+
         def clear(self) -> None:
             if not self._use_dynamic_ltm or self._collection is None:
                 return
-            try: 
+            try:
                 client = chromadb.PersistentClient(path=self.vector_db_path)
                 client.delete_collection(self.collection_name)
                 self._init_chroma()
@@ -171,7 +168,7 @@ class DynamicLTM:
         @property
         def memory_path(self) -> Optional[List[str]]:
             return self.static_data_list
-        
+
         def get_agents(self) -> tuple[None, None]:
             """Legacy hook; LangGraph uses query/save directly."""
             return None, None

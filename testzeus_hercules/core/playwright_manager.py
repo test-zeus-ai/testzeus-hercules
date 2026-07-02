@@ -12,7 +12,6 @@ from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
-from playwright.async_api import Page
 
 import httpx
 from PIL import Image, ImageDraw, ImageFont
@@ -1653,16 +1652,14 @@ class PlaywrightManager:
                 return
 
             # Get element's accessibility info
-            accessibility_info = await element.evaluate(
-                """element => {
+            accessibility_info = await element.evaluate("""element => {
                 return {
                     ariaLabel: element.getAttribute('aria-label'),
                     role: element.getAttribute('role'),
                     name: element.getAttribute('name'),
                     title: element.getAttribute('title')
                 }
-            }"""
-            )
+            }""")
 
             # Use the first non-empty value from accessibility info
             element_identifier = next(
@@ -1899,21 +1896,21 @@ class PlaywrightManager:
     async def detect_active_tab_page(self) -> Optional[Page]:
         """
         Detect which page is the active/focused tab in the browser.
-        
+
         This is crucial for supporting keyboard tab switching (Control+2, Control+Tab, etc.)
         After the user presses a tab-switching key combination, the browser switches tabs
         at the UI level, but Playwright needs to know which Page object corresponds to the
         now-active browser tab.
-        
+
         Returns:
             The Page object corresponding to the active browser tab, or None if detection fails
         """
         context = await self.get_browser_context()
         pages = [p for p in context.pages if not p.is_closed()]
-        
+
         if not pages:
             return None
-        
+
         # Try to find the active page by checking document.hidden
         # In a browser, document.hidden is false for the active tab and true for background tabs
         active_page = None
@@ -1927,11 +1924,11 @@ class PlaywrightManager:
             except Exception as e:
                 logger.warning(f"Failed to check document.hidden for {page.url}: {e}")
                 continue
-        
+
         if active_page:
             logger.info(f"Detected active page (via document.hidden): {active_page.url}")
             return active_page
-        
+
         # Fallback: Try each page with bring_to_front() and see which one is already responsive
         for page in pages:
             try:
@@ -1943,7 +1940,7 @@ class PlaywrightManager:
             except Exception as e:
                 logger.debug(f"Page {page.url} not responsive: {e}")
                 continue
-        
+
         logger.warning("Could not detect active page, returning None")
         return None
 

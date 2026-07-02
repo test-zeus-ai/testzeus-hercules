@@ -25,16 +25,16 @@ def final_reply_callback_user_proxy(
 
 
 def final_reply_callback_planner_agent(
-        message: str, 
-        message_type: MessageType = MessageType.STEP, 
-        stake_id: str = "", 
-        helper_name: str = "", 
-        is_assert: bool = False, 
-        is_passed: bool = False, 
-        assert_summary: str = "", 
-        is_terminated: bool = False, 
-        is_completed: bool = False, 
-        final_response: str = "",
-) -> tuple[bool, None]:  
+    message: str,
+    message_type: MessageType = MessageType.STEP,
+    stake_id: str = "",
+    helper_name: str = "",
+    is_assert: bool = False,
+    is_passed: bool = False,
+    assert_summary: str = "",
+    is_terminated: bool = False,
+    is_completed: bool = False,
+    final_response: str = "",
+) -> tuple[bool, None]:
     add_event(EventType.STEP, EventData(detail=message_type.value))
-    return False, None  
+    return False, None

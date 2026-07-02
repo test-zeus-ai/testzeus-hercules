@@ -1,12 +1,14 @@
-import tempfile
 import os
 import subprocess
+import tempfile
+
 
 def collect_requirements(test_description: str | None = None) -> dict:
     if test_description:
         return {"description": test_description}
     print("\nTestZeus Guided Builder\n")
     return {"description": input("Describe your test parameters: ")}
+
 
 async def generate_gherkin(requirements, llm):
     prompt = f"""
@@ -23,13 +25,15 @@ async def generate_gherkin(requirements, llm):
     ONLY a valid .feature file
     """
     result = await llm.ainvoke(prompt)
-    return result.content if hasattr(result, 'content') else str(result)
+    return result.content if hasattr(result, "content") else str(result)
+
 
 def save_temp_feature(feature: str):
     f = tempfile.NamedTemporaryFile(suffix=".feature", delete=False, mode="w")
     f.write(feature)
     f.close()
     return f.name
+
 
 async def run_guided_mode(llm, test_description: str | None = None):
     req = collect_requirements(test_description)

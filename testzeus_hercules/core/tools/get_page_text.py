@@ -70,8 +70,7 @@ def clean_text(text_content: str) -> str:
 
 
 async def get_filtered_text_content(page: Page) -> str:
-    text_content = await page.evaluate(
-        """
+    text_content = await page.evaluate("""
         () => {
         const selectorsToFilter = ['#hercules-overlay'];
         const originalStyles = [];
@@ -284,6 +283,5 @@ async def get_filtered_text_content(page: Page) -> str:
 
         return textContent;
         }
-    """
-    )
+    """)
     return clean_text(text_content)

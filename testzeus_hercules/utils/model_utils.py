@@ -1,5 +1,6 @@
 import re
-from typing import Dict, Any
+from typing import Any, Dict
+
 from .logger import logger
 
 
@@ -8,13 +9,13 @@ def _is_gpt5_model(model_name: str) -> bool:
     Check if the model is a GPT-5 variant using regex pattern.
     Matches: gpt-5, gpt-5-mini, gpt-5-nano, gpt-5-2025-08-07, etc.
     """
-    return bool(re.match(r'^gpt-5', model_name))
+    return bool(re.match(r"^gpt-5", model_name))
 
 
 def adapt_llm_params_for_model(model_name: str, llm_config: Dict[str, Any]) -> Dict[str, Any]:
     """
     Normalize token-limit params for different providers/families.
-    
+
     For GPT-5 models, converts max_tokens to max_completion_tokens.
     For Claude models, converts max_tokens to max_tokens_to_sample.
     For other models, ensures max_tokens is present.
@@ -66,10 +67,10 @@ def adapt_llm_params_for_model(model_name: str, llm_config: Dict[str, Any]) -> D
         # Set default if neither is present
         if "max_tokens" not in params:
             params["max_tokens"] = 4096
-    
+
     # Strip OpenAI o-series only params for non o-series models
     o_series_only_params = ["reasoning_effort", "reasoning_summary"]
-    is_o_series = bool(re.match(r'^o[0-9]', model_name or ""))
+    is_o_series = bool(re.match(r"^o[0-9]", model_name or ""))
     if not is_o_series:
         for p in o_series_only_params:
             if p in params:

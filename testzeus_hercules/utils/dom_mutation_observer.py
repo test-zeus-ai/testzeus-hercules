@@ -28,8 +28,7 @@ async def add_mutation_observer(page: Page) -> None:
     However, in many cases, the change could be a change in the style or class of an existing node (e.g. toggle visibility of a hidden node).
     """
 
-    await page.evaluate(
-        """
+    await page.evaluate("""
             console.log('Adding a mutation observer for DOM changes');
 
             const observeMutations = (root) => {
@@ -110,8 +109,7 @@ async def add_mutation_observer(page: Page) -> None:
                 }
             });
 
-        """
-    )
+        """)
 
 
 async def handle_navigation_for_mutation_observer(page: Page) -> None:

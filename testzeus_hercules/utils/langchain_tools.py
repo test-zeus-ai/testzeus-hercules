@@ -8,9 +8,9 @@ from typing import Annotated, Any, Callable, get_args, get_origin
 
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field, create_model
-
 from testzeus_hercules.core.tools.tool_registry import tool_registry
 from testzeus_hercules.utils.logger import logger
+
 
 def _annotation_to_type_and_description(annotation: Any, description: str = "") -> tuple[Any, str]:
     """Map Annotated[T, "description"] to the base type and field description."""
@@ -56,9 +56,9 @@ def _build_args_schema(func: Callable[..., Any], tool_name: str) -> type[BaseMod
             )
 
     if not fields:
-        return create_model(f"{tool_name}_args") #type: ignore[call-overload]
+        return create_model(f"{tool_name}_args")  # type: ignore[call-overload]
 
-    return create_model(f"{tool_name}_args", **fields) #type: ignore[call-overload]
+    return create_model(f"{tool_name}_args", **fields)  # type: ignore[call-overload]
 
 
 def _normalize_legacy_kwargs(func: Callable[..., Any], kwargs: dict[str, Any]) -> dict[str, Any]:
@@ -74,16 +74,8 @@ def _normalize_legacy_kwargs(func: Callable[..., Any], kwargs: dict[str, Any]) -
 
     sig = inspect.signature(func)
     params = sig.parameters
-    accepts_var_kwargs = any(
-        param.kind is inspect.Parameter.VAR_KEYWORD
-        for param in params.values()
-    ) 
-    expected = {
-        name
-        for name, param in params.items()
-        if name not in ("self", "cls")
-        and param.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
-    }
+    accepts_var_kwargs = any(param.kind is inspect.Parameter.VAR_KEYWORD for param in params.values())
+    expected = {name for name, param in params.items() if name not in ("self", "cls") and param.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)}
     normalized = dict(kwargs)
 
     if set(normalized) == {"kwargs"} and isinstance(normalized["kwargs"], dict):
@@ -146,31 +138,33 @@ def _normalize_legacy_kwargs(func: Callable[..., Any], kwargs: dict[str, Any]) -
         logger.debug("Dropping stale tool args for %s: %s", func.__name__, sorted(dropped))
     return {key: value for key, value in normalized.items() if key in expected}
 
+
 def _wrap_tool_func(func: Callable[..., Any]) -> Callable[..., Any]:
     if inspect.iscoroutinefunction(func):
 
         async def _async_wrapper(**kwargs: Any) -> Any:
             return await func(**_normalize_legacy_kwargs(func, kwargs))
-        
+
         return _async_wrapper
-        
+
     def _sync_wrapper(**kwargs: Any) -> Any:
         return func(**_normalize_legacy_kwargs(func, kwargs))
-    
+
     return _sync_wrapper
 
+
 def registry_tools_to_structured_tools(agent_name: str) -> list[StructuredTool]:
-    """Build LangChain tools for a navigation agent from the global registry. """
+    """Build LangChain tools for a navigation agent from the global registry."""
     tools: list[StructuredTool] = []
     tool_entries = tool_registry.get(agent_name, [])
     logger.info(f"[TOOL_DEBUG] Building tools for agent '{agent_name}'. Found {len(tool_entries)} tool entries in registry.")
-    
+
     for entry in tool_entries:
         func = entry["func"]
         name = entry["name"]
         description = entry["description"]
         logger.info(f"[TOOL_DEBUG] Processing tool '{name}' for agent '{agent_name}'")
-        
+
         try:
             args_schema = _build_args_schema(func, name)
             wrapped = _wrap_tool_func(func)
@@ -186,10 +180,12 @@ def registry_tools_to_structured_tools(agent_name: str) -> list[StructuredTool]:
         except Exception as exc:
             logger.warning(f"[TOOL_DEBUG] Failed to register tool '{name}' for agent '{agent_name}': {exc}", exc_info=True)
             import traceback
+
             traceback.print_exc()
-    
+
     logger.info(f"[TOOL_DEBUG] Completed building {len(tools)} tools for agent '{agent_name}': {[t.name for t in tools]}")
     return tools
+
 
 def merge_tools(*tool_lists: list[StructuredTool]) -> list[StructuredTool]:
     """Merge tool lists, last duplicate name wins."""

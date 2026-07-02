@@ -1,4 +1,6 @@
-from testzeus_hercules.core.agents.multimodal_base_nav_agent import MultimodalBaseNavAgent
+from testzeus_hercules.core.agents.multimodal_base_nav_agent import (
+    MultimodalBaseNavAgent,
+)
 
 
 class BrowserNavAgent(MultimodalBaseNavAgent):

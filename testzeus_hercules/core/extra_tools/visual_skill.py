@@ -5,13 +5,14 @@ import time
 import traceback
 from typing import Annotated, Dict, Union
 
-from PIL import Image
 from langchain_core.messages import AIMessage
+from PIL import Image
 from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.llm_helper import create_multimodal_agent
 from testzeus_hercules.utils.logger import logger
+
 
 @tool(
     agent_names=["browser_nav_agent"],
@@ -19,9 +20,7 @@ from testzeus_hercules.utils.logger import logger
     description="Compare the current screen view with a reference image or screenshot and return results",
 )
 async def compare_visual_screenshot(
-    reference_image_path: Annotated[
-        str, "Path to the reference image/screenshot to compare against"
-    ],
+    reference_image_path: Annotated[str, "Path to the reference image/screenshot to compare against"],
     comparison_title: Annotated[str, "Title/description for this comparison"],
 ) -> Union[str, Dict[str, str]]:
     """
@@ -61,13 +60,7 @@ async def compare_visual_screenshot(
 
         # Create a timestamped filename for this comparison
         timestamp = int(time.time())
-        base_filename = (
-            comparison_title.replace(" ", "_")
-            .replace("/", "_")
-            .replace(":", "_")
-            .lower()
-            + f"_{timestamp}"
-        )
+        base_filename = comparison_title.replace(" ", "_").replace("/", "_").replace(":", "_").lower() + f"_{timestamp}"
         # base_filename = f"comparison_{timestamp}"
 
         # Define paths for all files
@@ -107,9 +100,7 @@ async def compare_visual_screenshot(
 
         # Format the prompt with actual image URIs
         # in comparison prompt pass the path instead base64 encoded string
-        message = comparison_prompt.format(
-            reference=reference_image_path, screenshot=screenshot_file
-        )
+        message = comparison_prompt.format(reference=reference_image_path, screenshot=screenshot_file)
 
         logger.debug(f"Comparison prompt: {message}")
         ai_response = await image_agent.ainvoke(message)
@@ -133,11 +124,7 @@ async def compare_visual_screenshot(
         logger.info("Visual comparison completed")
 
         # Return the comparison results
-        return (
-            f"Comparison saved to {comparison_file}\n"
-            f"Current screenshot saved to {screenshot_file}\n\n"
-            f"Results:\n{last_message}"
-        )
+        return f"Comparison saved to {comparison_file}\n" f"Current screenshot saved to {screenshot_file}\n\n" f"Results:\n{last_message}"
 
     except Exception as e:
 
@@ -168,9 +155,7 @@ async def _write_comparison_to_file(comparison_data: Dict, filepath: str) -> Non
     description="Validate if specific features or items are present in the current screen",
 )
 async def validate_visual_feature(
-    feature_description: Annotated[
-        str, "Description of features/items to look for in the current view"
-    ],
+    feature_description: Annotated[str, "Description of features/items to look for in the current view"],
     search_title: Annotated[str, "Title for this feature search"],
 ) -> Union[str, Dict[str, str]]:
     """
@@ -208,10 +193,7 @@ async def validate_visual_feature(
 
         # Create timestamped files
         timestamp = int(time.time())
-        base_filename = (
-            search_title.replace(" ", "_").replace("/", "_").replace(":", "_").lower()
-            + f"_{timestamp}"
-        )
+        base_filename = search_title.replace(" ", "_").replace("/", "_").replace(":", "_").lower() + f"_{timestamp}"
         validation_file = os.path.join(validation_dir, f"{base_filename}.json")
         screenshot_file = os.path.join(validation_dir, f"{base_filename}.png")
 
@@ -265,11 +247,7 @@ async def validate_visual_feature(
         # log cost of the validation
         logger.info("Visual validation completed")
 
-        return (
-            f"Feature validation saved to {validation_file}\n"
-            f"Screenshot saved to {screenshot_file}\n\n"
-            f"Results:\n{last_message}"
-        )
+        return f"Feature validation saved to {validation_file}\n" f"Screenshot saved to {screenshot_file}\n\n" f"Results:\n{last_message}"
 
     except Exception as e:
 

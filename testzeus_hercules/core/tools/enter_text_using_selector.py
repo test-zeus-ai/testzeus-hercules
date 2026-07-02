@@ -34,6 +34,7 @@ def _normalize_enter_text_entry(entry: Any) -> tuple[str, str]:
         return str(entry[0]), str(entry[1])
     raise ValueError("Entry must contain selector and text_to_enter.")
 
+
 async def custom_fill_element(page: Page, selector: str, text_to_enter: str) -> None:
     selector = f"{selector}"  # Ensures the selector is treated as a string
     try:
@@ -73,11 +74,7 @@ async def custom_fill_element(page: Page, selector: str, text_to_enter: str) -> 
 async def entertext(
     entry: Annotated[
         Dict[str, str],
-        (
-            "Dictionary containing 'selector' and 'text_to_enter'. "
-            "Selector is the md attribute value of the DOM element and "
-            "text_to_enter is the text to enter."
-        ),
+        ("Dictionary containing 'selector' and 'text_to_enter'. " "Selector is the md attribute value of the DOM element and " "text_to_enter is the text to enter."),
     ],
 ) -> Annotated[str, "Text entry result"]:
     add_event(EventType.INTERACTION, EventData(detail="EnterText"))
@@ -110,8 +107,7 @@ async def entertext(
     subscribe(detect_dom_changes)
 
     await page.evaluate(
-        get_js_with_element_finder(
-            """
+        get_js_with_element_finder("""
         (selector) => {
             /*INJECT_FIND_ELEMENT_IN_SHADOW_DOM*/
             const element = findElementInShadowDOMAndIframes(document, selector);
@@ -121,8 +117,7 @@ async def entertext(
                 console.error('Element not found:', selector);
             }
         }
-        """
-        ),
+        """),
         selector,
     )
 
@@ -179,11 +174,7 @@ async def do_entertext(page: Page, selector: str, text_to_enter: str, use_keyboa
             logger.info(f"element_role: {element_role}, element_type: {element_type}")
 
         text_input_types = {"text", "search", "email", "password", "url", "tel", "number"}
-        is_text_entry_element = (
-            tag_name == "textarea" or
-            (tag_name == "input" and element_type in text_input_types) or
-            (element_role in {"textbox", "searchbox"})
-        )
+        is_text_entry_element = tag_name == "textarea" or (tag_name == "input" and element_type in text_input_types) or (element_role in {"textbox", "searchbox"})
 
         if not is_text_entry_element:
             if element_role in input_roles or element_type in input_types:

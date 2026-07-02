@@ -97,11 +97,7 @@ async def get_interactive_elements() -> Annotated[str, "DOM type dict giving all
         if isinstance(value, list):
             return [compact_value(item) for item in value[:30]]
         if isinstance(value, dict):
-            return {
-                str(key): compact_value(item_value)
-                for key, item_value in value.items()
-                if item_value not in ("", None, [], {})
-            }
+            return {str(key): compact_value(item_value) for key, item_value in value.items() if item_value not in ("", None, [], {})}
         return value
 
     def compact_interactive_node(node: dict) -> dict:
@@ -130,11 +126,7 @@ async def get_interactive_elements() -> Annotated[str, "DOM type dict giving all
             "options",
             "additional_info",
         )
-        return {
-            key: compact_value(node[key])
-            for key in allowed_keys
-            if key in node and node[key] not in ("", None, [], {})
-        }
+        return {key: compact_value(node[key]) for key in allowed_keys if key in node and node[key] not in ("", None, [], {})}
 
     flattened_data = flatten_elements(extracted_data) if isinstance(extracted_data, dict) else []
 

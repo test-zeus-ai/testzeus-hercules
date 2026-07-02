@@ -7,7 +7,6 @@ from typing import Any
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.tools import StructuredTool
-
 from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.memory.static_ltm import get_user_ltm
 from testzeus_hercules.core.tools.tool_registry import tool_registry

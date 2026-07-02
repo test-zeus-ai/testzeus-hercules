@@ -6,9 +6,15 @@ from junit2htmlreport.runner import run as prepare_html
 from testzeus_hercules.config import get_global_conf, set_global_conf
 from testzeus_hercules.core.runner import SingleCommandInputRunner
 from testzeus_hercules.telemetry import EventData, EventType, add_event
-from testzeus_hercules.utils.gherkin_helper import process_feature_file, serialize_feature_file
+from testzeus_hercules.utils.gherkin_generator import (
+    generate_gherkin_from_description,
+    print_feature_block,
+)
+from testzeus_hercules.utils.gherkin_helper import (
+    process_feature_file,
+    serialize_feature_file,
+)
 from testzeus_hercules.utils.junit_helper import JUnitXMLGenerator, build_junit_xml
-from testzeus_hercules.utils.gherkin_generator import generate_gherkin_from_description, print_feature_block
 from testzeus_hercules.utils.litellm_helper import get_litellm_chat_model
 from testzeus_hercules.utils.llm_helper import parse_agent_response
 from testzeus_hercules.utils.logger import logger
@@ -26,8 +32,7 @@ async def sequential_process() -> None:
 
     if not list_of_feats:
         logger.error(
-            "No scenarios found in feature file: %s. "
-            "Ensure the file contains at least one 'Scenario:' block.",
+            "No scenarios found in feature file: %s. " "Ensure the file contains at least one 'Scenario:' block.",
             input_gherkin_file_path,
         )
         raise SystemExit(1)
@@ -79,8 +84,7 @@ async def sequential_process() -> None:
                 # controlled failure. Mark it failed explicitly so it surfaces in
                 # CI rather than drifting through as an empty result.
                 logger.error(
-                    "runner.result present but has no summary and did not terminate "
-                    "cleanly for scenario: %s. Marking as failed.",
+                    "runner.result present but has no summary and did not terminate " "cleanly for scenario: %s. Marking as failed.",
                     scenario,
                 )
                 runner_result = {

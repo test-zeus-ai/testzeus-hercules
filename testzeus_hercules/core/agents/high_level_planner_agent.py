@@ -2,13 +2,12 @@ from string import Template
 from typing import Any
 
 from langchain_openai import ChatOpenAI
-
 from testzeus_hercules.core.memory.static_ltm import get_user_ltm
-from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.llm_helper import (
     get_llm_max_retries,
     get_llm_request_timeout_seconds,
 )
+from testzeus_hercules.utils.logger import logger
 
 
 class PlannerAgent:
@@ -26,9 +25,7 @@ class PlannerAgent:
         print(user_ltm)
         print("===============")
 
-        self.system_message = Template(base_prompt).safe_substitute(
-            basic_test_information=user_ltm if user_ltm else "No test data provided"
-        )
+        self.system_message = Template(base_prompt).safe_substitute(basic_test_information=user_ltm if user_ltm else "No test data provided")
         self.system_message = self._json_instruction + self.system_message
 
         # Normalize model key: ChatOpenAI expects 'model', not 'model_name'
@@ -50,9 +47,7 @@ class PlannerAgent:
 
         # llm_config_params: drop keys unsupported by non-OpenAI models
         unsupported_keys = {"reasoning_effort", "seed"}
-        safe_llm_params = {
-            k: v for k, v in llm_config_params.items() if k not in unsupported_keys
-        }
+        safe_llm_params = {k: v for k, v in llm_config_params.items() if k not in unsupported_keys}
 
         safe_llm_params.pop("model", None)  # avoid duplicate with filtered
         if "timeout" not in filtered and safe_llm_params.get("timeout") is None:

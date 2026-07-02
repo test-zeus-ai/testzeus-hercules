@@ -25,9 +25,7 @@ def test_split_feature_file_does_not_duplicate_scenario_title(tmp_path) -> None:
 
     assert len(scenarios) == 1
     output_file = scenarios[0]["output_file"]
-    split_content = (output_dir / os.path.basename(output_file)).read_text(
-        encoding="utf-8"
-    )
+    split_content = (output_dir / os.path.basename(output_file)).read_text(encoding="utf-8")
     serialized = asyncio.run(serialize_feature_file(output_file))
 
     assert split_content.count("Scenario: Signup page") == 1

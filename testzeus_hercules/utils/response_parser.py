@@ -34,15 +34,16 @@ def parse_response(message: str) -> dict[str, Any]:
 
     # Find all top-level JSON objects and take the last one (most recent planner response)
     json_candidates = []
-    for m in re.finditer(r'\{', message):
+    for m in re.finditer(r"\{", message):
         start = m.start()
         depth = 0
         for i, ch in enumerate(message[start:]):
-            if ch == '{': depth += 1
-            elif ch == '}':
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
                 depth -= 1
                 if depth == 0:
-                    json_candidates.append(message[start:start + i + 1])
+                    json_candidates.append(message[start : start + i + 1])
                     break
     if json_candidates:
         for candidate in reversed(json_candidates):
@@ -50,10 +51,7 @@ def parse_response(message: str) -> dict[str, Any]:
                 parsed_candidate = json.loads(candidate)
             except Exception:
                 continue
-            if any(
-                key in parsed_candidate
-                for key in ("plan", "next_step", "terminate", "final_response", "target_helper")
-            ):
+            if any(key in parsed_candidate for key in ("plan", "next_step", "terminate", "final_response", "target_helper")):
                 message = candidate
                 break
         else:
@@ -66,8 +64,7 @@ def parse_response(message: str) -> dict[str, Any]:
         json_response: dict[str, Any] = json.loads(message)
     except Exception as e:
         logger.warning(
-            'LLM response was not properly formed JSON. Will try to use it as is. '
-            'LLM response: "%s". Error: %s',
+            "LLM response was not properly formed JSON. Will try to use it as is. " 'LLM response: "%s". Error: %s',
             message[:200],
             e,
         )

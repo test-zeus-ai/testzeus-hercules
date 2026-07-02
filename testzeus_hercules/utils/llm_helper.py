@@ -11,7 +11,6 @@ from typing import Any, Callable, Dict, List, Optional, Union
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
-
 from testzeus_hercules.core.agents_llm_config_manager import AgentsLLMConfigManager
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.model_utils import adapt_llm_params_for_model
@@ -67,10 +66,8 @@ def convert_model_config_to_langchain_format(
         for k, v in {
             "model": model_config.get("model") or model_config.get("model_name"),
             "api_key": model_config.get("api_key") or model_config.get("model_api_key"),
-            "base_url": model_config.get("base_url")
-            or model_config.get("model_base_url"),
-            "api_type": model_config.get("api_type")
-            or model_config.get("model_api_type"),
+            "base_url": model_config.get("base_url") or model_config.get("model_base_url"),
+            "api_type": model_config.get("api_type") or model_config.get("model_api_type"),
         }.items()
         if v is not None
     }
@@ -82,20 +79,12 @@ def create_chat_model(
 ) -> BaseChatModel:
     """Create a LangChain chat model from Hercules agent configuration."""
     llm_config_params = llm_config_params or {}
-    model_name = (
-        model_config.get("model") or model_config.get("model_name") or DEFAULT_MODEL
-    )
+    model_name = model_config.get("model") or model_config.get("model_name") or DEFAULT_MODEL
     adapted = adapt_llm_params_for_model(model_name, dict(llm_config_params))
 
-    api_key = (
-        model_config.get("api_key")
-        or model_config.get("model_api_key")
-        or os.getenv("MODEL_API_KEY")
-    )
+    api_key = model_config.get("api_key") or model_config.get("model_api_key") or os.getenv("MODEL_API_KEY")
     if not api_key:
-        raise ValueError(
-            "LLM API key is missing. Set MODEL_API_KEY or model_api_key in config."
-        )
+        raise ValueError("LLM API key is missing. Set MODEL_API_KEY or model_api_key in config.")
 
     kwargs: dict[str, Any] = {
         "model": model_name,
@@ -161,9 +150,7 @@ class MultimodalAgent:
             build_multimodal_human_message(user_content),
         ]
         result = await self.llm.ainvoke(messages)
-        return (
-            result if isinstance(result, AIMessage) else AIMessage(content=str(result))
-        )
+        return result if isinstance(result, AIMessage) else AIMessage(content=str(result))
 
 
 def create_multimodal_agent(
@@ -177,9 +164,7 @@ def create_multimodal_agent(
         agent_cfg = config_manager.get_agent_config("helper_agent")
         model_cfg: Dict[str, Any] = agent_cfg["model_config_params"]
         llm_params_raw: Dict[str, Any] = agent_cfg["llm_config_params"]
-        model_name: str = (
-            model_cfg.get("model") or model_cfg.get("model_name") or DEFAULT_MODEL
-        )
+        model_name: str = model_cfg.get("model") or model_cfg.get("model_name") or DEFAULT_MODEL
         adapted_llm_params = adapt_llm_params_for_model(model_name, llm_params_raw)
         langchain_cfg = convert_model_config_to_langchain_format(model_cfg)
         llm = create_chat_model(langchain_cfg, adapted_llm_params)
@@ -277,9 +262,7 @@ def messages_to_chat_history(messages: list[BaseMessage]) -> list[dict[str, Any]
 
 
 def _looks_like_planner_json(parsed: dict[str, Any]) -> bool:
-    return any(
-        key in parsed for key in ("terminate", "next_step", "plan", "target_helper")
-    )
+    return any(key in parsed for key in ("terminate", "next_step", "plan", "target_helper"))
 
 
 def _is_non_planner_content(content: str) -> bool:

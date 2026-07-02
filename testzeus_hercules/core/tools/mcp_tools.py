@@ -1,6 +1,8 @@
 from typing import Any, Dict, Optional
+
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.mcp_help import MCPHelper
+
 
 # Tool wrappers delegating to the singleton instance
 @tool(agent_names=["mcp_nav_agent"], description="Execute a tool from an MCP server", name="execute_mcp_tool")

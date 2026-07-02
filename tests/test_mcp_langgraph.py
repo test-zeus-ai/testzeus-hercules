@@ -39,14 +39,10 @@ def test_mcp_nav_agent_awaits_tool_registration(monkeypatch) -> None:
 def test_mcp_dynamic_tool_returns_explicit_failure(monkeypatch) -> None:
     async def run() -> None:
         helper = MCPHelper()
-        helper._mcp_toolkits["local"] = SimpleNamespace(
-            tools=[SimpleNamespace(name="explode", description="boom")]
-        )
+        helper._mcp_toolkits["local"] = SimpleNamespace(tools=[SimpleNamespace(name="explode", description="boom")])
         nav_agent = SimpleNamespace(tools=[])
 
-        async def fake_execute_mcp_tool(
-            server_name: str, tool_name: str, arguments: dict[str, Any]
-        ) -> dict[str, Any]:
+        async def fake_execute_mcp_tool(server_name: str, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             return {"success": False, "error": "kaboom"}
 
         monkeypatch.setattr(helper, "execute_mcp_tool", fake_execute_mcp_tool)
@@ -84,9 +80,7 @@ def test_mcp_dynamic_tool_preserves_input_schema(monkeypatch) -> None:
         nav_agent = SimpleNamespace(tools=[])
         seen_args: list[dict[str, Any]] = []
 
-        async def fake_execute_mcp_tool(
-            server_name: str, tool_name: str, arguments: dict[str, Any]
-        ) -> dict[str, Any]:
+        async def fake_execute_mcp_tool(server_name: str, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             seen_args.append(arguments)
             return {"success": True, "result": "done"}
 

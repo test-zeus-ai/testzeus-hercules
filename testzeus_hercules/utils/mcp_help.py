@@ -9,33 +9,34 @@ import asyncio
 import copy
 from datetime import timedelta
 from typing import Any, Dict, List, Optional, cast
-import httpx
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
-from mcp.client.sse import sse_client
-from mcp.client.streamable_http import streamable_http_client
-from langchain_core.tools import StructuredTool
 
+import httpx
+from langchain_core.tools import StructuredTool
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.sse import sse_client
+from mcp.client.stdio import stdio_client
+from mcp.client.streamable_http import streamable_http_client
 from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.utils.langchain_tools import merge_tools
 from testzeus_hercules.utils.logger import logger
 
-#from mcp_helper import get_mcp_config, set_mcp_config
+# from mcp_helper import get_mcp_config, set_mcp_config
+
 
 def main():
     config = get_mcp_config()
-      # Start server logic here
+    # Start server logic here
     print(f"Starting server with config: {config}")
 
     if __name__ == "__main__":
-      main()
+        main()
+
 
 class MCPToolkit:
     """Lightweight MCP tool catalog for LangGraph agents."""
 
     def __init__(self, tools: list[Any]) -> None:
         self.tools = tools
-
 
 
 class MCPHelper:
@@ -80,7 +81,7 @@ class MCPHelper:
         if connection_result.get("success") and nav_agent is not None:
             self._attach_tools_to_agent(nav_agent)
         return bool(connection_result.get("success"))
-    
+
     async def set_mcp_agents(self, llm_agent: Any, executor_agent: Any) -> bool:
         """Backward-compatible entry point for MCP registration."""
         return await self.register_agent_tools(llm_agent)
@@ -108,13 +109,8 @@ class MCPHelper:
             result = await self.execute_mcp_tool(server_name, tool_name, kwargs)
             success = bool(result.get("success"))
             if success:
-                return str(
-                    result.get("result", "MCP tool executed successfully")
-                )
-            return (
-                f"[MCP TOOL ERROR] {server_name}.{tool_name}: "
-                f"{result.get('error', 'unknown MCP tool failure')}"
-            )
+                return str(result.get("result", "MCP tool executed successfully"))
+            return f"[MCP TOOL ERROR] {server_name}.{tool_name}: " f"{result.get('error', 'unknown MCP tool failure')}"
 
         return _call_tool
 
@@ -125,7 +121,7 @@ class MCPHelper:
                 tool_name = getattr(mcp_tool, "name", str(mcp_tool))
                 description = getattr(mcp_tool, "description", None) or tool_name
                 args_schema = self._get_tool_input_schema(mcp_tool)
-                    
+
                 mcp_tools.append(
                     StructuredTool.from_function(
                         coroutine=self._build_mcp_tool_coroutine(server_name, tool_name),
@@ -182,15 +178,12 @@ class MCPHelper:
             }
 
         except Exception as e:
-            logger.exception(
-                f"Error executing MCP tool '{tool_name}' on server '{server_name}' via session. Details: {repr(e)}"
-            )
+            logger.exception(f"Error executing MCP tool '{tool_name}' on server '{server_name}' via session. Details: {repr(e)}")
             return {
                 "success": False,
                 "error": str(e),
                 "server": server_name,
                 "tool": tool_name,
-
             }
 
     async def list_mcp_tools(self, server_name: str) -> Dict[str, Any]:
@@ -292,15 +285,11 @@ class MCPHelper:
             elif transport == "sse":
                 url = server_config.get("url")
                 if not url:
-                    raise ValueError(
-                        f"SSE transport requires 'url' field in server config for '{server_name}'"
-                    )
+                    raise ValueError(f"SSE transport requires 'url' field in server config for '{server_name}'")
                 headers = server_config.get("headers", None)
                 client_cm = sse_client(url=url, headers=headers)
                 read_stream, write_stream = await getattr(client_cm, "__aenter__")()
-                session = ClientSession(
-                    read_stream, write_stream, read_timeout_seconds=timedelta(seconds=timeout_seconds)
-                )
+                session = ClientSession(read_stream, write_stream, read_timeout_seconds=timedelta(seconds=timeout_seconds))
                 await session.__aenter__()
                 self._mcp_client_contexts[server_name] = client_cm
                 return await create_toolkit_and_store(session)
@@ -308,26 +297,20 @@ class MCPHelper:
             elif transport == "streamable-http":
                 url = server_config.get("url")
                 if not url:
-                    raise ValueError(
-                        f"Streamable HTTP transport requires 'url' field in server config for '{server_name}'"
-                    )
+                    raise ValueError(f"Streamable HTTP transport requires 'url' field in server config for '{server_name}'")
                 headers = server_config.get("headers", None)
                 http_client = httpx.AsyncClient(headers=headers) if headers else None
                 if http_client is not None:
                     self._mcp_http_clients[server_name] = http_client
                 client_cm = streamable_http_client(url, http_client=http_client)
                 read_stream, write_stream, _ = await getattr(client_cm, "__aenter__")()
-                session = ClientSession(
-                    read_stream, write_stream, read_timeout_seconds=timedelta(seconds=timeout_seconds)
-                )
+                session = ClientSession(read_stream, write_stream, read_timeout_seconds=timedelta(seconds=timeout_seconds))
                 await session.__aenter__()
                 self._mcp_client_contexts[server_name] = client_cm
                 return await create_toolkit_and_store(session)
 
             else:
-                raise ValueError(
-                    f"Unsupported transport type '{transport}' for server '{server_name}'. Supported: stdio, sse, streamable-http"
-                )
+                raise ValueError(f"Unsupported transport type '{transport}' for server '{server_name}'. Supported: stdio, sse, streamable-http")
 
         except (Exception, asyncio.CancelledError) as e:
             logger.error(f"Failed to connect to MCP server '{server_name}' via {transport}: {e}")

@@ -24,11 +24,7 @@ async def log_request(request: httpx.Request) -> None:
             "method": request.method,
             "url": str(request.url),
             "headers": dict(request.headers),
-            "body": (
-                request.content.decode("utf-8", errors="ignore")
-                if request.content
-                else None
-            ),
+            "body": (request.content.decode("utf-8", errors="ignore") if request.content else None),
         }
     }
     file_logger(json.dumps(log_data))
@@ -220,29 +216,21 @@ async def generic_http_api(
         Any,
         "Authentication value: for 'basic' provide [username, password]; for others, provide a string. (Optional)",
     ] = None,
-    query_params: Annotated[
-        Optional[Dict[str, Any]], "URL query parameters."
-    ] = None,
+    query_params: Annotated[Optional[Dict[str, Any]], "URL query parameters."] = None,
     body: Annotated[Any, "Request payload."] = None,
     body_mode: Annotated[
         str,
         "Body mode: multipart, urlencoded, raw, binary, or json. (Optional)",
     ] = None,
     headers: Annotated[Optional[Dict[str, str]], "Additional HTTP headers."] = None,
-) -> Annotated[
-    Tuple[str, float], "Minified JSON response and call duration (in seconds)."
-]:
+) -> Annotated[Tuple[str, float], "Minified JSON response and call duration (in seconds)."]:
     request_headers = dict(headers or {})
     request_query_params = dict(query_params or {})
 
     # Set authentication headers based on auth_type.
     if auth_type:
         auth_type = auth_type.lower()
-        if (
-            auth_type == "basic"
-            and isinstance(auth_value, list)
-            and len(auth_value) == 2
-        ):
+        if auth_type == "basic" and isinstance(auth_value, list) and len(auth_value) == 2:
             creds = f"{auth_value[0]}:{auth_value[1]}"
             token = base64.b64encode(creds.encode()).decode()
             request_headers["Authorization"] = f"Basic {token}"

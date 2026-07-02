@@ -61,11 +61,11 @@ class BaseConfigManager:
         self.paths: PathsDict = {}
         self._config: ConfigDict = config_dict.copy()
         self._ignore_env: bool = ignore_env
+        self._is_test_env: bool = os.environ.get("IS_TEST_ENV", "false").lower() == "true"
         self._default_test_id: str = "default"
 
         # 1) Possibly load .env if not in test environment
-        is_test_env = os.environ.get("IS_TEST_ENV", "false").lower() == "true"
-        if not is_test_env and not self._ignore_env:
+        if not self._is_test_env and not self._ignore_env:
             # Load .env if it exists
             env_file_path: str = ".env"
             load_dotenv(env_file_path, verbose=True, override=True)
@@ -78,8 +78,9 @@ class BaseConfigManager:
         if not self._ignore_env:
             self._parse_arguments()
 
-        # 4) Perform the same LLM checks as your original code
-        self._check_llm_config()
+        # 4) Validate runtime LLM config, but keep tests/import-only config usable.
+        if self._should_validate_llm_config():
+            self._check_llm_config()
 
         # 5) Provide or finalize certain defaults
         #    (some might have been overridden by env/arguments)
@@ -116,6 +117,9 @@ class BaseConfigManager:
     # -------------------------------------------------------------------------
     # Internal Helpers
     # -------------------------------------------------------------------------
+
+    def _should_validate_llm_config(self) -> bool:
+        return not self._is_test_env and not self._ignore_env
 
     def _load_cli_config_file(self, config_file_path: str) -> None:
         """Load CLI config file values into the config dictionary before env merging.
@@ -771,10 +775,14 @@ class BaseConfigManager:
 
     def get_langchain_cfg(self) -> dict:
         """Return model config in LangChain-compatible format for create_chat_model()."""
-        from testzeus_hercules.utils.llm_helper import convert_model_config_to_langchain_format
+        from testzeus_hercules.utils.llm_helper import (
+            convert_model_config_to_langchain_format,
+        )
 
         if self._config.get("AGENTS_LLM_CONFIG_FILE"):
-            from testzeus_hercules.core.agents_llm_config_manager import AgentsLLMConfigManager
+            from testzeus_hercules.core.agents_llm_config_manager import (
+                AgentsLLMConfigManager,
+            )
 
             agent_cfg = AgentsLLMConfigManager.get_instance().get_agent_config("planner_agent")
             return convert_model_config_to_langchain_format(agent_cfg["model_config_params"])

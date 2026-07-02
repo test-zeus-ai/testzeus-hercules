@@ -37,40 +37,47 @@ from mcp.server.fastmcp import FastMCP
 
 # ── configuration ─────────────────────────────────────────────────────────────
 
+
 def _hercules_root() -> str:
     return os.getenv("TESTZEUS_ROOT", os.getcwd())
+
 
 def _hercules_python() -> str:
     return os.getenv("TESTZEUS_PYTHON", sys.executable)
 
+
 def _feature_path() -> Path:
     return Path(_hercules_root()) / "opt" / "input" / "test.feature"
+
 
 def _result_dir() -> Path:
     return Path(_hercules_root()) / "opt" / "output"
 
+
 def _mcp_host() -> str:
     return os.getenv("MCP_HOST", "0.0.0.0")
+
 
 def _mcp_port() -> int:
     return int(os.getenv("MCP_PORT", "8000"))
 
+
 def _mcp_path() -> str:
     path = os.getenv("MCP_PATH", "/mcp")
     return path if path.startswith("/") else f"/{path}"
+
 
 # ── FastMCP server ─────────────────────────────────────────────────────────────
 
 mcp = FastMCP(
     "testzeus-hercules",
     instructions=(
-        "TestZeus Hercules test automation server. "
-        "Use generate_gherkin to turn plain English into a Gherkin feature file, "
-        "run_test to execute tests, and get_test_results to fetch results."
+        "TestZeus Hercules test automation server. " "Use generate_gherkin to turn plain English into a Gherkin feature file, " "run_test to execute tests, and get_test_results to fetch results."
     ),
 )
 
 # ── tool: generate_gherkin ────────────────────────────────────────────────────
+
 
 @mcp.tool()
 async def generate_gherkin(description: str) -> str:
@@ -101,7 +108,9 @@ async def run():
 print(asyncio.run(run()))
 """
     proc = await asyncio.create_subprocess_exec(
-        _hercules_python(), "-c", script,
+        _hercules_python(),
+        "-c",
+        script,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         cwd=_hercules_root(),
@@ -120,6 +129,7 @@ print(asyncio.run(run()))
 
 
 # ── tool: run_test ────────────────────────────────────────────────────────────
+
 
 @mcp.tool()
 async def run_test(gherkin: str = "", description: str = "") -> str:
@@ -166,16 +176,13 @@ async def run_test(gherkin: str = "", description: str = "") -> str:
 
 
 def _summarize_output(output: str) -> str:
-    keywords = ("run completed", "passed", "failed", "error", "final_response",
-                 "is_passed", "assert_summary", "testcase", "results published")
-    important = [
-        line.strip() for line in output.splitlines()
-        if any(k in line.lower() for k in keywords)
-    ]
+    keywords = ("run completed", "passed", "failed", "error", "final_response", "is_passed", "assert_summary", "testcase", "results published")
+    important = [line.strip() for line in output.splitlines() if any(k in line.lower() for k in keywords)]
     return "\n".join(important) if important else "\n".join(output.splitlines()[-20:])
 
 
 # ── tool: get_test_results ────────────────────────────────────────────────────
+
 
 @mcp.tool()
 async def get_test_results(run_id: str = "") -> str:
@@ -216,22 +223,23 @@ async def get_test_results(run_id: str = "") -> str:
             root = tree.getroot()
             failures = root.attrib.get("failures", "0")
             errors = root.attrib.get("errors", "0")
-            results.update({
-                "status": "PASSED" if failures == "0" and errors == "0" else "FAILED",
-                "tests": root.attrib.get("tests", "?"),
-                "failures": failures,
-                "errors": errors,
-                "time_seconds": root.attrib.get("time", "?"),
-                "test_cases": [
-                    {
-                        "name": tc.attrib.get("name", ""),
-                        "time": tc.attrib.get("time", ""),
-                        **({"failure": (tc.find("failure").attrib.get("message", "") or "")}
-                           if tc.find("failure") is not None else {}),
-                    }
-                    for tc in root.iter("testcase")
-                ],
-            })
+            results.update(
+                {
+                    "status": "PASSED" if failures == "0" and errors == "0" else "FAILED",
+                    "tests": root.attrib.get("tests", "?"),
+                    "failures": failures,
+                    "errors": errors,
+                    "time_seconds": root.attrib.get("time", "?"),
+                    "test_cases": [
+                        {
+                            "name": tc.attrib.get("name", ""),
+                            "time": tc.attrib.get("time", ""),
+                            **({"failure": (tc.find("failure").attrib.get("message", "") or "")} if tc.find("failure") is not None else {}),
+                        }
+                        for tc in root.iter("testcase")
+                    ],
+                }
+            )
         except Exception as e:
             results["xml_error"] = str(e)
 
@@ -250,14 +258,19 @@ if __name__ == "__main__":
     path = _mcp_path()
     print(f"Starting TestZeus Hercules MCP server on http://{host}:{port}{path}")
     print(f"Add to your mcp_servers config:")
-    print(json.dumps({
-        "mcpServers": {
-            "testzeus-hercules": {
-                "transport": "streamable-http",
-                "url": f"http://{host}:{port}{path}",
-            }
-        }
-    }, indent=4))
+    print(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "testzeus-hercules": {
+                        "transport": "streamable-http",
+                        "url": f"http://{host}:{port}{path}",
+                    }
+                }
+            },
+            indent=4,
+        )
+    )
     mcp.run(transport="streamable-http")
 
 
@@ -269,14 +282,20 @@ def main() -> None:
     print(f"Starting TestZeus Hercules MCP server on http://{host}:{port}{path}")
     print("Add to your mcp_servers config:")
     import json as _json
-    print(_json.dumps({
-        "mcpServers": {
-            "testzeus-hercules": {
-                "transport": "streamable-http",
-                "url": f"http://{host}:{port}{path}",
-            }
-        }
-    }, indent=4))
+
+    print(
+        _json.dumps(
+            {
+                "mcpServers": {
+                    "testzeus-hercules": {
+                        "transport": "streamable-http",
+                        "url": f"http://{host}:{port}{path}",
+                    }
+                }
+            },
+            indent=4,
+        )
+    )
     mcp.run(transport="streamable-http")
 
 

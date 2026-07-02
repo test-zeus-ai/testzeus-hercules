@@ -154,11 +154,7 @@ class JUnitXMLGenerator:
         token_keys = [
             key
             for key in flat_cost_metric
-            if key.endswith(".total_tokens")
-            and (
-                key.startswith("usage_including_cached_inference.")
-                or not any(k.startswith("usage_including_cached_inference.") for k in flat_cost_metric)
-            )
+            if key.endswith(".total_tokens") and (key.startswith("usage_including_cached_inference.") or not any(k.startswith("usage_including_cached_inference.") for k in flat_cost_metric))
         ]
         for key in token_keys:
             self.total_token_used += int(flat_cost_metric[key])

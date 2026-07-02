@@ -30,14 +30,11 @@ def _normalize_date_time_entry(entry: Any) -> tuple[str, str]:
         return str(entry[0]), str(entry[1])
     raise ValueError("Entry must contain selector and value_to_fill.")
 
+
 async def set_date_time_value(
     entry: Annotated[
         Dict[str, str],
-        (
-            "Dictionary containing 'selector' and 'value_to_fill'. "
-            "Selector is the md attribute value of the DOM element and "
-            "value_to_fill is the date/time value to enter."
-        ),
+        ("Dictionary containing 'selector' and 'value_to_fill'. " "Selector is the md attribute value of the DOM element and " "value_to_fill is the date/time value to enter."),
     ],
 ) -> Annotated[str, "Operation result"]:
     add_event(EventType.INTERACTION, EventData(detail="SetInputValue"))
@@ -139,7 +136,7 @@ async def bulk_set_date_time_value(
     entries: Annotated[
         List[Dict[str, str]],
         "List of dictionaries containing 'selector' and 'value_to_fill'.",
-    ]
+    ],
 ) -> Annotated[
     List[dict],
     "List of dictionaries, each containing 'selector' and the result of the operation.",

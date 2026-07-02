@@ -72,6 +72,33 @@ def _set_test_env() -> Generator[None, None, None]:
     yield
 
 
+def test_test_env_import_skips_strict_llm_validation(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("IS_TEST_ENV", "true")
+    monkeypatch.delenv("LLM_MODEL_NAME", raising=False)
+    monkeypatch.delenv("LLM_MODEL_API_KEY", raising=False)
+    monkeypatch.setenv("AGENTS_LLM_CONFIG_FILE", "agents_llm_config.json")
+    monkeypatch.delenv("AGENTS_LLM_CONFIG_FILE_REF_KEY", raising=False)
+
+    module = _load_config_module(["testzeus-hercules"])
+    cfg = module.get_global_conf().get_config()
+
+    assert cfg["AGENTS_LLM_CONFIG_FILE"] == "agents_llm_config.json"
+    assert "AGENTS_LLM_CONFIG_FILE_REF_KEY" not in cfg
+
+
+def test_ignore_env_skips_strict_llm_validation(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _load_config_module(["testzeus-hercules"])
+    monkeypatch.setenv("IS_TEST_ENV", "false")
+
+    cfg = module.NonSingletonConfigManager(
+        {"AGENTS_LLM_CONFIG_FILE": "agents_llm_config.json"},
+        ignore_env=True,
+    ).get_config()
+
+    assert cfg["AGENTS_LLM_CONFIG_FILE"] == "agents_llm_config.json"
+    assert "AGENTS_LLM_CONFIG_FILE_REF_KEY" not in cfg
+
+
 def test_yaml_config_file_is_loaded_via_cli_flag(tmp_path: pathlib.Path) -> None:
     config_file = tmp_path / "hercules.config.yaml"
     config_file.write_text(

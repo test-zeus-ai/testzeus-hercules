@@ -29,14 +29,11 @@ def _normalize_select_option_entry(entry: Any) -> tuple[str, str]:
         return str(entry[0]), str(entry[1])
     raise ValueError("Entry must contain selector and value_to_fill.")
 
+
 async def select_option(
     entry: Annotated[
         Dict[str, str],
-        (
-            "Dictionary containing 'selector' and 'value_to_fill'. "
-            "Selector is the md attribute value of the DOM element and "
-            "value_to_fill is the option text/value to select."
-        ),
+        ("Dictionary containing 'selector' and 'value_to_fill'. " "Selector is the md attribute value of the DOM element and " "value_to_fill is the option text/value to select."),
     ],
 ) -> Annotated[str, "Explanation of the outcome of dropdown/spinner selection."]:
     add_event(EventType.INTERACTION, EventData(detail="SelectOption"))
@@ -195,19 +192,14 @@ async def interact_with_element_select_type(
             option_value,
         )
         if not option_match:
-            available_options = await element.evaluate(
-                """
+            available_options = await element.evaluate("""
                 (el) => Array.from(el.options).map((option) => ({
                     value: option.value,
                     text: option.text.trim(),
                     disabled: option.disabled
                 }))
-                """
-            )
-            error = (
-                f"Error: Option '{option_value}' not found in selector '{selector}'. "
-                f"Available options: {available_options}"
-            )
+                """)
+            error = f"Error: Option '{option_value}' not found in selector '{selector}'. " f"Available options: {available_options}"
             await selector_logger.log_selector_interaction(
                 tool_name="select_option",
                 selector=selector,
@@ -222,8 +214,7 @@ async def interact_with_element_select_type(
 
         await element.select_option(value=option_match["value"])
         await page.wait_for_load_state("domcontentloaded", timeout=1000)
-        selected_state = await element.evaluate(
-            """
+        selected_state = await element.evaluate("""
             (el) => {
                 const selectedOption = el.selectedOptions && el.selectedOptions[0];
                 return {
@@ -232,8 +223,7 @@ async def interact_with_element_select_type(
                     selectedIndex: el.selectedIndex
                 };
             }
-            """
-        )
+            """)
         await selector_logger.log_selector_interaction(
             tool_name="select_option",
             selector=selector,
@@ -250,10 +240,7 @@ async def interact_with_element_select_type(
                 "selected_index": selected_state.get("selectedIndex", ""),
             },
         )
-        success_msg = (
-            f"Success. Dropdown selector '{selector}' selected option text "
-            f"'{selected_state.get('text', '')}' with value '{selected_state.get('value', '')}'"
-        )
+        success_msg = f"Success. Dropdown selector '{selector}' selected option text " f"'{selected_state.get('text', '')}' with value '{selected_state.get('value', '')}'"
         return {
             "summary_message": success_msg,
             "detailed_message": f"{success_msg}. Outer HTML: {element_outer_html}",
@@ -376,8 +363,8 @@ async def bulk_select_option(
         "List of dictionaries containing 'selector' and 'value_to_fill'.",
     ],
 ) -> Annotated[
-        List[Dict[str, str]],
-        "List of dictionaries, each containing 'selector' and the result of the operation.",
+    List[Dict[str, str]],
+    "List of dictionaries, each containing 'selector' and the result of the operation.",
 ]:
     add_event(EventType.INTERACTION, EventData(detail="BulkSelectOption"))
 
@@ -390,10 +377,7 @@ async def bulk_select_option(
         result = await select_option(entry)
 
         if isinstance(result, str):
-            if (
-                "new elements have appeared in view" in result
-                and "success" in result.lower()
-            ):
+            if "new elements have appeared in view" in result and "success" in result.lower():
                 success_part = result.split(".\nAs a consequence")[0]
 
                 results.append(
