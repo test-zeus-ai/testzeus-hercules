@@ -45,3 +45,36 @@ print("testzeus_hercules.core" in sys.modules)
     assert result.returncode == 0, result.stderr
     assert "SingletonConfigManager True True" in result.stdout
     assert result.stdout.rstrip().endswith("False")
+
+
+def test_llm_helper_import_does_not_eagerly_import_agents(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    env = os.environ.copy()
+    env["AUTO_MODE"] = "1"
+    env["ENABLE_TELEMETRY"] = "1"
+    env["IS_TEST_ENV"] = "true"
+    env["PYTHONPATH"] = str(repo_root)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            """
+import sys
+
+from testzeus_hercules.utils.llm_helper import create_chat_model
+
+print(callable(create_chat_model))
+print("testzeus_hercules.core.agents" in sys.modules)
+print("testzeus_hercules.core.memory.dynamic_ltm" in sys.modules)
+""",
+        ],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines()[-3:] == ["True", "False", "False"]

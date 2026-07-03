@@ -37,7 +37,6 @@ dependencies = [
     "langchain-core>=0.3.0,<0.4",
     "langchain-openai>=0.2.0,<0.4",
     "langchain-community>=0.3.0,<0.4",
-    "ag2[lmm, mcp, openai, groq, bedrock, anthropic, gemini]>=0.10.0,<0.11",
     "mcp>=1.23.3,<2",
     "psutil>=5.9.0,<6",
     "aiofiles>=24.1.0,<25",

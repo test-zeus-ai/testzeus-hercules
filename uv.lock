@@ -54,26 +54,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/7e/46/02ac5e262d4af18054b3e922b2baedbb2a03289ee792162de60a865defc5/accelerate-1.13.0-py3-none-any.whl", hash = "sha256:cf1a3efb96c18f7b152eb0fa7490f3710b19c3f395699358f08decca2b8b62e0", size = 383744, upload-time = "2026-03-04T19:34:10.313Z" },
 ]
 
-[[package]]
-name = "ag2"
-version = "0.10.5"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "anyio" },
-    { name = "diskcache" },
-    { name = "docker" },
-    { name = "httpx" },
-    { name = "packaging" },
-    { name = "pydantic" },
-    { name = "python-dotenv" },
-    { name = "termcolor" },
-    { name = "tiktoken" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/a3/b1/813195b7c30e39e5abcd3f00d163ba7d4a15fb82078165a8311c9fa85c59/ag2-0.10.5.tar.gz", hash = "sha256:692d83b87d658c56f624cf66351a97c9018d87592ec6807041e62ee3eff6f524", size = 3534972, upload-time = "2026-02-01T08:22:52.624Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/c2/92/f8fe1625c956781a0181185f7d3d08519e235949b58d6894926173d69be9/ag2-0.10.5-py3-none-any.whl", hash = "sha256:e2175a0b86fea20313fa390dd03ceb4865f13592afcd6f5c6a0f5b762f0a6797", size = 962012, upload-time = "2026-02-01T08:22:49.89Z" },
-]
-
 [package.optional-dependencies]
 anthropic = [
     { name = "anthropic", extra = ["vertex"] },
@@ -5253,7 +5233,6 @@ name = "testzeus-hercules"
 version = "0.2.0"
 source = { editable = "." }
 dependencies = [
-    { name = "ag2", extra = ["anthropic", "bedrock", "gemini", "groq", "lmm", "mcp", "openai"] },
     { name = "aiofiles" },
     { name = "aiohttp" },
     { name = "anthropic" },
@@ -5312,7 +5291,6 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "ag2", extras = ["lmm", "mcp", "openai", "groq", "bedrock", "anthropic", "gemini"], specifier = ">=0.10.0,<0.11" },
     { name = "aiofiles", specifier = ">=24.1.0,<25" },
     { name = "aiohttp", specifier = ">=3.13.2,<4" },
     { name = "anthropic", specifier = ">=0.87.0" },
