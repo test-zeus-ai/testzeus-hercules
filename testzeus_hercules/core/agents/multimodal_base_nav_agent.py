@@ -29,7 +29,7 @@ class MultimodalBaseNavAgent(BaseNavAgent):
             system_message = "\n".join(system_prompt) if isinstance(system_prompt, list) else system_prompt
             logger.info("Using custom system prompt for MultimodalBaseNavAgent: %s", system_message)
 
-        system_message = system_message + "\n" + f"Current timestamp is {datetime.now().strftime("%Y/%m/%d %H:%M:%S")}"
+        system_message = system_message + "\n" + f"Current timestamp is {datetime.now().strftime('%Y/%m/%d %H:%M:%S')}"
         config = get_global_conf()
 
         logger.warning("[SYSTEM_PROMPT_DEBUG] agent=%s user_ltm=%r system_message_tail=%r", self.agent_name, user_ltm, system_message[-200:])
