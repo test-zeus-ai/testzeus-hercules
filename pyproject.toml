@@ -57,6 +57,8 @@ dependencies = [
     "cryptography>=46.0.7,<47",
     "anthropic>=0.87.0",
     "python-multipart>=0.0.26",
+    "standard-aifc>=3.13.0,<4 ; python_full_version >= '3.13'",
+    "audioop-lts>=0.2.2,<1 ; python_full_version >= '3.13'",
 ]
 
 [project.urls]
