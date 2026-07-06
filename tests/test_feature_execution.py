@@ -7,21 +7,6 @@ from tests.test_base import setup_test_environment, copy_feature_files, compare_
 from dotenv.main import dotenv_values
 
 
-def is_llm_provider_auth_failure(stderr: str | None) -> bool:
-    """Return True when a subprocess failed because CI provider credentials are invalid."""
-    if not stderr:
-        return False
-
-    normalized = stderr.lower()
-    return "authenticationerror" in normalized and ("invalid_api_key" in normalized or "incorrect api key" in normalized)
-
-
-def test_is_llm_provider_auth_failure() -> None:
-    assert is_llm_provider_auth_failure("openai.AuthenticationError: invalid_api_key")
-    assert is_llm_provider_auth_failure("AuthenticationError: Incorrect API key provided")
-    assert not is_llm_provider_auth_failure("TypeError: unexpected keyword argument")
-
-
 # Function to retrieve all feature folders
 def get_feature_folders() -> list[str]:
     test_features_dir = os.path.join(os.path.dirname(__file__), "test_features")
@@ -96,8 +81,6 @@ def test_feature_execution(feature_folder: str) -> None:
         print(f"Subprocess failed with return code {e.returncode}")
         print(f"Standard Output:\n{e.stdout}")
         print(f"Standard Error:\n{e.stderr}")
-        if is_llm_provider_auth_failure(e.stderr):
-            pytest.skip("LLM provider rejected CI credentials; skipping live feature execution.")
         assert False, f"Hercules execution failed for {feature_folder}"
 
     # assert on result.returncode == 0, f"Hercules execution failed for {feature_folder}"
