@@ -21,6 +21,7 @@ def adapt_llm_params_for_model(model_name: str, llm_config: Dict[str, Any]) -> D
     For other models, ensures max_tokens is present.
     """
     params = dict(llm_config or {})
+    params.pop("cache_seed", None)
 
     if _is_gpt5_model(model_name):
         # GPT-5 and newer models use max_completion_tokens

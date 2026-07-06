@@ -46,7 +46,7 @@ class PlannerAgent:
         filtered = {k: v for k, v in normalized.items() if k in valid_keys}
 
         # llm_config_params: drop keys unsupported by non-OpenAI models
-        unsupported_keys = {"reasoning_effort", "seed"}
+        unsupported_keys = {"cache_seed", "reasoning_effort", "seed"}
         safe_llm_params = {k: v for k, v in llm_config_params.items() if k not in unsupported_keys}
 
         safe_llm_params.pop("model", None)  # avoid duplicate with filtered
