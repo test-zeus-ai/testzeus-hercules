@@ -106,19 +106,12 @@ testzeus-hercules --input-file opt/input/test.feature --output-path opt/output -
 3. LLM Configuration Options:
 
 ```bash
-# Basic LLM configuration
-testzeus-hercules --llm-model gpt-4o --llm-model-api-key your-api-key
-
-# Advanced LLM configuration
-testzeus-hercules --llm-model claude-3-opus-20240229 \
-                  --llm-model-api-key your-api-key \
-                  --llm-model-api-type anthropic \
-                  --llm-model-base-url https://api.anthropic.com \
-                  --llm-temperature 0.0
-
-# LLM configuration file
+# Recommended LLM configuration file
 testzeus-hercules --agents-llm-config-file ./agents_llm_config.json \
-                  --agents-llm-config-file-ref-key openai
+                  --agents-llm-config-file-ref-key litellm
+
+# Legacy direct LLM configuration. Supported for compatibility, but deprecated.
+testzeus-hercules --llm-model gpt-4o --llm-model-api-key your-api-key
 
 # Portkey integration
 testzeus-hercules --enable-portkey \
@@ -199,74 +192,24 @@ Expected outcome:
 
 ## LLM Configuration
 
-Hercules requires LLM configuration to function properly. There are two main approaches to configure LLMs:
+Hercules requires LLM configuration to function properly. The recommended path
+is `agents_llm_config.json` plus an active provider/profile key. Direct
+`LLM_MODEL_*` configuration remains available for compatibility, but it is
+deprecated and logs a warning.
 
-### 1. Direct Environment Variables
+### 1. Configuration File
 
-The simplest approach is to set the required environment variables:
-
-```bash
-# Basic LLM configuration (required)
-export LLM_MODEL_NAME=gpt-4o
-export LLM_MODEL_API_KEY=your-api-key
-
-# Optional LLM configuration
-export LLM_MODEL_BASE_URL=https://api.openai.com/v1
-export LLM_MODEL_API_TYPE=openai  # openai, anthropic, azure, mistral, groq, etc.
-export LLM_MODEL_TEMPERATURE=0.0
-```
-
-All supported LLM environment variables:
-```bash
-# Model Configuration
-export LLM_MODEL_NAME=gpt-4o                  # Name of the model
-export LLM_MODEL_API_KEY=your-api-key         # API key
-export LLM_MODEL_BASE_URL=https://api.openai.com/v1  # Base URL for API
-export LLM_MODEL_API_TYPE=openai              # API type (openai, anthropic, etc)
-export LLM_MODEL_API_VERSION=2023-05-15       # API version (if applicable)
-export LLM_MODEL_PROJECT_ID=my-project        # Project ID (for GCP-based models)
-export LLM_MODEL_REGION=us-central1           # Region (for region-specific models)
-export LLM_MODEL_CLIENT_HOST=localhost:8000   # Client host (for local models)
-export LLM_MODEL_NATIVE_TOOL_CALLS=true       # Enable native tool calls
-export LLM_MODEL_HIDE_TOOLS=false             # Hide tools from the model
-
-# AWS Bedrock-specific Configuration
-export LLM_MODEL_AWS_REGION=us-east-1         # AWS region
-export LLM_MODEL_AWS_ACCESS_KEY=your-key      # AWS access key
-export LLM_MODEL_AWS_SECRET_KEY=your-secret   # AWS secret key
-export LLM_MODEL_AWS_PROFILE_NAME=default     # AWS profile name
-export LLM_MODEL_AWS_SESSION_TOKEN=token      # AWS session token
-
-# Other Model Settings
-export LLM_MODEL_PRICING=0.01                 # Model pricing for tracking
-
-# LLM Parameter Configuration
-export LLM_MODEL_TEMPERATURE=0.0              # Temperature (0.0-1.0) 
-export LLM_MODEL_CACHE_SEED=12345             # Seed for response caching
-export LLM_MODEL_SEED=67890                   # Random seed for reproducibility
-export LLM_MODEL_MAX_TOKENS=4096              # Maximum tokens in response (for GPT-3, GPT-4, Claude)
-export LLM_MODEL_MAX_COMPLETION_TOKENS=4096   # Maximum tokens in response (for GPT-5 models)
-export LLM_MODEL_PRESENCE_PENALTY=0.0         # Presence penalty
-export LLM_MODEL_FREQUENCY_PENALTY=0.0        # Frequency penalty
-export LLM_MODEL_STOP='END'                   # Stop sequence
-
-# Note: For GPT-5 models (gpt-5, gpt-5-mini, gpt-5-nano), use LLM_MODEL_MAX_COMPLETION_TOKENS
-# instead of LLM_MODEL_MAX_TOKENS. The system will automatically handle the conversion.
-```
-
-### 2. Configuration File
-
-For more advanced setups, especially when using multiple models or providers, use a JSON configuration file:
+Use a JSON configuration file for new setup:
 
 ```bash
 export AGENTS_LLM_CONFIG_FILE=./agents_llm_config.json
-export AGENTS_LLM_CONFIG_FILE_REF_KEY=openai  # The provider to use
+export AGENTS_LLM_CONFIG_FILE_REF_KEY=litellm  # The provider/profile to use
 ```
 
 Example `agents_llm_config.json`:
 ```json
 {
-  "openai": {
+  "litellm": {
     "planner_agent": {
       "model_name": "gpt-4o",
       "model_api_key": "your-api-key",
@@ -382,6 +325,24 @@ Example `agents_llm_config.json`:
   }
 }
 ```
+
+### 2. Legacy Direct Environment Variables
+
+Direct environment variables are still supported for compatibility, but new
+setup should avoid them.
+
+```bash
+export LLM_MODEL_NAME=gpt-4o
+export LLM_MODEL_API_KEY=your-api-key
+export LLM_MODEL_BASE_URL=https://api.openai.com/v1
+export LLM_MODEL_API_TYPE=openai
+export LLM_MODEL_TEMPERATURE=0.0
+```
+
+Additional legacy direct variables include provider-specific settings such as
+`LLM_MODEL_API_VERSION`, `LLM_MODEL_REGION`, `LLM_MODEL_AWS_REGION`, and token
+settings such as `LLM_MODEL_MAX_TOKENS` or
+`LLM_MODEL_MAX_COMPLETION_TOKENS`.
 
 ### Using Portkey for LLM Routing
 

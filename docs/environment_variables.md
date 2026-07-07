@@ -65,9 +65,18 @@ Each directory is created automatically when accessed through the corresponding 
 ## LLM Configuration
 
 ### Basic LLM Setup
-There are two ways to configure LLM, with the following priority:
+The recommended setup path is an agent LLM configuration file plus an active
+provider/profile key. Direct `LLM_MODEL_*` variables are still read for
+compatibility, but they are deprecated and the runtime logs a warning when they
+are used.
 
-1. Direct Environment Variables:
+1. Configuration File:
+```bash
+AGENTS_LLM_CONFIG_FILE=agents_llm_config.json
+AGENTS_LLM_CONFIG_FILE_REF_KEY=<provider_key>
+```
+
+2. Legacy Direct Environment Variables:
 ```bash
 LLM_MODEL_NAME=<model_name>
 LLM_MODEL_API_KEY=<api_key>
@@ -85,12 +94,6 @@ LLM_MODEL_AWS_SECRET_KEY=<aws_secret_key>
 LLM_MODEL_AWS_PROFILE_NAME=<aws_profile_name>
 LLM_MODEL_AWS_SESSION_TOKEN=<aws_session_token>
 LLM_MODEL_PRICING=<pricing>
-```
-
-2. Configuration File:
-```bash
-AGENTS_LLM_CONFIG_FILE=agents_llm_config.json
-AGENTS_LLM_CONFIG_FILE_REF_KEY=<provider_key>
 ```
 
 ### LLM Configuration File Structure

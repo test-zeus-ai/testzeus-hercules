@@ -120,7 +120,7 @@ If you are new to the Python ecosystem and don't know where to begin, dont worry
 
 For a quick taste of the solution, you can try the notebook here: 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1YiZsXem1POTwkcr17QqflXnihhuSqwM2?usp=sharing)
-- **Note**: Colab might ask you to restart the session as python3.11 and some libs are installed during the installation of testzeus-hercules. Please restart the session if required and continue the execution. Also , we recommend one of the approaches below for getting the full flavor of the solution. 
+- **Note**: Colab might ask you to restart the session after installing TestZeus Hercules dependencies. Please restart the session if required and continue the execution. Also, we recommend one of the approaches below for getting the full flavor of the solution.
 
 ### Approach 1: Using PyPI Package
 
@@ -149,7 +149,7 @@ Once installed, you will need to provide some basic parameters to run Hercules:
 - `--test-data-path TEST_DATA_PATH`: Path to the test data directory. The path where Hercules expects test data to be present; all test data used in feature testing should be present here.
 - `--project-base PROJECT_BASE`: Path to the project base directory. This is an optional parameter; if you populate this, `--input-file`, `--output-path`, and `--test-data-path` are not required, and Hercules will assume all the three folders exist in the following format inside the project base:
 
-```
+```text
 PROJECT_BASE/
 ├── gherkin_files/
 ├── input/
@@ -167,13 +167,23 @@ PROJECT_BASE/
     └── test_data.txt
 ```
 
-- `--llm-model LLM_MODEL`: Name of the LLM model to be used by the agent (recommended is `gpt-4o`, but it can take others).
-- `--llm-model-api-key LLM_MODEL_API_KEY`: API key for the LLM model, something like `sk-proj-k.......`.
+- `--agents-llm-config-file AGENTS_LLM_CONFIG_FILE`: Path to an
+  `agents_llm_config.json` file.
+- `--agents-llm-config-file-ref-key AGENTS_LLM_CONFIG_FILE_REF_KEY`: Top-level
+  provider/profile key inside that file.
+- `--llm-model`, `--llm-model-api-key`, `--llm-model-base-url`, and related
+  direct LLM flags are legacy compatibility options. The current runtime warns
+  that direct `LLM_MODEL_*` configuration is deprecated; new setup should use
+  `agents_llm_config.json`.
 
 #### Environment Variables
 
 In addition to command-line parameters, Hercules supports various environment variables for configuration:
 
+- `AGENTS_LLM_CONFIG_FILE`: Path to the agent LLM config file. Example:
+  `agents_llm_config.json`
+- `AGENTS_LLM_CONFIG_FILE_REF_KEY`: Top-level provider/profile key to activate
+  from the config file. Example: `litellm`
 - `BROWSER_TYPE`: Type of browser to use (`chromium`, `firefox`, `webkit`). Default: `chromium`
 - `HEADLESS`: Run browser in headless mode (`true`, `false`). Default: `true`
 - `BROWSER_RESOLUTION`: Browser window resolution (format: `width,height`). Example: `1920,1080`
@@ -185,10 +195,16 @@ For a complete list of environment variables, see our [Environment Variables Gui
 
 #### Running Hercules
 
-After passing all the required parameters, the command to run Hercules should look like this:
+Create `agents_llm_config.json`, choose the provider key to activate, and run
+Hercules with that config:
 
 ```bash
-testzeus-hercules --input-file opt/input/test.feature --output-path opt/output --test-data-path opt/test_data --llm-model gpt-4o --llm-model-api-key sk-proj-k.......
+testzeus-hercules \
+  --input-file opt/input/test.feature \
+  --output-path opt/output \
+  --test-data-path opt/test_data \
+  --agents-llm-config-file agents_llm_config.json \
+  --agents-llm-config-file-ref-key litellm
 ```
 
 
@@ -218,7 +234,7 @@ To set up and run Hercules on a Windows machine:
 5. **Run Hercules:**
    - Once the setup is complete, you can run Hercules from PowerShell or Command Prompt using the following command:
      ```bash
-     testzeus-hercules --input-file opt/input/test.feature --output-path opt/output --test-data-path opt/test_data --llm-model gpt-4o --llm-model-api-key sk-proj-k.......
+     testzeus-hercules --input-file opt/input/test.feature --output-path opt/output --test-data-path opt/test_data --agents-llm-config-file agents_llm_config.json --agents-llm-config-file-ref-key litellm
      ```
 
 ---
@@ -238,8 +254,8 @@ To set up and run Hercules on a Windows machine:
   in /docs/Migration/Modelfile).
 
 The planner model should be strong at structured JSON reasoning. Navigation
-models must support tool calling. Advanced users can configure model routing
-through `agents_llm_config.json`, including LiteLLM proxy details:
+models must support tool calling. Configure model routing through
+`agents_llm_config.json`, including LiteLLM proxy details:
 [https://docs.litellm.ai/docs/simple_proxy](https://docs.litellm.ai/docs/simple_proxy).
 ```JSON
 {
@@ -362,7 +378,10 @@ docker run --env-file=.env \
 ```
 
 - **Environment Variables**: All the required environment variables can be set by passing an `.env` file to the `docker run` command.
-- **LLM Configuration**: If you plan to have complete control over Hercules and which LLM to use beyond the ones provided by OpenAI, you can pass `agents_llm_config.json` as a mount to the container. This is for advanced use cases and is not required for beginners. Refer to sample files `.env-example` and `agents_llm_config-example.json` for details and reference.
+- **LLM Configuration**: Mount `agents_llm_config.json` and set
+  `AGENTS_LLM_CONFIG_FILE=agents_llm_config.json` plus
+  `AGENTS_LLM_CONFIG_FILE_REF_KEY=<provider-key>` in `.env`. Direct
+  `LLM_MODEL_*` values are legacy/deprecated.
 - **Mounting Directories**: Mount the `opt` folder to the Docker container so that all the inputs can be passed to Hercules running inside the container, and the output can be pulled out for further processing. The repository has a sample `opt` folder that can be mounted easily.
 - **Simplified Parameters**: In the Docker case, there is no need for using `--input-file`, `--output-path`, `--test-data-path`, or `--project-base` as they are already handled by mounting the `opt` folder in the `docker run` command.
 
@@ -417,7 +436,8 @@ For the hardcore enthusiasts, you can use Hercules via the source code to get a 
 
 #### Prerequisites
 
-- Ensure you have **Python 3.11** installed on your system.
+- Ensure you have **Python 3.13** installed for the branch CI target. The
+  package metadata supports Python `>=3.11,<3.14`.
 
 #### Steps to Run from Source
 
@@ -489,11 +509,12 @@ For the hardcore enthusiasts, you can use Hercules via the source code to get a 
 
 ### Approach 4: Setting Up via helper_script_custom.sh
 
-For those who want a fully automated setup experience on Linux/macOS environments, we provide a helper_script.sh. This script installs Python 3.11 (if needed), creates a virtual environment, installs TestZeus Hercules, and sets up the base project directories in an opt folder.
+For those who want a fully automated setup experience on Linux/macOS environments, we provide a helper_script.sh. This script installs Python, creates a virtual environment, installs TestZeus Hercules, and sets up the base project directories in an opt folder.
 
 #### Prerequisites
 
-- Ensure you have **Python 3.11** installed on your system.
+- Ensure you have **Python 3.13** installed, or another supported Python
+  version in the `>=3.11,<3.14` range.
 
 #### Steps to Run from helper_script_custom.sh
 1. **Download or Create the Script**
@@ -502,10 +523,10 @@ For those who want a fully automated setup experience on Linux/macOS environment
   #!/bin/bash
   # set -ex
 
-  # curl -sS https://bootstrap.pypa.io/get-pip.py | python3.11
+  # curl -sS https://bootstrap.pypa.io/get-pip.py | python3.13
 
   # Create a new Python virtual environment named 'test'
-  python3.11 -m venv test
+  python3.13 -m venv test
 
   # Activate the virtual environment
   source test/bin/activate
@@ -517,9 +538,50 @@ For those who want a fully automated setup experience on Linux/macOS environment
   # create a new directory named 'opt'
   mkdir -p opt/input opt/output opt/test_data
 
-  # download https://raw.githubusercontent.com/test-zeus-ai/testzeus-hercules/refs/heads/main/agents_llm_config-example.json
-  curl -sS https://raw.githubusercontent.com/test-zeus-ai/testzeus-hercules/main/agents_llm_config-example.json > agents_llm_config-example.json
-  mv agents_llm_config-example.json agents_llm_config.json
+  # Create agents_llm_config.json and make the top-level provider key match
+  # AGENTS_LLM_CONFIG_FILE_REF_KEY in .env. Replace the placeholders below.
+  cat > agents_llm_config.json <<'JSON'
+  {
+    "litellm": {
+      "planner_agent": {
+        "model_name": "gpt-4o",
+        "model_api_key": "replace-me",
+        "model_base_url": "https://api.openai.com/v1",
+        "llm_config_params": {
+          "temperature": 0,
+          "seed": 12345
+        }
+      },
+      "nav_agent": {
+        "model_name": "gpt-4o",
+        "model_api_key": "replace-me",
+        "model_base_url": "https://api.openai.com/v1",
+        "llm_config_params": {
+          "temperature": 0,
+          "seed": 12345
+        }
+      },
+      "mem_agent": {
+        "model_name": "gpt-4o-mini",
+        "model_api_key": "replace-me",
+        "model_base_url": "https://api.openai.com/v1",
+        "llm_config_params": {
+          "temperature": 0,
+          "seed": 12345
+        }
+      },
+      "helper_agent": {
+        "model_name": "gpt-4o",
+        "model_api_key": "replace-me",
+        "model_base_url": "https://api.openai.com/v1",
+        "llm_config_params": {
+          "temperature": 0,
+          "seed": 12345
+        }
+      }
+    }
+  }
+  JSON
 
   # prompt user that they need to edit the 'agents_llm_config.json' file, halt the script and open the file in an editor
   echo "Please edit the 'agents_llm_config.json' file to add your API key and other configurations."
@@ -528,20 +590,31 @@ For those who want a fully automated setup experience on Linux/macOS environment
   echo "The 'agents_llm_config.json' file is located at $(pwd)/agents_llm_config.json"
   read -p "Press Enter if file is updated"
 
-  # download https://raw.githubusercontent.com/test-zeus-ai/testzeus-hercules/blob/main/.env-example
-  curl -sS https://raw.githubusercontent.com/test-zeus-ai/testzeus-hercules/main/.env-example > .env-example
-  mv .env-example .env
+  # Create the minimal environment file for the config-file based setup path.
+  cat > .env <<'ENV'
+  AGENTS_LLM_CONFIG_FILE=agents_llm_config.json
+  AGENTS_LLM_CONFIG_FILE_REF_KEY=litellm
+  HEADLESS=true
+  RECORD_VIDEO=true
+  TAKE_SCREENSHOTS=true
+  ENV
 
   # prompt user that they need to edit the .env file, halt the script and open the file in an editor
   echo "The '.env' file is located at $(pwd)/.env"
   read -p "Press Enter if file is updated"
 
-  # create an input/test.feature file
-  # download https://raw.githubusercontent.com/test-zeus-ai/testzeus-hercules/refs/heads/main/opt/input/test.feature and save in opt/input/test.feature
-  curl -sS https://raw.githubusercontent.com/test-zeus-ai/testzeus-hercules/main/opt/input/test.feature > opt/input/test.feature
+  # Create starter input files.
+  cat > opt/input/test.feature <<'FEATURE'
+  Feature: Example browser check
 
-  # download https://raw.githubusercontent.com/test-zeus-ai/testzeus-hercules/refs/heads/main/opt/test_data/test_data.json and save in opt/test_data/test_data.json
-  curl -sS https://raw.githubusercontent.com/test-zeus-ai/testzeus-hercules/main/opt/test_data/test_data.json > opt/test_data/test_data.json
+    Scenario: Open a public page
+      Given I open the page "https://example.com"
+      Then the page should contain "Example Domain"
+  FEATURE
+
+  cat > opt/test_data/test_data.txt <<'DATA'
+  {}
+  DATA
 
   # Run the 'testzeus-hercules' command with the specified parameters
   testzeus-hercules --project-base=opt
@@ -552,10 +625,10 @@ chmod +x helper_script.sh
 ./helper_script.sh
 ```
 -	The script will:
-	•	Create a Python 3.11 virtual environment named test.
+	•	Create a Python virtual environment named test.
 	•	Install testzeus-hercules and Playwright dependencies.
 	•	Create the opt folder structure (for input/output/test data).
-	•	Download sample config files: agents_llm_config.json, .env, and example feature/test data files.
+	•	Create sample config files: agents_llm_config.json, .env, and example feature/test data files.
 	•	Important: You will be prompted to edit both agents_llm_config.json and .env files. After you've added your API keys and other custom configurations, press Enter to continue.
 
 3. **Script Output**
@@ -639,15 +712,20 @@ For more testcases visit [MCP-Docs](/docs/MCP_Usage.md)
 ---
 - Hercules is capable of running in two configuration forms:
 
-  1. **Using single LLM for all work**
+  1. **Recommended: provider/profile config**
 
-     - For all the activities within the agent, initialize `LLM_MODEL_NAME` and `LLM_MODEL_API_KEY`.
-     - If using a non-OpenAI hosted solution but still OpenAI LLMs (something like OpenAI via Groq), then pass the `LLM_MODEL_BASE_URL` URL as well.
+     - Set `AGENTS_LLM_CONFIG_FILE=agents_llm_config.json`.
+     - Set `AGENTS_LLM_CONFIG_FILE_REF_KEY` to the top-level provider/profile
+       key to use, such as `litellm`.
+     - Put per-agent model settings under `planner_agent`, `nav_agent`,
+       `mem_agent`, and `helper_agent`.
 
-  2. **Custom LLMs for different work or using hosted LLMs**
+  2. **Legacy direct LLM config**
 
-     - If you plan to configure local LLMs or non-OpenAI LLMs, use the other parameters like `AGENTS_LLM_CONFIG_FILE` and `AGENTS_LLM_CONFIG_FILE_REF_KEY`.
-     - These are powerful options and can affect the quality of Hercules outputs.
+     - `LLM_MODEL_NAME`, `LLM_MODEL_API_KEY`, `LLM_MODEL_BASE_URL`, and the
+       direct `--llm-model*` CLI flags are still accepted for compatibility.
+     - The current runtime warns that `LLM_MODEL_*` is deprecated. Do not use
+       it as the setup path for new runs.
 
 - Hercules considers a base folder that is by default `./opt` but can be changed by the environment variable `PROJECT_SOURCE_ROOT`.
 
@@ -684,7 +762,7 @@ For example: If you would like to run with a "Headful" browser, you can set the 
   export ENABLE_PLAYWRIGHT_TRACING=true
   ```
 
-### Understanding `agents_llm_config-example.json`
+### Understanding `agents_llm_config.json`
 
 - It's a list of configurations of LLMs that you want to provide to the agent.
 
@@ -725,7 +803,10 @@ For example: If you would like to run with a "Headful" browser, you can set the 
 - `mem_agent` config is used only when dynamic long-term memory is enabled.
 - `helper_agent` config is used by visual/multimodal helper flows.
 
-- **Note**: This option should be ignored until you are sure what you are doing. Discuss with us while playing around with these options in our Slack communication. Join us at our [Slack](https://join.slack.com/t/testzeuscommunityhq/shared_invite/zt-376oeo99x-3RAWe_C0H7x9zP0rtACcPA)
+- The branch currently includes `agents_llm_config-example copy.json.txt` as a
+  reference sample. Copy its shape into `agents_llm_config.json`, update secrets
+  locally, and keep the active top-level key in sync with
+  `AGENTS_LLM_CONFIG_FILE_REF_KEY`.
 
 ---
 
@@ -814,7 +895,7 @@ is still Gherkin in, reports out, but the runtime is structured as planner,
 executor, and assertion graph nodes.
 
 For the detailed architecture and current tool formats, see
-[ARCHITECTURE.md](ARCHITECTURE.md).
+[docs/Migration/ARCHITECTURE.md](docs/Migration/ARCHITECTURE.md).
 
 ### Runtime Flow
 
@@ -1111,7 +1192,9 @@ Think of it like a sandboxed environment where TestZeus Hercules and its depende
 
 #### ✅ **1. Prerequisites**
 
-First, ensure Python 3.11 or higher is installed. You can verify this by running:
+First, ensure a supported Python version is installed. The package supports
+Python `>=3.11,<3.14`, and this branch targets Python 3.13 in CI. You can
+verify your version by running:
 
 ```bash
 python --version
