@@ -33,6 +33,20 @@ The graph starts at `planner`. The planner either schedules work for
 `executor`, routes an assertion verdict to `assertion`, or terminates the graph.
 After each executor turn, control always returns to the planner.
 
+The graph state is the operational contract between nodes. Important
+`AgentState` fields are:
+
+- `messages`: the planner-helper conversation, including tool results
+- `task`: the original serialized scenario or command
+- `plan`, `next_step`, `target_helper`, `terminate`, `final_response`,
+  `is_assert`, `assert_summary`, and `is_passed`: the latest parsed planner JSON
+- `planner_turn`: the bounded planner loop counter
+- `completed_step_signatures`: normalized completed `next_step` values used for
+  repeat detection
+- `current_url`: best known browser URL, refreshed before browser helper tasks
+- `step_token_log`, `total_prompt_tokens`, `total_completion_tokens`,
+  `total_cost`, `cost_available`, and `step_timings`: reporting fields
+
 ## Planner JSON Contract
 
 The planner returns strict JSON. The fields consumed by `AgentState` are:
@@ -124,6 +138,12 @@ When max nav rounds are reached, the helper returns an explicit error:
 ```
 
 This prevents tool-call-only loops from being mistaken for success.
+
+Helper success is not inferred from a tool call alone. A helper response is only
+treated as a successful helper completion when it contains
+`##TERMINATE TASK##` and does not contain failure markers such as `[ERROR]`,
+`[TOOL ERROR]`, `incomplete`, `uncertain`, or `max nav rounds`. The planner must
+still issue the final assertion JSON before a test is considered passed.
 
 ## Browser State Guard
 
@@ -237,6 +257,12 @@ Important runtime semantics:
 - MCP sessions, client contexts, and HTTP clients are cleaned up during
   shutdown via `MCPHelper.destroy()`.
 
+The MCP helper still includes generic MCP tools such as `list_mcp_tools`,
+`execute_mcp_tool`, `get_mcp_resource`, and `check_mcp_server_status`. Dynamic
+`mmcp_*` wrappers are added on top of those generic tools when server discovery
+succeeds, so the helper can either call a typed server tool directly or fall
+back to generic MCP operations.
+
 The branch also exposes Hercules itself as an MCP server:
 
 ```bash
@@ -278,6 +304,9 @@ into the executor step entry. Final reporting returns:
 When no provider response includes cost metadata, Hercules sets
 `cost_unavailable=true`. This is expected for providers or gateways that return
 tokens but not price data.
+
+`cost_unavailable=true` does not mean the run failed. It means Hercules could
+collect token counts but no provider response supplied a price/cost field.
 
 ## LLM Config Buckets
 

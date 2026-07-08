@@ -76,6 +76,11 @@ AGENTS_LLM_CONFIG_FILE=agents_llm_config.json
 AGENTS_LLM_CONFIG_FILE_REF_KEY=<provider_key>
 ```
 
+The `<provider_key>` must match a top-level key in `agents_llm_config.json`,
+for example `litellm`. This file is the happy path for new runs because it
+defines separate model buckets for `planner_agent`, `nav_agent`, `mem_agent`,
+and `helper_agent`.
+
 2. Legacy Direct Environment Variables:
 ```bash
 LLM_MODEL_NAME=<model_name>
@@ -120,10 +125,13 @@ The `agents_llm_config.json` supports multiple providers and agent configuration
 ```
 
 ### Agent Types and Their Roles
-- `planner_agent`: Responsible for high-level test planning and strategy
-- `nav_agent`: Handles browser navigation and interaction
-- `mem_agent`: Manages memory and context during test execution
-- `helper_agent`: Provides support functions and utilities
+- `planner_agent`: LangGraph planner node. It must produce strict planner JSON
+  and should use a model that is strong at structured reasoning.
+- `nav_agent`: Shared by browser, API, security, SQL, time keeper, MCP, and
+  executor helpers. It must use a model with reliable tool calling.
+- `mem_agent`: Dynamic long-term memory model, used only when dynamic memory is
+  enabled.
+- `helper_agent`: Visual/multimodal helper model.
 
 ### Supported LLM Parameters
 Model Configuration:

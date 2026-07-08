@@ -214,7 +214,8 @@ SANDBOX_PACKAGES=requests,pandas,numpy
 SANDBOX_CUSTOM_INJECTIONS={"modules": ["jwt"], "custom_objects": {"API_KEY": "secret"}}
 
 # Other Hercules config
-LLM_MODEL_NAME=gpt-4o
+AGENTS_LLM_CONFIG_FILE=agents_llm_config.json
+AGENTS_LLM_CONFIG_FILE_REF_KEY=litellm
 HEADLESS=true
 ```
 
@@ -697,4 +698,3 @@ The Python Sandbox Execution feature gives you:
 Perfect for complex automation scenarios where simple Gherkin steps aren't enough!
 
 For more examples, see the `docs/sandbox_examples/` directory in the repository.
-

@@ -4,6 +4,10 @@ This guide documents the operational changes introduced by the LangGraph
 migration. It is intended for users upgrading configuration and for maintainers
 reviewing behavior that changed from the AG2 implementation.
 
+This is not a benchmark report. Historical AG2-vs-LangGraph run statistics
+belong in a separate evaluation document; this file describes the compatibility
+and runtime changes required to operate this branch.
+
 ## What Changed
 
 - Orchestration moved to `SimpleHercules`, backed by a LangGraph `StateGraph`.
@@ -102,6 +106,33 @@ Direct config through `LLM_MODEL_NAME`, `LLM_MODEL_API_KEY`, and related direct
 is deprecated and logs a warning. Direct CLI flags such as `--llm-model` and
 `--llm-model-api-key` should be treated the same way.
 
+Quick mapping:
+
+| Old setup | LangGraph branch setup |
+| --- | --- |
+| `LLM_MODEL_NAME` | `agents_llm_config.json` profile bucket `planner_agent` / `nav_agent` / `mem_agent` / `helper_agent` |
+| `LLM_MODEL_API_KEY` | `model_api_key` inside the active profile bucket |
+| `LLM_MODEL_BASE_URL` | `model_base_url` inside the active profile bucket |
+| `--llm-model` | `--agents-llm-config-file` plus `--agents-llm-config-file-ref-key` |
+| One shared direct model | Per-agent model buckets, with `nav_agent` shared by navigation helpers |
+
+Use environment variables:
+
+```bash
+export AGENTS_LLM_CONFIG_FILE=agents_llm_config.json
+export AGENTS_LLM_CONFIG_FILE_REF_KEY=litellm
+testzeus-hercules --project-base=opt
+```
+
+Or pass the same values through CLI:
+
+```bash
+testzeus-hercules \
+  --project-base=opt \
+  --agents-llm-config-file agents_llm_config.json \
+  --agents-llm-config-file-ref-key litellm
+```
+
 ## Orchestration Contract
 
 The planner must return strict JSON. `is_passed` is a boolean, not `null`:
@@ -191,6 +222,11 @@ Avoid:
 - stale browser arg names such as `selector_text_list`
 - wrapper-only `kwargs` schemas
 
+Migration note for maintainers: old helper code often tolerated loose kwargs or
+tuple-shaped inputs because tool dispatch was mediated by AG2. The LangGraph
+path binds tools directly to provider-facing LangChain schemas, so those loose
+public shapes can fail before tool code runs.
+
 ## MCP Lifecycle
 
 MCP support now has two sides.
@@ -217,6 +253,12 @@ testzeus-hercules-mcp
 This starts a FastMCP streamable HTTP server, defaulting to
 `http://0.0.0.0:8000/mcp`. It exposes tools including `generate_gherkin`,
 `run_test`, and `get_test_results`.
+
+Environment variables for the server entrypoint:
+
+- `MCP_HOST`: bind host, default `0.0.0.0`
+- `MCP_PORT`: bind port, default `8000`
+- `MCP_PATH`: HTTP path, default `/mcp`
 
 ## Token and Cost Reporting
 
@@ -247,6 +289,8 @@ not returned by the provider.
 - `LLM_MODEL_*` env vars and direct `--llm-model*` CLI flags are legacy.
 - `AGENTS_LLM_CONFIG_FILE` and `AGENTS_LLM_CONFIG_FILE_REF_KEY` must be set
   together.
+- The active ref key must match a top-level profile in
+  `agents_llm_config.json`.
 - Navigation models must support tool calling.
 - Planner models must be reliable at strict JSON output.
 - Tool-call loops are bounded by nav max rounds and return explicit errors

@@ -139,6 +139,9 @@ playwright install --with-deps
 ```
 
 For detailed information about project structure and running tests, please refer to our [Run Guide](docs/run_guide.md).
+For migration-specific runtime behavior, see
+[docs/Migration/MIGRATION.md](docs/Migration/MIGRATION.md) and
+[docs/Migration/ARCHITECTURE.md](docs/Migration/ARCHITECTURE.md).
 
 #### Basic Parameters
 
@@ -451,6 +454,7 @@ For the hardcore enthusiasts, you can use Hercules via the source code to get a 
 
    ```bash
    cd testzeus-hercules
+   git checkout langchain_migration
    ```
 
 3. **Use Make Commands**
@@ -471,7 +475,22 @@ For the hardcore enthusiasts, you can use Hercules via the source code to get a 
    make install
    ```
 
-6. **Run Hercules**
+6. **Configure the agent models**
+
+   Create `agents_llm_config.json` from the sample shape in
+   `agents_llm_config-example copy.json.txt`, then set the active provider or
+   profile key:
+
+   ```bash
+   export AGENTS_LLM_CONFIG_FILE=agents_llm_config.json
+   export AGENTS_LLM_CONFIG_FILE_REF_KEY=litellm
+   ```
+
+   The ref key must match the top-level key in `agents_llm_config.json`.
+   Direct `LLM_MODEL_*` values and `--llm-model*` flags remain compatibility
+   options, but they are deprecated for new runs.
+
+7. **Run Hercules**
 
    ```bash
    make run
@@ -497,7 +516,7 @@ For the hardcore enthusiasts, you can use Hercules via the source code to get a 
          └── test_data.txt
      ```
 
-7. **Interactive Mode**
+8. **Interactive Mode**
 
    You can also run Hercules in interactive mode as an instruction execution agent, which is more useful for RPA and debugging test cases and Hercules's behavior on new environments while building new tooling and extending the agents.
 
@@ -509,7 +528,10 @@ For the hardcore enthusiasts, you can use Hercules via the source code to get a 
 
 ### Approach 4: Setting Up via helper_script_custom.sh
 
-For those who want a fully automated setup experience on Linux/macOS environments, we provide a helper_script.sh. This script installs Python, creates a virtual environment, installs TestZeus Hercules, and sets up the base project directories in an opt folder.
+For those who want a fully automated setup experience on Linux/macOS
+environments, create the script below locally. It installs TestZeus Hercules,
+sets up the base `opt` project directories, and writes the LangGraph branch's
+recommended `agents_llm_config.json` plus provider ref key configuration.
 
 #### Prerequisites
 
@@ -621,8 +643,8 @@ For those who want a fully automated setup experience on Linux/macOS environment
   ```
 2. **Make the Script Executable and Run**
 ```bash
-chmod +x helper_script.sh
-./helper_script.sh
+chmod +x helper_script_custom.sh
+./helper_script_custom.sh
 ```
 -	The script will:
 	•	Create a Python virtual environment named test.
@@ -632,8 +654,8 @@ chmod +x helper_script.sh
 	•	Important: You will be prompted to edit both agents_llm_config.json and .env files. After you've added your API keys and other custom configurations, press Enter to continue.
 
 3. **Script Output**
-	-	After completion, the script automatically runs testzeus-hercules --project-base=opt.
-	-	Your logs and results will appear in opt/output, opt/log_files, and opt/proofs.
+	-	After completion, the script automatically runs `testzeus-hercules --project-base=opt`.
+	-	Your logs and results will appear in `opt/output`, `opt/log_files`, and `opt/proofs`.
 ---
 
 ## 📝 Configuration Details
@@ -671,6 +693,7 @@ To configure Hercules in detail:
 Hercules includes an MCP Navigation Agent that can connect to MCP servers over `stdio`, `sse`, and `streamable-http`. It works out of the box with Composio-generated MCP servers.
 
 - Quick start guide: see `docs/MCP_Usage.md`
+- LangGraph lifecycle details: see `docs/Migration/ARCHITECTURE.md#MCP-Runtime`
 - Composio docs: https://docs.composio.dev/docs/mcp-developers
 
 Minimal setup:
@@ -696,7 +719,9 @@ MCP_SERVERS=mcp_servers.json
 MCP_TIMEOUT=30
 ```
 
-Then, run Hercules as usual; the MCP agent will initialize and expose tools from the configured server.
+Then, run Hercules as usual. The MCP helper waits for server readiness before
+binding tools, discovers each server tool, and exposes it as a dynamic
+LangChain `StructuredTool` while preserving the server tool's input schema.
 
 ### Example Testcase (Simple)
 ```
@@ -708,6 +733,16 @@ Feature: Read emails from Gmail
     And I read the email with OTP
 ```
 For more testcases visit [MCP-Docs](/docs/MCP_Usage.md)
+
+Hercules can also run as an MCP server for other MCP clients:
+
+```bash
+testzeus-hercules-mcp
+```
+
+This starts a FastMCP streamable HTTP server at
+`http://0.0.0.0:8000/mcp` by default and exposes tools such as
+`generate_gherkin`, `run_test`, and `get_test_results`.
 
 ---
 - Hercules is capable of running in two configuration forms:
@@ -764,7 +799,11 @@ For example: If you would like to run with a "Headful" browser, you can set the 
 
 ### Understanding `agents_llm_config.json`
 
-- It's a list of configurations of LLMs that you want to provide to the agent.
+- This is the primary LLM setup path for the LangGraph branch.
+- The file contains one or more top-level provider/profile keys. Activate one
+  with `AGENTS_LLM_CONFIG_FILE_REF_KEY`.
+- Each active profile should define the agent buckets Hercules uses at runtime:
+  `planner_agent`, `nav_agent`, `mem_agent`, and `helper_agent`.
 
 - Example:
 
@@ -807,6 +846,9 @@ For example: If you would like to run with a "Headful" browser, you can set the 
   reference sample. Copy its shape into `agents_llm_config.json`, update secrets
   locally, and keep the active top-level key in sync with
   `AGENTS_LLM_CONFIG_FILE_REF_KEY`.
+- Direct `LLM_MODEL_NAME`, `LLM_MODEL_API_KEY`, and `--llm-model*` settings are
+  legacy compatibility paths. New documentation and examples should use
+  `agents_llm_config.json`.
 
 ---
 
@@ -896,6 +938,8 @@ executor, and assertion graph nodes.
 
 For the detailed architecture and current tool formats, see
 [docs/Migration/ARCHITECTURE.md](docs/Migration/ARCHITECTURE.md).
+For upgrade notes from the AG2 implementation, see
+[docs/Migration/MIGRATION.md](docs/Migration/MIGRATION.md).
 
 ### Runtime Flow
 

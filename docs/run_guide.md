@@ -95,20 +95,30 @@ playwright install --with-deps
 
 2. Run a test with basic options:
 ```bash
-testzeus-hercules --project-base=opt
+testzeus-hercules \
+  --project-base=opt \
+  --agents-llm-config-file ./agents_llm_config.json \
+  --agents-llm-config-file-ref-key litellm
 ```
 
 Or with individual parameters:
 ```bash
-testzeus-hercules --input-file opt/input/test.feature --output-path opt/output --test-data-path opt/test_data
+testzeus-hercules \
+  --input-file opt/input/test.feature \
+  --output-path opt/output \
+  --test-data-path opt/test_data \
+  --agents-llm-config-file ./agents_llm_config.json \
+  --agents-llm-config-file-ref-key litellm
 ```
 
 3. LLM Configuration Options:
 
 ```bash
 # Recommended LLM configuration file
-testzeus-hercules --agents-llm-config-file ./agents_llm_config.json \
-                  --agents-llm-config-file-ref-key litellm
+testzeus-hercules \
+  --project-base=opt \
+  --agents-llm-config-file ./agents_llm_config.json \
+  --agents-llm-config-file-ref-key litellm
 
 # Legacy direct LLM configuration. Supported for compatibility, but deprecated.
 testzeus-hercules --llm-model gpt-4o --llm-model-api-key your-api-key
@@ -158,7 +168,10 @@ cp your-test-data.json opt/test_data/
 
 2. Run a single test:
 ```bash
-testzeus-hercules --project-base=opt
+testzeus-hercules \
+  --project-base=opt \
+  --agents-llm-config-file ./agents_llm_config.json \
+  --agents-llm-config-file-ref-key litellm
 ```
 
 Expected outcome:
@@ -182,7 +195,10 @@ cp test2.feature opt/tests/test2/input/
 
 3. Run all tests:
 ```bash
-testzeus-hercules --project-base=opt
+testzeus-hercules \
+  --project-base=opt \
+  --agents-llm-config-file ./agents_llm_config.json \
+  --agents-llm-config-file-ref-key litellm
 ```
 
 Expected outcome:
@@ -204,6 +220,7 @@ Use a JSON configuration file for new setup:
 ```bash
 export AGENTS_LLM_CONFIG_FILE=./agents_llm_config.json
 export AGENTS_LLM_CONFIG_FILE_REF_KEY=litellm  # The provider/profile to use
+testzeus-hercules --project-base=opt
 ```
 
 Example `agents_llm_config.json`:
