@@ -16,8 +16,7 @@ opt/
 ├── log_files/              # Execution logs
 │   └── <scenario_name>/
 │       └── run_<timestamp>/
-│           ├── agent_inner_thoughts.json
-│           └── log_between_sender*.json
+│           └── agent_inner_thoughts.json
 ├── proofs/                 # Execution artifacts
 │   └── <scenario_name>/
 │       └── run_<timestamp>/
@@ -82,6 +81,8 @@ mkdir -p opt/tests/test1 opt/tests/test2
 - Other directories created automatically
 
 Hercules will process each test directory sequentially, maintaining separate logs and artifacts for each test suite.
+In bulk mode, each folder's feature file name must match the folder name:
+`opt/tests/test1/input/test1.feature`, `opt/tests/test2/input/test2.feature`, and so on.
 
 ## Running Hercules
 
@@ -98,7 +99,7 @@ playwright install --with-deps
 testzeus-hercules \
   --project-base=opt \
   --agents-llm-config-file ./agents_llm_config.json \
-  --agents-llm-config-file-ref-key litellm
+  --agents-llm-config-file-ref-key <provider-key>
 ```
 
 Or with individual parameters:
@@ -108,19 +109,19 @@ testzeus-hercules \
   --output-path opt/output \
   --test-data-path opt/test_data \
   --agents-llm-config-file ./agents_llm_config.json \
-  --agents-llm-config-file-ref-key litellm
+  --agents-llm-config-file-ref-key <provider-key>
 ```
 
 3. LLM Configuration Options:
 
 ```bash
-# Recommended LLM configuration file
+# Per-agent LLM configuration file
 testzeus-hercules \
   --project-base=opt \
   --agents-llm-config-file ./agents_llm_config.json \
-  --agents-llm-config-file-ref-key litellm
+  --agents-llm-config-file-ref-key <provider-key>
 
-# Legacy direct LLM configuration. Supported for compatibility, but deprecated.
+# Direct single-model LLM configuration.
 testzeus-hercules --llm-model gpt-4o --llm-model-api-key your-api-key
 
 # Portkey integration
@@ -137,8 +138,9 @@ testzeus-hercules --browser-channel chrome-beta \
                   --browser-version 115.0.1 \
                   --browser-path /path/to/chrome
 
-# Browser extensions
-testzeus-hercules --enable-ublock
+# Browser extensions. uBlock and screen-sharing auto-accept are enabled by default.
+testzeus-hercules --disable-ublock
+testzeus-hercules --disable-auto-accept-screen-sharing
 ```
 
 5. Other Options:
@@ -171,7 +173,7 @@ cp your-test-data.json opt/test_data/
 testzeus-hercules \
   --project-base=opt \
   --agents-llm-config-file ./agents_llm_config.json \
-  --agents-llm-config-file-ref-key litellm
+  --agents-llm-config-file-ref-key <provider-key>
 ```
 
 Expected outcome:
@@ -189,8 +191,8 @@ export EXECUTE_BULK=true
 ```bash
 mkdir -p opt/tests/test1/input opt/tests/test1/test_data
 mkdir -p opt/tests/test2/input opt/tests/test2/test_data
-cp test1.feature opt/tests/test1/input/
-cp test2.feature opt/tests/test2/input/
+cp test1.feature opt/tests/test1/input/test1.feature
+cp test2.feature opt/tests/test2/input/test2.feature
 ```
 
 3. Run all tests:
@@ -198,7 +200,7 @@ cp test2.feature opt/tests/test2/input/
 testzeus-hercules \
   --project-base=opt \
   --agents-llm-config-file ./agents_llm_config.json \
-  --agents-llm-config-file-ref-key litellm
+  --agents-llm-config-file-ref-key <provider-key>
 ```
 
 Expected outcome:
@@ -208,25 +210,25 @@ Expected outcome:
 
 ## LLM Configuration
 
-Hercules requires LLM configuration to function properly. The recommended path
-is `agents_llm_config.json` plus an active provider/profile key. Direct
-`LLM_MODEL_*` configuration remains available for compatibility, but it is
-deprecated and logs a warning.
+Hercules requires LLM configuration to function properly. Use
+`agents_llm_config.json` plus an active provider/profile key when you want
+separate planner, navigation, memory, and helper model settings. Direct
+`LLM_MODEL_*` configuration remains available for simpler single-model runs.
 
 ### 1. Configuration File
 
-Use a JSON configuration file for new setup:
+Use a JSON configuration file for per-agent setup:
 
 ```bash
 export AGENTS_LLM_CONFIG_FILE=./agents_llm_config.json
-export AGENTS_LLM_CONFIG_FILE_REF_KEY=litellm  # The provider/profile to use
+export AGENTS_LLM_CONFIG_FILE_REF_KEY=<provider-key>  # Must match a top-level profile
 testzeus-hercules --project-base=opt
 ```
 
 Example `agents_llm_config.json`:
 ```json
 {
-  "litellm": {
+  "openai": {
     "planner_agent": {
       "model_name": "gpt-4o",
       "model_api_key": "your-api-key",
@@ -343,10 +345,10 @@ Example `agents_llm_config.json`:
 }
 ```
 
-### 2. Legacy Direct Environment Variables
+### 2. Direct Environment Variables
 
-Direct environment variables are still supported for compatibility, but new
-setup should avoid them.
+Direct environment variables are still supported. They are simplest when one
+model configuration is enough for all agents.
 
 ```bash
 export LLM_MODEL_NAME=gpt-4o
@@ -356,7 +358,7 @@ export LLM_MODEL_API_TYPE=openai
 export LLM_MODEL_TEMPERATURE=0.0
 ```
 
-Additional legacy direct variables include provider-specific settings such as
+Additional direct variables include provider-specific settings such as
 `LLM_MODEL_API_VERSION`, `LLM_MODEL_REGION`, `LLM_MODEL_AWS_REGION`, and token
 settings such as `LLM_MODEL_MAX_TOKENS` or
 `LLM_MODEL_MAX_COMPLETION_TOKENS`.
@@ -549,7 +551,6 @@ After test execution, results can be found in several locations:
 
 2. **Execution Logs**
    - Agent Thoughts: `opt/log_files/<scenario_name>/run_<timestamp>/agent_inner_thoughts.json`
-   - Communication Logs: `opt/log_files/<scenario_name>/run_<timestamp>/log_between_sender*.json`
 
 3. **Execution Artifacts**
    - Screenshots: `opt/proofs/<scenario_name>/run_<timestamp>/screenshots/`

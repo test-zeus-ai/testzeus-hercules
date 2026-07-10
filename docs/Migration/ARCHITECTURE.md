@@ -273,6 +273,14 @@ That entrypoint starts a FastMCP server using streamable HTTP. By default it
 serves `http://0.0.0.0:8000/mcp` and exposes tools such as
 `generate_gherkin`, `run_test`, and `get_test_results`.
 
+Server-side MCP configuration:
+
+- `TESTZEUS_ROOT`: repo/project root for generated features and output
+- `TESTZEUS_PYTHON`: Python executable used to invoke Hercules
+- `MCP_HOST`: bind host, default `0.0.0.0`
+- `MCP_PORT`: bind port, default `8000`
+- `MCP_PATH`: HTTP path, default `/mcp`
+
 ## Token and Cost Accounting
 
 Planner and navigation helper LLM calls contribute to LangGraph token totals.
@@ -310,12 +318,13 @@ collect token counts but no provider response supplied a price/cost field.
 
 ## LLM Config Buckets
 
-New setup should use `agents_llm_config.json` plus an active provider/profile
-key selected by `AGENTS_LLM_CONFIG_FILE_REF_KEY`.
+Use `agents_llm_config.json` plus an active provider/profile key when you need
+per-agent model routing. Direct `LLM_MODEL_*` configuration remains valid for
+simpler single-model runs.
 
 ```json
 {
-  "litellm": {
+  "<provider-key>": {
     "planner_agent": {},
     "nav_agent": {},
     "mem_agent": {},
@@ -331,8 +340,8 @@ key selected by `AGENTS_LLM_CONFIG_FILE_REF_KEY`.
 - `helper_agent`: visual/multimodal helper model
 
 The planner model should be strong at structured JSON. Navigation models must
-support tool calling.
+support tool calling. LiteLLM is one supported OpenAI-compatible proxy profile,
+but the profile key is not hardcoded.
 
-Direct `LLM_MODEL_*` environment variables and direct `--llm-model*` CLI flags
-are legacy compatibility paths. The current config layer logs a deprecation
-warning when direct `LLM_MODEL_*` configuration is used.
+When using `agents_llm_config.json`, `AGENTS_LLM_CONFIG_FILE_REF_KEY` must match
+the selected top-level profile key.

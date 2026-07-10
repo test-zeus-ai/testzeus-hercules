@@ -17,23 +17,10 @@ GPT-5 models use `max_completion_tokens` instead of `max_tokens` for controlling
 
 ## Configuration Methods
 
-### 1. Environment Variables
+### 1. Configuration File
 
-```bash
-# Set the model name
-export LLM_MODEL_NAME=gpt-5
-
-# Use max_completion_tokens for GPT-5 models
-export LLM_MODEL_MAX_COMPLETION_TOKENS=4096
-
-# Other parameters
-export LLM_MODEL_TEMPERATURE=0.0
-export LLM_MODEL_SEED=12345
-```
-
-### 2. Configuration File
-
-Create or update your `agents_llm_config.json`:
+Use `agents_llm_config.json` when you want different GPT-5-family models for
+planner, navigation, memory, and helper roles:
 
 ```json
 {
@@ -86,6 +73,21 @@ export AGENTS_LLM_CONFIG_FILE=./agents_llm_config.json
 export AGENTS_LLM_CONFIG_FILE_REF_KEY=openai_gpt5
 ```
 
+### 2. Direct Environment Variables
+
+Direct `LLM_MODEL_*` values are still supported for simple single-model runs:
+
+```bash
+export LLM_MODEL_NAME=gpt-5
+export LLM_MODEL_API_KEY=your-api-key
+export LLM_MODEL_API_TYPE=openai
+export LLM_MODEL_TEMPERATURE=0.0
+```
+
+For GPT-5 response limits, prefer `max_completion_tokens` inside
+`agents_llm_config.json`. The config adapter can translate `max_tokens` to
+`max_completion_tokens` for GPT-5 model names.
+
 ## Automatic Parameter Conversion
 
 The framework automatically converts parameters based on the model family:
@@ -113,11 +115,10 @@ result = {
 
 ## Testing
 
-Run the test script to verify GPT-5 support:
+Run the model utility and LLM helper tests that cover parameter adaptation:
 
 ```bash
-cd testzeus-hercules
-python test_gpt5_support.py
+uv run pytest tests/test_llm_helper.py -q
 ```
 
 ## Troubleshooting
@@ -153,5 +154,5 @@ For issues with GPT-5 support:
 
 1. Check the logs for parameter conversion messages
 2. Verify your configuration format
-3. Test with the provided test script
+3. Run `uv run pytest tests/test_llm_helper.py -q`
 4. Review the main documentation for additional details

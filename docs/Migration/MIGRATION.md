@@ -14,8 +14,9 @@ and runtime changes required to operate this branch.
 - The runtime graph has explicit `planner`, `executor`, and `assertion` nodes.
 - Navigation helpers use LangChain `StructuredTool` objects instead of the old
   group-chat tool dispatch model.
-- LLM setup is now config-file first through `agents_llm_config.json` and an
-  active provider/profile key.
+- LLM setup supports direct `LLM_MODEL_*` values for simple runs and
+  `agents_llm_config.json` plus an active provider/profile key for per-agent
+  routing.
 - MCP tools are discovered asynchronously and wrapped as dynamic
   `StructuredTool` instances.
 - Token usage and cost metadata are accumulated from LangGraph planner and
@@ -28,13 +29,13 @@ target is Python 3.13.
 
 Migration-relevant dependencies include:
 
-- `langgraph`
-- `langchain-core`
-- `langchain-openai`
-- `langchain-community`
-- `mcp`
-- `httpx`
-- `pydantic`
+- `langgraph>=0.2.0,<0.4`
+- `langchain-core>=0.3.0,<0.4`
+- `langchain-openai>=0.2.0,<0.4`
+- `langchain-community>=0.3.0,<0.4`
+- `mcp>=1.23.3,<2`
+- `httpx>=0.28.1,<0.29`
+- `pydantic>=2.6.2,<3`
 
 Install with the repository's normal package manager flow, then install
 Playwright browsers:
@@ -45,7 +46,8 @@ playwright install --with-deps
 
 ## Config Migration
 
-New setup should use `agents_llm_config.json`:
+Use `agents_llm_config.json` when you need different model settings for
+planner, navigation, memory, and helper roles:
 
 ```json
 {
@@ -94,17 +96,19 @@ Set both of these values:
 
 ```bash
 export AGENTS_LLM_CONFIG_FILE=agents_llm_config.json
-export AGENTS_LLM_CONFIG_FILE_REF_KEY=litellm
+export AGENTS_LLM_CONFIG_FILE_REF_KEY=<provider-key>
 ```
 
 The ref key must match the top-level provider/profile name in the file. The
 branch currently includes `agents_llm_config-example copy.json.txt` as a sample
-shape; create or copy it to `agents_llm_config.json` before running.
+shape; create or copy it to `agents_llm_config.json` before running. The sample
+uses `litellm` as one possible OpenAI-compatible proxy profile, but that key is
+not mandatory.
 
 Direct config through `LLM_MODEL_NAME`, `LLM_MODEL_API_KEY`, and related direct
-`LLM_MODEL_*` environment variables is still accepted for compatibility, but it
-is deprecated and logs a warning. Direct CLI flags such as `--llm-model` and
-`--llm-model-api-key` should be treated the same way.
+`LLM_MODEL_*` environment variables is still accepted for simple single-model
+runs. Direct CLI flags such as `--llm-model` and `--llm-model-api-key` follow
+the same path.
 
 Quick mapping:
 
@@ -113,14 +117,14 @@ Quick mapping:
 | `LLM_MODEL_NAME` | `agents_llm_config.json` profile bucket `planner_agent` / `nav_agent` / `mem_agent` / `helper_agent` |
 | `LLM_MODEL_API_KEY` | `model_api_key` inside the active profile bucket |
 | `LLM_MODEL_BASE_URL` | `model_base_url` inside the active profile bucket |
-| `--llm-model` | `--agents-llm-config-file` plus `--agents-llm-config-file-ref-key` |
+| `--llm-model` | Direct single-model setup, or `--agents-llm-config-file` plus `--agents-llm-config-file-ref-key` for per-agent routing |
 | One shared direct model | Per-agent model buckets, with `nav_agent` shared by navigation helpers |
 
 Use environment variables:
 
 ```bash
 export AGENTS_LLM_CONFIG_FILE=agents_llm_config.json
-export AGENTS_LLM_CONFIG_FILE_REF_KEY=litellm
+export AGENTS_LLM_CONFIG_FILE_REF_KEY=<provider-key>
 testzeus-hercules --project-base=opt
 ```
 
@@ -130,7 +134,7 @@ Or pass the same values through CLI:
 testzeus-hercules \
   --project-base=opt \
   --agents-llm-config-file agents_llm_config.json \
-  --agents-llm-config-file-ref-key litellm
+  --agents-llm-config-file-ref-key <provider-key>
 ```
 
 ## Orchestration Contract
@@ -256,6 +260,8 @@ This starts a FastMCP streamable HTTP server, defaulting to
 
 Environment variables for the server entrypoint:
 
+- `TESTZEUS_ROOT`: repo/project root for generated features and output
+- `TESTZEUS_PYTHON`: Python executable used to invoke Hercules
 - `MCP_HOST`: bind host, default `0.0.0.0`
 - `MCP_PORT`: bind port, default `8000`
 - `MCP_PATH`: HTTP path, default `/mcp`
@@ -286,11 +292,12 @@ not returned by the provider.
 
 ## Compatibility Notes
 
-- `LLM_MODEL_*` env vars and direct `--llm-model*` CLI flags are legacy.
 - `AGENTS_LLM_CONFIG_FILE` and `AGENTS_LLM_CONFIG_FILE_REF_KEY` must be set
-  together.
+  together when the config-file path is used.
 - The active ref key must match a top-level profile in
   `agents_llm_config.json`.
+- `LLM_MODEL_*` env vars and direct `--llm-model*` CLI flags remain valid for
+  direct single-model configuration.
 - Navigation models must support tool calling.
 - Planner models must be reliable at strict JSON output.
 - Tool-call loops are bounded by nav max rounds and return explicit errors

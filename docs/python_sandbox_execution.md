@@ -115,7 +115,7 @@ Set the tenant ID to control what modules your scripts can access:
 export SANDBOX_TENANT_ID="executor_agent"
 
 # Or use CLI argument
-hercules --sandbox-tenant-id executor_agent --input-file test.feature
+testzeus-hercules --sandbox-tenant-id executor_agent --input-file test.feature
 ```
 
 ---
@@ -198,10 +198,10 @@ export SANDBOX_CUSTOM_INJECTIONS='{"modules": ["jwt"], "custom_objects": {"API_K
 
 ```bash
 # Set tenant ID
-hercules --sandbox-tenant-id executor_agent --input-file test.feature
+testzeus-hercules --sandbox-tenant-id executor_agent --input-file test.feature
 
 # Set custom injections
-hercules --sandbox-custom-injections '{"modules": ["jwt"], "custom_objects": {"API_KEY": "xyz"}}' \
+testzeus-hercules --sandbox-custom-injections '{"modules": ["jwt"], "custom_objects": {"API_KEY": "xyz"}}' \
          --input-file test.feature
 ```
 
@@ -215,7 +215,7 @@ SANDBOX_CUSTOM_INJECTIONS={"modules": ["jwt"], "custom_objects": {"API_KEY": "se
 
 # Other Hercules config
 AGENTS_LLM_CONFIG_FILE=agents_llm_config.json
-AGENTS_LLM_CONFIG_FILE_REF_KEY=litellm
+AGENTS_LLM_CONFIG_FILE_REF_KEY=<provider-key>
 HEADLESS=true
 ```
 
@@ -576,8 +576,8 @@ Inject your own modules and objects:
 export SANDBOX_CUSTOM_INJECTIONS='{
   "modules": ["jwt", "hashlib", "hmac"],
   "custom_objects": {
-    "API_KEY": "sk-test-123",
-    "API_SECRET": "secret-key",
+    "API_KEY": "replace-me",
+    "API_SECRET": "replace-me",
     "MAX_RETRIES": 3,
     "ENDPOINTS": {
       "prod": "https://api.prod.com",
@@ -604,13 +604,13 @@ Different tests can use different tenants:
 
 ```bash
 # Test 1: Full automation
-SANDBOX_TENANT_ID=executor_agent hercules --input-file full_test.feature
+SANDBOX_TENANT_ID=executor_agent testzeus-hercules --input-file full_test.feature
 
 # Test 2: Data processing only
-SANDBOX_TENANT_ID=data_agent hercules --input-file data_test.feature
+SANDBOX_TENANT_ID=data_agent testzeus-hercules --input-file data_test.feature
 
 # Test 3: API testing only
-SANDBOX_TENANT_ID=api_agent hercules --input-file api_test.feature
+SANDBOX_TENANT_ID=api_agent testzeus-hercules --input-file api_test.feature
 ```
 
 ---
@@ -697,4 +697,4 @@ The Python Sandbox Execution feature gives you:
 
 Perfect for complex automation scenarios where simple Gherkin steps aren't enough!
 
-For more examples, see the `docs/sandbox_examples/` directory in the repository.
+For a compact command and pattern summary, see `docs/sandbox_quick_reference.md`.

@@ -17,7 +17,7 @@ Testing modern web applications can be difficult, with frequent changes and comp
 As you saw, using Hercules is as simple as feeding in your Gherkin features, and getting the results:
 ![HerculesUsage](statics/assets/hercules.svg)
 
-At [TestZeus](www.testzeus.com), we believe that **trustworthy and open-source code** is the backbone of innovation. That's why we've built Hercules to be transparent, reliable, and community-driven.
+At [TestZeus](https://www.testzeus.com), we believe that **trustworthy and open-source code** is the backbone of innovation. That's why we've built Hercules to be transparent, reliable, and community-driven.
 
 Our mission? To **democratize and disrupt test automation**, making top-tier testing accessible to everyone, not just the elite few. No more gatekeeping—everyone deserves a hero on their testing team!
 
@@ -107,7 +107,7 @@ async def apply_filter(filter_type: str) -> dict:
 export SANDBOX_TENANT_ID="executor_agent"  # Full access: requests, pandas, numpy, BeautifulSoup
 
 # Or use CLI
-hercules --sandbox-tenant-id executor_agent --input-file test.feature
+testzeus-hercules --sandbox-tenant-id executor_agent --input-file test.feature
 ```
 
 ---
@@ -159,34 +159,39 @@ PROJECT_BASE/
 │   └── test.feature
 ├── log_files/
 ├── output/
-│   ├── test.feature_result.html
-│   └── test.feature_result.xml
+│   └── run_<timestamp>/
+│       ├── test.feature_result.html
+│       └── test.feature_result.xml
 ├── proofs/
 │   └── User_opens_Google_homepage/
-│       ├── network_logs.json
-│       ├── screenshots/
-│       └── videos/
+│       └── run_<timestamp>/
+│           ├── network_logs.json
+│           ├── screenshots/
+│           └── videos/
 └── test_data/
     └── test_data.txt
 ```
 
-- `--agents-llm-config-file AGENTS_LLM_CONFIG_FILE`: Path to an
-  `agents_llm_config.json` file.
-- `--agents-llm-config-file-ref-key AGENTS_LLM_CONFIG_FILE_REF_KEY`: Top-level
-  provider/profile key inside that file.
+- `--agents-llm-config-file AGENTS_LLM_CONFIG_FILE`: Optional path to an
+  `agents_llm_config.json` file for per-agent model routing.
+- `--agents-llm-config-file-ref-key AGENTS_LLM_CONFIG_FILE_REF_KEY`: Optional
+  top-level provider/profile key inside that file.
 - `--llm-model`, `--llm-model-api-key`, `--llm-model-base-url`, and related
-  direct LLM flags are legacy compatibility options. The current runtime warns
-  that direct `LLM_MODEL_*` configuration is deprecated; new setup should use
-  `agents_llm_config.json`.
+  direct LLM flags are still supported for simple single-profile setups. Use
+  `agents_llm_config.json` when you need separate planner, navigation, memory,
+  and helper model settings.
 
 #### Environment Variables
 
 In addition to command-line parameters, Hercules supports various environment variables for configuration:
 
-- `AGENTS_LLM_CONFIG_FILE`: Path to the agent LLM config file. Example:
-  `agents_llm_config.json`
-- `AGENTS_LLM_CONFIG_FILE_REF_KEY`: Top-level provider/profile key to activate
-  from the config file. Example: `litellm`
+- `LLM_MODEL_NAME`: Model name for direct single-model setup. Example: `gpt-4o`
+- `LLM_MODEL_API_KEY`: API key for the selected model provider.
+- `LLM_MODEL_BASE_URL`: Optional OpenAI-compatible base URL.
+- `AGENTS_LLM_CONFIG_FILE`: Optional path to `agents_llm_config.json` for
+  per-agent model routing.
+- `AGENTS_LLM_CONFIG_FILE_REF_KEY`: Optional top-level provider/profile key to
+  activate from that config file.
 - `BROWSER_TYPE`: Type of browser to use (`chromium`, `firefox`, `webkit`). Default: `chromium`
 - `HEADLESS`: Run browser in headless mode (`true`, `false`). Default: `true`
 - `BROWSER_RESOLUTION`: Browser window resolution (format: `width,height`). Example: `1920,1080`
@@ -198,17 +203,21 @@ For a complete list of environment variables, see our [Environment Variables Gui
 
 #### Running Hercules
 
-Create `agents_llm_config.json`, choose the provider key to activate, and run
-Hercules with that config:
+Set the direct model environment variables and run Hercules:
 
 ```bash
+export LLM_MODEL_NAME=gpt-4o
+export LLM_MODEL_API_KEY=replace-me
+export LLM_MODEL_BASE_URL=https://api.openai.com/v1
+
 testzeus-hercules \
   --input-file opt/input/test.feature \
   --output-path opt/output \
-  --test-data-path opt/test_data \
-  --agents-llm-config-file agents_llm_config.json \
-  --agents-llm-config-file-ref-key litellm
+  --test-data-path opt/test_data
 ```
+
+Use `agents_llm_config.json` only when you need separate planner, navigation,
+memory, and helper model settings; see `docs/run_guide.md`.
 
 
 ## ⚙️ Running Hercules on a Windows Machine
@@ -237,7 +246,7 @@ To set up and run Hercules on a Windows machine:
 5. **Run Hercules:**
    - Once the setup is complete, you can run Hercules from PowerShell or Command Prompt using the following command:
      ```bash
-     testzeus-hercules --input-file opt/input/test.feature --output-path opt/output --test-data-path opt/test_data --agents-llm-config-file agents_llm_config.json --agents-llm-config-file-ref-key litellm
+     testzeus-hercules --input-file opt/input/test.feature --output-path opt/output --test-data-path opt/test_data
      ```
 
 ---
@@ -250,62 +259,20 @@ To set up and run Hercules on a Windows machine:
 - Gemini / Vertex AI: Supported through OpenAI-compatible gateways such as
   LiteLLM. Keep tool schemas simple; tuple-style public tool inputs are not
   provider-safe.
-  -Gemma: Supported models include gemma-4-26b-a4b-it and others like it 
+- Gemma: Supported through gateways or local providers that expose compatible
+  chat and tool-calling behavior.
 - Groq, Mistral, Ollama, DeepSeek, Bedrock, Azure, and other providers can be
   used when they support OpenAI-compatible chat and function/tool calling.
-- Local: Models that dont respond in json text like qwen3 are supported changes to the model can be made in the File called Modelfile(located
-  in /docs/Migration/Modelfile).
+- Local: Ollama and other local providers can be used when their model reliably
+  returns strict planner JSON and supports the required tool-calling behavior.
+  The sample Ollama Modelfile lives at `docs/Migration/Modelfile`.
 
 The planner model should be strong at structured JSON reasoning. Navigation
-models must support tool calling. Configure model routing through
-`agents_llm_config.json`, including LiteLLM proxy details:
-[https://docs.litellm.ai/docs/simple_proxy](https://docs.litellm.ai/docs/simple_proxy).
-```JSON
-{
-  "litellm-flash": {
-    "planner_agent": {
-      "model_name": "gemini-2.5-flash",
-      "model_api_key": "sfasdfsadgbw",
-      "model_base_url": "https://litellm-proxydeployment",
-      "llm_config_params": {
-        "cache_seed": 1234,
-        "temperature": 0,
-        "seed": 12345
-      }
-    },
-    "nav_agent":  {
-      "model_name": "gemini-2.5-flash",
-      "model_api_key": "sfasdfsadgbw",
-      "model_base_url": "https://litellm-proxydeployment",
-      "llm_config_params": {
-        "cache_seed": 1234,
-        "temperature": 0,
-        "seed": 12345
-      }
-    },
-    "mem_agent":  {
-      "model_name": "gemini-2.5-flash",
-      "model_api_key": "sfasdfsadgbw",
-      "model_base_url": "https://litellm-proxydeployment",
-      "llm_config_params": {
-        "cache_seed": 1234,
-        "temperature": 0,
-        "seed": 12345
-      }
-    },
-    "helper_agent":  {
-      "model_name": "gemini-2.5-flash",
-      "model_api_key": "sfasdfsadgbw",
-      "model_base_url": "https://litellm-proxydeployment",
-      "llm_config_params": {
-        "cache_seed": 1234,
-        "temperature": 0,
-        "seed": 12345
-      }
-    }
-  }
-}
-```
+models must support tool calling. For a quick run, direct `LLM_MODEL_*`
+environment variables are enough. Use `agents_llm_config.json` only when you
+need separate planner, navigation, memory, and helper model settings. See
+`docs/run_guide.md` and `docs/environment_variables.md` for full examples,
+including LiteLLM proxy setup.
 
 #### Execution Flow
 
@@ -331,7 +298,8 @@ Once the execution is completed:
 - Logs explaining the sequence of events are generated.
 - The best place to start is the `output-path`, which will have the JUnit XML result file as well as an HTML report regarding the test case execution.
 - You can also find proofs of execution such as video recordings, screenshots per event, and network logs in the `proofs` folder.
-- To delve deeper and understand the chain of thoughts, refer to the `chat_messages.json` in the `log_files`. This will have exact steps that were planned by the agent.
+- To inspect the planner and helper trace, start with `agent_inner_thoughts.json`
+  under `log_files/<scenario_name>/run_<timestamp>/`.
 
 #### Sample Feature File
 
@@ -381,10 +349,10 @@ docker run --env-file=.env \
 ```
 
 - **Environment Variables**: All the required environment variables can be set by passing an `.env` file to the `docker run` command.
-- **LLM Configuration**: Mount `agents_llm_config.json` and set
-  `AGENTS_LLM_CONFIG_FILE=agents_llm_config.json` plus
-  `AGENTS_LLM_CONFIG_FILE_REF_KEY=<provider-key>` in `.env`. Direct
-  `LLM_MODEL_*` values are legacy/deprecated.
+- **LLM Configuration**: Either pass direct `LLM_MODEL_*` values in `.env` or
+  mount `agents_llm_config.json` and set `AGENTS_LLM_CONFIG_FILE=agents_llm_config.json`
+  plus `AGENTS_LLM_CONFIG_FILE_REF_KEY=<provider-key>`. LiteLLM is one useful
+  provider profile when you run through an OpenAI-compatible proxy.
 - **Mounting Directories**: Mount the `opt` folder to the Docker container so that all the inputs can be passed to Hercules running inside the container, and the output can be pulled out for further processing. The repository has a sample `opt` folder that can be mounted easily.
 - **Simplified Parameters**: In the Docker case, there is no need for using `--input-file`, `--output-path`, `--test-data-path`, or `--project-base` as they are already handled by mounting the `opt` folder in the `docker run` command.
 
@@ -475,20 +443,16 @@ For the hardcore enthusiasts, you can use Hercules via the source code to get a 
    make install
    ```
 
-6. **Configure the agent models**
-
-   Create `agents_llm_config.json` from the sample shape in
-   `agents_llm_config-example copy.json.txt`, then set the active provider or
-   profile key:
+6. **Configure the model**
 
    ```bash
-   export AGENTS_LLM_CONFIG_FILE=agents_llm_config.json
-   export AGENTS_LLM_CONFIG_FILE_REF_KEY=litellm
+   export LLM_MODEL_NAME=gpt-4o
+   export LLM_MODEL_API_KEY=replace-me
+   export LLM_MODEL_BASE_URL=https://api.openai.com/v1
    ```
 
-   The ref key must match the top-level key in `agents_llm_config.json`.
-   Direct `LLM_MODEL_*` values and `--llm-model*` flags remain compatibility
-   options, but they are deprecated for new runs.
+   Use `agents_llm_config.json` only when you need per-agent routing for
+   planner, navigation, memory, and helper models. See `docs/run_guide.md`.
 
 7. **Run Hercules**
 
@@ -504,14 +468,16 @@ For the hardcore enthusiasts, you can use Hercules via the source code to get a 
      ├── input/
      │   └── test.feature
      ├── output/
-     │   ├── test.feature_result.html
-     │   └── test.feature_result.xml
+    │   └── run_<timestamp>/
+    │       ├── test.feature_result.html
+    │       └── test.feature_result.xml
      ├── log_files/
      ├── proofs/
      │   └── User_opens_Google_homepage/
-     │       ├── network_logs.json
-     │       ├── screenshots/
-     │       └── videos/
+    │       └── run_<timestamp>/
+    │           ├── network_logs.json
+    │           ├── screenshots/
+    │           └── videos/
      └── test_data/
          └── test_data.txt
      ```
@@ -529,9 +495,9 @@ For the hardcore enthusiasts, you can use Hercules via the source code to get a 
 ### Approach 4: Setting Up via helper_script_custom.sh
 
 For those who want a fully automated setup experience on Linux/macOS
-environments, create the script below locally. It installs TestZeus Hercules,
-sets up the base `opt` project directories, and writes the LangGraph branch's
-recommended `agents_llm_config.json` plus provider ref key configuration.
+environments, create the script below locally. It installs TestZeus Hercules and
+sets up the base `opt` project directories with direct `LLM_MODEL_*`
+environment variables for a simple local run.
 
 #### Prerequisites
 
@@ -560,62 +526,13 @@ recommended `agents_llm_config.json` plus provider ref key configuration.
   # create a new directory named 'opt'
   mkdir -p opt/input opt/output opt/test_data
 
-  # Create agents_llm_config.json and make the top-level provider key match
-  # AGENTS_LLM_CONFIG_FILE_REF_KEY in .env. Replace the placeholders below.
-  cat > agents_llm_config.json <<'JSON'
-  {
-    "litellm": {
-      "planner_agent": {
-        "model_name": "gpt-4o",
-        "model_api_key": "replace-me",
-        "model_base_url": "https://api.openai.com/v1",
-        "llm_config_params": {
-          "temperature": 0,
-          "seed": 12345
-        }
-      },
-      "nav_agent": {
-        "model_name": "gpt-4o",
-        "model_api_key": "replace-me",
-        "model_base_url": "https://api.openai.com/v1",
-        "llm_config_params": {
-          "temperature": 0,
-          "seed": 12345
-        }
-      },
-      "mem_agent": {
-        "model_name": "gpt-4o-mini",
-        "model_api_key": "replace-me",
-        "model_base_url": "https://api.openai.com/v1",
-        "llm_config_params": {
-          "temperature": 0,
-          "seed": 12345
-        }
-      },
-      "helper_agent": {
-        "model_name": "gpt-4o",
-        "model_api_key": "replace-me",
-        "model_base_url": "https://api.openai.com/v1",
-        "llm_config_params": {
-          "temperature": 0,
-          "seed": 12345
-        }
-      }
-    }
-  }
-  JSON
-
-  # prompt user that they need to edit the 'agents_llm_config.json' file, halt the script and open the file in an editor
-  echo "Please edit the 'agents_llm_config.json' file to add your API key and other configurations."
-
-  # halt the script and mention the absolute path of the agents_llm_config.json file so that user can edit it in the editor
-  echo "The 'agents_llm_config.json' file is located at $(pwd)/agents_llm_config.json"
-  read -p "Press Enter if file is updated"
-
-  # Create the minimal environment file for the config-file based setup path.
+  # Create a minimal environment file. For per-agent model routing, see
+  # docs/run_guide.md and docs/environment_variables.md.
   cat > .env <<'ENV'
-  AGENTS_LLM_CONFIG_FILE=agents_llm_config.json
-  AGENTS_LLM_CONFIG_FILE_REF_KEY=litellm
+  LLM_MODEL_NAME=gpt-4o
+  LLM_MODEL_API_KEY=replace-me
+  LLM_MODEL_BASE_URL=https://api.openai.com/v1
+  LLM_MODEL_API_TYPE=openai
   HEADLESS=true
   RECORD_VIDEO=true
   TAKE_SCREENSHOTS=true
@@ -646,16 +563,16 @@ recommended `agents_llm_config.json` plus provider ref key configuration.
 chmod +x helper_script_custom.sh
 ./helper_script_custom.sh
 ```
--	The script will:
-	•	Create a Python virtual environment named test.
-	•	Install testzeus-hercules and Playwright dependencies.
-	•	Create the opt folder structure (for input/output/test data).
-	•	Create sample config files: agents_llm_config.json, .env, and example feature/test data files.
-	•	Important: You will be prompted to edit both agents_llm_config.json and .env files. After you've added your API keys and other custom configurations, press Enter to continue.
+- The script will:
+  - Create a Python virtual environment named `test`.
+  - Install `testzeus-hercules` and Playwright dependencies.
+  - Create the `opt` folder structure for input, output, and test data.
+  - Create sample `.env`, feature, and test data files.
+  - Prompt you to edit `.env` before running.
 
 3. **Script Output**
-	-	After completion, the script automatically runs `testzeus-hercules --project-base=opt`.
-	-	Your logs and results will appear in `opt/output`, `opt/log_files`, and `opt/proofs`.
+   - After completion, the script automatically runs `testzeus-hercules --project-base=opt`.
+   - Your logs and results will appear in `opt/output`, `opt/log_files`, and `opt/proofs`.
 ---
 
 ## 📝 Configuration Details
@@ -664,10 +581,11 @@ For a comprehensive guide to all environment variables and configuration options
 
 ### Disabling Telemetry
 
-To disable telemetry, set the `TELEMETRY_ENABLED` environment variable to `0`:
+To disable telemetry in the current branch, set `ENABLE_TELEMETRY` to `1`.
+The current implementation treats unset or `0` as enabled:
 
 ```bash
-export TELEMETRY_ENABLED=0
+export ENABLE_TELEMETRY=1
 ```
 
 ### Auto Mode
@@ -694,7 +612,7 @@ Hercules includes an MCP Navigation Agent that can connect to MCP servers over `
 
 - Quick start guide: see `docs/MCP_Usage.md`
 - LangGraph lifecycle details: see `docs/Migration/ARCHITECTURE.md#MCP-Runtime`
-- Composio docs: https://docs.composio.dev/docs/mcp-developers
+- Composio docs: https://docs.composio.dev/docs/quickstart
 
 Minimal setup:
 
@@ -705,7 +623,10 @@ Minimal setup:
   "mcpServers": {
     "server_name": {
       "transport": "streamable-http",
-      "url": "https://mcp.composio.dev/composio/server/<SERVER_UUID>/mcp?user_id=<USER_EMAIL>"
+      "url": "<session.mcp.url>",
+      "headers": {
+        "Authorization": "Bearer <token-if-required>"
+      }
     }
   }
 }
@@ -732,7 +653,7 @@ Feature: Read emails from Gmail
     When I connect to Gmail
     And I read the email with OTP
 ```
-For more testcases visit [MCP-Docs](/docs/MCP_Usage.md)
+For more testcases visit [MCP docs](docs/MCP_Usage.md).
 
 Hercules can also run as an MCP server for other MCP clients:
 
@@ -743,24 +664,6 @@ testzeus-hercules-mcp
 This starts a FastMCP streamable HTTP server at
 `http://0.0.0.0:8000/mcp` by default and exposes tools such as
 `generate_gherkin`, `run_test`, and `get_test_results`.
-
----
-- Hercules is capable of running in two configuration forms:
-
-  1. **Recommended: provider/profile config**
-
-     - Set `AGENTS_LLM_CONFIG_FILE=agents_llm_config.json`.
-     - Set `AGENTS_LLM_CONFIG_FILE_REF_KEY` to the top-level provider/profile
-       key to use, such as `litellm`.
-     - Put per-agent model settings under `planner_agent`, `nav_agent`,
-       `mem_agent`, and `helper_agent`.
-
-  2. **Legacy direct LLM config**
-
-     - `LLM_MODEL_NAME`, `LLM_MODEL_API_KEY`, `LLM_MODEL_BASE_URL`, and the
-       direct `--llm-model*` CLI flags are still accepted for compatibility.
-     - The current runtime warns that `LLM_MODEL_*` is deprecated. Do not use
-       it as the setup path for new runs.
 
 - Hercules considers a base folder that is by default `./opt` but can be changed by the environment variable `PROJECT_SOURCE_ROOT`.
 
@@ -797,58 +700,12 @@ For example: If you would like to run with a "Headful" browser, you can set the 
   export ENABLE_PLAYWRIGHT_TRACING=true
   ```
 
-### Understanding `agents_llm_config.json`
+### LLM Configuration Details
 
-- This is the primary LLM setup path for the LangGraph branch.
-- The file contains one or more top-level provider/profile keys. Activate one
-  with `AGENTS_LLM_CONFIG_FILE_REF_KEY`.
-- Each active profile should define the agent buckets Hercules uses at runtime:
-  `planner_agent`, `nav_agent`, `mem_agent`, and `helper_agent`.
-
-- Example:
-
-  ```json
-  {
-    "anthropic": {
-		"planner_agent": {
-			"model_name": "claude-3-5-haiku-latest",
-			"model_api_key": "",
-			"model_api_type": "anthropic",
-            "llm_config_params": {
-                "cache_seed": null,
-                "temperature": 0.0,
-                "seed":12345
-            }
-		},
-		"nav_agent": {
-			"model_name": "claude-3-5-haiku-latest",
-			"model_api_key": "",
-			"model_api_type": "anthropic",
-            "llm_config_params": {
-                "cache_seed": null,
-                "temperature": 0.0,
-                "seed":12345
-            }
-		}
-    }
-  }
-  ```
-
-- The top-level key is the provider/profile name passed in
-  `AGENTS_LLM_CONFIG_FILE_REF_KEY`.
-- `planner_agent` config is used by the planner node.
-- `nav_agent` config is shared by browser, API, security, SQL, time keeper,
-  MCP, and executor navigation helpers.
-- `mem_agent` config is used only when dynamic long-term memory is enabled.
-- `helper_agent` config is used by visual/multimodal helper flows.
-
-- The branch currently includes `agents_llm_config-example copy.json.txt` as a
-  reference sample. Copy its shape into `agents_llm_config.json`, update secrets
-  locally, and keep the active top-level key in sync with
-  `AGENTS_LLM_CONFIG_FILE_REF_KEY`.
-- Direct `LLM_MODEL_NAME`, `LLM_MODEL_API_KEY`, and `--llm-model*` settings are
-  legacy compatibility paths. New documentation and examples should use
-  `agents_llm_config.json`.
+Use direct `LLM_MODEL_*` environment variables for the simplest local runs.
+Use `agents_llm_config.json` only when you need per-agent model routing across
+`planner_agent`, `nav_agent`, `mem_agent`, and `helper_agent`. The full schema
+and examples live in `docs/run_guide.md` and `docs/environment_variables.md`.
 
 ---
 
@@ -1014,7 +871,7 @@ Hercules supports **WCAG 2.0, 2.1, and 2.2** at **A, AA, and AAA levels**, enabl
 
 ## 🔬 Testing and Evaluation: QEvals
 
-We wanted to ensure that Hercules stands up to the task of end-to-end testing with immense precision. So, we have run Hercules through a wide range of tests such as running APIs, interacting with complex UI scenarios, clicking through calendars, or iframes. A full list of evaluations can be found in the [tests folder](<Link to tests folder>).
+We wanted to ensure that Hercules stands up to the task of end-to-end testing with immense precision. So, we have run Hercules through a wide range of tests such as running APIs, interacting with complex UI scenarios, clicking through calendars, or iframes. A full list of evaluations can be found in the [tests folder](tests/).
 
 ### Running Tests
 
@@ -1066,47 +923,49 @@ We believe that great quality comes from opinions about a product. So we have in
 
 ## 🦾 HyperMind
 
-:jigsaw: Summary
+### Summary
 Hercules now gains the power of the Hypermind — a secure, multi-tenant Python sandbox that lets testers inject custom logic, AI-powered heuristics, and human-crafted intelligence directly into test scenarios.
 When automation hits a wall, the Hypermind takes over — executing scripts with full Playwright access and controlled permissions.
 
+### Core Capabilities
 
+| Capability | Description |
+| --- | --- |
+| Run custom scripts from Gherkin | Invoke Python functions as test steps. |
+| Full Playwright access | Direct control over browser, page, and context. |
+| Auto-injected utilities | Common tools such as `logger`, `asyncio`, and `json` are preloaded. |
+| Multi-tenant isolation | Executor, data, API, and restricted levels for safety. |
+| Dynamic permissions | Control module access via CLI or environment. |
+| Execution proofs | Pre/post screenshots and JSON execution reports. |
+| Reusable logic | Use scripts across features or teams. |
 
-:gear: Core Capabilities
-Capability	Description
-:brain: Run custom scripts from Gherkin	Invoke Python functions as test steps.
-:earth_africa: Full Playwright access	Direct control over browser, page, and context.
-:jigsaw: Auto-injected utilities	Common tools (logger, asyncio, json, etc.) preloaded.
-:lock: Multi-tenant isolation	Executor, Data, API, and Restricted levels for safety.
-:gear: Dynamic permissions	Control module access via CLI or environment.
-:camera_with_flash: Execution proofs	Pre/post screenshots and JSON execution reports.
-:arrows_counterclockwise: Reusable logic	Use scripts across features or teams.
-
-
-:toolbox: Usage Example
+### Usage Example
 **Gherkin**:
-    Feature: Product Filtering
-      Scenario: Apply filter using Hypermind Script
-        Given a user is on the URL as https://example.com
-        When execute the hypermind script "scripts/apply_filter.py" with filter_type as "Turtle Neck"
-        Then the script should report successful filter application
 
+```gherkin
+Feature: Product Filtering
 
+  Scenario: Apply filter using Hypermind Script
+    Given a user is on the URL as https://example.com
+    When execute the apply_filter function from script at "scripts/apply_filter.py" with filter_type as "Turtle Neck"
+    Then the script should report successful filter application
+```
 
 **Python**: opt/scripts/apply_filter.py
 
-    async def apply_filter(filter_type: str) -> dict:
-        """Apply filter with fallback strategies."""
-        await page.wait_for_selector('[data-filter-section]')
-        for selector in [f'input[value="{filter_type}"]', f'label:has-text("{filter_type}") input']:
-            if await page.locator(selector).count() > 0:
-                await page.locator(selector).click()
-                break
-        count = await page.locator('.product-item').count()
-        return {"status": "success", "filter": filter_type, "products": count}
+```python
+async def apply_filter(filter_type: str) -> dict:
+    """Apply filter with fallback strategies."""
+    await page.wait_for_selector('[data-filter-section]')
+    for selector in [f'input[value="{filter_type}"]', f'label:has-text("{filter_type}") input']:
+        if await page.locator(selector).count() > 0:
+            await page.locator(selector).click()
+            break
+    count = await page.locator('.product-item').count()
+    return {"status": "success", "filter": filter_type, "products": count}
+```
 
-	
-:checkered_flag: Vision
+### Vision
 “When automation falters, Hypermind awakens.”
 Hypermind Scripts represent the next phase of AI-assisted testing — uniting autonomous precision with human adaptability. It’s not just fallback logic; it’s human creativity made executable.
 
@@ -1209,9 +1068,11 @@ Hercules would not have been possible without the great work from the following 
 1. [Agent-E](https://arxiv.org/abs/2407.13032)
 2. [Q*](https://arxiv.org/abs/2312.10868)
 3. [Agent Q](https://arxiv.org/abs/2408.07199)
-4. [Autogen](https://arxiv.org/pdf/2308.08155)
+4. [Autogen](https://arxiv.org/pdf/2308.08155) as historical inspiration for earlier agent orchestration
 
 The Hercules project is inferred and enhanced over the existing project of [Agent-E](https://github.com/EmergenceAI/Agent-E). We have improved lots of cases to make it capable of doing testing, especially in the area of complex DOM navigation and iframes. We have also added new tools and abilities for complex enterprise navigation so that Hercules can perform better work over the base framework we had picked.
+
+The current migration branch runs on LangGraph, LangChain tool binding, and MCP-compatible integrations.
 
 Hercules also picks some inspiration from the legacy TestZeus repo [here](https://www.testzeus.org).
 

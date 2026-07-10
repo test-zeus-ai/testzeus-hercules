@@ -65,10 +65,10 @@ Each directory is created automatically when accessed through the corresponding 
 ## LLM Configuration
 
 ### Basic LLM Setup
-The recommended setup path is an agent LLM configuration file plus an active
-provider/profile key. Direct `LLM_MODEL_*` variables are still read for
-compatibility, but they are deprecated and the runtime logs a warning when they
-are used.
+Hercules supports two LLM setup paths. Use direct `LLM_MODEL_*` variables for a
+simple single-model run. Use `agents_llm_config.json` plus an active
+provider/profile key when you want separate planner, navigation, memory, and
+helper model settings.
 
 1. Configuration File:
 ```bash
@@ -76,10 +76,9 @@ AGENTS_LLM_CONFIG_FILE=agents_llm_config.json
 AGENTS_LLM_CONFIG_FILE_REF_KEY=<provider_key>
 ```
 
-The `<provider_key>` must match a top-level key in `agents_llm_config.json`,
-for example `litellm`. This file is the happy path for new runs because it
-defines separate model buckets for `planner_agent`, `nav_agent`, `mem_agent`,
-and `helper_agent`.
+The `<provider_key>` must match a top-level key in `agents_llm_config.json`.
+LiteLLM is one supported OpenAI-compatible proxy option, but the top-level key
+is user-configurable.
 
 2. Legacy Direct Environment Variables:
 ```bash
@@ -146,7 +145,9 @@ Model Configuration:
 LLM Parameters:
 - `temperature`: Controls randomness in responses (0.0 to 1.0)
 - `seed`: Random seed for reproducibility
-- `cache_seed`: Seed for caching
+- `cache_seed`: Seed for caching. The LangGraph/LangChain path strips this
+  value before constructing LangChain models, so do not rely on it for runtime
+  determinism.
 - `max_tokens`: Maximum number of tokens in response (for GPT-3, GPT-4, Claude, and other models)
 - `max_completion_tokens`: Maximum number of tokens in response (for GPT-5 and newer models)
 - `presence_penalty`: Penalty for token presence
@@ -233,6 +234,29 @@ LLM Parameters:
   - Values: `true`, `false`
   - Default: `false`
   - Implementation: Controls memory management strategy
+
+- `GUIDED_MODE`: Enable guided test generation mode
+  - Values: `true`, `false`
+  - Default: `false`
+  - Implementation: Used by the CLI to generate and run a feature from a natural-language test description
+
+- `GUIDED_TEST_DESCRIPTION`: Natural-language test description for guided mode
+  - Usage: Equivalent to passing `--test "..."` on the CLI
+
+- `GUIDED_DRY_RUN`: Generate and print Gherkin without running it
+  - Values: `true`, `false`
+  - Usage: Equivalent to passing `--dry-run`
+
+### Python Sandbox
+- `SANDBOX_TENANT_ID`: Sandbox permission profile
+  - Values: `executor_agent`, `data_agent`, `api_agent`, `restricted_agent`
+  - Default: empty (base injections only)
+
+- `SANDBOX_PACKAGES`: Comma-separated modules to inject into sandbox scripts
+  - Example: `requests,pandas,numpy`
+
+- `SANDBOX_CUSTOM_INJECTIONS`: JSON object describing extra modules and custom objects
+  - Example: `{"modules": ["jwt"], "custom_objects": {"MAX_RETRIES": 3}}`
 
 ## Device Configuration
 
@@ -356,7 +380,7 @@ LLM Parameters:
 - `MCP_SERVERS`: MCP server configuration
   - Values: Path to a `.json` file or a JSON string
   - Example (file path): `mcp_servers.json`
-  - Example (JSON string): `{"mcpServers": {"server_name": {"transport": "streamable-http", "url": "https://mcp.composio.dev/composio/server/<SERVER_UUID>/mcp?user_id=<USER_EMAIL>"}}}`
+  - Example (JSON string): `{"mcpServers": {"server_name": {"transport": "streamable-http", "url": "<session.mcp.url>"}}}`
   - Implementation: If a path ending with `.json` is provided, Hercules attempts to load it from:
     - The current working directory
     - Relative to `testzeus_hercules/`
@@ -367,11 +391,20 @@ LLM Parameters:
   - Default: `30`
   - Implementation: Used to set `ClientSession` read timeouts during MCP interactions.
 
+Hercules can also run as an MCP server through `testzeus-hercules-mcp`.
+The server entrypoint uses these variables:
+
+- `TESTZEUS_ROOT`: Repository or project root for server-side test execution
+- `TESTZEUS_PYTHON`: Python executable used to run Hercules
+- `MCP_HOST`: Bind host, default `0.0.0.0`
+- `MCP_PORT`: Bind port, default `8000`
+- `MCP_PATH`: HTTP path, default `/mcp`
+
 ### Telemetry and Monitoring
 - `ENABLE_TELEMETRY`: Enable usage telemetry
   - Values: `0`, `1`
-  - Default: `1`
-  - Implementation: Controls telemetry data collection
+  - Default: unset, which currently behaves like `0`
+  - Current implementation: telemetry is enabled when `ENABLE_TELEMETRY` is unset or set to `0`; set `ENABLE_TELEMETRY=1` to disable it. This is inverted and should be treated carefully when changing code.
 
 - `AUTO_MODE`: Indicates automatic execution
   - Values: `0`, `1`
@@ -389,13 +422,22 @@ LLM Parameters:
   - Default: `light`
   - Implementation: Sets browser color scheme preference
 
+- `ADDITIONAL_TOOL_DIRS`: Comma-separated directories containing custom tool modules
+  - Usage: Lets Hercules load additional tools outside `testzeus_hercules/core/tools`
+
+- `NO_WAIT_FOR_LOAD_STATE`: Skip waiting for Playwright load state in supported browser operations
+  - Values: `true`, `false`
+
 ## Configuration Priority
 
-The system follows this configuration priority order:
+The effective configuration is assembled in this order:
 
-1. Command Line Arguments
-2. Environment Variables
-3. Configuration Files
-4. Default Values
+1. Built-in defaults
+2. `.env` values
+3. Process environment variables
+4. `--config` YAML/JSON file values
+5. Command-line arguments
 
-This means that command-line arguments override environment variables, which override configuration files, which override default values.
+Later sources override earlier sources. If both `AGENTS_LLM_CONFIG_FILE` and
+direct `LLM_MODEL_*` settings are present, the selected runtime path depends on
+which CLI/config values are active for that run.
