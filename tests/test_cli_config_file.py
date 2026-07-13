@@ -99,6 +99,15 @@ def test_ignore_env_skips_strict_llm_validation(monkeypatch: pytest.MonkeyPatch)
     assert "AGENTS_LLM_CONFIG_FILE_REF_KEY" not in cfg
 
 
+def test_max_completion_tokens_env_is_loaded(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LLM_MODEL_MAX_COMPLETION_TOKENS", "1234")
+
+    module = _load_config_module(["testzeus-hercules"])
+    cfg = module.get_global_conf().get_config()
+
+    assert cfg["LLM_MODEL_MAX_COMPLETION_TOKENS"] == "1234"
+
+
 def test_yaml_config_file_is_loaded_via_cli_flag(tmp_path: pathlib.Path) -> None:
     config_file = tmp_path / "hercules.config.yaml"
     config_file.write_text(

@@ -111,7 +111,7 @@ async def sequential_process() -> None:
                 proofs_video_path=runner.browser_manager.get_latest_video_path(),
                 network_logs_path=runner.browser_manager.request_response_log_file,
                 logs_path=get_global_conf().get_source_log_folder_path(stake_id),
-                planner_thoughts_path=get_global_conf().get_source_log_folder_path(stake_id) + "/chat_messages.json",
+                planner_thoughts_path=get_global_conf().get_source_log_folder_path(stake_id) + "/agent_inner_thoughts.json",
             )
         )
 

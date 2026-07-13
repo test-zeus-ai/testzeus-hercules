@@ -44,18 +44,18 @@ def get_litellm_chat_model(agent_name: str = "planner_agent") -> BaseChatModel:
     """Return a LangChain chat model configured for the LiteLLM proxy."""
     ensure_litellm_provider()
     agent_cfg = AgentsLLMConfigManager.get_instance().get_agent_config(agent_name)
-    print("\n===== LLM DEBUG =====")
-    print("Agent:", agent_name)
-    print("Agent cfg keys:", agent_cfg.keys())
-    print("Model config params:", agent_cfg.get("model_config_params", {}).keys())
-
-    api_key = agent_cfg.get("model_config_params", {}).get("model_api_key")
-    base_url = agent_cfg.get("model_config_params", {}).get("model_base_url")
-
-    print("API key present:", bool(api_key))
-    print("API key length:", len(api_key) if api_key else 0)
-    print("Base URL present:", bool(base_url))
-    print("=====================\n")
+    model_config_params = agent_cfg.get("model_config_params", {})
+    missing_fields = [
+        field
+        for field in ("model_api_key", "model_base_url")
+        if not model_config_params.get(field)
+    ]
+    if missing_fields:
+        logger.warning(
+            "LiteLLM chat model config for %s is missing required field(s): %s",
+            agent_name,
+            ", ".join(missing_fields),
+        )
     model_cfg = convert_model_config_to_langchain_format(agent_cfg["model_config_params"])
     model_name = model_cfg.get("model") or agent_cfg["model_config_params"].get("model_name", "")
     llm_params = adapt_llm_params_for_model(model_name, agent_cfg["llm_config_params"])

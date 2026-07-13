@@ -525,6 +525,7 @@ class BaseConfigManager:
             "LLM_MODEL_CACHE_SEED",
             "LLM_MODEL_SEED",
             "LLM_MODEL_MAX_TOKENS",
+            "LLM_MODEL_MAX_COMPLETION_TOKENS",
             "LLM_MODEL_PRESENCE_PENALTY",
             "LLM_MODEL_FREQUENCY_PENALTY",
             "LLM_MODEL_STOP",

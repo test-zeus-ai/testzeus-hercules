@@ -17,7 +17,7 @@ from sentry_sdk.types import Event, Hint
 DSN = "https://d14d2ee82f26a3585b2a892fab7fffaa@o4508256143540224.ingest.us.sentry.io/4508256153042944"
 
 # Telemetry flag, default is enabled (1) unless set to "0" in the environment variable
-ENABLE_TELEMETRY = os.getenv("ENABLE_TELEMETRY", "0") == "0"
+ENABLE_TELEMETRY = os.getenv("ENABLE_TELEMETRY", "1") == "1"
 
 # custom denylist
 denylist = DEFAULT_DENYLIST + ["sys.argv", "argv", "server_name"]
