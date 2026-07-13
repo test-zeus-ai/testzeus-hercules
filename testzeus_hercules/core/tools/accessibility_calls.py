@@ -43,21 +43,17 @@ async def test_page_accessibility(
         await browser_manager.wait_for_load_state_if_enabled(page=page, state="domcontentloaded")
 
         # Inject the Axe-core script
-        response = await page.evaluate(
-            f"""
+        response = await page.evaluate(f"""
             fetch("{AXE_SCRIPT_URL}").then(res => res.text())
-            """
-        )
+            """)
         await page.add_script_tag(content=response)
 
         # Run accessibility checks
-        axe_results = await page.evaluate(
-            """
+        axe_results = await page.evaluate("""
             async () => {
                 return await axe.run();
             }
-            """
-        )
+            """)
 
         # Output summary of violations
         violations = axe_results.get("violations", [])

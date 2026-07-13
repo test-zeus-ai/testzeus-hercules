@@ -8,7 +8,7 @@
 [![CI Test](https://github.com/test-zeus-ai/testzeus-hercules/actions/workflows/main-test.yml/badge.svg)](https://github.com/test-zeus-ai/testzeus-hercules/actions/workflows/main-test.yml)
 [![Slack](https://img.shields.io/badge/slack-TestZeus-brightgreen.svg?logo=slack)](https://join.slack.com/t/testzeuscommunityhq/shared_invite/zt-376oeo99x-3RAWe_C0H7x9zP0rtACcPA)
 
-Testing modern web applications can be difficult, with frequent changes and complex features making it hard to keep up. That's where **Hercules** comes in. Hercules is the world's first open-source testing agent, built to handle the toughest testing tasks so you don't have to. It turns simple, easy-to-write Gherkin steps into fully automated **end to end** tests—no coding skills needed. Whether you're working with tricky platforms like Salesforce or running tests in your CI/CD pipeline, Hercules adapts to your needs and takes care of the details. With Hercules, testing becomes simple, reliable, and efficient, helping teams everywhere deliver better software. Here's a quick demo of lead creation using natural english language test (without any code):
+Testing modern web applications can be difficult, with frequent changes and complex features making it hard to keep up. That's where **Hercules** comes in. Hercules is the world's first open-source testing agent, built to handle the toughest testing tasks so you don't have to. It turns simple, easy-to-write Gherkin steps into fully automated **end to end** tests—no coding skills needed. Whether you're working with tricky enterprise platforms or running tests in your CI/CD pipeline, Hercules adapts to your needs and takes care of the details. With Hercules, testing becomes simple, reliable, and efficient, helping teams everywhere deliver better software. Here's a quick demo of lead creation using natural english language test (without any code):
 
 ![HerculesUsage](statics/LeadcreationDemo.gif)
 
@@ -17,7 +17,7 @@ Testing modern web applications can be difficult, with frequent changes and comp
 As you saw, using Hercules is as simple as feeding in your Gherkin features, and getting the results:
 ![HerculesUsage](statics/assets/hercules.svg)
 
-At [TestZeus](www.testzeus.com), we believe that **trustworthy and open-source code** is the backbone of innovation. That's why we've built Hercules to be transparent, reliable, and community-driven.
+At [TestZeus](https://www.testzeus.com), we believe that **trustworthy and open-source code** is the backbone of innovation. That's why we've built Hercules to be transparent, reliable, and community-driven.
 
 Our mission? To **democratize and disrupt test automation**, making top-tier testing accessible to everyone, not just the elite few. No more gatekeeping—everyone deserves a hero on their testing team!
 
@@ -107,7 +107,7 @@ async def apply_filter(filter_type: str) -> dict:
 export SANDBOX_TENANT_ID="executor_agent"  # Full access: requests, pandas, numpy, BeautifulSoup
 
 # Or use CLI
-hercules --sandbox-tenant-id executor_agent --input-file test.feature
+testzeus-hercules --sandbox-tenant-id executor_agent --input-file test.feature
 ```
 
 ---
@@ -120,7 +120,7 @@ If you are new to the Python ecosystem and don't know where to begin, dont worry
 
 For a quick taste of the solution, you can try the notebook here: 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1YiZsXem1POTwkcr17QqflXnihhuSqwM2?usp=sharing)
-- **Note**: Colab might ask you to restart the session as python3.11 and some libs are installed during the installation of testzeus-hercules. Please restart the session if required and continue the execution. Also , we recommend one of the approaches below for getting the full flavor of the solution. 
+- **Note**: Colab might ask you to restart the session after installing TestZeus Hercules dependencies. Please restart the session if required and continue the execution. Also, we recommend one of the approaches below for getting the full flavor of the solution.
 
 ### Approach 1: Using PyPI Package
 
@@ -139,6 +139,9 @@ playwright install --with-deps
 ```
 
 For detailed information about project structure and running tests, please refer to our [Run Guide](docs/run_guide.md).
+For migration-specific runtime behavior, see
+[docs/Migration/MIGRATION.md](docs/Migration/MIGRATION.md) and
+[docs/Migration/ARCHITECTURE.md](docs/Migration/ARCHITECTURE.md).
 
 #### Basic Parameters
 
@@ -149,31 +152,46 @@ Once installed, you will need to provide some basic parameters to run Hercules:
 - `--test-data-path TEST_DATA_PATH`: Path to the test data directory. The path where Hercules expects test data to be present; all test data used in feature testing should be present here.
 - `--project-base PROJECT_BASE`: Path to the project base directory. This is an optional parameter; if you populate this, `--input-file`, `--output-path`, and `--test-data-path` are not required, and Hercules will assume all the three folders exist in the following format inside the project base:
 
-```
+```text
 PROJECT_BASE/
 ├── gherkin_files/
 ├── input/
 │   └── test.feature
 ├── log_files/
 ├── output/
-│   ├── test.feature_result.html
-│   └── test.feature_result.xml
+│   └── run_<timestamp>/
+│       ├── test.feature_result.html
+│       └── test.feature_result.xml
 ├── proofs/
 │   └── User_opens_Google_homepage/
-│       ├── network_logs.json
-│       ├── screenshots/
-│       └── videos/
+│       └── run_<timestamp>/
+│           ├── network_logs.json
+│           ├── screenshots/
+│           └── videos/
 └── test_data/
     └── test_data.txt
 ```
 
-- `--llm-model LLM_MODEL`: Name of the LLM model to be used by the agent (recommended is `gpt-4o`, but it can take others).
-- `--llm-model-api-key LLM_MODEL_API_KEY`: API key for the LLM model, something like `sk-proj-k.......`.
+- `--agents-llm-config-file AGENTS_LLM_CONFIG_FILE`: Optional path to an
+  `agents_llm_config.json` file for per-agent model routing.
+- `--agents-llm-config-file-ref-key AGENTS_LLM_CONFIG_FILE_REF_KEY`: Optional
+  top-level provider/profile key inside that file.
+- `--llm-model`, `--llm-model-api-key`, `--llm-model-base-url`, and related
+  direct LLM flags are still supported for simple single-profile setups. Use
+  `agents_llm_config.json` when you need separate planner, navigation, memory,
+  and helper model settings.
 
 #### Environment Variables
 
 In addition to command-line parameters, Hercules supports various environment variables for configuration:
 
+- `LLM_MODEL_NAME`: Model name for direct single-model setup. Example: `gpt-4o`
+- `LLM_MODEL_API_KEY`: API key for the selected model provider.
+- `LLM_MODEL_BASE_URL`: Optional OpenAI-compatible base URL.
+- `AGENTS_LLM_CONFIG_FILE`: Optional path to `agents_llm_config.json` for
+  per-agent model routing.
+- `AGENTS_LLM_CONFIG_FILE_REF_KEY`: Optional top-level provider/profile key to
+  activate from that config file.
 - `BROWSER_TYPE`: Type of browser to use (`chromium`, `firefox`, `webkit`). Default: `chromium`
 - `HEADLESS`: Run browser in headless mode (`true`, `false`). Default: `true`
 - `BROWSER_RESOLUTION`: Browser window resolution (format: `width,height`). Example: `1920,1080`
@@ -185,11 +203,21 @@ For a complete list of environment variables, see our [Environment Variables Gui
 
 #### Running Hercules
 
-After passing all the required parameters, the command to run Hercules should look like this:
+Set the direct model environment variables and run Hercules:
 
 ```bash
-testzeus-hercules --input-file opt/input/test.feature --output-path opt/output --test-data-path opt/test_data --llm-model gpt-4o --llm-model-api-key sk-proj-k.......
+export LLM_MODEL_NAME=gpt-4o
+export LLM_MODEL_API_KEY=replace-me
+export LLM_MODEL_BASE_URL=https://api.openai.com/v1
+
+testzeus-hercules \
+  --input-file opt/input/test.feature \
+  --output-path opt/output \
+  --test-data-path opt/test_data
 ```
+
+Use `agents_llm_config.json` only when you need separate planner, navigation,
+memory, and helper model settings; see `docs/run_guide.md`.
 
 
 ## ⚙️ Running Hercules on a Windows Machine
@@ -218,78 +246,50 @@ To set up and run Hercules on a Windows machine:
 5. **Run Hercules:**
    - Once the setup is complete, you can run Hercules from PowerShell or Command Prompt using the following command:
      ```bash
-     testzeus-hercules --input-file opt/input/test.feature --output-path opt/output --test-data-path opt/test_data --llm-model gpt-4o --llm-model-api-key sk-proj-k.......
+     testzeus-hercules --input-file opt/input/test.feature --output-path opt/output --test-data-path opt/test_data
      ```
 
 ---
 
 
 #### Supported AI Models for TestZeus-Hercules
-- Anthropic: Compatible with Haiku 3.5 and above.
-- Groq: Supports any version with function calling and coding capabilities.
-- Mistral: Supports any version with function calling and coding capabilities. Mistral-large, Mistral-medium. Only heavey models.
-- OpenAI: Fully compatible with GPT-4o/o3-mini and above. Note: OpenAI GPT-4o-mini is only supported for sub-agents, for planner it is still recommended to use GPT-4o.
-- Ollama: Supported with medium models and function calling. Heavy models only 70b and above.
-- Gemini: Can be used. Preferred with LiteLLM as below.
-- Deepseek: only deepseek-chat v3 support.
-- Hosting: supported on AWS bedrock, GCP VertexAI, AzureAI. [tested models, OpenAI, Anthropic Sonet and Haiku, Llamma 60b above with function calling]
-Note: Kindly ensure that the model you are using can handle agentic activities like function calling. For example larger models like OpenAI GPT 4O, Llama >70B, Mistral large etc. You can use agent_config file as below to fill LiteLLM details [https://docs.litellm.ai/docs/simple_proxy] :
-```JSON
-{
-  "litellm-flash": {
-    "planner_agent": {
-      "model_name": "gemini-2.5-flash",
-      "model_api_key": "sfasdfsadgbw",
-      "model_base_url": "https://litellm-proxydeployment",
-      "llm_config_params": {
-        "cache_seed": 1234,
-        "temperature": 0,
-        "seed": 12345
-      }
-    },
-    "nav_agent":  {
-      "model_name": "gemini-2.5-flash",
-      "model_api_key": "sfasdfsadgbw",
-      "model_base_url": "https://litellm-proxydeployment",
-      "llm_config_params": {
-        "cache_seed": 1234,
-        "temperature": 0,
-        "seed": 12345
-      }
-    },
-    "mem_agent":  {
-      "model_name": "gemini-2.5-flash",
-      "model_api_key": "sfasdfsadgbw",
-      "model_base_url": "https://litellm-proxydeployment",
-      "llm_config_params": {
-        "cache_seed": 1234,
-        "temperature": 0,
-        "seed": 12345
-      }
-    },
-    "helper_agent":  {
-      "model_name": "gemini-2.5-flash",
-      "model_api_key": "sfasdfsadgbw",
-      "model_base_url": "https://litellm-proxydeployment",
-      "llm_config_params": {
-        "cache_seed": 1234,
-        "temperature": 0,
-        "seed": 12345
-      }
-    }
-  }
-}
-```
+- OpenAI: Use models with reliable tool-calling support, such as GPT-4o,
+  GPT-4.1, o-series models, or GPT-5 family models where available.
+- Anthropic: Use Claude models with tool-calling support.
+- Gemini / Vertex AI: Supported through OpenAI-compatible gateways such as
+  LiteLLM. Keep tool schemas simple; tuple-style public tool inputs are not
+  provider-safe.
+- Gemma: Supported through gateways or local providers that expose compatible
+  chat and tool-calling behavior.
+- Groq, Mistral, Ollama, DeepSeek, Bedrock, Azure, and other providers can be
+  used when they support OpenAI-compatible chat and function/tool calling.
+- Local: Ollama and other local providers can be used when their model reliably
+  returns strict planner JSON and supports the required tool-calling behavior.
+  The sample Ollama Modelfile lives at `docs/Migration/Modelfile`.
+
+The planner model should be strong at structured JSON reasoning. Navigation
+models must support tool calling. For a quick run, direct `LLM_MODEL_*`
+environment variables are enough. Use `agents_llm_config.json` only when you
+need separate planner, navigation, memory, and helper model settings. See
+`docs/run_guide.md` and `docs/environment_variables.md` for full examples,
+including LiteLLM proxy setup.
 
 #### Execution Flow
 
 Upon running the command:
 
 - Hercules will start and attempt to open a web browser (default is Chromium).
-- It will prepare a plan of execution based on the feature file steps provided.
-- The plan internally expands the brief steps mentioned in the feature file into a more elaborated version.
-- Hercules detects assertions in the feature file and plans the validation of expected results with the execution happening during the test run.
-- All the steps, once elaborated, are passed to different tools based on the type of execution requirement of the step. For example, if a step wants to click on a button and capture the feedback, it will be passed to the `click_using_selector` tool.
+- `SimpleHercules` creates a LangGraph state graph for the run.
+- The planner node turns the feature file into strict JSON containing the
+  current plan, `next_step`, `target_helper`, and assertion fields.
+- The executor node routes the planner's `target_helper` to a navigation helper
+  such as `browser_nav_agent`, `api_nav_agent`, `sec_nav_agent`, `sql_nav_agent`,
+  `time_keeper_nav_agent`, `mcp_nav_agent`, or `executor_nav_agent`.
+- Navigation helpers bind registered LangChain `StructuredTool` objects and run
+  a bounded tool-call loop. Browser tasks use tools such as `open_url`, `click`,
+  `get_interactive_elements`, `bulk_enter_text`, and `bulk_select_option`.
+- Helper responses are fed back to the planner until the planner terminates or
+  routes to assertion handling.
 
 #### Output and Logs
 
@@ -298,29 +298,24 @@ Once the execution is completed:
 - Logs explaining the sequence of events are generated.
 - The best place to start is the `output-path`, which will have the JUnit XML result file as well as an HTML report regarding the test case execution.
 - You can also find proofs of execution such as video recordings, screenshots per event, and network logs in the `proofs` folder.
-- To delve deeper and understand the chain of thoughts, refer to the `chat_messages.json` in the `log_files`. This will have exact steps that were planned by the agent.
+- To inspect the planner and helper trace, start with `agent_inner_thoughts.json`
+  under `log_files/<scenario_name>/run_<timestamp>/`.
 
 #### Sample Feature File
 
 Here's a sample feature file:
 
 ```gherkin
-Feature: Account Creation in Salesforce
+Feature: Product Search on Demo Store
 
- Scenario: Successfully create a new account
+ Scenario: Successfully find a product
 
-   Given I am on the Salesforce login page
-   When I enter my username "user@example.com" and password "securePassword"
-   And I click on the "Log In" button
-   And I navigate to the "Accounts" tab
-   And I click on the "New" button
-   And I fill in the "Account Name" field with "Test Account"
-   And I select the "Account Type" as "Customer"
-   And I fill in the "Website" field with "www.testaccount.com"
-   And I fill in the "Phone" field with "123-456-7890"
-   And I click on the "Save" button
-   Then I should see a confirmation message "Account Test Account created successfully"
-   And I should see "Test Account" listed in the account records
+   Given I am on the demo store home page
+   When I enter "wireless headphones" in the search field
+   And I click on the "Search" button
+   And I open the first matching product result
+   Then I should see the product details page
+   And I should see "wireless headphones" in the product title or description
 ```
 
 #### Sample Result Screenshot
@@ -354,7 +349,10 @@ docker run --env-file=.env \
 ```
 
 - **Environment Variables**: All the required environment variables can be set by passing an `.env` file to the `docker run` command.
-- **LLM Configuration**: If you plan to have complete control over Hercules and which LLM to use beyond the ones provided by OpenAI, you can pass `agents_llm_config.json` as a mount to the container. This is for advanced use cases and is not required for beginners. Refer to sample files `.env-example` and `agents_llm_config-example.json` for details and reference.
+- **LLM Configuration**: Either pass direct `LLM_MODEL_*` values in `.env` or
+  mount `agents_llm_config.json` and set `AGENTS_LLM_CONFIG_FILE=agents_llm_config.json`
+  plus `AGENTS_LLM_CONFIG_FILE_REF_KEY=<provider-key>`. LiteLLM is one useful
+  provider profile when you run through an OpenAI-compatible proxy.
 - **Mounting Directories**: Mount the `opt` folder to the Docker container so that all the inputs can be passed to Hercules running inside the container, and the output can be pulled out for further processing. The repository has a sample `opt` folder that can be mounted easily.
 - **Simplified Parameters**: In the Docker case, there is no need for using `--input-file`, `--output-path`, `--test-data-path`, or `--project-base` as they are already handled by mounting the `opt` folder in the `docker run` command.
 
@@ -409,7 +407,8 @@ For the hardcore enthusiasts, you can use Hercules via the source code to get a 
 
 #### Prerequisites
 
-- Ensure you have **Python 3.11** installed on your system.
+- Ensure you have **Python 3.13** installed for the branch CI target. The
+  package metadata supports Python `>=3.11,<3.14`.
 
 #### Steps to Run from Source
 
@@ -423,6 +422,7 @@ For the hardcore enthusiasts, you can use Hercules via the source code to get a 
 
    ```bash
    cd testzeus-hercules
+   git checkout langchain_migration
    ```
 
 3. **Use Make Commands**
@@ -443,7 +443,18 @@ For the hardcore enthusiasts, you can use Hercules via the source code to get a 
    make install
    ```
 
-6. **Run Hercules**
+6. **Configure the model**
+
+   ```bash
+   export LLM_MODEL_NAME=gpt-4o
+   export LLM_MODEL_API_KEY=replace-me
+   export LLM_MODEL_BASE_URL=https://api.openai.com/v1
+   ```
+
+   Use `agents_llm_config.json` only when you need per-agent routing for
+   planner, navigation, memory, and helper models. See `docs/run_guide.md`.
+
+7. **Run Hercules**
 
    ```bash
    make run
@@ -457,19 +468,21 @@ For the hardcore enthusiasts, you can use Hercules via the source code to get a 
      ├── input/
      │   └── test.feature
      ├── output/
-     │   ├── test.feature_result.html
-     │   └── test.feature_result.xml
+    │   └── run_<timestamp>/
+    │       ├── test.feature_result.html
+    │       └── test.feature_result.xml
      ├── log_files/
      ├── proofs/
      │   └── User_opens_Google_homepage/
-     │       ├── network_logs.json
-     │       ├── screenshots/
-     │       └── videos/
+    │       └── run_<timestamp>/
+    │           ├── network_logs.json
+    │           ├── screenshots/
+    │           └── videos/
      └── test_data/
          └── test_data.txt
      ```
 
-7. **Interactive Mode**
+8. **Interactive Mode**
 
    You can also run Hercules in interactive mode as an instruction execution agent, which is more useful for RPA and debugging test cases and Hercules's behavior on new environments while building new tooling and extending the agents.
 
@@ -481,11 +494,15 @@ For the hardcore enthusiasts, you can use Hercules via the source code to get a 
 
 ### Approach 4: Setting Up via helper_script_custom.sh
 
-For those who want a fully automated setup experience on Linux/macOS environments, we provide a helper_script.sh. This script installs Python 3.11 (if needed), creates a virtual environment, installs TestZeus Hercules, and sets up the base project directories in an opt folder.
+For those who want a fully automated setup experience on Linux/macOS
+environments, create the script below locally. It installs TestZeus Hercules and
+sets up the base `opt` project directories with direct `LLM_MODEL_*`
+environment variables for a simple local run.
 
 #### Prerequisites
 
-- Ensure you have **Python 3.11** installed on your system.
+- Ensure you have **Python 3.13** installed, or another supported Python
+  version in the `>=3.11,<3.14` range.
 
 #### Steps to Run from helper_script_custom.sh
 1. **Download or Create the Script**
@@ -494,10 +511,10 @@ For those who want a fully automated setup experience on Linux/macOS environment
   #!/bin/bash
   # set -ex
 
-  # curl -sS https://bootstrap.pypa.io/get-pip.py | python3.11
+  # curl -sS https://bootstrap.pypa.io/get-pip.py | python3.13
 
   # Create a new Python virtual environment named 'test'
-  python3.11 -m venv test
+  python3.13 -m venv test
 
   # Activate the virtual environment
   source test/bin/activate
@@ -509,50 +526,53 @@ For those who want a fully automated setup experience on Linux/macOS environment
   # create a new directory named 'opt'
   mkdir -p opt/input opt/output opt/test_data
 
-  # download https://raw.githubusercontent.com/test-zeus-ai/testzeus-hercules/refs/heads/main/agents_llm_config-example.json
-  curl -sS https://raw.githubusercontent.com/test-zeus-ai/testzeus-hercules/main/agents_llm_config-example.json > agents_llm_config-example.json
-  mv agents_llm_config-example.json agents_llm_config.json
-
-  # prompt user that they need to edit the 'agents_llm_config.json' file, halt the script and open the file in an editor
-  echo "Please edit the 'agents_llm_config.json' file to add your API key and other configurations."
-
-  # halt the script and mention the absolute path of the agents_llm_config.json file so that user can edit it in the editor
-  echo "The 'agents_llm_config.json' file is located at $(pwd)/agents_llm_config.json"
-  read -p "Press Enter if file is updated"
-
-  # download https://raw.githubusercontent.com/test-zeus-ai/testzeus-hercules/blob/main/.env-example
-  curl -sS https://raw.githubusercontent.com/test-zeus-ai/testzeus-hercules/main/.env-example > .env-example
-  mv .env-example .env
+  # Create a minimal environment file. For per-agent model routing, see
+  # docs/run_guide.md and docs/environment_variables.md.
+  cat > .env <<'ENV'
+  LLM_MODEL_NAME=gpt-4o
+  LLM_MODEL_API_KEY=replace-me
+  LLM_MODEL_BASE_URL=https://api.openai.com/v1
+  LLM_MODEL_API_TYPE=openai
+  HEADLESS=true
+  RECORD_VIDEO=true
+  TAKE_SCREENSHOTS=true
+  ENV
 
   # prompt user that they need to edit the .env file, halt the script and open the file in an editor
   echo "The '.env' file is located at $(pwd)/.env"
   read -p "Press Enter if file is updated"
 
-  # create an input/test.feature file
-  # download https://raw.githubusercontent.com/test-zeus-ai/testzeus-hercules/refs/heads/main/opt/input/test.feature and save in opt/input/test.feature
-  curl -sS https://raw.githubusercontent.com/test-zeus-ai/testzeus-hercules/main/opt/input/test.feature > opt/input/test.feature
+  # Create starter input files.
+  cat > opt/input/test.feature <<'FEATURE'
+  Feature: Example browser check
 
-  # download https://raw.githubusercontent.com/test-zeus-ai/testzeus-hercules/refs/heads/main/opt/test_data/test_data.json and save in opt/test_data/test_data.json
-  curl -sS https://raw.githubusercontent.com/test-zeus-ai/testzeus-hercules/main/opt/test_data/test_data.json > opt/test_data/test_data.json
+    Scenario: Open a public page
+      Given I open the page "https://example.com"
+      Then the page should contain "Example Domain"
+  FEATURE
+
+  cat > opt/test_data/test_data.txt <<'DATA'
+  {}
+  DATA
 
   # Run the 'testzeus-hercules' command with the specified parameters
   testzeus-hercules --project-base=opt
   ```
 2. **Make the Script Executable and Run**
 ```bash
-chmod +x helper_script.sh
-./helper_script.sh
+chmod +x helper_script_custom.sh
+./helper_script_custom.sh
 ```
--	The script will:
-	•	Create a Python 3.11 virtual environment named test.
-	•	Install testzeus-hercules and Playwright dependencies.
-	•	Create the opt folder structure (for input/output/test data).
-	•	Download sample config files: agents_llm_config.json, .env, and example feature/test data files.
-	•	Important: You will be prompted to edit both agents_llm_config.json and .env files. After you've added your API keys and other custom configurations, press Enter to continue.
+- The script will:
+  - Create a Python virtual environment named `test`.
+  - Install `testzeus-hercules` and Playwright dependencies.
+  - Create the `opt` folder structure for input, output, and test data.
+  - Create sample `.env`, feature, and test data files.
+  - Prompt you to edit `.env` before running.
 
 3. **Script Output**
-	-	After completion, the script automatically runs testzeus-hercules --project-base=opt.
-	-	Your logs and results will appear in opt/output, opt/log_files, and opt/proofs.
+   - After completion, the script automatically runs `testzeus-hercules --project-base=opt`.
+   - Your logs and results will appear in `opt/output`, `opt/log_files`, and `opt/proofs`.
 ---
 
 ## 📝 Configuration Details
@@ -561,10 +581,11 @@ For a comprehensive guide to all environment variables and configuration options
 
 ### Disabling Telemetry
 
-To disable telemetry, set the `TELEMETRY_ENABLED` environment variable to `0`:
+To disable telemetry in the current branch, set `ENABLE_TELEMETRY` to `1`.
+The current implementation treats unset or `0` as enabled:
 
 ```bash
-export TELEMETRY_ENABLED=0
+export ENABLE_TELEMETRY=1
 ```
 
 ### Auto Mode
@@ -590,7 +611,8 @@ To configure Hercules in detail:
 Hercules includes an MCP Navigation Agent that can connect to MCP servers over `stdio`, `sse`, and `streamable-http`. It works out of the box with Composio-generated MCP servers.
 
 - Quick start guide: see `docs/MCP_Usage.md`
-- Composio docs: https://docs.composio.dev/docs/mcp-developers
+- LangGraph lifecycle details: see `docs/Migration/ARCHITECTURE.md#MCP-Runtime`
+- Composio docs: https://docs.composio.dev/docs/quickstart
 
 Minimal setup:
 
@@ -601,7 +623,10 @@ Minimal setup:
   "mcpServers": {
     "server_name": {
       "transport": "streamable-http",
-      "url": "https://mcp.composio.dev/composio/server/<SERVER_UUID>/mcp?user_id=<USER_EMAIL>"
+      "url": "<session.mcp.url>",
+      "headers": {
+        "Authorization": "Bearer <token-if-required>"
+      }
     }
   }
 }
@@ -615,7 +640,9 @@ MCP_SERVERS=mcp_servers.json
 MCP_TIMEOUT=30
 ```
 
-Then, run Hercules as usual; the MCP agent will initialize and expose tools from the configured server.
+Then, run Hercules as usual. The MCP helper waits for server readiness before
+binding tools, discovers each server tool, and exposes it as a dynamic
+LangChain `StructuredTool` while preserving the server tool's input schema.
 
 ### Example Testcase (Simple)
 ```
@@ -626,20 +653,17 @@ Feature: Read emails from Gmail
     When I connect to Gmail
     And I read the email with OTP
 ```
-For more testcases visit [MCP-Docs](/docs/MCP_Usage.md)
+For more testcases visit [MCP docs](docs/MCP_Usage.md).
 
----
-- Hercules is capable of running in two configuration forms:
+Hercules can also run as an MCP server for other MCP clients:
 
-  1. **Using single LLM for all work**
+```bash
+testzeus-hercules-mcp
+```
 
-     - For all the activities within the agent, initialize `LLM_MODEL_NAME` and `LLM_MODEL_API_KEY`.
-     - If using a non-OpenAI hosted solution but still OpenAI LLMs (something like OpenAI via Groq), then pass the `LLM_MODEL_BASE_URL` URL as well.
-
-  2. **Custom LLMs for different work or using hosted LLMs**
-
-     - If you plan to configure local LLMs or non-OpenAI LLMs, use the other parameters like `AGENTS_LLM_CONFIG_FILE` and `AGENTS_LLM_CONFIG_FILE_REF_KEY`.
-     - These are powerful options and can affect the quality of Hercules outputs.
+This starts a FastMCP streamable HTTP server at
+`http://0.0.0.0:8000/mcp` by default and exposes tools such as
+`generate_gherkin`, `run_test`, and `get_test_results`.
 
 - Hercules considers a base folder that is by default `./opt` but can be changed by the environment variable `PROJECT_SOURCE_ROOT`.
 
@@ -676,42 +700,12 @@ For example: If you would like to run with a "Headful" browser, you can set the 
   export ENABLE_PLAYWRIGHT_TRACING=true
   ```
 
-### Understanding `agents_llm_config-example.json`
+### LLM Configuration Details
 
-- It's a list of configurations of LLMs that you want to provide to the agent.
-
-- Example:
-
-  ```json
-  {
-    "anthropic": {
-		"planner_agent": {
-			"model_name": "claude-3-5-haiku-latest",
-			"model_api_key": "",
-			"model_api_type": "anthropic",
-            "llm_config_params": {
-                "cache_seed": null,
-                "temperature": 0.0,
-                "seed":12345
-            }
-		},
-		"nav_agent": {
-			"model_name": "claude-3-5-haiku-latest",
-			"model_api_key": "",
-			"model_api_type": "anthropic",
-            "llm_config_params": {
-                "cache_seed": null,
-                "temperature": 0.0,
-                "seed":12345
-            }
-		}
-    }
-  }
-  ```
-
-- The key is the name of the spec that is passed in `AGENTS_LLM_CONFIG_FILE_REF_KEY`, whereas the Hercules information is passed in sub-dicts `planner_agent` and `nav_agent`.
-
-- **Note**: This option should be ignored until you are sure what you are doing. Discuss with us while playing around with these options in our Slack communication. Join us at our [Slack](https://join.slack.com/t/testzeuscommunityhq/shared_invite/zt-376oeo99x-3RAWe_C0H7x9zP0rtACcPA)
+Use direct `LLM_MODEL_*` environment variables for the simplest local runs.
+Use `agents_llm_config.json` only when you need per-agent model routing across
+`planner_agent`, `nav_agent`, `mem_agent`, and `helper_agent`. The full schema
+and examples live in `docs/run_guide.md` and `docs/environment_variables.md`.
 
 ---
 
@@ -728,9 +722,9 @@ Hercules makes testing as simple as Gherkin in, results out. Just feed your end-
 
 With Hercules, you're harnessing the power of open source with zero licensing fees. Feel free to dive into the code, contribute, or customize it to your heart's content. Hercules is as free as it is mighty, giving you the flexibility and control you need.
 
-### Salesforce Ready
+### Enterprise UI Ready
 
-Built to handle the most intricate UIs, Hercules conquers Salesforce and other complex platforms with ease. Whether it's complicated DOM or running your SOQL or Apex, Hercules is ready and configurable.
+Built to handle intricate enterprise UIs and other complex platforms with ease. Whether it's complicated DOM or multi-step business workflows, Hercules is ready and configurable.
 
 ### No Code Required
 
@@ -795,69 +789,74 @@ Note: If you are looking for native app test automation, we've got you covered, 
 
 ## 🦾 Architecture
 
-### Multi-Agentic Solution
+Hercules runs on a LangGraph state-machine architecture. The public interface
+is still Gherkin in, reports out, but the runtime is structured as planner,
+executor, and assertion graph nodes.
 
-Hercules leverages a multi-agent architecture based on the AutoGen framework. Building on the foundation provided by the AutoGen framework, Hercules's architecture leverages the interplay between tools and agents. Each tool embodies an atomic action, a fundamental building block that, when executed, returns a natural language description of its outcome. This granularity allows Hercules to flexibly assemble these tools to tackle complex web automation workflows.
+For the detailed architecture and current tool formats, see
+[docs/Migration/ARCHITECTURE.md](docs/Migration/ARCHITECTURE.md).
+For upgrade notes from the AG2 implementation, see
+[docs/Migration/MIGRATION.md](docs/Migration/MIGRATION.md).
 
-#### System View
+### Runtime Flow
 
-![Architecture Diagram](statics/assets/hercules-architecture.jpg)
+1. `runner.py` sends a Gherkin scenario or command to `SimpleHercules`.
+2. `SimpleHercules` runs a LangGraph `StateGraph` with `planner`, `executor`,
+   and `assertion` nodes.
+3. `PlannerAgent` returns strict JSON containing `plan`, `next_step`,
+   `target_helper`, `terminate`, and assertion fields.
+4. The executor routes `target_helper` to the appropriate navigation agent:
+   browser, API, security, SQL, time keeper, MCP, executor, or visual helper.
+5. Navigation agents bind LangChain `StructuredTool` objects to their LLM and
+   run a bounded tool-call loop.
+6. Tool results are returned to the helper agent, then summarized back to the
+   planner until the planner terminates or enters assertion handling.
 
-The diagram above shows the configuration chosen on top of AutoGen architecture. The tools can be partitioned differently, but this is the one that we chose for the time being. We chose to use tools that map to what humans learn about the web browser rather than allow the LLM to write code as it pleases. We see the use of configured tools to be safer and more predictable in its outcomes. Certainly, it can click on the wrong things, but at least it is not going to execute malicious unknown code.
+### Tools Library
 
+Hercules tools are regular Python functions registered with `@tool(...)`.
+At runtime, `testzeus_hercules/utils/langchain_tools.py` converts them into
+LangChain `StructuredTool` objects with Pydantic argument schemas.
 
-#### Agents
+Tool inputs are intentionally simple for provider compatibility:
 
-At the moment, there are two agents:
+- Use scalar values such as `str`, `float`, `bool`.
+- Use `List[Dict[str, str]]` for bulk browser actions.
+- Avoid public tuple inputs because some providers reject the generated
+  `prefixItems` JSON Schema.
+- No-argument tools use explicit empty schemas so LangChain does not infer a
+  fake `kwargs` argument from wrappers.
 
-1. **Planner Agent**: Executes the planning and decomposition of tasks.
-2. **Browser Navigation Agent**: Embodies all the tools for interacting with the web browser.
+### Browser Tools and DOM Format
 
-#### Tools Library
+Hercules injects an `md` attribute into DOM elements and uses that value as the
+primary browser selector. Browser sensing tools return compact JSON or cleaned
+text instead of raw page HTML.
 
-At the core of Hercules's capabilities is the Tools Library, a repository of well-defined actions that Hercules can perform; for now, web actions. These tools are grouped into two main categories:
+Current browser sensing tools include:
 
-- **Sensing Tools**: Tools like `get_dom_with_content_type` and `geturl` that help Hercules understand the current state of the webpage or the browser.
-- **Action Tools**: Tools that allow Hercules to interact with and manipulate the web environment, such as `click`, `enter_text`, and `openurl`.
+- `get_interactive_elements`: compact clickable/focusable/input-like nodes
+- `get_input_fields`: compact form and input nodes
+- `get_page_text`: cleaned visible page text
+- `geturl`: active page URL
 
-Each tool is created with the intention to be as conversational as possible, making the interactions with LLMs more intuitive and error-tolerant. For instance, rather than simply returning a boolean value, a tool might explain in natural language what happened during its execution, enabling the LLM to better understand the context and correct course if necessary.
+Current browser action tools include:
 
-##### Implemented Tools
+- `open_url`
+- `click`
+- `hover`
+- `press_key_combination`
+- `bulk_enter_text`
+- `bulk_select_option`
+- `bulk_set_slider`
+- `bulk_set_date_time_value`
+- `click_and_upload_file`
+- `test_page_accessibility`
+- `captcha_solver`
 
-- **Sensing Tools**
-
-  - `geturl`: Fetches and returns the current URL.
-  - `get_dom_with_content_type`: Retrieves the HTML DOM of the active page based on the specified content type.
-    - `text_only`: Extracts the inner text of the HTML DOM. Responds with text output.
-    - `input_fields`: Extracts the interactive elements in the DOM (button, input, textarea, etc.) and responds with a compact JSON object.
-    - `all_fields`: Extracts all the fields in the DOM and responds with a compact JSON object.
-  - `get_user_input`: Provides the orchestrator with a mechanism to receive user feedback to disambiguate or seek clarity on fulfilling their request.
-
-- **Action Tools**
-
-  - `click`: Given a DOM query selector, this will click on it.
-  - `enter_text`: Enters text in a field specified by the provided DOM query selector.
-  - `enter_text_and_click`: Optimized method that combines `enter_text` and `click` tools.
-  - `bulk_enter_text`: Optimized method that wraps `enter_text` method so that multiple text entries can be performed in one shot.
-  - `openurl`: Opens the given URL in the current or new tab.
-
-#### DOM Distillation
-
-Hercules's approach to managing the vast landscape of HTML DOM is methodical and essential for efficiency. We've introduced **DOM Distillation** to pare down the DOM to just the elements pertinent to the user's task.
-
-In practice, this means taking the expansive DOM and delivering a more digestible JSON snapshot. This isn't about just reducing size; it's about honing in on relevance, serving the LLMs only what's necessary to fulfill a request. So far, we have three content types:
-
-1. **Text Only**: For when the mission is information retrieval, and the text is the target. No distractions.
-2. **Input Fields**: Zeroing in on elements that call for user interaction. It's about streamlining actions.
-3. **All Content**: The full scope of distilled DOM, encompassing all elements when the task demands a comprehensive understanding.
-
-It's a surgical procedure, carefully removing extraneous information while preserving the structure and content needed for the agent's operation. Of course, with any distillation, there could be casualties, but the idea is to refine this over time to limit/eliminate them.
-
-Since we can't rely on all web page authors to use best practices, such as adding unique IDs to each HTML element, we had to inject our own attribute (`md`) in every DOM element. We can then guide the LLM to rely on using `md` in the generated DOM queries.
-
-To cut down on some of the DOM noise, we use the **DOM Accessibility Tree** rather than the regular HTML DOM. The accessibility tree, by nature, is geared towards helping screen readers, which is closer to the mission of web automation than plain old HTML DOM.
-
-The distillation process is a work in progress. We look to refine this process and condense the DOM further, aiming to make interactions faster, cost-effective, and more accurate.
+DOM output is deliberately compacted because very large or deeply nested DOM
+payloads can cause provider-side `INVALID_ARGUMENT` or token-limit errors,
+especially on complex enterprise applications.
 
 ---
 ### Non-Functional Capabilities
@@ -872,7 +871,7 @@ Hercules supports **WCAG 2.0, 2.1, and 2.2** at **A, AA, and AAA levels**, enabl
 
 ## 🔬 Testing and Evaluation: QEvals
 
-We wanted to ensure that Hercules stands up to the task of end-to-end testing with immense precision. So, we have run Hercules through a wide range of tests such as running APIs, interacting with complex UI scenarios, clicking through calendars, or iframes. A full list of evaluations can be found in the [tests folder](<Link to tests folder>).
+We wanted to ensure that Hercules stands up to the task of end-to-end testing with immense precision. So, we have run Hercules through a wide range of tests such as running APIs, interacting with complex UI scenarios, clicking through calendars, or iframes. A full list of evaluations can be found in the [tests folder](tests/).
 
 ### Running Tests
 
@@ -924,47 +923,49 @@ We believe that great quality comes from opinions about a product. So we have in
 
 ## 🦾 HyperMind
 
-:jigsaw: Summary
+### Summary
 Hercules now gains the power of the Hypermind — a secure, multi-tenant Python sandbox that lets testers inject custom logic, AI-powered heuristics, and human-crafted intelligence directly into test scenarios.
 When automation hits a wall, the Hypermind takes over — executing scripts with full Playwright access and controlled permissions.
 
+### Core Capabilities
 
+| Capability | Description |
+| --- | --- |
+| Run custom scripts from Gherkin | Invoke Python functions as test steps. |
+| Full Playwright access | Direct control over browser, page, and context. |
+| Auto-injected utilities | Common tools such as `logger`, `asyncio`, and `json` are preloaded. |
+| Multi-tenant isolation | Executor, data, API, and restricted levels for safety. |
+| Dynamic permissions | Control module access via CLI or environment. |
+| Execution proofs | Pre/post screenshots and JSON execution reports. |
+| Reusable logic | Use scripts across features or teams. |
 
-:gear: Core Capabilities
-Capability	Description
-:brain: Run custom scripts from Gherkin	Invoke Python functions as test steps.
-:earth_africa: Full Playwright access	Direct control over browser, page, and context.
-:jigsaw: Auto-injected utilities	Common tools (logger, asyncio, json, etc.) preloaded.
-:lock: Multi-tenant isolation	Executor, Data, API, and Restricted levels for safety.
-:gear: Dynamic permissions	Control module access via CLI or environment.
-:camera_with_flash: Execution proofs	Pre/post screenshots and JSON execution reports.
-:arrows_counterclockwise: Reusable logic	Use scripts across features or teams.
-
-
-:toolbox: Usage Example
+### Usage Example
 **Gherkin**:
-    Feature: Product Filtering
-      Scenario: Apply filter using Hypermind Script
-        Given a user is on the URL as https://example.com
-        When execute the hypermind script "scripts/apply_filter.py" with filter_type as "Turtle Neck"
-        Then the script should report successful filter application
 
+```gherkin
+Feature: Product Filtering
 
+  Scenario: Apply filter using Hypermind Script
+    Given a user is on the URL as https://example.com
+    When execute the apply_filter function from script at "scripts/apply_filter.py" with filter_type as "Turtle Neck"
+    Then the script should report successful filter application
+```
 
 **Python**: opt/scripts/apply_filter.py
 
-    async def apply_filter(filter_type: str) -> dict:
-        """Apply filter with fallback strategies."""
-        await page.wait_for_selector('[data-filter-section]')
-        for selector in [f'input[value="{filter_type}"]', f'label:has-text("{filter_type}") input']:
-            if await page.locator(selector).count() > 0:
-                await page.locator(selector).click()
-                break
-        count = await page.locator('.product-item').count()
-        return {"status": "success", "filter": filter_type, "products": count}
+```python
+async def apply_filter(filter_type: str) -> dict:
+    """Apply filter with fallback strategies."""
+    await page.wait_for_selector('[data-filter-section]')
+    for selector in [f'input[value="{filter_type}"]', f'label:has-text("{filter_type}") input']:
+        if await page.locator(selector).count() > 0:
+            await page.locator(selector).click()
+            break
+    count = await page.locator('.product-item').count()
+    return {"status": "success", "filter": filter_type, "products": count}
+```
 
-	
-:checkered_flag: Vision
+### Vision
 “When automation falters, Hypermind awakens.”
 Hypermind Scripts represent the next phase of AI-assisted testing — uniting autonomous precision with human adaptability. It’s not just fallback logic; it’s human creativity made executable.
 
@@ -973,22 +974,17 @@ Hypermind Scripts represent the next phase of AI-assisted testing — uniting au
 Hercules is an AI-native solution and relies on LLMs to perform reasoning and actions. Based on our experiments, we have found that a complex use case as below could cost up to **$0.20** using OpenAI's APIs gpt-4o, check the properties printed in testcase output to calculate for your testcase:
 
 ```gherkin
-Feature: Account Creation in Salesforce
+Feature: Product Checkout on Demo Store
 
- Scenario: Successfully create a new account
+ Scenario: Add a product to cart and verify checkout summary
 
-   Given I am on the Salesforce login page
-   When I enter my username "user@example.com" and password "securePassword"
-   And I click on the "Log In" button
-   And I navigate to the "Accounts" tab
-   And I click on the "New" button
-   And I fill in the "Account Name" field with "Test Account"
-   And I select the "Account Type" as "Customer"
-   And I fill in the "Website" field with "www.testaccount.com"
-   And I fill in the "Phone" field with "123-456-7890"
-   And I click on the "Save" button
-   Then I should see a confirmation message "Account Test Account created successfully"
-   And I should see "Test Account" listed in the account records
+   Given I am on the demo store home page
+   When I search for "wireless headphones"
+   And I open the first matching product result
+   And I add the product to the cart
+   And I open the cart
+   Then I should see the selected product in the cart
+   And the cart total should be displayed
 ```
 
 ---
@@ -1060,7 +1056,7 @@ Join us at our [Slack](https://join.slack.com/t/testzeuscommunityhq/shared_invit
 
 ## ✍️ Examples
 
-- **Salesforce Examples**: [Link](tests/test_not_for_ci/ebikes/ebikes.feature)
+- **E-bikes Example**: [Link](tests/test_not_for_ci/ebikes/ebikes.feature)
 - **Wrangler Example**: [Link](tests/future_test_features/productSearch/productSearch.feature)
 
 ---
@@ -1072,9 +1068,11 @@ Hercules would not have been possible without the great work from the following 
 1. [Agent-E](https://arxiv.org/abs/2407.13032)
 2. [Q*](https://arxiv.org/abs/2312.10868)
 3. [Agent Q](https://arxiv.org/abs/2408.07199)
-4. [Autogen](https://arxiv.org/pdf/2308.08155)
+4. [Autogen](https://arxiv.org/pdf/2308.08155) as historical inspiration for earlier agent orchestration
 
-The Hercules project is inferred and enhanced over the existing project of [Agent-E](https://github.com/EmergenceAI/Agent-E). We have improved lots of cases to make it capable of doing testing, especially in the area of complex DOM navigation and iframes. We have also added new tools and abilities (like Salesforce navigation) to Hercules so that it can perform better work over the base framework we had picked.
+The Hercules project is inferred and enhanced over the existing project of [Agent-E](https://github.com/EmergenceAI/Agent-E). We have improved lots of cases to make it capable of doing testing, especially in the area of complex DOM navigation and iframes. We have also added new tools and abilities for complex enterprise navigation so that Hercules can perform better work over the base framework we had picked.
+
+The current migration branch runs on LangGraph, LangChain tool binding, and MCP-compatible integrations.
 
 Hercules also picks some inspiration from the legacy TestZeus repo [here](https://www.testzeus.org).
 
@@ -1099,7 +1097,9 @@ Think of it like a sandboxed environment where TestZeus Hercules and its depende
 
 #### ✅ **1. Prerequisites**
 
-First, ensure Python 3.11 or higher is installed. You can verify this by running:
+First, ensure a supported Python version is installed. The package supports
+Python `>=3.11,<3.14`, and this branch targets Python 3.13 in CI. You can
+verify your version by running:
 
 ```bash
 python --version

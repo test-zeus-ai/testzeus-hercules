@@ -3,12 +3,13 @@
 import asyncio
 
 from testzeus_hercules.core.agents.base_nav_agent import BaseNavAgent
-from testzeus_hercules.utils.mcp_helper import MCPHelper, set_mcp_agents
 from testzeus_hercules.utils.logger import logger
+from testzeus_hercules.utils.mcp_help import MCPHelper
+
 
 class McpNavAgent(BaseNavAgent):
     """MCP Navigation Agent for executing MCP server tools and managing resources."""
-    
+
     agent_name: str = "mcp_nav_agent"
     prompt = """### MCP Navigation Agent
 
@@ -101,14 +102,23 @@ Available Test Data: $basic_test_information
 """
 
     def register_tools(self) -> None:
-        """Register MCP-specific tools and MCP server toolkits for the agent."""
         self.load_tools()
+        self._mcp_tools_ready = False
+        self._mcp_init_error: BaseException | None = None
+
+    async def ensure_tools_ready(self) -> bool:
+        """Attach external MCP tools before the agent is used."""
+        if getattr(self, "_mcp_tools_ready", False):
+            return True
         try:
-            self._mcp_init_task = asyncio.create_task(set_mcp_agents(self, self.nav_executor))
-        except Exception as e:
-            logger.error("Failed to schedule MCP initialization: %s", e)
+            await MCPHelper.instance().register_agent_tools(self)
+            self._mcp_tools_ready = True
+            return True
+        except (Exception, asyncio.CancelledError) as e:
+            self._mcp_init_error = e
+            logger.error("Failed to initialize MCP tools: %s", e)
+            return False
 
     async def shutdown(self) -> None:
-        """Shutdown the agent."""
-        await MCPHelper.instance().destroy()
+        await MCPHelper.destroy()
         await super().shutdown()

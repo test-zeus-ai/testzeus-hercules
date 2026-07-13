@@ -6,7 +6,8 @@ Hercules is a project from the community and for the community. So we welcome al
 - Organize a local meetup, talk to people, or answer a question: The power lies in your hands. 💪
   
 
-**You need PYTHON3!**
+**You need Python `>=3.11,<3.14`.** The migration branch CI currently targets
+Python 3.13.
 
 These instructions are for linux base systems. (Linux, MacOS, BSD, etc.)
 ## Setting up your own fork of this repo.
@@ -18,8 +19,8 @@ These instructions are for linux base systems. (Linux, MacOS, BSD, etc.)
 
 ## Setting up your own virtual environment
 
-Run `make virtualenv` to create a virtual environment.
-then activate it with `source .venv/bin/activate`.
+Run `make virtualenv` to create a virtual environment, then activate it with
+`source .venv/bin/activate`.
 
 ## Install the project in develop mode
 
@@ -49,7 +50,9 @@ Run `make lint` to run the linter.
 
 Run `make test` to run the tests.
 
-Ensure code coverage report shows `100%` coverage, add tests to your PR.
+Add focused tests for your change. For LangGraph runtime changes, start with
+`tests/test_simple_hercules_langgraph.py`, `tests/test_mcp_langgraph.py`, and
+the relevant CLI/config tests.
 
 ## Commit your changes
 
@@ -89,7 +92,7 @@ build:       ## build testzeus_hercules.
 publish:          ## Publish the package to PyPI.
 run:       ## run testzeus_hercules.
 run-interactive:       ## run-interactive testzeus_hercules.
-setup-poetry:       ## setup poetry.
+setup-uv:       ## Install uv.
 docker-build:       ## build and tag docker image.
 docker-publish:          ## Publish the package to Docker registry.
 ```

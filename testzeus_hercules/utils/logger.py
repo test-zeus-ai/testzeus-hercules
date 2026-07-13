@@ -34,7 +34,7 @@ def configure_logger(level: str = "INFO") -> None:
     logger.addHandler(handler)
 
     # Ensure other loggers have the same handler
-    http_loggers = ["openai", "autogen"]
+    http_loggers = ["openai", "langchain", "langgraph"]
     for http_logger in http_loggers:
         lib_logger = logging.getLogger(http_logger)
         lib_logger.setLevel(level.upper())
@@ -61,7 +61,7 @@ def set_log_level(level: str) -> None:
 # logging.getLogger("httpcore").setLevel(logging.DEBUG)
 # logging.getLogger("httpx").setLevel(logging.DEBUG)
 logging.getLogger("openai").setLevel(logging.INFO)
-# logging.getLogger("autogen").setLevel(logging.DEBUG)
+# logging.getLogger("langgraph").setLevel(logging.DEBUG)
 logging.getLogger("matplotlib.pyplot").setLevel(logging.WARNING)
 logging.getLogger("PIL.PngImagePlugin").setLevel(logging.WARNING)
 logging.getLogger("PIL.Image").setLevel(logging.WARNING)

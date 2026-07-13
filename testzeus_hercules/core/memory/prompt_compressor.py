@@ -1,10 +1,6 @@
-from autogen import ConversableAgent
+from typing import Any
 
 
-def add_text_compressor(agent: ConversableAgent) -> None:
-    """
-    Add a text compressor to the agent
-    Args:
-        agent (ConversableAgent): The agent that needs text compression in prompts
-    """
+def add_text_compressor(agent: Any) -> None:
+    """Placeholder for optionnal prompt compression (LangGraph agents)."""
     return

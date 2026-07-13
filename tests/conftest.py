@@ -1,6 +1,9 @@
-import pytest
 import os
 import shutil
+
+import pytest
+
+os.environ.setdefault("IS_TEST_ENV", "true")
 
 # Global constants
 RUN_DATA_PATH = os.path.join(os.getcwd(), "run_data")

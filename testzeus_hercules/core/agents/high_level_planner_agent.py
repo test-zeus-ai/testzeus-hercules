@@ -1,20 +1,78 @@
-import os
-from datetime import datetime
 from string import Template
-from typing import Any, Dict, Optional
+from typing import Any
 
-import autogen  # type: ignore
-from autogen import ConversableAgent  # type: ignore
-from testzeus_hercules.config import get_global_conf
-from testzeus_hercules.core.memory.dynamic_ltm import DynamicLTM
+from langchain_openai import ChatOpenAI
 from testzeus_hercules.core.memory.static_ltm import get_user_ltm
-from testzeus_hercules.core.post_process_responses import (
-    final_reply_callback_planner_agent as print_message_as_planner,  # type: ignore
+from testzeus_hercules.utils.llm_helper import (
+    get_llm_max_retries,
+    get_llm_request_timeout_seconds,
 )
 from testzeus_hercules.utils.logger import logger
 
 
 class PlannerAgent:
+    agent_name: str = "planner_agent"
+
+    def __init__(
+        self,
+        model_config: dict,
+        llm_config_params: dict,
+        system_prompt: str | None = None,
+    ) -> None:
+        base_prompt = system_prompt or self.prompt
+        user_ltm = get_user_ltm()
+        print("===== LTM =====")
+        print(user_ltm)
+        print("===============")
+
+        self.system_message = Template(base_prompt).safe_substitute(basic_test_information=user_ltm if user_ltm else "No test data provided")
+        self.system_message = self._json_instruction + self.system_message
+
+        # Normalize model key: ChatOpenAI expects 'model', not 'model_name'
+        normalized = dict(model_config)
+        if "model_name" in normalized and "model" not in normalized:
+            normalized["model"] = normalized.pop("model_name")
+        elif "model_name" in normalized:
+            normalized.pop("model_name")
+        valid_keys = {
+            "model",
+            "api_key",
+            "base_url",
+            "temperature",
+            "max_tokens",
+            "timeout",
+            "max_retries",
+        }
+        filtered = {k: v for k, v in normalized.items() if k in valid_keys}
+
+        # llm_config_params: drop keys unsupported by non-OpenAI models
+        unsupported_keys = {"cache_seed", "reasoning_effort", "seed"}
+        safe_llm_params = {k: v for k, v in llm_config_params.items() if k not in unsupported_keys}
+
+        safe_llm_params.pop("model", None)  # avoid duplicate with filtered
+        if "timeout" not in filtered and safe_llm_params.get("timeout") is None:
+            safe_llm_params["timeout"] = get_llm_request_timeout_seconds()
+        if "max_retries" not in filtered and safe_llm_params.get("max_retries") is None:
+            safe_llm_params["max_retries"] = get_llm_max_retries()
+        self.llm = ChatOpenAI(**filtered, **safe_llm_params)
+
+    _json_instruction = """CRITICAL INSTRUCTION: You MUST respond ONLY with a valid JSON object. No preamble, no explanation, no markdown. Your entire response must be parseable JSON.
+
+IMPORTANT RULES:
+- Set "terminate": "no" when you still have steps to execute
+- Set "terminate": "yes" ONLY after a helper has confirmed the task is done
+- NEVER set terminate to "yes" on your first response
+- Always delegate to a helper first before terminating
+- When a helper response contains "##TERMINATE TASK##", treat the assigned next_step as completed.
+- NEVER return the same next_step again after a successful helper "##TERMINATE TASK##" response. Either move to the next incomplete step or set "terminate": "yes".
+
+Use this exact format:
+{"plan": "...", "next_step": "...", "terminate": "no", "final_response": "", "is_assert": false, "assert_summary": "", "is_passed": false, "target_helper": "browser"}
+
+DO NOT include any text before or after the JSON object.
+
+"""
+
     prompt = """# Test Execution Task Planner
 
 You are a test execution task planner that processes (Steps file) or (Gherkin BDD feature) tasks and executes them through appropriate helpers. You are the backbone of the test execution state machine, directing primitive helper agents that depend on your detailed guidance.
@@ -31,6 +89,12 @@ You are a test execution task planner that processes (Steps file) or (Gherkin BD
 - Adapt plan execution based on intermediate results when needed, but ALWAYS within the boundaries of the original test case
 - Maintain continuity between steps, with each next step building on previous step results
 - Acknowledge platform context (like Salesforce, SAP, ServiceNow) when mentioned by helpers with minimal nudges
+
+## Navigation Boundaries
+- If the test provides a URL, direct the browser helper to use that exact URL. If it is missing a protocol, treat it as an HTTPS URL.
+- Do not convert application names, product names, platform names, or missing setup context into a Google/web search.
+- Do not ask the browser helper to discover login pages, documentation, or product pages through search engines unless the original test explicitly requires using a search engine.
+- If neither the task nor Current Page context provides a navigable target, report the missing target instead of inventing one.
 
 ## Platform Awareness
 - When helpers mention testing on specific platforms (like Salesforce, SAP, ServiceNow):
@@ -217,6 +281,17 @@ Must return well-formatted JSON with:
    - Optimize navigation and API calls
    - Batch similar operations when possible, while maintaining validation integrity
 
+## Termination Logic - CRITICAL
+**AUTOMATIC TERMINATION WHEN PLAN IS COMPLETE:**
+- After each helper response, check your plan for completion status
+- Count how many steps show "(Completed)" in the plan
+- **IF ALL STEPS in the plan are marked "(Completed)": SET terminate="yes" IMMEDIATELY**
+  - Provide a summary of what was accomplished in final_response
+  - Do NOT ask helper to do another step
+  - Set is_passed=true (unless an assertion failed)
+- **IF ANY STEP SHOWS FAILURE or ERROR**: SET terminate="yes" immediately with failure summary
+- **IF A STEP CANNOT BE COMPLETED AFTER MULTIPLE ATTEMPTS**: Report issue and SET terminate="yes" with Failure
+
 ## Critical Rules
 1. Each step must represent a complete, meaningful action (not a micro-instruction)
 2. Every significant operation must be followed by validation
@@ -234,81 +309,14 @@ Must return well-formatted JSON with:
 14. Always ensure next_step is a STRING, never an object or other data type
 15. IF LOGICALLY THE NEXT STEP IS NOT ACHIEVABLE, AFTER MULTIPLE ATTEMPTS, REPORT THE ISSUE AND TERMINATE with Failure.
 16. YOU CAN'T ASK TO DO ANYTHING MANUALLY, IN SUCH CASE REPORT THE ISSUE AND TERMINATE with Failure.
+17. **ALWAYS count plan step completion: if all steps show "(Completed)", immediately set terminate="yes"**
 
 Available Test Data: $basic_test_information
 """
 
-    def __init__(self, model_config_list, llm_config_params: dict[str, Any], system_prompt: str | None, user_proxy_agent: ConversableAgent):  # type: ignore
-        """
-        Initialize the PlannerAgent and store the AssistantAgent instance
-        as an instance attribute for external access.
-
-        Parameters:
-        - model_config_list: A list of configuration parameters required for AssistantAgent.
-        - llm_config_params: A dictionary of configuration parameters for the LLM.
-        - system_prompt: The system prompt to be used for this agent or the default will be used if not provided.
-        - user_proxy_agent: An instance of the UserProxyAgent class.
-        """
-        user_ltm = self.get_ltm()
-        system_message = self.prompt
-
-        if system_prompt and len(system_prompt) > 0:
-            if isinstance(system_prompt, list):
-                system_message = "\n".join(system_prompt)
-            else:
-                system_message = system_prompt
-            logger.info(f"Using custom system prompt for PlannerAgent: {system_message}")
-
-        config = get_global_conf()
-        if not config.should_use_dynamic_ltm() and user_ltm:  # Use static LTM when dynamic is disabled
-            user_ltm = "\n" + user_ltm
-            system_message = Template(system_message).substitute(basic_test_information=user_ltm)
-        system_message = system_message + "\n" + f"Current timestamp is {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        logger.info(f"Planner agent using model: {model_config_list[0]['model']}")
-
-        # Ensure API key is available at both levels for autogen compatibility
-        api_key = model_config_list[0].get('api_key') if model_config_list else None
-        
-        # Create the llm_config with API key at both levels
-        llm_config = {
-            "config_list": model_config_list,
-            **llm_config_params,  # unpack all the name value pairs in llm_config_params as is
-        }
-        
-        # Add API key at the top level if it exists
-        if api_key:
-            llm_config["api_key"] = api_key
-
-        self.agent = autogen.AssistantAgent(
-            name="planner_agent",
-            system_message=system_message,
-            llm_config=llm_config,
-        )
-        # add_text_compressor(self.agent)
-
-        def ingest_message_in_memory(
-            recipient: autogen.ConversableAgent,
-            messages: Optional[list[Dict[str, Any]]] = None,
-            sender: Optional[autogen.Agent] = None,
-            config: Optional[Dict[str, Any]] = None,
-        ) -> tuple[bool, Any]:
-            if messages:
-                for message_list in messages:
-                    for key, message in message_list.items():
-                        DynamicLTM().save_content(message)
-                        print_message_as_planner(message=message)
-            return False, None
-
-        self.agent.register_reply(  # type: ignore
-            [autogen.AssistantAgent, None],
-            reply_func=ingest_message_in_memory,
-            config={"callback": None},
-            ignore_async_in_sync_chat=False,
+    def on_planner_message(self, message: str) -> None:
+        from testzeus_hercules.core.post_process_responses import (
+            final_reply_callback_planner_agent as print_message_as_planner,
         )
 
-    def get_ltm(self) -> str | None:
-        """
-        Get the the long term memory of the user.
-        returns: str | None - The user LTM or None if not found.
-        """
-        return get_user_ltm()
+        print_message_as_planner(message=message)

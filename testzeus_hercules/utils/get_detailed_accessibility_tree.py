@@ -53,8 +53,7 @@ async def __inject_attributes(page: Page) -> None:
     'aria-keyshortcuts' is choosen because it is not widely used aria attribute.
     """
 
-    last_md = await page.evaluate(
-        """() => {
+    last_md = await page.evaluate("""() => {
             // A recursive function to handle elements in DOM, shadow DOM, and iframes
             const processElements = (elements, idCounter) => {
                 elements.forEach(element => {
@@ -233,8 +232,7 @@ async def __inject_attributes(page: Page) -> None:
 
             return id;
         };
-        """
-    )
+        """)
     logger.debug(f"Added MD into {last_md} elements")
 
 
@@ -292,8 +290,10 @@ async def __fetch_dom_info(page: Page, accessibility_tree: dict[str, Any], only_
                 for child in node["children"]:
                     await process_node(child)
 
-            # Use 'name' attribute from the accessibility node as 'md'
-            md_temp: str = node.get("keyshortcuts")  # type: ignore
+            # Accessibility snapshots expose injected md through keyshortcuts;
+            # the DOM snapshot path already has md directly on the node.
+            md_source = node.get("keyshortcuts") or node.get("md")
+            md_temp = str(md_source) if md_source is not None else ""
 
             # If the name has multiple mds, take the last one
             if md_temp and is_space_delimited_md(md_temp):
@@ -307,7 +307,7 @@ async def __fetch_dom_info(page: Page, accessibility_tree: dict[str, Any], only_
                 # logger.error(f"'name attribute contains \"{node.get('name')}\", which is not a valid numeric md. Adding node as is: {node}")
                 return node.get("name")
 
-            if node["role"] == "menuitem":
+            if node.get("role") == "menuitem":
                 return node.get("name")
 
             if node.get("role") == "dialog" and node.get("modal") == True:  # noqa: E712
@@ -641,8 +641,7 @@ async def __cleanup_dom(page: Page) -> None:
     from 'orig-aria-keyshortcuts'.
     """
     logger.debug("Cleaning up the DOM's previous injections")
-    await page.evaluate(
-        """() => {
+    await page.evaluate("""() => {
             // Recursive function to process elements in DOM, shadow DOM, and iframes
             const processElements = (parent) => {
                 // Select all elements with the 'md' attribute in the current parent (regular DOM or shadow DOM)
@@ -683,8 +682,7 @@ async def __cleanup_dom(page: Page) -> None:
             processElements(document);
         };
 
-    """
-    )
+    """)
     logger.debug("DOM cleanup complete")
 
 

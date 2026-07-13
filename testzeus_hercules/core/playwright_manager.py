@@ -157,7 +157,7 @@ class PlaywrightManager:
         take_screenshots: Optional[bool] = None,
         cdp_config: Optional[Dict] = None,
         cdp_reuse_tabs: Optional[bool] = False,  # New parameter to control tab reuse
-        cdp_navigate_on_connect: Optional[bool] = True,  # New parameter to control navigation
+        cdp_navigate_on_connect: Optional[bool] = None,  # New parameter to control navigation
         record_video: Optional[bool] = None,
         video_dir: Optional[str] = None,
         log_requests_responses: Optional[bool] = None,
@@ -183,6 +183,8 @@ class PlaywrightManager:
         If `device_name` is provided, the built-in descriptor overrides user-agent,
         viewport, etc., *unless* you explicitly override them via other parameters.
         """
+        self.current_page = None
+        self.current_page: Optional[Page] = None
         self.allow_all_permissions = allow_all_permissions
         if hasattr(self, "_PlaywrightManager__initialized") and self.__initialized:
             return  # Already inited, no-op
@@ -412,8 +414,13 @@ class PlaywrightManager:
         plus locale, timezone, geolocation, color scheme, etc.
         """
         user_dir: str = os.environ.get("BROWSER_STORAGE_DIR", "")
+        crash_dir = os.path.join(get_global_conf().get_project_temp_path(), "crashpad")
+        os.makedirs(crash_dir, exist_ok=True)
 
         disable_args = [
+            "--disable-breakpad",
+            "--disable-crash-reporter",
+            "--disable-crashpad",
             "--disable-session-crashed-bubble",
             "--disable-notifications",
             "--no-sandbox",
@@ -430,6 +437,7 @@ class PlaywrightManager:
             "--window-position=0,0",
             "--disable-web-security",
             "--disable-features=IsolateOrigins,site-per-process",
+            f"--crash-dumps-dir={crash_dir}",
         ]
 
         if get_global_conf().should_ignore_certificate_errors():
@@ -525,8 +533,8 @@ class PlaywrightManager:
 
             # Only navigate if explicitly configured to do so
             if self.cdp_navigate_on_connect:
-                logger.info("Navigating to Google as specified in configuration.")
-                await page.goto("https://www.google.com", timeout=120000)
+                logger.info("Navigating to configured homepage on CDP connection.")
+                await page.goto(self._homepage, timeout=120000)
             else:
                 logger.info("Skipping navigation on CDP connection as configured.")
 
@@ -955,28 +963,54 @@ class PlaywrightManager:
         return None
 
     async def get_current_page(self) -> Page:
-        """
-        Get the current active page, or reuse an existing one if available.
-        Only creates a new page if no pages exist or all existing pages are closed.
-
-        This is a high-level method used throughout the codebase. To ensure
-        consistency, it now uses reuse_or_create_tab internally.
-        """
         try:
-            browser_context = await self.get_browser_context()
+            context = await self.get_browser_context()
 
-            # Instead of duplicating logic, use our tab reuse method with force_new_tab=False
-            # This ensures the same tab reuse logic is used everywhere
-            return await self.reuse_or_create_tab(force_new_tab=False)
+            pages = [p for p in context.pages if not p.is_closed()]
+
+            # 1. Prefer tracked page, but refresh it if a different tab is active.
+            if self.current_page and not self.current_page.is_closed():
+                if len(pages) > 1:
+                    active_page = await self.detect_active_tab_page()
+                    if active_page and active_page != self.current_page:
+                        self.current_page = active_page
+                return self.current_page
+
+            # 2. Fallback to the active tab if one can be detected.
+            if pages:
+                active_page = await self.detect_active_tab_page()
+                if active_page and not active_page.is_closed():
+                    self.current_page = active_page
+                    return self.current_page
+
+                self.current_page = pages[-1]
+                return self.current_page
+
+            # 3. Create new page if nothing exists
+            page = await context.new_page()
+            self.current_page = page
+            await self.setup_request_response_logging(page)
+            await self.setup_console_logging(page)
+
+            self.current_page = page
+            return page
+
         except Exception as e:
-
             traceback.print_exc()
-            logger.warning(f"Error getting current page: {e}. Creating new context.")
+            logger.warning(f"Error getting current page: {e}")
+
             self._browser_context = None
             await self.ensure_browser_context()
 
-            # Try again with the new context
-            return await self.reuse_or_create_tab(force_new_tab=False)
+            context = await self.get_browser_context()
+            page = await context.new_page()
+            self.current_page = page
+
+            await self.setup_request_response_logging(page)
+            await self.setup_console_logging(page)
+
+            self.current_page = page
+            return page
 
     async def close_all_tabs(self, keep_first_tab: bool = True) -> None:
         browser_context = await self.get_browser_context()
@@ -1618,16 +1652,14 @@ class PlaywrightManager:
                 return
 
             # Get element's accessibility info
-            accessibility_info = await element.evaluate(
-                """element => {
+            accessibility_info = await element.evaluate("""element => {
                 return {
                     ariaLabel: element.getAttribute('aria-label'),
                     role: element.getAttribute('role'),
                     name: element.getAttribute('name'),
                     title: element.getAttribute('title')
                 }
-            }"""
-            )
+            }""")
 
             # Use the first non-empty value from accessibility info
             element_identifier = next(
@@ -1861,85 +1893,122 @@ class PlaywrightManager:
                 traceback.print_exc()
                 logger.error(f"Failed to add cookies to browser context: {e}")
 
-    async def reuse_or_create_tab(self, force_new_tab: bool = False) -> Page:
+    async def detect_active_tab_page(self) -> Optional[Page]:
         """
-        Reuse an existing tab or create a new one if needed.
+        Detect which page is the active/focused tab in the browser.
 
-        Args:
-            force_new_tab: If True, always create a new tab regardless of existing tabs
+        This is crucial for supporting keyboard tab switching (Control+2, Control+Tab, etc.)
+        After the user presses a tab-switching key combination, the browser switches tabs
+        at the UI level, but Playwright needs to know which Page object corresponds to the
+        now-active browser tab.
 
         Returns:
-            A Page object (either existing or newly created)
+            The Page object corresponding to the active browser tab, or None if detection fails
         """
         context = await self.get_browser_context()
+        pages = [p for p in context.pages if not p.is_closed()]
 
-        # Get all non-closed pages
+        if not pages:
+            return None
+
+        # Try to find the active page by checking document.hidden
+        # In a browser, document.hidden is false for the active tab and true for background tabs
+        active_page = None
+        for page in pages:
+            try:
+                is_hidden = await page.evaluate("document.hidden")
+                logger.debug(f"Page {page.url} - document.hidden: {is_hidden}")
+                if not is_hidden:
+                    active_page = page
+                    break
+            except Exception as e:
+                logger.warning(f"Failed to check document.hidden for {page.url}: {e}")
+                continue
+
+        if active_page:
+            logger.info(f"Detected active page (via document.hidden): {active_page.url}")
+            return active_page
+
+        # Fallback: Try each page with bring_to_front() and see which one is already responsive
+        for page in pages:
+            try:
+                await page.bring_to_front()
+                await page.wait_for_load_state("domcontentloaded", timeout=2000)
+                await page.evaluate("1")
+                logger.info(f"Active page detected via bring_to_front: {page.url}")
+                return page
+            except Exception as e:
+                logger.debug(f"Page {page.url} not responsive: {e}")
+                continue
+
+        logger.warning("Could not detect active page, returning None")
+        return None
+
+    async def reuse_or_create_tab(self, force_new_tab: bool = False) -> Page:
+        context = await self.get_browser_context()
+
         pages = [p for p in context.pages if not p.is_closed()]
         logger.debug(f"Found {len(pages)} existing tabs")
 
-        # If we need to create a new tab or there are no existing tabs
+        # 1. Force new tab
         if force_new_tab or not pages:
-            logger.info("Creating a new tab (forced or no existing tabs)")
+            logger.info("Creating a new tab")
             page = await context.new_page()
+            self.current_page = page
+
             await self.setup_request_response_logging(page)
             await self.setup_console_logging(page)
+
+            self.current_page = page
             return page
 
-        # Try to reuse existing tab (use the most recent one)
-        page = pages[-1]  # The most recently used page
+        # 2. SAFE fallback: use tracked page
+        if self.current_page and not self.current_page.is_closed():
+            if len(pages) > 1:
+                active_page = await self.detect_active_tab_page()
+                if active_page and not active_page.is_closed():
+                    self.current_page = active_page
+                    logger.info(f"Using active page: {self.current_page.url}")
+                    return self.current_page
+            logger.info(f"Using tracked page: {self.current_page.url}")
+            return self.current_page
+
+        # 3. fallback: deterministic selection with active-tab preference
+        page = pages[0]
+        if len(pages) > 1:
+            active_page = await self.detect_active_tab_page()
+            if active_page and not active_page.is_closed():
+                page = active_page
 
         try:
-            await page.wait_for_load_state("networkidle", timeout=5000)
-        except Exception as e:
-            logger.warning(f"Failed to wait for networkidle: {e}")
-        finally:
             await page.wait_for_load_state("domcontentloaded")
-
-        # Check if the page is responsive, with a shorter timeout to avoid hanging
-        try:
-            # Simple check (the timeout is applied at a higher level)
             await page.evaluate("1")
-            logger.info(f"Reusing existing tab with URL: {page.url}")
-            # try:
-            #     # Bring the tab to the front
-            #     await page.bring_to_front()
-            # except Exception as e:
 
-            #     traceback.print_exc()
-            #     # Don't let bring_to_front failures prevent tab reuse
-            #     logger.warning(f"Failed to bring tab to front, but continuing: {e}")
-
+            self.current_page = page
+            logger.info(f"Reusing tab: {page.url}")
             return page
+
         except Exception as e:
-
             traceback.print_exc()
-            # If the page isn't responsive, try the next one
-            logger.warning(f"First tab not responsive: {e}")
+            logger.warning(f"Tab not responsive: {e}")
 
-            # Try other tabs if available, from most to least recent
-            for i in range(len(pages) - 2, -1, -1):
+            # try others deterministically
+            for p in pages:
                 try:
-                    page = pages[i]
-                    await page.wait_for_load_state("domcontentloaded")
-                    await page.evaluate("1")
-                    logger.info(f"Reusing alternative tab with URL: {page.url}")
+                    await p.wait_for_load_state("domcontentloaded")
+                    await p.evaluate("1")
 
-                    try:
-                        await page.bring_to_front()
-                    except Exception as bring_err:
+                    self.current_page = p
+                    return p
+                except:
+                    continue
 
-                        traceback.print_exc()
-                        logger.warning(f"Failed to bring tab to front, but continuing: {bring_err}")
-
-                    return page
-                except Exception as tab_err:
-
-                    traceback.print_exc()
-                    logger.warning(f"Alternative tab {i} not responsive: {tab_err}")
-
-        # If all tabs are unresponsive, create a new one
-        logger.info("All existing tabs unresponsive, creating a new tab")
+        # 4. last resort
         page = await context.new_page()
+        self.current_page = page
+
         await self.setup_request_response_logging(page)
         await self.setup_console_logging(page)
+
+        self.current_page = page
         return page

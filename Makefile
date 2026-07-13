@@ -26,15 +26,15 @@ install:          ## Install the project in dev mode.
 .PHONY: fmt
 fmt:              ## Format code using black & isort.
 	uv run isort testzeus_hercules/
-	uv run black -l 200 testzeus_hercules/
-	uv run black -l 200 tests/
+	uv run black --target-version py311 -l 200 testzeus_hercules/
+	uv run black --target-version py311 -l 200 tests/
 
 .PHONY: lint
 lint: fmt             ## Run pep8, black, mypy linters.
-	uv run black -l 200 --check testzeus_hercules/
-	uv run black -l 200 --check tests/
+	uv run black --target-version py311 -l 200 --check testzeus_hercules/
+	uv run black --target-version py311 -l 200 --check tests/
 	# uv run mypy --ignore-missing-imports testzeus_hercules/
-
+	
 .PHONY: test
 test: lint        ## Run tests and generate coverage report.
 	uv run playwright install --with-deps

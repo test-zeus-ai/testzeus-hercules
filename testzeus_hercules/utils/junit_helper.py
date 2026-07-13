@@ -101,7 +101,8 @@ class JUnitXMLGenerator:
             else:
                 test_case.system_out = assert_summary
         else:
-            if not is_passed:
+            # When there are no assertions, only fail if the task didn't complete successfully
+            if terminate == "no":
                 test_case.result = Failure(message=str(assert_summary or final_response))
 
         opt_list = []
@@ -140,17 +141,23 @@ class JUnitXMLGenerator:
         for opt_item in opt_list:
             test_case.append(SystemOut(opt_item))
 
-        for agent, metrics in cost_metric.items():
-            if agent == "total_cost":
-                self.total_execution_cost += float(metrics)
-                continue
-            for model, data in metrics.items():
-                parent_key = f"{agent}.{model}"
-                for k, v in data.items():
-                    prop = Property(name=f"{parent_key}.{k}", value=str(v))
-                    test_props.add_property(prop)
-                    if k == "total_tokens":
-                        self.total_token_used += int(v)
+        flat_cost_metric = flatten_dict(cost_metric)
+        for key, value in flat_cost_metric.items():
+            test_props.add_property(Property(name=key, value=str(value)))
+
+        total_cost_value = flat_cost_metric.get("total_cost")
+        if total_cost_value is None:
+            total_cost_value = flat_cost_metric.get("usage_including_cached_inference.total_cost")
+        if total_cost_value is not None:
+            self.total_execution_cost += float(total_cost_value)
+
+        token_keys = [
+            key
+            for key in flat_cost_metric
+            if key.endswith(".total_tokens") and (key.startswith("usage_including_cached_inference.") or not any(k.startswith("usage_including_cached_inference.") for k in flat_cost_metric))
+        ]
+        for key in token_keys:
+            self.total_token_used += int(flat_cost_metric[key])
 
         self.total_time += float(execution_time)
         self.suite.add_testcase(test_case)

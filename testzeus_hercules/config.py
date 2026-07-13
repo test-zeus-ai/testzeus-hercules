@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import re
 from typing import Any, Dict, List, Literal, Optional, Union
 
 import yaml
@@ -60,25 +61,26 @@ class BaseConfigManager:
         self.paths: PathsDict = {}
         self._config: ConfigDict = config_dict.copy()
         self._ignore_env: bool = ignore_env
+        self._is_test_env: bool = os.environ.get("IS_TEST_ENV", "false").lower() == "true"
         self._default_test_id: str = "default"
 
         # 1) Possibly load .env if not in test environment
-        is_test_env = os.environ.get("IS_TEST_ENV", "false").lower() == "true"
-        if not is_test_env and not self._ignore_env:
+        if not self._is_test_env and not self._ignore_env:
             # Load .env if it exists
             env_file_path: str = ".env"
             load_dotenv(env_file_path, verbose=True, override=True)
 
-        # 2) Parse command-line arguments to override env (if not ignoring env)
-        if not self._ignore_env:
-            self._parse_arguments()
-
-        # 3) Merge environment variables if not ignoring env
+        # 2) Merge environment variables if not ignoring env
         if not self._ignore_env:
             self._merge_from_env()
 
-        # 4) Perform the same LLM checks as your original code
-        self._check_llm_config()
+        # 3) Parse command-line arguments/config after env so CLI wins.
+        if not self._ignore_env:
+            self._parse_arguments()
+
+        # 4) Validate runtime LLM config, but keep tests/import-only config usable.
+        if self._should_validate_llm_config():
+            self._check_llm_config()
 
         # 5) Provide or finalize certain defaults
         #    (some might have been overridden by env/arguments)
@@ -115,6 +117,9 @@ class BaseConfigManager:
     # -------------------------------------------------------------------------
     # Internal Helpers
     # -------------------------------------------------------------------------
+
+    def _should_validate_llm_config(self) -> bool:
+        return not self._is_test_env and not self._ignore_env
 
     def _load_cli_config_file(self, config_file_path: str) -> None:
         """Load CLI config file values into the config dictionary before env merging.
@@ -175,12 +180,26 @@ class BaseConfigManager:
             "sandbox_custom_injections": "SANDBOX_CUSTOM_INJECTIONS",
         }
 
+        loaded_keys: set[str] = set()
         for key, value in loaded_config.items():
             mapped_key = key_mapping.get(key, key.upper())
             if isinstance(value, bool):
                 self._config[mapped_key] = str(value).lower()
+                loaded_keys.add(mapped_key)
             elif value is not None:
                 self._config[mapped_key] = str(value)
+                loaded_keys.add(mapped_key)
+
+        direct_llm_keys = {
+            "LLM_MODEL_NAME",
+            "LLM_MODEL_API_KEY",
+            "LLM_MODEL_BASE_URL",
+            "LLM_MODEL_API_TYPE",
+        }
+        agents_llm_keys = {"AGENTS_LLM_CONFIG_FILE", "AGENTS_LLM_CONFIG_FILE_REF_KEY"}
+        if loaded_keys & direct_llm_keys and not loaded_keys & agents_llm_keys:
+            for agents_key in agents_llm_keys:
+                self._config.pop(agents_key, None)
 
         logger.info(f"Loaded CLI config file: {config_file_path}")
 
@@ -289,6 +308,25 @@ class BaseConfigManager:
             required=False,
         )
         parser.add_argument(
+            "--guided",
+            action="store_true",
+            help="Interactive test builder (natural language → Gherkin)",
+            required=False,
+        )
+        parser.add_argument(
+            "--test",
+            type=str,
+            default=None,
+            help='Test description for guided mode (e.g. --test "Open google.com")',
+            required=False,
+        )
+        parser.add_argument(
+            "--dry-run",
+            action="store_true",
+            help="Generate Gherkin from --test without executing the test",
+            required=False,
+        )
+        parser.add_argument(
             "--reuse-vector-db",
             action="store_true",
             help="Reuse existing vector DB instead of creating fresh one",
@@ -338,7 +376,7 @@ class BaseConfigManager:
             help="Disable automatic acceptance of screen sharing prompts",
             required=False,
         )
-        
+
         # Python Sandbox Configuration
         parser.add_argument(
             "--sandbox-tenant-id",
@@ -356,72 +394,96 @@ class BaseConfigManager:
         # Parse known args; ignore unknown if you have other custom arguments
         args, _ = parser.parse_known_args()
 
+        def set_cli_value(key: str, value: Any) -> None:
+            value_str = str(value)
+            self._config[key] = value_str
+
         if args.config:
             self._load_cli_config_file(args.config)
 
         # Basic path configuration
         if args.input_file:
-            os.environ["INPUT_GHERKIN_FILE_PATH"] = args.input_file
+            set_cli_value("INPUT_GHERKIN_FILE_PATH", args.input_file)
         if args.output_path:
-            os.environ["JUNIT_XML_BASE_PATH"] = args.output_path
+            set_cli_value("JUNIT_XML_BASE_PATH", args.output_path)
         if args.test_data_path:
-            os.environ["TEST_DATA_PATH"] = args.test_data_path
+            set_cli_value("TEST_DATA_PATH", args.test_data_path)
         if args.project_base:
-            os.environ["PROJECT_SOURCE_ROOT"] = args.project_base
+            set_cli_value("PROJECT_SOURCE_ROOT", args.project_base)
+
+        direct_llm_cli_requested = any(
+            value is not None
+            for value in (
+                args.llm_model,
+                args.llm_model_api_key,
+                args.llm_model_base_url,
+                args.llm_model_api_type,
+            )
+        )
+        agents_llm_cli_requested = bool(args.agents_llm_config_file or args.agents_llm_config_file_ref_key)
+        if direct_llm_cli_requested and not agents_llm_cli_requested:
+            self._config.pop("AGENTS_LLM_CONFIG_FILE", None)
+            self._config.pop("AGENTS_LLM_CONFIG_FILE_REF_KEY", None)
 
         # LLM Model Configuration
         if args.llm_model:
-            os.environ["LLM_MODEL_NAME"] = args.llm_model
+            set_cli_value("LLM_MODEL_NAME", args.llm_model)
         if args.llm_model_api_key:
-            os.environ["LLM_MODEL_API_KEY"] = args.llm_model_api_key
+            set_cli_value("LLM_MODEL_API_KEY", args.llm_model_api_key)
         if args.llm_model_base_url:
-            os.environ["LLM_MODEL_BASE_URL"] = args.llm_model_base_url
+            set_cli_value("LLM_MODEL_BASE_URL", args.llm_model_base_url)
         if args.llm_model_api_type:
-            os.environ["LLM_MODEL_API_TYPE"] = args.llm_model_api_type
+            set_cli_value("LLM_MODEL_API_TYPE", args.llm_model_api_type)
         if args.llm_temperature is not None:
-            os.environ["LLM_MODEL_TEMPERATURE"] = str(args.llm_temperature)
+            set_cli_value("LLM_MODEL_TEMPERATURE", args.llm_temperature)
 
         # LLM Configuration File
         if args.agents_llm_config_file:
-            os.environ["AGENTS_LLM_CONFIG_FILE"] = args.agents_llm_config_file
+            set_cli_value("AGENTS_LLM_CONFIG_FILE", args.agents_llm_config_file)
         if args.agents_llm_config_file_ref_key:
-            os.environ["AGENTS_LLM_CONFIG_FILE_REF_KEY"] = args.agents_llm_config_file_ref_key
+            set_cli_value("AGENTS_LLM_CONFIG_FILE_REF_KEY", args.agents_llm_config_file_ref_key)
 
         # Portkey Configuration
         if args.enable_portkey:
-            os.environ["ENABLE_PORTKEY"] = "true"
+            set_cli_value("ENABLE_PORTKEY", "true")
         if args.portkey_api_key:
-            os.environ["PORTKEY_API_KEY"] = args.portkey_api_key
+            set_cli_value("PORTKEY_API_KEY", args.portkey_api_key)
         if args.portkey_strategy:
-            os.environ["PORTKEY_STRATEGY"] = args.portkey_strategy
+            set_cli_value("PORTKEY_STRATEGY", args.portkey_strategy)
 
         # Test execution options
         if args.bulk:
-            os.environ["EXECUTE_BULK"] = "true"
+            set_cli_value("EXECUTE_BULK", "true")
+        if args.guided:
+            set_cli_value("GUIDED_MODE", "true")
+        if args.test:
+            set_cli_value("GUIDED_TEST_DESCRIPTION", args.test)
+        if args.dry_run:
+            set_cli_value("GUIDED_DRY_RUN", "true")
         if args.reuse_vector_db:
-            os.environ["REUSE_VECTOR_DB"] = "true"
+            set_cli_value("REUSE_VECTOR_DB", "true")
 
         # Browser options
         if args.browser_channel:
-            os.environ["BROWSER_CHANNEL"] = args.browser_channel
+            set_cli_value("BROWSER_CHANNEL", args.browser_channel)
         if args.browser_path:
-            os.environ["BROWSER_PATH"] = args.browser_path
+            set_cli_value("BROWSER_PATH", args.browser_path)
         if args.browser_version:
-            os.environ["BROWSER_VERSION"] = args.browser_version
+            set_cli_value("BROWSER_VERSION", args.browser_version)
         if args.enable_ublock:
-            os.environ["ENABLE_UBLOCK_EXTENSION"] = "true"
+            set_cli_value("ENABLE_UBLOCK_EXTENSION", "true")
         if args.disable_ublock:
-            os.environ["ENABLE_UBLOCK_EXTENSION"] = "false"
+            set_cli_value("ENABLE_UBLOCK_EXTENSION", "false")
         if args.auto_accept_screen_sharing:
-            os.environ["AUTO_ACCEPT_SCREEN_SHARING"] = "true"
+            set_cli_value("AUTO_ACCEPT_SCREEN_SHARING", "true")
         if args.disable_auto_accept_screen_sharing:
-            os.environ["AUTO_ACCEPT_SCREEN_SHARING"] = "false"
-        
+            set_cli_value("AUTO_ACCEPT_SCREEN_SHARING", "false")
+
         # Python Sandbox Configuration
         if args.sandbox_tenant_id:
-            os.environ["SANDBOX_TENANT_ID"] = args.sandbox_tenant_id
+            set_cli_value("SANDBOX_TENANT_ID", args.sandbox_tenant_id)
         if args.sandbox_custom_injections:
-            os.environ["SANDBOX_CUSTOM_INJECTIONS"] = args.sandbox_custom_injections
+            set_cli_value("SANDBOX_CUSTOM_INJECTIONS", args.sandbox_custom_injections)
 
     def _merge_from_env(self) -> None:
         """
@@ -463,6 +525,7 @@ class BaseConfigManager:
             "LLM_MODEL_CACHE_SEED",
             "LLM_MODEL_SEED",
             "LLM_MODEL_MAX_TOKENS",
+            "LLM_MODEL_MAX_COMPLETION_TOKENS",
             "LLM_MODEL_PRESENCE_PENALTY",
             "LLM_MODEL_FREQUENCY_PENALTY",
             "LLM_MODEL_STOP",
@@ -484,6 +547,9 @@ class BaseConfigManager:
             "GEO_PROVIDER",
             "GEO_API_KEY",
             "EXECUTE_BULK",
+            "GUIDED_MODE",
+            "GUIDED_TEST_DESCRIPTION",
+            "GUIDED_DRY_RUN",
             "USE_DYNAMIC_LTM",
             "REUSE_VECTOR_DB",
             "ENABLE_BROWSER_LOGS",
@@ -564,16 +630,12 @@ class BaseConfigManager:
                 logger.error(f"Invalid numeric value in Portkey configuration: {e}")
                 exit(1)
 
-        if (llm_model_name and llm_model_api_key) and (agents_llm_config_file or agents_llm_config_file_ref_key):
-            logger.error("Provide either LLM_MODEL_NAME and LLM_MODEL_API_KEY together, " "or AGENTS_LLM_CONFIG_FILE and AGENTS_LLM_CONFIG_FILE_REF_KEY together, not both.")
-            exit(1)
+        has_legacy_direct_llm_config = bool(llm_model_name or llm_model_api_key)
+        if has_legacy_direct_llm_config:
+            logger.warning("LLM_MODEL_* is deprecated. Please migrate to " "AGENTS_LLM_CONFIG_FILE.")
 
-        if (not llm_model_name or not llm_model_api_key) and (not agents_llm_config_file or not agents_llm_config_file_ref_key):
-            logger.error(
-                "Either LLM_MODEL_NAME and LLM_MODEL_API_KEY must be set together, "
-                "or AGENTS_LLM_CONFIG_FILE and AGENTS_LLM_CONFIG_FILE_REF_KEY must be set together. "
-                "Use --llm-model and --llm-model-api-key in hercules command."
-            )
+        if bool(agents_llm_config_file) != bool(agents_llm_config_file_ref_key):
+            logger.error("AGENTS_LLM_CONFIG_FILE and AGENTS_LLM_CONFIG_FILE_REF_KEY must be set together.")
             exit(1)
 
     def _finalize_defaults(self) -> None:
@@ -624,6 +686,9 @@ class BaseConfigManager:
         self._config.setdefault("GEO_API_KEY", None)
         self._config.setdefault("REACTION_DELAY_TIME", "0.1")
         self._config.setdefault("EXECUTE_BULK", "false")
+        self._config.setdefault("GUIDED_MODE", "false")
+        self._config.setdefault("GUIDED_TEST_DESCRIPTION", "")
+        self._config.setdefault("GUIDED_DRY_RUN", "false")
         self._config.setdefault("ENABLE_PLAYWRIGHT_TRACING", "false")
         self._config.setdefault("REUSE_VECTOR_DB", "false")
         self._config.setdefault("USE_DYNAMIC_LTM", "false")
@@ -654,12 +719,12 @@ class BaseConfigManager:
 
         # Add Portkey-related defaults with reasonable values
         self._config.setdefault("ENABLE_PORTKEY", "false")
-        
+
         # Add MCP-related defaults
         self._config.setdefault("MCP_ENABLED", "false")
         self._config.setdefault("MCP_TIMEOUT", "30")
         self._config.setdefault("MCP_SERVERS", "{}")
-        
+
         # Python Sandbox defaults
         self._config.setdefault("SANDBOX_TENANT_ID", "")  # No default tenant
         self._config.setdefault("SANDBOX_PACKAGES", "")  # No default packages
@@ -708,6 +773,47 @@ class BaseConfigManager:
     def get_config(self) -> ConfigDict:
         """Return the underlying config dictionary."""
         return self._config
+
+    def get_langchain_cfg(self) -> dict:
+        """Return model config in LangChain-compatible format for create_chat_model()."""
+        from testzeus_hercules.utils.llm_helper import (
+            convert_model_config_to_langchain_format,
+        )
+
+        if self._config.get("AGENTS_LLM_CONFIG_FILE"):
+            from testzeus_hercules.core.agents_llm_config_manager import (
+                AgentsLLMConfigManager,
+            )
+
+            agent_cfg = AgentsLLMConfigManager.get_instance().get_agent_config("planner_agent")
+            return convert_model_config_to_langchain_format(agent_cfg["model_config_params"])
+        model_cfg = {
+            "model": self._config.get("LLM_MODEL_NAME"),
+            "model_api_key": self._config.get("LLM_MODEL_API_KEY"),
+            "model_base_url": self._config.get("LLM_MODEL_BASE_URL"),
+            "model_api_type": self._config.get("LLM_MODEL_API_TYPE"),
+        }
+        return convert_model_config_to_langchain_format(model_cfg)
+
+    def get_adapted_llm_params(self) -> dict:
+        """Return adapted LLM params (temperature, max_tokens, etc.) for create_chat_model()."""
+        from testzeus_hercules.utils.model_utils import adapt_llm_params_for_model
+
+        model_name = self._config.get("LLM_MODEL_NAME", "gpt-4o")
+        raw_params = {
+            k: v
+            for k, v in {
+                "temperature": self._config.get("LLM_MODEL_TEMPERATURE"),
+                "max_tokens": self._config.get("LLM_MODEL_MAX_TOKENS"),
+                "seed": self._config.get("LLM_MODEL_SEED"),
+                "cache_seed": self._config.get("LLM_MODEL_CACHE_SEED"),
+                "presence_penalty": self._config.get("LLM_MODEL_PRESENCE_PENALTY"),
+                "frequency_penalty": self._config.get("LLM_MODEL_FREQUENCY_PENALTY"),
+                "stop": self._config.get("LLM_MODEL_STOP"),
+            }.items()
+            if v is not None
+        }
+        return adapt_llm_params_for_model(model_name, raw_params)
 
     def get_mode(self) -> str:
         return self._config["MODE"]
@@ -786,6 +892,19 @@ class BaseConfigManager:
         """Return whether tests should be executed in bulk mode"""
         return self._config["EXECUTE_BULK"].lower().strip() == "true"
 
+    def should_run_guided(self) -> bool:
+        """Return whether guided test builder mode is enabled."""
+        return self._config["GUIDED_MODE"].lower().strip() == "true"
+
+    def get_guided_test_description(self) -> str | None:
+        """Return the test description passed via --test, if any."""
+        value = self._config.get("GUIDED_TEST_DESCRIPTION", "")
+        return value if value else None
+
+    def should_dry_run(self) -> bool:
+        """Return whether to generate Gherkin only without executing tests."""
+        return self._config.get("GUIDED_DRY_RUN", "false").lower().strip() == "true"
+
     def should_enable_tracing(self) -> bool:
         """Check if Playwright tracing should be enabled"""
         return self._config.get("ENABLE_PLAYWRIGHT_TRACING", "false").lower() == "true"
@@ -856,7 +975,7 @@ class BaseConfigManager:
 
     def get_junit_xml_base_path(self) -> str:
         """Get path to junit XML output folder"""
-        return self.paths["junit_xml"]
+        return self.get_trace_path()["junit_xml"]
 
     def get_test_data_path(self) -> str:
         path = self._config["TEST_DATA_PATH"]
@@ -1023,62 +1142,58 @@ class BaseConfigManager:
         """Get MCP servers configuration."""
         try:
             servers_config = self._config.get("MCP_SERVERS", "")
-            
+
             # Check if it's a file path (ends with .json)
-            if servers_config.endswith('.json'):
+            if servers_config.endswith(".json"):
                 # Try relative to current directory first, then relative to testzeus_hercules
-                file_paths = [
-                    servers_config,
-                    os.path.join(os.path.dirname(__file__), servers_config),
-                    os.path.join('testzeus_hercules', servers_config)
-                ]
-                
+                file_paths = [servers_config, os.path.join(os.path.dirname(__file__), servers_config), os.path.join("testzeus_hercules", servers_config)]
+
                 for file_path in file_paths:
                     if os.path.exists(file_path):
-                        with open(file_path, 'r', encoding='utf-8') as f:
+                        with open(file_path, "r", encoding="utf-8") as f:
                             logger.info(f"Loaded MCP servers config from: {file_path}")
                             return json.load(f)
-                
+
                 logger.error(f"MCP servers file not found in any of: {file_paths}")
                 return {}
             else:
                 # Treat as direct JSON string (backward compatibility)
                 return json.loads(servers_config) if servers_config else {}
-                
+
         except json.JSONDecodeError as e:
             logger.warning(f"Invalid MCP_SERVERS JSON: {e}, returning empty config")
             return {}
         except Exception as e:
             logger.error(f"Error reading MCP servers configuration: {e}")
             return {}
-    
+
     # -------------------------------------------------------------------------
     # Python Sandbox Configuration
     # -------------------------------------------------------------------------
-    
+
     def get_sandbox_tenant_id(self) -> str:
         """
         Get the sandbox tenant ID for multi-tenant module injection.
-        
+
         Returns:
             Tenant ID string (e.g., 'executor_agent', 'data_agent', 'api_agent')
             Empty string means no tenant-specific injections (base only)
         """
         return self._config.get("SANDBOX_TENANT_ID", "")
-    
+
     def get_sandbox_packages(self) -> str:
         """
         Get the comma-separated list of sandbox packages to inject.
-        
+
         Returns:
             Comma-separated package names (e.g., 'requests,pandas,numpy')
         """
         return self._config.get("SANDBOX_PACKAGES", "")
-    
+
     def get_sandbox_custom_injections(self) -> str:
         """
         Get the custom injections JSON string for sandbox.
-        
+
         Returns:
             JSON string with custom modules/objects to inject
             Example: '{"modules": ["jwt"], "custom_objects": {"API_KEY": "xyz"}}'

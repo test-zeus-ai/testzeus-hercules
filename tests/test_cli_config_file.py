@@ -9,7 +9,6 @@ from typing import Any, Generator
 
 import pytest
 
-
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 CONFIG_PATH = ROOT / "testzeus_hercules" / "config.py"
 
@@ -71,6 +70,42 @@ def _load_config_module(argv: list[str]) -> Any:
 def _set_test_env() -> Generator[None, None, None]:
     os.environ["IS_TEST_ENV"] = "true"
     yield
+
+
+def test_test_env_import_skips_strict_llm_validation(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("IS_TEST_ENV", "true")
+    monkeypatch.delenv("LLM_MODEL_NAME", raising=False)
+    monkeypatch.delenv("LLM_MODEL_API_KEY", raising=False)
+    monkeypatch.setenv("AGENTS_LLM_CONFIG_FILE", "agents_llm_config.json")
+    monkeypatch.delenv("AGENTS_LLM_CONFIG_FILE_REF_KEY", raising=False)
+
+    module = _load_config_module(["testzeus-hercules"])
+    cfg = module.get_global_conf().get_config()
+
+    assert cfg["AGENTS_LLM_CONFIG_FILE"] == "agents_llm_config.json"
+    assert "AGENTS_LLM_CONFIG_FILE_REF_KEY" not in cfg
+
+
+def test_ignore_env_skips_strict_llm_validation(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _load_config_module(["testzeus-hercules"])
+    monkeypatch.setenv("IS_TEST_ENV", "false")
+
+    cfg = module.NonSingletonConfigManager(
+        {"AGENTS_LLM_CONFIG_FILE": "agents_llm_config.json"},
+        ignore_env=True,
+    ).get_config()
+
+    assert cfg["AGENTS_LLM_CONFIG_FILE"] == "agents_llm_config.json"
+    assert "AGENTS_LLM_CONFIG_FILE_REF_KEY" not in cfg
+
+
+def test_max_completion_tokens_env_is_loaded(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LLM_MODEL_MAX_COMPLETION_TOKENS", "1234")
+
+    module = _load_config_module(["testzeus-hercules"])
+    cfg = module.get_global_conf().get_config()
+
+    assert cfg["LLM_MODEL_MAX_COMPLETION_TOKENS"] == "1234"
 
 
 def test_yaml_config_file_is_loaded_via_cli_flag(tmp_path: pathlib.Path) -> None:
@@ -148,3 +183,19 @@ def test_cli_flags_override_config_file_values(tmp_path: pathlib.Path) -> None:
     assert cfg["INPUT_GHERKIN_FILE_PATH"] == str(tmp_path / "from-cli.feature")
     assert cfg["LLM_MODEL_NAME"] == "from-config"
     assert cfg["LLM_MODEL_API_KEY"] == "secret"
+
+
+def test_llm_temperature_cli_does_not_clear_agents_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGENTS_LLM_CONFIG_FILE", "agents_llm_config.json")
+    monkeypatch.setenv("AGENTS_LLM_CONFIG_FILE_REF_KEY", "litellm")
+    monkeypatch.delenv("LLM_MODEL_NAME", raising=False)
+    monkeypatch.delenv("LLM_MODEL_API_KEY", raising=False)
+    monkeypatch.delenv("LLM_MODEL_BASE_URL", raising=False)
+    monkeypatch.delenv("LLM_MODEL_API_TYPE", raising=False)
+
+    module = _load_config_module(["testzeus-hercules", "--llm-temperature", "0.2"])
+    cfg = module.get_global_conf().get_config()
+
+    assert cfg["AGENTS_LLM_CONFIG_FILE"] == "agents_llm_config.json"
+    assert cfg["AGENTS_LLM_CONFIG_FILE_REF_KEY"] == "litellm"
+    assert cfg["LLM_MODEL_TEMPERATURE"] == "0.2"

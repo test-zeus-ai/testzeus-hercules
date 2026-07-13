@@ -33,7 +33,10 @@ dependencies = [
     "junit2html>=31.0.2,<32",
     "aiohttp>=3.13.2,<4",
     "inflection>=0.5.1,<0.6",
-    "ag2[lmm, mcp, openai, groq, bedrock, anthropic, gemini]>=0.10.0,<0.11",
+    "langgraph>=0.2.0,<0.4",
+    "langchain-core>=0.3.0,<0.4",
+    "langchain-openai>=0.2.0,<0.4",
+    "langchain-community>=0.3.0,<0.4",
     "mcp>=1.23.3,<2",
     "psutil>=5.9.0,<6",
     "aiofiles>=24.1.0,<25",
@@ -54,6 +57,8 @@ dependencies = [
     "cryptography>=46.0.7,<47",
     "anthropic>=0.87.0",
     "python-multipart>=0.0.26",
+    "standard-aifc>=3.13.0,<4 ; python_full_version >= '3.13'",
+    "audioop-lts>=0.2.2,<1 ; python_full_version >= '3.13'",
 ]
 
 [project.urls]
@@ -63,6 +68,7 @@ Documentation = "https://testzeus.com/hercules/docs"
 
 [project.scripts]
 testzeus-hercules = "testzeus_hercules.__main__:main"
+testzeus-hercules-mcp = "testzeus_hercules.mcp_server:main"
 
 [dependency-groups]
 dev = [

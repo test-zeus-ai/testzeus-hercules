@@ -1,7 +1,7 @@
 import asyncio
 import inspect
 import traceback
-from typing import Annotated, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Optional
 
 from playwright.async_api import ElementHandle, Page
 from testzeus_hercules.config import get_global_conf
@@ -15,20 +15,30 @@ from testzeus_hercules.utils.dom_mutation_observer import subscribe, unsubscribe
 from testzeus_hercules.utils.logger import logger
 
 
+def _normalize_select_option_entry(entry: Any) -> tuple[str, str]:
+    if isinstance(entry, dict):
+        value_to_fill = None
+        for key in ("value_to_fill", "option_value", "input_value"):
+            if key in entry and entry[key] is not None:
+                value_to_fill = entry[key]
+                break
+        if value_to_fill is None:
+            raise ValueError("Entry must contain value_to_fill.")
+        return str(entry["selector"]), str(value_to_fill)
+    if isinstance(entry, (list, tuple)) and len(entry) >= 2:
+        return str(entry[0]), str(entry[1])
+    raise ValueError("Entry must contain selector and value_to_fill.")
+
+
 async def select_option(
     entry: Annotated[
-        tuple[str, str],
-        (
-            "tuple containing 'selector' and 'value_to_fill' in "
-            "('selector', 'value_to_fill') format. Selector is the md attribute value "
-            "of the DOM element and value_to_fill is the option text/value to select."
-        ),
+        Dict[str, str],
+        ("Dictionary containing 'selector' and 'value_to_fill'. " "Selector is the md attribute value of the DOM element and " "value_to_fill is the option text/value to select."),
     ],
 ) -> Annotated[str, "Explanation of the outcome of dropdown/spinner selection."]:
     add_event(EventType.INTERACTION, EventData(detail="SelectOption"))
     logger.info(f"Selecting option: {entry}")
-    selector: str = entry[0]
-    option_value: str = entry[1]
+    selector, value_to_fill = _normalize_select_option_entry(entry)
 
     # If the selector doesn't contain md=, wrap it accordingly.
     if "md=" not in selector:
@@ -50,7 +60,7 @@ async def select_option(
         dom_changes_detected = changes
 
     subscribe(detect_dom_changes)
-    result = await do_select_option(page, selector, option_value)
+    result = await do_select_option(page, selector, value_to_fill)
     # Wait for page to stabilize after selection
     await browser_manager.wait_for_load_state_if_enabled(page=page)
     unsubscribe(detect_dom_changes)
@@ -161,8 +171,59 @@ async def interact_with_element_select_type(
 
     # Strategy 1: Standard HTML select element
     if tag_name == "select":
-        await element.select_option(value=option_value)
+        option_match = await element.evaluate(
+            """
+            (el, desired) => {
+                const normalizedDesired = String(desired).trim();
+                const options = Array.from(el.options).map((option) => ({
+                    value: option.value,
+                    text: option.text.trim(),
+                    label: option.label ? option.label.trim() : "",
+                    disabled: option.disabled
+                }));
+                return (
+                    options.find((option) => option.value === normalizedDesired && !option.disabled) ||
+                    options.find((option) => option.text === normalizedDesired && !option.disabled) ||
+                    options.find((option) => option.label === normalizedDesired && !option.disabled) ||
+                    null
+                );
+            }
+            """,
+            option_value,
+        )
+        if not option_match:
+            available_options = await element.evaluate("""
+                (el) => Array.from(el.options).map((option) => ({
+                    value: option.value,
+                    text: option.text.trim(),
+                    disabled: option.disabled
+                }))
+                """)
+            error = f"Error: Option '{option_value}' not found in selector '{selector}'. " f"Available options: {available_options}"
+            await selector_logger.log_selector_interaction(
+                tool_name="select_option",
+                selector=selector,
+                action="select",
+                selector_type="css" if "md=" in selector else "custom",
+                alternative_selectors=alternative_selectors,
+                element_attributes=element_attributes,
+                success=False,
+                error_message=error,
+            )
+            return {"summary_message": error, "detailed_message": error}
+
+        await element.select_option(value=option_match["value"])
         await page.wait_for_load_state("domcontentloaded", timeout=1000)
+        selected_state = await element.evaluate("""
+            (el) => {
+                const selectedOption = el.selectedOptions && el.selectedOptions[0];
+                return {
+                    value: el.value,
+                    text: selectedOption ? selectedOption.text.trim() : "",
+                    selectedIndex: el.selectedIndex
+                };
+            }
+            """)
         await selector_logger.log_selector_interaction(
             tool_name="select_option",
             selector=selector,
@@ -173,10 +234,13 @@ async def interact_with_element_select_type(
             success=True,
             additional_data={
                 "element_type": "select",
-                "selected_value": option_value,
+                "requested_value": option_value,
+                "selected_value": selected_state.get("value", ""),
+                "selected_text": selected_state.get("text", ""),
+                "selected_index": selected_state.get("selectedIndex", ""),
             },
         )
-        success_msg = f"Success. Option '{option_value}' selected in the dropdown with selector '{selector}'"
+        success_msg = f"Success. Dropdown selector '{selector}' selected option text " f"'{selected_state.get('text', '')}' with value '{selected_state.get('value', '')}'"
         return {
             "summary_message": success_msg,
             "detailed_message": f"{success_msg}. Outer HTML: {element_outer_html}",
@@ -291,35 +355,50 @@ async def interact_with_element_select_type(
 @tool(
     agent_names=["browser_nav_agent"],
     name="bulk_select_option",
-    description=("Used to select/search an options in multiple picklist/listbox/combobox/dropdowns/spinners in a single attempt. " "Each entry is a tuple of (selector, value_to_fill)."),
+    description=("Used to select/search options in multiple picklists/listboxes/comboboxes/dropdowns/spinners in a single attempt. Each entry is a dictionary with selector and value_to_fill."),
 )
 async def bulk_select_option(
     entries: Annotated[
-        List[List[str]],
-        (
-            "List of tuples containing 'selector' and 'value_to_fill' in the format "
-            "[('selector', 'value_to_fill'), ...]. 'selector' is the md attribute value and 'value_to_fill' is the option to select."
-        ),
+        List[Dict[str, str]],
+        "List of dictionaries containing 'selector' and 'value_to_fill'.",
     ],
 ) -> Annotated[
     List[Dict[str, str]],
     "List of dictionaries, each containing 'selector' and the result of the operation.",
 ]:
     add_event(EventType.INTERACTION, EventData(detail="BulkSelectOption"))
+
     results: List[Dict[str, str]] = []
+
     logger.info("Executing bulk select option command")
 
     for entry in entries:
-        if len(entry) != 2:
-            logger.error(f"Invalid entry format: {entry}. Expected [selector, value]")
-            continue
-        result = await select_option((entry[0], entry[1]))
+        selector, _ = _normalize_select_option_entry(entry)
+        result = await select_option(entry)
+
         if isinstance(result, str):
             if "new elements have appeared in view" in result and "success" in result.lower():
                 success_part = result.split(".\nAs a consequence")[0]
-                results.append({"selector": entry[0], "result": success_part})
+
+                results.append(
+                    {
+                        "selector": selector,
+                        "result": success_part,
+                    }
+                )
             else:
-                results.append({"selector": entry[0], "result": result})
+                results.append(
+                    {
+                        "selector": selector,
+                        "result": result,
+                    }
+                )
         else:
-            results.append({"selector": entry[0], "result": str(result)})
+            results.append(
+                {
+                    "selector": selector,
+                    "result": str(result),
+                }
+            )
+
     return results

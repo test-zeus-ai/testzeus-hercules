@@ -29,11 +29,13 @@ async def split_feature_file(input_file: str, output_dir: str, dont_append_heade
     async with aiofiles.open(input_file, "r") as f:
         feature_content = await f.read()
 
-    scenario_pattern = re.compile(r"\b[Ss]cenario\b.*:")
-    all_scenarios = scenario_pattern.findall(feature_content)
-    parts = scenario_pattern.split(feature_content)
+    scenario_pattern = re.compile(r"^\s*scenario(?:\s+outline)?\s*:\s*([^\n]*)", re.IGNORECASE | re.MULTILINE)
+    matches = list(scenario_pattern.finditer(feature_content))
 
-    feature_header = parts[0].strip()
+    if not matches:
+        return res_opt_list
+
+    feature_header = feature_content[: matches[0].start()].strip()
 
     feature_name = "Feature"
     for line in feature_header.split("\n"):
@@ -41,12 +43,15 @@ async def split_feature_file(input_file: str, output_dir: str, dont_append_heade
             feature_name = line.split("Feature:")[1].strip()
             break
 
-    scenarios = parts[1:]
     prev_comment_lines = ""
 
     already_visited_scenarios: Dict[str, int] = defaultdict(int)
 
-    for i, scenario in enumerate(scenarios):
+    for i, match in enumerate(matches):
+        next_match = matches[i + 1] if i + 1 < len(matches) else None
+        scenario_header = match.group(0).strip()
+        scenario_body = feature_content[match.end() : next_match.start() if next_match else len(feature_content)]
+        scenario = f"{scenario_header}{scenario_body}".strip()
         comment_lines = ""
         comment_lines_li = []
         skip_line = 1
@@ -60,14 +65,13 @@ async def split_feature_file(input_file: str, output_dir: str, dont_append_heade
             else:
                 skip_line -= 1
 
-        scenario_title = scenario.strip().split("\n")[0]
+        scenario_title = match.group(1).strip() or scenario_header
         o_scenario_title = scenario_title
         scenario_filename = f"{scenario_title.replace(' ', '_')}.feature"
         output_file = os.path.join(output_dir, scenario_filename)
-        f_scenario = scenario.strip()
 
         for comment_line in comment_lines_li:
-            f_scenario = f_scenario.replace(comment_line, "")
+            scenario = scenario.replace(comment_line, "")
 
         if already_visited_scenarios[o_scenario_title] > 0:
 
@@ -77,13 +81,12 @@ async def split_feature_file(input_file: str, output_dir: str, dont_append_heade
         already_visited_scenarios[o_scenario_title] += 1
 
         if dont_append_header and i > 0:
-            file_content = f"{prev_comment_lines}\n{all_scenarios[i]}{scenario_title}{f_scenario}"
+            file_content = f"{prev_comment_lines}\n{scenario}"
         else:
-            file_content = f"{feature_header}\n\n{prev_comment_lines}\n{all_scenarios[i]}{scenario_title}{f_scenario}"
+            file_content = f"{feature_header}\n\n{prev_comment_lines}\n{scenario}"
 
         async with aiofiles.open(output_file, "w") as f:
             await f.write(file_content)
-        prev_comment_lines = comment_lines
         prev_comment_lines = comment_lines
 
         scenario_di = {

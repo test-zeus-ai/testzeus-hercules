@@ -2,6 +2,7 @@ import asyncio
 import inspect
 import traceback
 from typing import Annotated
+from urllib.parse import urlsplit
 
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from testzeus_hercules.config import get_global_conf
@@ -14,9 +15,9 @@ from testzeus_hercules.utils.logger import logger
 @tool(
     agent_names=["browser_nav_agent"],
     description="""Opens specified URL in browser. Returns new page URL or error message.""",
-    name="openurl",
+    name="open_url",
 )
-async def openurl(
+async def open_url(
     url: Annotated[
         str,
         "URL to navigate to. Value must include the protocol (http:// or https://).",
@@ -74,7 +75,7 @@ async def openurl(
 
             # Log successful navigation
             await browser_logger.log_browser_interaction(
-                tool_name="openurl",
+                tool_name="open_url",
                 action="navigate",
                 interaction_type="navigation",
                 success=True,
@@ -90,25 +91,26 @@ async def openurl(
             return f"Navigated to {special_url}, Title: {title}"
 
         url = ensure_protocol(url)
-        if page.url == url:
-            logger.info(f"Current page URL is the same as the new URL: {url}. No need to refresh.")
+        if urls_match_for_navigation(page.url, url):
+            logger.info(f"Current page URL already matches the requested URL: current={page.url}, requested={url}. No need to refresh.")
             try:
                 title = await page.title()
                 # Log successful navigation (from cache)
                 await browser_logger.log_browser_interaction(
-                    tool_name="openurl",
+                    tool_name="open_url",
                     action="navigate",
                     interaction_type="navigation",
                     success=True,
                     additional_data={
                         "url": url,
+                        "current_url": page.url,
                         "title": title,
                         "from_cache": True,
                         "status": "already_loaded",
                         "force_new_tab": force_new_tab,
                     },
                 )
-                return f"Page already loaded: {url}, Title: {title}"  # type: ignore
+                return f"Page already loaded: {page.url}, Title: {title}"  # type: ignore
             except Exception as e:
 
                 traceback.print_exc()
@@ -145,7 +147,7 @@ async def openurl(
 
         # Log successful navigation
         await browser_logger.log_browser_interaction(
-            tool_name="openurl",
+            tool_name="open_url",
             action="navigate",
             interaction_type="navigation",
             success=True,
@@ -165,7 +167,7 @@ async def openurl(
     except PlaywrightTimeoutError as pte:
         # Log navigation timeout
         await browser_logger.log_browser_interaction(
-            tool_name="openurl",
+            tool_name="open_url",
             action="navigate",
             interaction_type="navigation",
             success=False,
@@ -185,7 +187,7 @@ async def openurl(
         traceback.print_exc()
         # Log navigation error
         await browser_logger.log_browser_interaction(
-            tool_name="openurl",
+            tool_name="open_url",
             action="navigate",
             interaction_type="navigation",
             success=False,
@@ -238,3 +240,32 @@ def ensure_protocol(url: str) -> str:
         url = "https://" + url  # Default to https if no protocol is specified
         logger.info(f"Added 'https://' protocol to URL because it was missing. New URL is: {url}")
     return url
+
+
+def urls_match_for_navigation(current_url: str, requested_url: str) -> bool:
+    current = _normalize_url_for_navigation_compare(current_url)
+    requested = _normalize_url_for_navigation_compare(requested_url)
+    if not current or not requested:
+        return False
+
+    same_page = current.scheme == requested.scheme and current.netloc == requested.netloc and current.path == requested.path
+    if not same_page:
+        return False
+
+    # If the requested URL has no query, accept current query params from redirects/session state.
+    return not requested.query or current.query == requested.query
+
+
+def _normalize_url_for_navigation_compare(url: str):
+    try:
+        parsed = urlsplit(ensure_protocol(url.strip()))
+    except Exception:
+        return None
+
+    path = parsed.path.rstrip("/") or "/"
+    return parsed._replace(
+        scheme=parsed.scheme.lower(),
+        netloc=parsed.netloc.lower(),
+        path=path,
+        fragment="",
+    )

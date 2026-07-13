@@ -3,6 +3,7 @@ import atexit
 import json
 import os
 import signal
+import sys
 import uuid
 from datetime import datetime
 from enum import Enum
@@ -76,6 +77,10 @@ if ENABLE_TELEMETRY:
     sentry_sdk.set_user(None)
 
 
+def _can_prompt_for_email() -> bool:
+    return bool(getattr(sys.stdin, "isatty", lambda: False)())
+
+
 def get_installation_id(file_path: str = "installation_id.txt", is_manual_run: bool = True) -> Dict[str, Any]:
     """Generate or load installation data.
 
@@ -107,7 +112,7 @@ def get_installation_id(file_path: str = "installation_id.txt", is_manual_run: b
     else:
         installation_id = str(uuid.uuid4())
         user_email = "new_email@example.com"
-        if is_manual_run:
+        if is_manual_run and _can_prompt_for_email():
             print("We need your email to inform you about any urgent security patches or issues detected in testzeus-hercules.")
             n_user_email = input("Please provide your email (or press Enter to skip with empty email): ")
             user_email = n_user_email if n_user_email else user_email

@@ -48,7 +48,7 @@ async def download_file(url: str, dest: Path) -> None:
     """Download a file from a URL to a destination path."""
     logger.info(f"Downloading {url} to {dest}")
     file_logger(f"Downloading {url} to {dest}")
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(follow_redirects=True) as client:
         async with client.stream("GET", url) as response:
             response.raise_for_status()
             with open(dest, "wb") as f:
@@ -237,9 +237,9 @@ for tag, explanation in security_terms_explanation.items():
             ] = "",
             bearer_token: Annotated[str, "Optional Bearer token for authentication."] = "",
             header_tokens: Annotated[
-                List[str],
+                Optional[List[str]],
                 "Optional list of header tokens in 'Key=Value' format.",
-            ] = [],
+            ] = None,
             jwt_token: Annotated[str, "Optional JWT token for authentication."] = "",
             # output_dir: Annotated[
             #     str, "Optional output directory for results."

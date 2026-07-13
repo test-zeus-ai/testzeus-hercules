@@ -16,6 +16,21 @@ from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.ui_messagetype import MessageType
 
 
+def _normalize_slider_entry(entry: Any) -> tuple[str, str]:
+    if isinstance(entry, dict):
+        value_to_set = None
+        for key in ("value_to_set", "value_to_fill"):
+            if key in entry and entry[key] is not None:
+                value_to_set = entry[key]
+                break
+        if value_to_set is None:
+            raise ValueError("Entry must contain value_to_set.")
+        return str(entry["selector"]), str(value_to_set)
+    if isinstance(entry, (list, tuple)) and len(entry) >= 2:
+        return str(entry[0]), str(entry[1])
+    raise ValueError("Entry must contain selector and value_to_set.")
+
+
 async def custom_set_slider_value(page: Page, selector: str, value_to_set: float) -> None:
     """
     Sets the value of a range slider input element to a specified value.
@@ -34,11 +49,11 @@ async def custom_set_slider_value(page: Page, selector: str, value_to_set: float
     selector = f"{selector}"  # Ensures the selector is treated as a string
     try:
         result = await page.evaluate(
-            get_js_with_element_finder(
-                """
+            get_js_with_element_finder("""
             (inputParams) => {
                 /*INJECT_FIND_ELEMENT_IN_SHADOW_DOM*/
-                const { selector, value_to_set } = inputParams;
+                const { selector } = inputParams;
+                let sliderValue = Number(inputParams.value_to_set);
                 const element = findElementInShadowDOMAndIframes(document, selector);
                 if (!element) {
                     throw new Error(`Element not found: ${selector}`);
@@ -51,20 +66,19 @@ async def custom_set_slider_value(page: Page, selector: str, value_to_set: float
                 const max = parseFloat(element.max) || 100;
                 const step = parseFloat(element.step) || 1;
                 // Clamp the value within the allowed range
-                value_to_set = Math.max(min, Math.min(max, value_to_set));
+                sliderValue = Math.max(min, Math.min(max, sliderValue));
                 // Adjust value to the nearest step
-                value_to_set = min + Math.round((value_to_set - min) / step) * step;
+                sliderValue = min + Math.round((sliderValue - min) / step) * step;
                 // Set the value
-                element.value = value_to_set;
+                element.value = sliderValue;
                 // Dispatch input and change events to simulate user interaction
                 const inputEvent = new Event('input', { bubbles: true });
                 const changeEvent = new Event('change', { bubbles: true });
                 element.dispatchEvent(inputEvent);
                 element.dispatchEvent(changeEvent);
-                return `Value set for ${selector}`;
+                return `Value set for ${selector}: ${sliderValue}`;
             }
-            """
-            ),
+            """),
             {"selector": selector, "value_to_set": value_to_set},
         )
         logger.debug(f"custom_set_slider_value result: {result}")
@@ -77,14 +91,13 @@ async def custom_set_slider_value(page: Page, selector: str, value_to_set: float
 
 async def setslider(
     entry: Annotated[
-        tuple[str, str],
-        "tuple containing 'selector' and 'value_to_fill' in ('selector', 'value_to_fill') format, selector is md attribute value of the dom element to interact, md is an ID and 'value_to_fill' is the value or text of the option to select",
+        Dict[str, str],
+        "Dictionary containing 'selector' and 'value_to_set'. " "selector is the md attribute value of the DOM element to interact with, " "and value_to_set is the slider value to set.",
     ],
 ) -> Annotated[str, "Explanation of the outcome of this operation."]:
     logger.info(f"Setting slider value: {entry}")
 
-    selector: str = entry[0]
-    value_to_set: str = entry[1]
+    selector, value_to_set = _normalize_slider_entry(entry)
 
     try:
         value_float = float(value_to_set)
@@ -176,14 +189,12 @@ async def do_setslider(page: Page, selector: str, value_to_set: float) -> dict[s
         element_attributes = await selector_logger.get_element_attributes(elem_handle)
 
         # Get slider properties before setting value
-        slider_props = await elem_handle.evaluate(
-            """element => ({
+        slider_props = await elem_handle.evaluate("""element => ({
             min: parseFloat(element.min) || 0,
             max: parseFloat(element.max) || 100,
             step: parseFloat(element.step) || 1,
             type: element.type
-        })"""
-        )
+        })""")
 
         if slider_props["type"] != "range":
             # Log failed selector interaction for non-range input
@@ -259,20 +270,26 @@ async def do_setslider(page: Page, selector: str, value_to_set: float) -> dict[s
 )
 async def bulk_set_slider(
     entries: Annotated[
-        List[List[str]],
-        "List of tuple containing 'selector' and 'value_to_fill' in [('selector', 'value_to_fill'), ..] format, selector is md attribute value of the dom element to interact, md is an ID and 'value_to_fill' is the value or text of the option to select",
+        List[Dict[str, str]],
+        "List of dictionaries containing 'selector' and 'value_to_set'.",
     ],
 ) -> Annotated[
     List[Dict[str, str]],
     "List of dictionaries, each containing 'selector' and the result of the operation.",
 ]:
     results: List[Dict[str, str]] = []
+
     logger.info("Executing bulk Set Slider Command")
+
     for entry in entries:
-        if len(entry) != 2:
-            logger.error(f"Invalid entry format: {entry}. Expected [selector, value]")
-            continue
-        result = await setslider((entry[0], entry[1]))  # Create tuple with explicit values
-        results.append({"selector": entry[0], "result": result})
+        selector, _ = _normalize_slider_entry(entry)
+        result = await setslider(entry)
+
+        results.append(
+            {
+                "selector": selector,
+                "result": result,
+            }
+        )
 
     return results
