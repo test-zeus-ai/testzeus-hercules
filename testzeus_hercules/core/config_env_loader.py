@@ -55,7 +55,6 @@ class ConfigEnvLoader:
         return {
             "planner_agent": normalized_config,
             "nav_agent": normalized_config,
-            "mem_agent": normalized_config,
             "helper_agent": normalized_config,
         }
 

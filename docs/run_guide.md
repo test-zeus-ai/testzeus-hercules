@@ -149,9 +149,6 @@ testzeus-hercules --disable-auto-accept-screen-sharing
 # Bulk execution
 testzeus-hercules --bulk
 
-# Vector DB reuse
-testzeus-hercules --reuse-vector-db
-
 # Screen sharing
 testzeus-hercules --auto-accept-screen-sharing
 ```
@@ -212,8 +209,8 @@ Expected outcome:
 
 Hercules requires LLM configuration to function properly. Use
 `agents_llm_config.json` plus an active provider/profile key when you want
-separate planner, navigation, memory, and helper model settings. Direct
-`LLM_MODEL_*` configuration remains available for simpler single-model runs.
+separate planner, navigation, and helper model settings. Direct `LLM_MODEL_*`
+configuration remains available for simpler single-model runs.
 
 ### 1. Configuration File
 
@@ -239,15 +236,6 @@ Example `agents_llm_config.json`:
       }
     },
     "nav_agent": {
-      "model_name": "gpt-4o",
-      "model_api_key": "your-api-key",
-      "model_api_type": "openai",
-      "llm_config_params": {
-        "temperature": 0.0,
-        "top_p": 0.001
-      }
-    },
-    "mem_agent": {
       "model_name": "gpt-4o",
       "model_api_key": "your-api-key",
       "model_api_type": "openai",
@@ -285,15 +273,6 @@ Example `agents_llm_config.json`:
         "top_p": 0.001
       }
     },
-    "mem_agent": {
-      "model_name": "claude-3-haiku-20240307",
-      "model_api_key": "your-anthropic-api-key",
-      "model_api_type": "anthropic",
-      "llm_config_params": {
-        "temperature": 0.0,
-        "top_p": 0.001
-      }
-    },
     "helper_agent": {
       "model_name": "claude-3-haiku-20240307",
       "model_api_key": "your-anthropic-api-key",
@@ -321,15 +300,6 @@ Example `agents_llm_config.json`:
       "llm_config_params": {
         "temperature": 0.0,
         "max_completion_tokens": 2048
-      }
-    },
-    "mem_agent": {
-      "model_name": "gpt-5-nano",
-      "model_api_key": "your-openai-api-key",
-      "model_api_type": "openai",
-      "llm_config_params": {
-        "temperature": 0.0,
-        "max_completion_tokens": 1024
       }
     },
     "helper_agent": {

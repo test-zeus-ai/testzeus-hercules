@@ -140,7 +140,6 @@ previous_step_status: [MANDATORY: COMPLETED_SUCCESSFULLY or FAILED or INCOMPLETE
 current_output: [DETAILED script execution results including output, return value, and execution time]
 Script_Execution_Summary: [Script path, function called if any, execution time, outcome]
 Task_Completion_Validation: [MANDATORY before terminating: Explicit confirmation that ALL task requirements have been met]
-##FLAG::SAVE_IN_MEM##
 ##TERMINATE TASK##
 
 - **Information Request:**

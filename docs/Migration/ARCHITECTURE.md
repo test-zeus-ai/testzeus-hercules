@@ -108,11 +108,6 @@ planner's `next_step` plus runtime context:
 - For browser helpers, it refreshes the live browser URL from
   `PlaywrightManager` and prefers that value over stale state.
 - It appends `Current Page: <url>` to browser helper tasks when a URL is known.
-- If dynamic long-term memory is enabled, it queries memory for the concrete
-  helper task and injects `EXTRA INFORMATION` for that helper step.
-
-Memory is also written when a helper response includes
-`##FLAG::SAVE_IN_MEM##`.
 
 ## Navigation Agent Loop
 
@@ -327,7 +322,6 @@ simpler single-model runs.
   "<provider-key>": {
     "planner_agent": {},
     "nav_agent": {},
-    "mem_agent": {},
     "helper_agent": {}
   }
 }
@@ -336,7 +330,6 @@ simpler single-model runs.
 - `planner_agent`: planner node model
 - `nav_agent`: shared by browser, API, security, SQL, time keeper, MCP, and
   executor helpers
-- `mem_agent`: dynamic long-term memory model
 - `helper_agent`: visual/multimodal helper model
 
 The planner model should be strong at structured JSON. Navigation models must

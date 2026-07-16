@@ -38,7 +38,7 @@ def _hercules() -> SimpleHercules:
     return SimpleHercules(stake_id="test", browser_nav_max_chat_round=5)
 
 
-def test_executor_routes_every_target_helper_to_expected_agent(monkeypatch) -> None:
+def test_executor_routes_every_target_helper_to_expected_agent() -> None:
     async def run() -> None:
         hercules = _hercules()
         helper_targets = {
@@ -58,8 +58,6 @@ def test_executor_routes_every_target_helper_to_expected_agent(monkeypatch) -> N
             )
             for agent_name in set(helper_targets.values())
         }
-        monkeypatch.setattr(hercules, "_query_memory", lambda _context: _async_value(""))
-
         for target_helper, expected_agent in helper_targets.items():
             state = {
                 "messages": [HumanMessage(content="root task")],
@@ -188,7 +186,7 @@ def test_browser_stale_dom_guard_skips_later_tool_calls() -> None:
     asyncio.run(run())
 
 
-def test_helper_task_includes_current_url_and_dynamic_memory(monkeypatch) -> None:
+def test_helper_task_includes_current_url() -> None:
     async def run() -> None:
         hercules = _hercules()
         agent = FakeAgent(
@@ -196,12 +194,6 @@ def test_helper_task_includes_current_url_and_dynamic_memory(monkeypatch) -> Non
             [AIMessage(content="current_output: done\n##TERMINATE TASK##")],
         )
         hercules.agents_map = {"browser_nav_agent": agent}
-
-        async def fake_query_memory(context: str) -> str:
-            assert "Current Page: https://example.test/start" in context
-            return "remembered context"
-
-        monkeypatch.setattr(hercules, "_query_memory", fake_query_memory)
 
         await hercules._executor_node(
             {
@@ -217,7 +209,6 @@ def test_helper_task_includes_current_url_and_dynamic_memory(monkeypatch) -> Non
 
         helper_task = agent.llm.calls[0][1].content
         assert "Current Page: https://example.test/start" in helper_task
-        assert "EXTRA INFORMATION: remembered context" in helper_task
 
     asyncio.run(run())
 
@@ -229,13 +220,7 @@ def test_helper_task_prefers_live_current_url(monkeypatch) -> None:
         async def fake_live_url() -> str:
             return "https://example.test/live"
 
-        async def fake_query_memory(context: str) -> str:
-            assert "Current Page: https://example.test/live" in context
-            assert "https://example.test/stale" not in context
-            return ""
-
         monkeypatch.setattr(hercules, "_get_live_current_url", fake_live_url)
-        monkeypatch.setattr(hercules, "_query_memory", fake_query_memory)
 
         helper_task = await hercules._build_helper_task(
             "click the login button",
@@ -274,7 +259,7 @@ def test_cost_metrics_include_provider_cost_when_available() -> None:
     assert usage["langgraph"]["cost"] == 0.42
 
 
-def test_executor_accumulates_nav_agent_token_usage(monkeypatch) -> None:
+def test_executor_accumulates_nav_agent_token_usage() -> None:
     async def run() -> None:
         hercules = _hercules()
         agent = FakeAgent(
@@ -294,8 +279,6 @@ def test_executor_accumulates_nav_agent_token_usage(monkeypatch) -> None:
             [StructuredTool.from_function(func=lambda: "unused", name="available", description="available")],
         )
         hercules.agents_map = {"api_nav_agent": agent}
-        monkeypatch.setattr(hercules, "_query_memory", lambda _context: _async_value(""))
-
         result = await hercules._executor_node(
             {
                 "messages": [HumanMessage(content="root task")],
@@ -412,7 +395,3 @@ def test_graph_chat_result_summary_uses_terminal_planner_json() -> None:
     )
 
     assert json.loads(result.summary)["final_response"] == "done"
-
-
-async def _async_value(value: str) -> str:
-    return value

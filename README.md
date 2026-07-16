@@ -703,13 +703,13 @@ For example: If you would like to run with a "Headful" browser, you can set the 
 
 Use direct `LLM_MODEL_*` environment variables for the simplest local runs.
 Use `agents_llm_config.json` only when you need per-agent model routing across
-`planner_agent`, `nav_agent`, `mem_agent`, and `helper_agent`. The full schema
-and examples live in `docs/run_guide.md` and `docs/environment_variables.md`.
+`planner_agent`, `nav_agent`, and `helper_agent`. The full schema and examples
+live in `docs/run_guide.md` and `docs/environment_variables.md`.
 
 #### LiteLLM proxy integration
 
 Hercules can route its LangGraph agents through a
-[LiteLLM proxy](https://docs.litellm.ai/docs/simple_proxy). This provides one compatible endpoint for models from multiple providers while preserving separate model and generation settings for the planner, navigation, memory, and helper roles.
+[LiteLLM proxy](https://docs.litellm.ai/docs/simple_proxy). This provides one compatible endpoint for models from multiple providers while preserving separate model and generation settings for the planner, navigation, and helper roles.
 
 Create `agents_llm_config.json` with a top-level `litellm` profile:
 
@@ -724,13 +724,6 @@ Create `agents_llm_config.json` with a top-level `litellm` profile:
       "llm_config_params": { "temperature": 0, "max_tokens": 4096 }
     },
     "nav_agent": {
-      "model_name": "<proxy-model-name>",
-      "model_api_key": "<proxy-api-key>",
-      "model_base_url": "http://localhost:4000/v1",
-      "model_api_type": "litellm",
-      "llm_config_params": { "temperature": 0, "max_tokens": 4096 }
-    },
-    "mem_agent": {
       "model_name": "<proxy-model-name>",
       "model_api_key": "<proxy-api-key>",
       "model_base_url": "http://localhost:4000/v1",

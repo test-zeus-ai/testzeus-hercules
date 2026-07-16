@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 
-AGENT_NAMES = ("planner_agent", "nav_agent", "mem_agent", "helper_agent")
+AGENT_NAMES = ("planner_agent", "nav_agent", "helper_agent")
 DEFAULT_MODEL_NAME = "gemini-2.5-flash"
 DEFAULT_MAX_TOKENS = 4096
 

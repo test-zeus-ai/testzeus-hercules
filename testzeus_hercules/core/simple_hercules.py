@@ -29,7 +29,6 @@ from testzeus_hercules.core.agents.sec_nav_agent import SecNavAgent
 from testzeus_hercules.core.agents.sql_nav_agent import SqlNavAgent
 from testzeus_hercules.core.agents.time_keeper_nav_agent import TimeKeeperNavAgent
 from testzeus_hercules.core.extra_tools import *  # noqa: F403
-from testzeus_hercules.core.memory.dynamic_ltm import DynamicLTM
 from testzeus_hercules.core.post_process_responses import (
     final_reply_callback_planner_agent as notify_planner_messages,
 )
@@ -96,11 +95,9 @@ class SimpleHercules:
         self.agents_map: Dict[str, Any] = {}
         self.planner_agent_config: Optional[Dict[str, Any]] = None
         self.nav_agent_config: Optional[Dict[str, Any]] = None
-        self.mem_agent_config: Optional[Dict[str, Any]] = None
         self.helper_agent_config: Optional[Dict[str, Any]] = None
         self.stake_id = stake_id
         self.save_chat_logs_to_files = save_chat_logs_to_files
-        self.memory: Optional[DynamicLTM] = None
         self._graph = None
         self._last_graph_result: GraphChatResult | None = None
         self._nav_token_log: list[dict[str, Any]] = []
@@ -132,7 +129,6 @@ class SimpleHercules:
         stake_id: str,
         planner_agent_config: dict[str, Any],
         nav_agent_config: dict[str, Any],
-        mem_agent_config: dict[str, Any],
         helper_agent_config: dict[str, Any],
         save_chat_logs_to_files: bool = True,
         planner_max_chat_round: int = 500,
@@ -151,7 +147,6 @@ class SimpleHercules:
         )
         self.planner_agent_config = planner_agent_config
         self.nav_agent_config = nav_agent_config
-        self.mem_agent_config = mem_agent_config
         self.helper_agent_config = helper_agent_config
 
         from testzeus_hercules.utils.model_utils import adapt_llm_params_for_model
@@ -159,7 +154,6 @@ class SimpleHercules:
         for cfg in [
             planner_agent_config,
             nav_agent_config,
-            mem_agent_config,
             helper_agent_config,
         ]:
             model = cfg["model_config_params"].get("model") or cfg["model_config_params"].get("model_name")
@@ -197,15 +191,6 @@ class SimpleHercules:
             name="image-comparer",
             system_message=("You are a visual comparison agent. You can compare images and provide feedback. " "Your only purpose is to do visual comparison of images"),
         )
-
-        config = get_global_conf()
-        if config.should_use_dynamic_ltm():
-            if self.mem_agent_config is None:
-                raise ValueError("Memory agent config is not initialized.")
-            mem_model = convert_model_config_to_langchain_format(self.mem_agent_config["model_config_params"])
-            llm_config = {**mem_model, **self.mem_agent_config["llm_config_params"]}
-            namespace = f"{self.stake_id}_{config.timestamp}"
-            self.memory = DynamicLTM(namespace=namespace, llm_config=llm_config)
 
         return agents
 
@@ -585,9 +570,6 @@ class SimpleHercules:
         if target_helper in {"browser", "agent"} and current_url:
             task = f"{task}\n\nCurrent Page: {current_url}"
 
-        memory_context = await self._query_memory(task)
-        if memory_context:
-            task = f"{task}\n\nEXTRA INFORMATION: {memory_context}"
         return task
 
     @staticmethod
@@ -729,10 +711,6 @@ class SimpleHercules:
             executor_entry["cost"] = nav_cost
 
         logger.info("[EXECUTOR] %s response: %s", agent_name, helper_response[:300])
-
-        # Persist memory if flagged
-        if "##FLAG::SAVE_IN_MEM##" in helper_response:
-            self.save_to_memory(helper_response)
 
         # Feed the helper's full response back into the planner conversation
         messages: list[AnyMessage] = list(state.get("messages", []))
@@ -989,23 +967,8 @@ class SimpleHercules:
 
         await MCPHelper.destroy()
 
-    def save_to_memory(self, content: str) -> None:
-        if not get_global_conf().should_use_dynamic_ltm():
-            return
-        if self.memory:
-            self.memory.save_content(content)
-        else:
-            logger.warning("Memory system not initialized")
-
     async def clean_up_plan(self) -> None:
-        if get_global_conf().should_use_dynamic_ltm() and self.memory:
-            self.memory.clear()
         logger.info("Plan cleaned up.")
-
-    async def _query_memory(self, context: str) -> str:
-        if not get_global_conf().should_use_dynamic_ltm() or not self.memory:
-            return ""
-        return await self.memory.query(context)
 
     async def process_command(
         self,
@@ -1021,9 +984,6 @@ class SimpleHercules:
         task = command
         if current_url:
             task = f"{command}\n\nCurrent Page: {current_url}"
-        if get_global_conf().should_use_dynamic_ltm():
-            task += "\n\nEXTRA INFORMATION: " + await self._query_memory(task)
-
         logger.info("Task for command: %s", task)
         try:
             if self._graph is None:

@@ -161,7 +161,6 @@ class BaseConfigManager:
             "portkey_api_key": "PORTKEY_API_KEY",
             "portkey_strategy": "PORTKEY_STRATEGY",
             "bulk": "EXECUTE_BULK",
-            "reuse_vector_db": "REUSE_VECTOR_DB",
             "browser": "BROWSER_TYPE",
             "browser_type": "BROWSER_TYPE",
             "browser_channel": "BROWSER_CHANNEL",
@@ -326,13 +325,6 @@ class BaseConfigManager:
             help="Generate Gherkin from --test without executing the test",
             required=False,
         )
-        parser.add_argument(
-            "--reuse-vector-db",
-            action="store_true",
-            help="Reuse existing vector DB instead of creating fresh one",
-            required=False,
-        )
-
         # Browser options
         parser.add_argument(
             "--browser-channel",
@@ -460,9 +452,6 @@ class BaseConfigManager:
             set_cli_value("GUIDED_TEST_DESCRIPTION", args.test)
         if args.dry_run:
             set_cli_value("GUIDED_DRY_RUN", "true")
-        if args.reuse_vector_db:
-            set_cli_value("REUSE_VECTOR_DB", "true")
-
         # Browser options
         if args.browser_channel:
             set_cli_value("BROWSER_CHANNEL", args.browser_channel)
@@ -550,8 +539,6 @@ class BaseConfigManager:
             "GUIDED_MODE",
             "GUIDED_TEST_DESCRIPTION",
             "GUIDED_DRY_RUN",
-            "USE_DYNAMIC_LTM",
-            "REUSE_VECTOR_DB",
             "ENABLE_BROWSER_LOGS",
             "BROWSER_CHANNEL",
             "BROWSER_VERSION",
@@ -690,8 +677,6 @@ class BaseConfigManager:
         self._config.setdefault("GUIDED_TEST_DESCRIPTION", "")
         self._config.setdefault("GUIDED_DRY_RUN", "false")
         self._config.setdefault("ENABLE_PLAYWRIGHT_TRACING", "false")
-        self._config.setdefault("REUSE_VECTOR_DB", "false")
-        self._config.setdefault("USE_DYNAMIC_LTM", "false")
         self._config.setdefault("ENABLE_BROWSER_LOGS", "false")
         self._config.setdefault("ENABLE_BOUNDING_BOX_SCREENSHOTS", "false")
         self._config.setdefault("AUTO_ACCEPT_SCREEN_SHARING", "true")
@@ -908,14 +893,6 @@ class BaseConfigManager:
     def should_enable_tracing(self) -> bool:
         """Check if Playwright tracing should be enabled"""
         return self._config.get("ENABLE_PLAYWRIGHT_TRACING", "false").lower() == "true"
-
-    def should_reuse_vector_db(self) -> bool:
-        """Return whether to reuse existing vector DB or create fresh one."""
-        return self._config["REUSE_VECTOR_DB"].lower().strip() == "true"
-
-    def should_use_dynamic_ltm(self) -> bool:
-        """Return whether to use dynamic LTM or static LTM."""
-        return self._config["USE_DYNAMIC_LTM"].lower().strip() == "true"
 
     def should_enable_browser_logs(self) -> bool:
         """Check if browser logging should be enabled"""

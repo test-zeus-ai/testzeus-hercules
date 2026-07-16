@@ -38,7 +38,6 @@ class BaseRunner:
 
         self.planner_agent_config: Dict[str, Any] | None = None
         self.nav_agent_config: Dict[str, Any] | None = None
-        self.mem_agent_config: Dict[str, Any] | None = None
         self.helper_config: Dict[str, Any] | None = None
 
     async def initialize(self) -> None:
@@ -50,22 +49,18 @@ class BaseRunner:
 
         planner_config = config_manager.get_agent_config("planner_agent")
         nav_config = config_manager.get_agent_config("nav_agent")
-        mem_config = config_manager.get_agent_config("mem_agent")
         helper_config = config_manager.get_agent_config("helper_agent")
-
-        if not all([planner_config, nav_config, mem_config, helper_config]):
+        if not all([planner_config, nav_config, helper_config]):
             raise ValueError("Failed to get required agent configurations")
 
         self.planner_agent_config = dict(planner_config)
         self.nav_agent_config = dict(nav_config)
-        self.mem_agent_config = dict(mem_config)
         self.helper_config = dict(helper_config)
 
         self.simple_hercules = await SimpleHercules.create(
             self.stake_id,
             self.planner_agent_config,
             self.nav_agent_config,
-            self.mem_agent_config,
             self.helper_config,
             save_chat_logs_to_files=self.save_chat_logs_to_files,
             planner_max_chat_round=self.planner_number_of_rounds,
@@ -78,6 +73,7 @@ class BaseRunner:
     async def clean_up(self) -> None:
         if self.simple_hercules:
             await self.simple_hercules.shutdown()
+            self.simple_hercules = None
         if self.browser_manager:
             await self.browser_manager.stop_playwright()
 
@@ -157,6 +153,9 @@ class BaseRunner:
 
     async def shutdown(self) -> None:
         logger.info("Shutting down...")
+        if self.simple_hercules:
+            await self.simple_hercules.shutdown()
+            self.simple_hercules = None
         if self.browser_manager:
             await self.browser_manager.stop_playwright()
         PlaywrightManager.close_all_instances()

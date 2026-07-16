@@ -7,7 +7,6 @@ from typing import Any
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.tools import StructuredTool
-from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.memory.static_ltm import get_user_ltm
 from testzeus_hercules.core.tools.tool_registry import tool_registry
 from testzeus_hercules.telemetry import EventData, EventType, add_event
@@ -30,10 +29,8 @@ class BaseNavAgent:
             logger.info(f"Using custom system prompt for BaseNavAgent: {system_message}")
 
         system_message = system_message + "\n" + f"Current timestamp is {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        config = get_global_conf()
-
         logger.warning("[SYSTEM_PROMPT_DEBUG] agent=%s user_ltm=%r system_message_tail=%r", self.agent_name, user_ltm, system_message[-200:])
-        if not config.should_use_dynamic_ltm() and user_ltm:
+        if user_ltm:
             user_ltm = "\n" + user_ltm
             system_message = Template(system_message).substitute(basic_test_information=user_ltm)
 

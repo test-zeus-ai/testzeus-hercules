@@ -44,15 +44,6 @@ planner, navigation, memory, and helper roles:
         "max_completion_tokens": 2048
       }
     },
-    "mem_agent": {
-      "model_name": "gpt-5-nano",
-      "model_api_key": "your-api-key",
-      "model_api_type": "openai",
-      "llm_config_params": {
-        "temperature": 0.0,
-        "max_completion_tokens": 1024
-      }
-    },
     "helper_agent": {
       "model_name": "gpt-5",
       "model_api_key": "your-api-key",
