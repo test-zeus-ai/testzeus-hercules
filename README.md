@@ -422,7 +422,6 @@ For the hardcore enthusiasts, you can use Hercules via the source code to get a 
 
    ```bash
    cd testzeus-hercules
-   git checkout langchain_migration
    ```
 
 3. **Use Make Commands**
@@ -706,6 +705,66 @@ Use direct `LLM_MODEL_*` environment variables for the simplest local runs.
 Use `agents_llm_config.json` only when you need per-agent model routing across
 `planner_agent`, `nav_agent`, `mem_agent`, and `helper_agent`. The full schema
 and examples live in `docs/run_guide.md` and `docs/environment_variables.md`.
+
+#### LiteLLM proxy integration
+
+Hercules can route its LangGraph agents through a
+[LiteLLM proxy](https://docs.litellm.ai/docs/simple_proxy). This provides one compatible endpoint for models from multiple providers while preserving separate model and generation settings for the planner, navigation, memory, and helper roles.
+
+Create `agents_llm_config.json` with a top-level `litellm` profile:
+
+```json
+{
+  "litellm": {
+    "planner_agent": {
+      "model_name": "<proxy-model-name>",
+      "model_api_key": "<proxy-api-key>",
+      "model_base_url": "http://localhost:4000/v1",
+      "model_api_type": "litellm",
+      "llm_config_params": { "temperature": 0, "max_tokens": 4096 }
+    },
+    "nav_agent": {
+      "model_name": "<proxy-model-name>",
+      "model_api_key": "<proxy-api-key>",
+      "model_base_url": "http://localhost:4000/v1",
+      "model_api_type": "litellm",
+      "llm_config_params": { "temperature": 0, "max_tokens": 4096 }
+    },
+    "mem_agent": {
+      "model_name": "<proxy-model-name>",
+      "model_api_key": "<proxy-api-key>",
+      "model_base_url": "http://localhost:4000/v1",
+      "model_api_type": "litellm",
+      "llm_config_params": { "temperature": 0, "max_tokens": 4096 }
+    },
+    "helper_agent": {
+      "model_name": "<proxy-model-name>",
+      "model_api_key": "<proxy-api-key>",
+      "model_base_url": "http://localhost:4000/v1",
+      "model_api_type": "litellm",
+      "llm_config_params": { "temperature": 0, "max_tokens": 4096 }
+    }
+  }
+}
+```
+
+Activate the profile and run Hercules:
+
+```bash
+export AGENTS_LLM_CONFIG_FILE=./agents_llm_config.json
+export AGENTS_LLM_CONFIG_FILE_REF_KEY=litellm
+
+testzeus-hercules --project-base=opt
+```
+
+The model names may be LiteLLM model aliases, so each agent role can be routed
+independently by changing its `model_name`. Navigation models must support
+native tool calling, and planner models must reliably return strict JSON.
+
+Guided test creation (`--guided` or `--test`) uses the LiteLLM-backed Gherkin
+generator and currently requires the active profile to be named `litellm`.
+Keep API keys in environment-managed or private configuration and do not commit
+them to the repository.
 
 ---
 
