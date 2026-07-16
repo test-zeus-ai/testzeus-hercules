@@ -31,7 +31,7 @@
         }
         }
     }
-    
+
     ,"mistral": {
 		"planner_agent": {
 			"model_name": "ministral-8b-latest",

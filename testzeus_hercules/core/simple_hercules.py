@@ -156,8 +156,12 @@ class SimpleHercules:
             nav_agent_config,
             helper_agent_config,
         ]:
-            model = cfg["model_config_params"].get("model") or cfg["model_config_params"].get("model_name")
-            cfg["llm_config_params"] = adapt_llm_params_for_model(model, cfg["llm_config_params"])
+            model = cfg["model_config_params"].get("model") or cfg[
+                "model_config_params"
+            ].get("model_name")
+            cfg["llm_config_params"] = adapt_llm_params_for_model(
+                model, cfg["llm_config_params"]
+            )
 
         self.agents_map = await self._initialize_agents()
         self._graph = self._build_graph()
@@ -170,11 +174,15 @@ class SimpleHercules:
         if self.planner_agent_config is None:
             raise ValueError("Planner agent config is not initialized.")
         nav_cfg = self.nav_agent_config
-        nav_model = convert_model_config_to_langchain_format(nav_cfg["model_config_params"])
+        nav_model = convert_model_config_to_langchain_format(
+            nav_cfg["model_config_params"]
+        )
         nav_llm = nav_cfg["llm_config_params"]
         nav_prompt = nav_cfg.get("other_settings", {}).get("system_prompt")
 
-        planner_model = convert_model_config_to_langchain_format(self.planner_agent_config["model_config_params"])
+        planner_model = convert_model_config_to_langchain_format(
+            self.planner_agent_config["model_config_params"]
+        )
         agents["planner_agent"] = PlannerAgent(
             planner_model,
             self.planner_agent_config["llm_config_params"],
@@ -184,12 +192,17 @@ class SimpleHercules:
         agents["api_nav_agent"] = ApiNavAgent(nav_model, nav_llm, nav_prompt)
         agents["sec_nav_agent"] = SecNavAgent(nav_model, nav_llm, nav_prompt)
         agents["sql_nav_agent"] = SqlNavAgent(nav_model, nav_llm, nav_prompt)
-        agents["time_keeper_nav_agent"] = TimeKeeperNavAgent(nav_model, nav_llm, nav_prompt)
+        agents["time_keeper_nav_agent"] = TimeKeeperNavAgent(
+            nav_model, nav_llm, nav_prompt
+        )
         agents["mcp_nav_agent"] = McpNavAgent(nav_model, nav_llm, nav_prompt)
         agents["executor_nav_agent"] = ExecutorNavAgent(nav_model, nav_llm, nav_prompt)
         agents["helper_agent"] = create_multimodal_agent(
             name="image-comparer",
-            system_message=("You are a visual comparison agent. You can compare images and provide feedback. " "Your only purpose is to do visual comparison of images"),
+            system_message=(
+                "You are a visual comparison agent. You can compare images and provide feedback. "
+                "Your only purpose is to do visual comparison of images"
+            ),
         )
 
         return agents
@@ -220,13 +233,19 @@ class SimpleHercules:
                 try:
                     return float(value)
                 except (TypeError, ValueError):
-                    logger.warning("[TOKEN_COUNT] Ignoring invalid response cost %r", value)
+                    logger.warning(
+                        "[TOKEN_COUNT] Ignoring invalid response cost %r", value
+                    )
         return None
 
     def _token_counts(self, response: Any) -> tuple[int, int]:
         usage = self._extract_tokens(response)
-        prompt_tokens = int(usage.get("prompt_tokens", 0) or usage.get("input_tokens", 0) or 0)
-        completion_tokens = int(usage.get("completion_tokens", 0) or usage.get("output_tokens", 0) or 0)
+        prompt_tokens = int(
+            usage.get("prompt_tokens", 0) or usage.get("input_tokens", 0) or 0
+        )
+        completion_tokens = int(
+            usage.get("completion_tokens", 0) or usage.get("output_tokens", 0) or 0
+        )
         return prompt_tokens, completion_tokens
 
     def _record_nav_token_usage(self, agent_name: str, response: Any) -> None:
@@ -237,7 +256,14 @@ class SimpleHercules:
         entry = {
             "node": "executor",
             "agent": agent_name,
-            "turn": len([item for item in self._nav_token_log if item.get("agent") == agent_name]) + 1,
+            "turn": len(
+                [
+                    item
+                    for item in self._nav_token_log
+                    if item.get("agent") == agent_name
+                ]
+            )
+            + 1,
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
             "total_tokens": prompt_tokens + completion_tokens,
@@ -271,18 +297,28 @@ class SimpleHercules:
                 continue
             tool_calls = getattr(m, "tool_calls", [])
             if tool_calls:
-                names = ", ".join(tc.get("name", "") for tc in tool_calls if isinstance(tc, dict))
+                names = ", ".join(
+                    tc.get("name", "") for tc in tool_calls if isinstance(tc, dict)
+                )
                 content = f"[tool_calls: {names}] {content}"
             lines.append(f"[{m.type}] {content[:300]}")
         summary = "\n".join(lines)
-        return [HumanMessage(content=f"COMPRESSED HISTORY (context limit reached):\n{summary}")]
+        return [
+            HumanMessage(
+                content=f"COMPRESSED HISTORY (context limit reached):\n{summary}"
+            )
+        ]
 
-    async def _llm_ainvoke(self, llm: Any, messages: list[AnyMessage], agent_name: str) -> Any:
+    async def _llm_ainvoke(
+        self, llm: Any, messages: list[AnyMessage], agent_name: str
+    ) -> Any:
         timeout = get_llm_request_timeout_seconds()
         try:
             return await asyncio.wait_for(llm.ainvoke(messages), timeout=timeout)
         except asyncio.TimeoutError as e:
-            raise TimeoutError(f"{agent_name} LLM call timed out after {timeout:g}s") from e
+            raise TimeoutError(
+                f"{agent_name} LLM call timed out after {timeout:g}s"
+            ) from e
 
     async def _ainvoke_with_context_fallback(
         self,
@@ -318,7 +354,10 @@ class SimpleHercules:
     ) -> dict[str, Any]:
         elapsed = time.perf_counter() - start
         final_response = str(error)
-        assert_summary = "EXPECTED RESULT: planner receives a timely model response.\n" f"ACTUAL RESULT: {final_response}."
+        assert_summary = (
+            "EXPECTED RESULT: planner receives a timely model response.\n"
+            f"ACTUAL RESULT: {final_response}."
+        )
         content = json.dumps(
             {
                 "plan": state.get("plan", ""),
@@ -370,7 +409,10 @@ class SimpleHercules:
                 "final_response": "Max planner rounds exceeded.",
                 "is_assert": True,
                 "is_passed": False,
-                "assert_summary": (f"EXPECTED: task completes within {self.planner_number_of_rounds} rounds. " "ACTUAL: max planner rounds exceeded."),
+                "assert_summary": (
+                    f"EXPECTED: task completes within {self.planner_number_of_rounds} rounds. "
+                    "ACTUAL: max planner rounds exceeded."
+                ),
                 "step_timings": state.get("step_timings", [])
                 + [
                     {
@@ -432,7 +474,12 @@ class SimpleHercules:
         is_passed = bool(parsed.get("is_passed", False))
         plan = str(parsed.get("plan") or state.get("plan", ""))
 
-        if terminate != "yes" and next_step and self._step_signature(next_step) in set(state.get("completed_step_signatures", [])):
+        if (
+            terminate != "yes"
+            and next_step
+            and self._step_signature(next_step)
+            in set(state.get("completed_step_signatures", []))
+        ):
             logger.warning(
                 "[PLANNER_REPEAT_NOTICE] Planner repeated an already completed step; allowing execution to continue. step=%s",
                 next_step[:200],
@@ -466,9 +513,13 @@ class SimpleHercules:
             "is_passed": is_passed,
             "step_token_log": state.get("step_token_log", []) + [step_entry],
             "total_prompt_tokens": state.get("total_prompt_tokens", 0) + prompt_tokens,
-            "total_completion_tokens": state.get("total_completion_tokens", 0) + completion_tokens,
-            "total_cost": float(state.get("total_cost", 0.0) or 0.0) + (response_cost or 0.0),
-            "cost_available": bool(state.get("cost_available", False) or response_cost is not None),
+            "total_completion_tokens": state.get("total_completion_tokens", 0)
+            + completion_tokens,
+            "total_cost": float(state.get("total_cost", 0.0) or 0.0)
+            + (response_cost or 0.0),
+            "cost_available": bool(
+                state.get("cost_available", False) or response_cost is not None
+            ),
             "step_timings": state.get("step_timings", [])
             + [
                 {
@@ -564,7 +615,9 @@ class SimpleHercules:
         live_url = (await self._get_live_current_url()).strip()
         return live_url or fallback_url
 
-    async def _build_helper_task(self, next_step: str, target_helper: str, state: AgentState) -> str:
+    async def _build_helper_task(
+        self, next_step: str, target_helper: str, state: AgentState
+    ) -> str:
         task = next_step
         current_url = await self._resolve_current_url(target_helper, state)
         if target_helper in {"browser", "agent"} and current_url:
@@ -584,7 +637,11 @@ class SimpleHercules:
 
     @staticmethod
     def _tool_call_id(tc: Any, fallback: str) -> str:
-        return tc.get("id", fallback) if isinstance(tc, dict) else getattr(tc, "id", fallback)
+        return (
+            tc.get("id", fallback)
+            if isinstance(tc, dict)
+            else getattr(tc, "id", fallback)
+        )
 
     def _tool_call_for_history(self, tc: Any) -> dict[str, Any]:
         name = self._tool_call_name(tc)
@@ -594,23 +651,37 @@ class SimpleHercules:
             "id": self._tool_call_id(tc, name),
         }
 
-    def _ai_message_with_tool_calls(self, response: Any, tool_calls: list[Any]) -> AIMessage:
+    def _ai_message_with_tool_calls(
+        self, response: Any, tool_calls: list[Any]
+    ) -> AIMessage:
         return AIMessage(
             content=getattr(response, "content", "") or "",
             tool_calls=[self._tool_call_for_history(tc) for tc in tool_calls],
         )
 
-    def _requires_state_refresh(self, agent_name: str, tool_name: str, tool_result: str) -> bool:
+    def _requires_state_refresh(
+        self, agent_name: str, tool_name: str, tool_result: str
+    ) -> bool:
         if agent_name != "browser_nav_agent":
             return False
         lower_result = tool_result.lower()
         if any(marker in lower_result for marker in self._STATE_REFRESH_MARKERS):
             return True
-        return tool_name in self._BROWSER_STATE_CHANGING_TOOLS and "[error]" not in lower_result and "[tool error]" not in lower_result and "unable to" not in lower_result
+        return (
+            tool_name in self._BROWSER_STATE_CHANGING_TOOLS
+            and "[error]" not in lower_result
+            and "[tool error]" not in lower_result
+            and "unable to" not in lower_result
+        )
 
-    async def _execute_tool_call(self, tool_obj: Any, tool_name: str, tool_args: dict[str, Any]) -> str:
+    async def _execute_tool_call(
+        self, tool_obj: Any, tool_name: str, tool_args: dict[str, Any]
+    ) -> str:
         if "__invalid_tool_args__" in tool_args:
-            return f"[TOOL ERROR] {tool_name}: expected tool arguments to be a dict, " f"got {type(tool_args['__invalid_tool_args__']).__name__}."
+            return (
+                f"[TOOL ERROR] {tool_name}: expected tool arguments to be a dict, "
+                f"got {type(tool_args['__invalid_tool_args__']).__name__}."
+            )
         try:
             coroutine_fn = getattr(tool_obj, "coroutine", None)
             if coroutine_fn and asyncio.iscoroutinefunction(coroutine_fn):
@@ -665,7 +736,14 @@ class SimpleHercules:
 
         executor_entry = {
             "node": "executor",
-            "turn": len([e for e in state.get("step_token_log", []) if e.get("node") == "executor"]) + 1,
+            "turn": len(
+                [
+                    e
+                    for e in state.get("step_token_log", [])
+                    if e.get("node") == "executor"
+                ]
+            )
+            + 1,
             "prompt_tokens": 0,
             "completion_tokens": 0,
             "total_tokens": 0,
@@ -681,7 +759,14 @@ class SimpleHercules:
                 + [
                     {
                         "node": "executor",
-                        "turn": len([t for t in state.get("step_timings", []) if t["node"] == "executor"]) + 1,
+                        "turn": len(
+                            [
+                                t
+                                for t in state.get("step_timings", [])
+                                if t["node"] == "executor"
+                            ]
+                        )
+                        + 1,
                         "duration": elapsed,
                     }
                 ],
@@ -699,10 +784,16 @@ class SimpleHercules:
         nav_token_start = len(self._nav_token_log)
         helper_response = await self._run_nav_agent(nav_agent, helper_task, agent_name)
         nav_token_entries = self._nav_token_log[nav_token_start:]
-        nav_prompt_tokens = sum(int(entry.get("prompt_tokens", 0) or 0) for entry in nav_token_entries)
-        nav_completion_tokens = sum(int(entry.get("completion_tokens", 0) or 0) for entry in nav_token_entries)
+        nav_prompt_tokens = sum(
+            int(entry.get("prompt_tokens", 0) or 0) for entry in nav_token_entries
+        )
+        nav_completion_tokens = sum(
+            int(entry.get("completion_tokens", 0) or 0) for entry in nav_token_entries
+        )
         nav_total_tokens = nav_prompt_tokens + nav_completion_tokens
-        nav_cost_entries = [float(entry["cost"]) for entry in nav_token_entries if "cost" in entry]
+        nav_cost_entries = [
+            float(entry["cost"]) for entry in nav_token_entries if "cost" in entry
+        ]
         nav_cost = sum(nav_cost_entries)
         executor_entry["prompt_tokens"] = nav_prompt_tokens
         executor_entry["completion_tokens"] = nav_completion_tokens
@@ -718,7 +809,11 @@ class SimpleHercules:
 
         completed_step_signatures = list(state.get("completed_step_signatures", []))
         step_signature = self._step_signature(next_step)
-        if step_signature and self._helper_response_succeeded(helper_response) and step_signature not in completed_step_signatures:
+        if (
+            step_signature
+            and self._helper_response_succeeded(helper_response)
+            and step_signature not in completed_step_signatures
+        ):
             completed_step_signatures.append(step_signature)
 
         current_url = str(state.get("current_url") or "")
@@ -733,16 +828,27 @@ class SimpleHercules:
             "last_helper_response": helper_response,
             "current_url": current_url,
             "step_token_log": state.get("step_token_log", []) + [executor_entry],
-            "total_prompt_tokens": int(state.get("total_prompt_tokens", 0) or 0) + nav_prompt_tokens,
-            "total_completion_tokens": int(state.get("total_completion_tokens", 0) or 0) + nav_completion_tokens,
+            "total_prompt_tokens": int(state.get("total_prompt_tokens", 0) or 0)
+            + nav_prompt_tokens,
+            "total_completion_tokens": int(state.get("total_completion_tokens", 0) or 0)
+            + nav_completion_tokens,
             "total_cost": float(state.get("total_cost", 0.0) or 0.0) + nav_cost,
-            "cost_available": bool(state.get("cost_available", False) or nav_cost_entries),
+            "cost_available": bool(
+                state.get("cost_available", False) or nav_cost_entries
+            ),
             "total_steps": state.get("total_steps", 0) + 1,
             "step_timings": state.get("step_timings", [])
             + [
                 {
                     "node": "executor",
-                    "turn": len([t for t in state.get("step_timings", []) if t["node"] == "executor"]) + 1,
+                    "turn": len(
+                        [
+                            t
+                            for t in state.get("step_timings", [])
+                            if t["node"] == "executor"
+                        ]
+                    )
+                    + 1,
                     "duration": elapsed,
                 }
             ],
@@ -845,10 +951,14 @@ class SimpleHercules:
                 if tool_obj is None:
                     tool_result = f"[ERROR] Tool '{tool_name}' not found."
                 else:
-                    tool_result = await self._execute_tool_call(tool_obj, tool_name, tool_args)
+                    tool_result = await self._execute_tool_call(
+                        tool_obj, tool_name, tool_args
+                    )
 
                 executed_tool_calls.append(tool_call)
-                tool_messages.append(ToolMessage(content=tool_result, tool_call_id=tool_id))
+                tool_messages.append(
+                    ToolMessage(content=tool_result, tool_call_id=tool_id)
+                )
 
                 if self._requires_state_refresh(agent_name, tool_name, tool_result):
                     refresh_required = True
@@ -862,25 +972,39 @@ class SimpleHercules:
                     break
 
             if refresh_required:
-                messages.append(self._ai_message_with_tool_calls(response, executed_tool_calls))
+                messages.append(
+                    self._ai_message_with_tool_calls(response, executed_tool_calls)
+                )
             else:
                 messages.append(response)
             messages.extend(tool_messages)
 
             if refresh_required:
                 messages.append(
-                    HumanMessage(content=(f"{agent_name} skipped {skipped_tool_count} remaining " "tool call(s) because browser state changed. Re-read the " "current page/DOM before continuing."))
+                    HumanMessage(
+                        content=(
+                            f"{agent_name} skipped {skipped_tool_count} remaining "
+                            "tool call(s) because browser state changed. Re-read the "
+                            "current page/DOM before continuing."
+                        )
+                    )
                 )
 
         # Max rounds — return an explicit failure, even when the last response only had tool calls.
         last_ai_content = ""
         for m in reversed(messages):
-            if isinstance(m, AIMessage) and str(getattr(m, "content", "") or "").strip():
+            if (
+                isinstance(m, AIMessage)
+                and str(getattr(m, "content", "") or "").strip()
+            ):
                 last_ai_content = str(getattr(m, "content", "") or "")
                 break
         if not last_ai_content:
             last_ai_content = "[empty or tool-calls-only assistant response]"
-        return f"[ERROR] {agent_name} max nav rounds ({self.nav_agent_number_of_rounds}) " f"reached before ##TERMINATE TASK##. Last assistant response: {last_ai_content}"
+        return (
+            f"[ERROR] {agent_name} max nav rounds ({self.nav_agent_number_of_rounds}) "
+            f"reached before ##TERMINATE TASK##. Last assistant response: {last_ai_content}"
+        )
 
     # ------------------------------------------------------------------
     # Assertion node — trusts planner's is_assert/is_passed/assert_summary
@@ -891,7 +1015,10 @@ class SimpleHercules:
 
         is_passed = bool(state.get("is_passed", False))
         assert_summary = str(state.get("assert_summary") or "")
-        final_response = str(state.get("final_response") or ("The test passed." if is_passed else "The test failed."))
+        final_response = str(
+            state.get("final_response")
+            or ("The test passed." if is_passed else "The test failed.")
+        )
 
         final_result = {
             "plan": state.get("plan", ""),
@@ -912,7 +1039,8 @@ class SimpleHercules:
             "final_response": final_response,
             "is_passed": is_passed,
             "assert_summary": assert_summary,
-            "messages": state.get("messages", []) + [AIMessage(content=json.dumps(final_result))],
+            "messages": state.get("messages", [])
+            + [AIMessage(content=json.dumps(final_result))],
             "step_timings": state.get("step_timings", [])
             + [
                 {
@@ -923,7 +1051,9 @@ class SimpleHercules:
             ],
         }
 
-    def _route_after_planner(self, state: AgentState) -> Literal["executor", "assertion", "end"]:
+    def _route_after_planner(
+        self, state: AgentState
+    ) -> Literal["executor", "assertion", "end"]:
         terminate = state.get("terminate", "no")
         if terminate == "yes":
             return "end"
@@ -933,7 +1063,9 @@ class SimpleHercules:
             return "assertion"
         return "executor"
 
-    def _route_after_executor(self, state: AgentState) -> Literal["planner", "assertion"]:
+    def _route_after_executor(
+        self, state: AgentState
+    ) -> Literal["planner", "assertion"]:
         # Always return to planner — it decides when to assert
         return "planner"
 
@@ -1010,7 +1142,9 @@ class SimpleHercules:
                 "last_helper_response": "",
                 "current_url": current_url or "",
             }
-            final_state = await self._graph.ainvoke(initial, config={"recursion_limit": 2000})
+            final_state = await self._graph.ainvoke(
+                initial, config={"recursion_limit": 2000}
+            )
 
             print("\n===== STEP TIMINGS =====")
 
@@ -1019,7 +1153,9 @@ class SimpleHercules:
 
             print("========================\n")
 
-            total_tokens = final_state.get("total_prompt_tokens", 0) + final_state.get("total_completion_tokens", 0)
+            total_tokens = final_state.get("total_prompt_tokens", 0) + final_state.get(
+                "total_completion_tokens", 0
+            )
 
             print("\n========== EXECUTION SUMMARY ==========")
             print(f"Steps Executed : {final_state.get('total_steps', 0)}")
@@ -1030,7 +1166,9 @@ class SimpleHercules:
             history = []
             for message in messages:
                 role = "user" if isinstance(message, HumanMessage) else "assistant"
-                history.append({"role": role, "content": getattr(message, "content", "")})
+                history.append(
+                    {"role": role, "content": getattr(message, "content", "")}
+                )
             terminate = "yes" if final_state.get("terminate") == "yes" else "no"
             if history and terminate == "yes":
                 history[-1]["terminate"] = "yes"
