@@ -66,7 +66,6 @@ from testzeus_hercules.utils.llm_helper import create_chat_model
 
 print(callable(create_chat_model))
 print("testzeus_hercules.core.agents" in sys.modules)
-print("testzeus_hercules.core.memory.dynamic_ltm" in sys.modules)
 """,
         ],
         cwd=tmp_path,
@@ -77,4 +76,4 @@ print("testzeus_hercules.core.memory.dynamic_ltm" in sys.modules)
     )
 
     assert result.returncode == 0, result.stderr
-    assert result.stdout.splitlines()[-3:] == ["True", "False", "False"]
+    assert result.stdout.splitlines()[-2:] == ["True", "False"]

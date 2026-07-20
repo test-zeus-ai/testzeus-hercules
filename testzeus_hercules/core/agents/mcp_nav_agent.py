@@ -81,7 +81,6 @@ previous_step: [MANDATORY: Explicit review of previous step outcome and its impa
 previous_step_status: [MANDATORY: COMPLETED_SUCCESSFULLY or FAILED or INCOMPLETE]
 current_output: [DETAILED EXPANDED COMPLETE LOSS LESS output with server, tool, arguments, and results]
 Task_Completion_Validation: [MANDATORY before terminating: Explicit confirmation that ALL task requirements have been met]
-##FLAG::SAVE_IN_MEM##
 ##TERMINATE TASK##
 
 - **Information Request:**

@@ -47,7 +47,7 @@ playwright install --with-deps
 ## Config Migration
 
 Use `agents_llm_config.json` when you need different model settings for
-planner, navigation, memory, and helper roles:
+planner, navigation, and helper roles:
 
 ```json
 {
@@ -63,15 +63,6 @@ planner, navigation, memory, and helper roles:
     },
     "nav_agent": {
       "model_name": "gpt-4o",
-      "model_api_key": "replace-me",
-      "model_base_url": "https://api.openai.com/v1",
-      "llm_config_params": {
-        "temperature": 0,
-        "seed": 12345
-      }
-    },
-    "mem_agent": {
-      "model_name": "gpt-4o-mini",
       "model_api_key": "replace-me",
       "model_base_url": "https://api.openai.com/v1",
       "llm_config_params": {
@@ -114,7 +105,7 @@ Quick mapping:
 
 | Old setup | LangGraph branch setup |
 | --- | --- |
-| `LLM_MODEL_NAME` | `agents_llm_config.json` profile bucket `planner_agent` / `nav_agent` / `mem_agent` / `helper_agent` |
+| `LLM_MODEL_NAME` | `agents_llm_config.json` profile bucket `planner_agent` / `nav_agent` / `helper_agent` |
 | `LLM_MODEL_API_KEY` | `model_api_key` inside the active profile bucket |
 | `LLM_MODEL_BASE_URL` | `model_base_url` inside the active profile bucket |
 | `--llm-model` | Direct single-model setup, or `--agents-llm-config-file` plus `--agents-llm-config-file-ref-key` for per-agent routing |
@@ -183,10 +174,6 @@ The executor maps `target_helper` values to helper agents:
 Before each browser helper step, Hercules refreshes the live current URL from
 Playwright and injects it into the helper task as `Current Page: ...`. This
 prevents a stale URL in graph state from steering the helper after navigation.
-
-When dynamic long-term memory is enabled, memory is queried for the exact
-helper task and injected as `EXTRA INFORMATION`. Helper output containing
-`##FLAG::SAVE_IN_MEM##` is persisted to memory.
 
 Repeated completed planner steps are detected and logged, but they do not force
 success. The planner still has to produce a real assertion verdict.

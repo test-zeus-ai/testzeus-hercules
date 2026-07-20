@@ -32,13 +32,14 @@ class BaseRunner:
         self.is_running = False
         self.stake_id = stake_id
         self.dont_terminate_browser_after_run = dont_terminate_browser_after_run
-        self.save_chat_logs_to_files = os.getenv("SAVE_CHAT_LOGS_TO_FILE", "True").lower() in ["true", "1"]
+        self.save_chat_logs_to_files = os.getenv(
+            "SAVE_CHAT_LOGS_TO_FILE", "True"
+        ).lower() in ["true", "1"]
         self.planner_agent_name = "planner_agent"
         self.shutdown_event = asyncio.Event()
 
         self.planner_agent_config: Dict[str, Any] | None = None
         self.nav_agent_config: Dict[str, Any] | None = None
-        self.mem_agent_config: Dict[str, Any] | None = None
         self.helper_config: Dict[str, Any] | None = None
 
     async def initialize(self) -> None:
@@ -50,44 +51,49 @@ class BaseRunner:
 
         planner_config = config_manager.get_agent_config("planner_agent")
         nav_config = config_manager.get_agent_config("nav_agent")
-        mem_config = config_manager.get_agent_config("mem_agent")
         helper_config = config_manager.get_agent_config("helper_agent")
-
-        if not all([planner_config, nav_config, mem_config, helper_config]):
+        if not all([planner_config, nav_config, helper_config]):
             raise ValueError("Failed to get required agent configurations")
 
         self.planner_agent_config = dict(planner_config)
         self.nav_agent_config = dict(nav_config)
-        self.mem_agent_config = dict(mem_config)
         self.helper_config = dict(helper_config)
 
         self.simple_hercules = await SimpleHercules.create(
             self.stake_id,
             self.planner_agent_config,
             self.nav_agent_config,
-            self.mem_agent_config,
             self.helper_config,
             save_chat_logs_to_files=self.save_chat_logs_to_files,
             planner_max_chat_round=self.planner_number_of_rounds,
             browser_nav_max_chat_round=self.nav_agent_number_of_rounds,
         )
 
-        self.browser_manager = PlaywrightManager(gui_input_mode=False, stake_id=self.stake_id)
+        self.browser_manager = PlaywrightManager(
+            gui_input_mode=False, stake_id=self.stake_id
+        )
         await self.browser_manager.async_initialize()
 
     async def clean_up(self) -> None:
         if self.simple_hercules:
             await self.simple_hercules.shutdown()
+            self.simple_hercules = None
         if self.browser_manager:
             await self.browser_manager.stop_playwright()
 
     async def save_chat_logs(self) -> None:
         """Save planner chat logs to file or logger."""
-        agents_map = cast(Dict[str, Any], self.simple_hercules.agents_map) if self.simple_hercules else {}
+        agents_map = (
+            cast(Dict[str, Any], self.simple_hercules.agents_map)
+            if self.simple_hercules
+            else {}
+        )
         res_output_thoughts_logs_di: Dict[str, List[Dict[str, Any]]] = {}
 
         if self.simple_hercules and self.simple_hercules._last_graph_result:
-            res_output_thoughts_logs_di[self.planner_agent_name] = list(self.simple_hercules._last_graph_result.chat_history)
+            res_output_thoughts_logs_di[self.planner_agent_name] = list(
+                self.simple_hercules._last_graph_result.chat_history
+            )
         elif self.planner_agent_name in agents_map:
             planner = agents_map[self.planner_agent_name]
             if hasattr(planner, "chat_messages"):
@@ -103,11 +109,17 @@ class BaseRunner:
         for key, vals in res_output_thoughts_logs_di.items():
             for idx, val in enumerate(vals):
                 logger.debug(f"Planner chat log: {val}")
-                content = val["content"].replace("```json", "").replace("```", "").strip()
+                content = (
+                    val["content"].replace("```json", "").replace("```", "").strip()
+                )
                 try:
-                    res_output_thoughts_logs_di[key][idx]["content"] = json.loads(content)
+                    res_output_thoughts_logs_di[key][idx]["content"] = json.loads(
+                        content
+                    )
                 except json.JSONDecodeError:
-                    logger.debug(f"Failed to decode JSON: {content}, keeping as multiline string")
+                    logger.debug(
+                        f"Failed to decode JSON: {content}, keeping as multiline string"
+                    )
                     res_output_thoughts_logs_di[key][idx]["content"] = content
 
         if self.save_chat_logs_to_files:
@@ -116,10 +128,17 @@ class BaseRunner:
                 "agent_inner_thoughts.json",
             )
             async with aiofiles.open(log_path, "w", encoding="utf-8") as f:
-                await f.write(json.dumps(res_output_thoughts_logs_di, ensure_ascii=False, indent=4))
+                await f.write(
+                    json.dumps(
+                        res_output_thoughts_logs_di, ensure_ascii=False, indent=4
+                    )
+                )
             logger.debug("Chat messages saved")
         else:
-            logger.info("Planner chat log: ", extra={"planner_chat_log": res_output_thoughts_logs_di})
+            logger.info(
+                "Planner chat log: ",
+                extra={"planner_chat_log": res_output_thoughts_logs_di},
+            )
 
     async def process_command(self, command: str) -> tuple[Any, float]:
         result = None
@@ -133,11 +152,17 @@ class BaseRunner:
         if command:
             self.is_running = True
             start_time = time.time()
-            current_url = await self.browser_manager.get_current_url() if self.browser_manager else None
+            current_url = (
+                await self.browser_manager.get_current_url()
+                if self.browser_manager
+                else None
+            )
 
             if self.simple_hercules:
                 await self.browser_manager.update_processing_state("processing")  # type: ignore
-                result = await self.simple_hercules.process_command(command, current_url)
+                result = await self.simple_hercules.process_command(
+                    command, current_url
+                )
                 await self.browser_manager.update_processing_state("done")  # type: ignore
 
             elapsed_time = round(time.time() - start_time, 2)
@@ -157,6 +182,9 @@ class BaseRunner:
 
     async def shutdown(self) -> None:
         logger.info("Shutting down...")
+        if self.simple_hercules:
+            await self.simple_hercules.shutdown()
+            self.simple_hercules = None
         if self.browser_manager:
             await self.browser_manager.stop_playwright()
         PlaywrightManager.close_all_instances()
@@ -169,7 +197,9 @@ class BaseRunner:
 class CommandPromptRunner(BaseRunner):
     async def start(self) -> None:
         await self.initialize()
-        command: str = await async_input("Enter your command (or type 'exit' to quit): ")
+        command: str = await async_input(
+            "Enter your command (or type 'exit' to quit): "
+        )
         await self.process_command(command)
         await self.clean_up()
         await self.shutdown_event.wait()

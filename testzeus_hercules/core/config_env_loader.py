@@ -44,7 +44,9 @@ class ConfigEnvLoader:
         if config_manager.is_portkey_enabled():
             logger.info("Portkey integration is enabled")
             normalized_config["enable_portkey"] = "true"
-            normalized_config["portkey_api_key"] = config_manager.get_portkey_api_key() or ""
+            normalized_config["portkey_api_key"] = (
+                config_manager.get_portkey_api_key() or ""
+            )
 
             # Load Portkey-specific configuration
             portkey_config = cls._load_portkey_config()
@@ -55,7 +57,6 @@ class ConfigEnvLoader:
         return {
             "planner_agent": normalized_config,
             "nav_agent": normalized_config,
-            "mem_agent": normalized_config,
             "helper_agent": normalized_config,
         }
 
@@ -117,7 +118,12 @@ class ConfigEnvLoader:
                     except (ValueError, TypeError):
                         logger.warning(f"Invalid float value for {env_key}: {value}")
                         continue
-                elif config_key in ["cache_seed", "seed", "max_tokens", "max_completion_tokens"]:
+                elif config_key in [
+                    "cache_seed",
+                    "seed",
+                    "max_tokens",
+                    "max_completion_tokens",
+                ]:
                     try:
                         value = int(value)
                     except (ValueError, TypeError):
@@ -125,7 +131,11 @@ class ConfigEnvLoader:
                         continue
                 elif config_key in ["stop"]:
                     # Convert string to list if it looks like JSON
-                    if isinstance(value, str) and value.startswith("[") and value.endswith("]"):
+                    if (
+                        isinstance(value, str)
+                        and value.startswith("[")
+                        and value.endswith("]")
+                    ):
                         try:
                             value = json.loads(value)
                         except json.JSONDecodeError:
@@ -162,7 +172,9 @@ class ConfigEnvLoader:
             if strategy in ["fallback", "loadbalance"]:
                 portkey_config["strategy"] = strategy
             else:
-                logger.warning(f"Invalid PORTKEY_STRATEGY: {strategy}. Using default 'fallback'")
+                logger.warning(
+                    f"Invalid PORTKEY_STRATEGY: {strategy}. Using default 'fallback'"
+                )
                 portkey_config["strategy"] = "fallback"
 
         # Process cache settings
@@ -174,9 +186,13 @@ class ConfigEnvLoader:
                 # Add cache TTL if configured
                 if "PORTKEY_CACHE_TTL" in global_config:
                     try:
-                        portkey_config["cache_ttl"] = int(global_config["PORTKEY_CACHE_TTL"])
+                        portkey_config["cache_ttl"] = int(
+                            global_config["PORTKEY_CACHE_TTL"]
+                        )
                     except ValueError:
-                        logger.warning(f"Invalid PORTKEY_CACHE_TTL: {global_config['PORTKEY_CACHE_TTL']}. Using default.")
+                        logger.warning(
+                            f"Invalid PORTKEY_CACHE_TTL: {global_config['PORTKEY_CACHE_TTL']}. Using default."
+                        )
 
         # Process targets (JSON format)
         if "PORTKEY_TARGETS" in global_config and global_config["PORTKEY_TARGETS"]:
@@ -187,10 +203,15 @@ class ConfigEnvLoader:
                 else:
                     logger.warning("PORTKEY_TARGETS is not a valid JSON array")
             except json.JSONDecodeError:
-                logger.warning(f"Invalid JSON in PORTKEY_TARGETS: {global_config['PORTKEY_TARGETS']}")
+                logger.warning(
+                    f"Invalid JSON in PORTKEY_TARGETS: {global_config['PORTKEY_TARGETS']}"
+                )
 
         # Process guardrails (JSON format)
-        if "PORTKEY_GUARDRAILS" in global_config and global_config["PORTKEY_GUARDRAILS"]:
+        if (
+            "PORTKEY_GUARDRAILS" in global_config
+            and global_config["PORTKEY_GUARDRAILS"]
+        ):
             try:
                 guardrails = json.loads(global_config["PORTKEY_GUARDRAILS"])
                 if isinstance(guardrails, dict):
@@ -198,21 +219,29 @@ class ConfigEnvLoader:
                 else:
                     logger.warning("PORTKEY_GUARDRAILS is not a valid JSON object")
             except json.JSONDecodeError:
-                logger.warning(f"Invalid JSON in PORTKEY_GUARDRAILS: {global_config['PORTKEY_GUARDRAILS']}")
+                logger.warning(
+                    f"Invalid JSON in PORTKEY_GUARDRAILS: {global_config['PORTKEY_GUARDRAILS']}"
+                )
 
         # Process retry count
         if "PORTKEY_RETRY_COUNT" in global_config:
             try:
-                portkey_config["retry_count"] = int(global_config["PORTKEY_RETRY_COUNT"])
+                portkey_config["retry_count"] = int(
+                    global_config["PORTKEY_RETRY_COUNT"]
+                )
             except ValueError:
-                logger.warning(f"Invalid PORTKEY_RETRY_COUNT: {global_config['PORTKEY_RETRY_COUNT']}. Using default.")
+                logger.warning(
+                    f"Invalid PORTKEY_RETRY_COUNT: {global_config['PORTKEY_RETRY_COUNT']}. Using default."
+                )
 
         # Process timeout
         if "PORTKEY_TIMEOUT" in global_config:
             try:
                 portkey_config["timeout"] = float(global_config["PORTKEY_TIMEOUT"])
             except ValueError:
-                logger.warning(f"Invalid PORTKEY_TIMEOUT: {global_config['PORTKEY_TIMEOUT']}. Using default.")
+                logger.warning(
+                    f"Invalid PORTKEY_TIMEOUT: {global_config['PORTKEY_TIMEOUT']}. Using default."
+                )
 
         return portkey_config
 

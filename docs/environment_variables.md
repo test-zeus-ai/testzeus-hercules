@@ -117,7 +117,6 @@ The `agents_llm_config.json` supports multiple providers and agent configuration
             }
         },
         "nav_agent": { ... },
-        "mem_agent": { ... },
         "helper_agent": { ... }
     }
 }
@@ -128,8 +127,6 @@ The `agents_llm_config.json` supports multiple providers and agent configuration
   and should use a model that is strong at structured reasoning.
 - `nav_agent`: Shared by browser, API, security, SQL, time keeper, MCP, and
   executor helpers. It must use a model with reliable tool calling.
-- `mem_agent`: Dynamic long-term memory model, used only when dynamic memory is
-  enabled.
 - `helper_agent`: Visual/multimodal helper model.
 
 ### Supported LLM Parameters
@@ -204,11 +201,6 @@ LLM Parameters:
   - Default: `false`
   - Implementation: Used in test runners for batch processing
 
-- `REUSE_VECTOR_DB`: Reuse existing vector DB
-  - Values: `true`, `false`
-  - Default: `false`
-  - Implementation: Controls vector database caching behavior
-
 ### Test Evidence
 - `RECORD_VIDEO`: Record test execution videos
   - Values: `true`, `false`
@@ -229,11 +221,6 @@ LLM Parameters:
 - `REACTION_DELAY_TIME`: Delay between actions
   - Default: `0.1` (seconds)
   - Implementation: Controls timing between test steps
-
-- `USE_DYNAMIC_LTM`: Use dynamic long-term memory
-  - Values: `true`, `false`
-  - Default: `false`
-  - Implementation: Controls memory management strategy
 
 - `GUIDED_MODE`: Enable guided test generation mode
   - Values: `true`, `false`

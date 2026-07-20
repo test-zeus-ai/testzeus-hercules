@@ -2,7 +2,6 @@ from datetime import datetime
 from string import Template
 from typing import Any
 
-from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.agents.base_nav_agent import BaseNavAgent
 from testzeus_hercules.utils.logger import logger
 
@@ -26,20 +25,38 @@ class MultimodalBaseNavAgent(BaseNavAgent):
 
         system_message = agent_prompt or self.prompt
         if system_prompt and len(system_prompt) > 0:
-            system_message = "\n".join(system_prompt) if isinstance(system_prompt, list) else system_prompt
-            logger.info("Using custom system prompt for MultimodalBaseNavAgent: %s", system_message)
+            system_message = (
+                "\n".join(system_prompt)
+                if isinstance(system_prompt, list)
+                else system_prompt
+            )
+            logger.info(
+                "Using custom system prompt for MultimodalBaseNavAgent: %s",
+                system_message,
+            )
 
-        system_message = system_message + "\n" + f"Current timestamp is {datetime.now().strftime('%Y/%m/%d %H:%M:%S')}"
-        config = get_global_conf()
-
-        logger.warning("[SYSTEM_PROMPT_DEBUG] agent=%s user_ltm=%r system_message_tail=%r", self.agent_name, user_ltm, system_message[-200:])
-        if not config.should_use_dynamic_ltm() and user_ltm:
+        system_message = (
+            system_message
+            + "\n"
+            + f"Current timestamp is {datetime.now().strftime('%Y/%m/%d %H:%M:%S')}"
+        )
+        logger.warning(
+            "[SYSTEM_PROMPT_DEBUG] agent=%s user_ltm=%r system_message_tail=%r",
+            self.agent_name,
+            user_ltm,
+            system_message[-200:],
+        )
+        if user_ltm:
             user_ltm = "\n" + user_ltm
-            system_message = Template(system_message).substitute(basic_test_information=user_ltm)
+            system_message = Template(system_message).substitute(
+                basic_test_information=user_ltm
+            )
 
         from testzeus_hercules.utils.llm_helper import create_chat_model
 
-        logger.info("Nav agent %s using model: %s", self.agent_name, model_config.get("model"))
+        logger.info(
+            "Nav agent %s using model: %s", self.agent_name, model_config.get("model")
+        )
         self.system_message = system_message
         self.llm = create_chat_model(model_config, llm_config_params)
         self.tools = []

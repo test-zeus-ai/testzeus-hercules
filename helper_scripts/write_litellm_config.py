@@ -8,8 +8,7 @@ import os
 import sys
 from pathlib import Path
 
-
-AGENT_NAMES = ("planner_agent", "nav_agent", "mem_agent", "helper_agent")
+AGENT_NAMES = ("planner_agent", "nav_agent", "helper_agent")
 DEFAULT_MODEL_NAME = "gemini-2.5-flash"
 DEFAULT_MAX_TOKENS = 4096
 
@@ -32,9 +31,18 @@ def int_env(name: str, default: int) -> int:
 
 
 def main() -> None:
-    output_file = Path(sys.argv[1] if len(sys.argv) > 1 else os.getenv("AGENTS_LLM_CONFIG_FILE", "agents_llm_config.json"))
-    provider = os.getenv("AGENTS_LLM_CONFIG_FILE_REF_KEY", "litellm").strip() or "litellm"
-    model_name = os.getenv("HERCULES_CI_LITELLM_MODEL_NAME", DEFAULT_MODEL_NAME).strip() or DEFAULT_MODEL_NAME
+    output_file = Path(
+        sys.argv[1]
+        if len(sys.argv) > 1
+        else os.getenv("AGENTS_LLM_CONFIG_FILE", "agents_llm_config.json")
+    )
+    provider = (
+        os.getenv("AGENTS_LLM_CONFIG_FILE_REF_KEY", "litellm").strip() or "litellm"
+    )
+    model_name = (
+        os.getenv("HERCULES_CI_LITELLM_MODEL_NAME", DEFAULT_MODEL_NAME).strip()
+        or DEFAULT_MODEL_NAME
+    )
     api_key = required_env("HERCULES_CI_LITELLM_API_KEY")
     base_url = required_env("HERCULES_CI_LITELLM_BASE_URL").rstrip("/")
     max_tokens = int_env("HERCULES_CI_LITELLM_MAX_TOKENS", DEFAULT_MAX_TOKENS)

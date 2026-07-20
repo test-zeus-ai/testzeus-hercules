@@ -72,7 +72,6 @@ You are a smart and specialized web navigation agent tasked with executing preci
 previous_step: [previous step assigned summary]
 current_output: [Detailed description of actions performed and outcomes]
 Data: [Specific values, counts, or details retrieved]
-##FLAG::SAVE_IN_MEM##
 ##TERMINATE TASK##
 
 ### Information Request Response:

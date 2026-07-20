@@ -7,7 +7,6 @@ from typing import Any
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.tools import StructuredTool
-from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.memory.static_ltm import get_user_ltm
 from testzeus_hercules.core.tools.tool_registry import tool_registry
 from testzeus_hercules.telemetry import EventData, EventType, add_event
@@ -20,24 +19,48 @@ class BaseNavAgent:
     agent_name: str = "base_nav_agent"
     prompt = "Base Agent"
 
-    def __init__(self, model_config: dict[str, Any], llm_config_params: dict[str, Any], system_prompt: str | None, agent_name: str | None = None, agent_prompt: str | None = None) -> None:
+    def __init__(
+        self,
+        model_config: dict[str, Any],
+        llm_config_params: dict[str, Any],
+        system_prompt: str | None,
+        agent_name: str | None = None,
+        agent_prompt: str | None = None,
+    ) -> None:
         self.agent_name = agent_name or self.agent_name
         user_ltm = self.get_ltm()
 
         system_message = agent_prompt or self.prompt
         if system_prompt and len(system_prompt) > 0:
-            system_message = "\n".join(system_prompt) if isinstance(system_prompt, list) else system_prompt
-            logger.info(f"Using custom system prompt for BaseNavAgent: {system_message}")
+            system_message = (
+                "\n".join(system_prompt)
+                if isinstance(system_prompt, list)
+                else system_prompt
+            )
+            logger.info(
+                f"Using custom system prompt for BaseNavAgent: {system_message}"
+            )
 
-        system_message = system_message + "\n" + f"Current timestamp is {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        config = get_global_conf()
-
-        logger.warning("[SYSTEM_PROMPT_DEBUG] agent=%s user_ltm=%r system_message_tail=%r", self.agent_name, user_ltm, system_message[-200:])
-        if not config.should_use_dynamic_ltm() and user_ltm:
+        system_message = (
+            system_message
+            + "\n"
+            + f"Current timestamp is {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        )
+        logger.warning(
+            "[SYSTEM_PROMPT_DEBUG] agent=%s user_ltm=%r system_message_tail=%r",
+            self.agent_name,
+            user_ltm,
+            system_message[-200:],
+        )
+        if user_ltm:
             user_ltm = "\n" + user_ltm
-            system_message = Template(system_message).substitute(basic_test_information=user_ltm)
+            system_message = Template(system_message).substitute(
+                basic_test_information=user_ltm
+            )
 
-        logger.info("Nav agent %s using model %s", self.agent_name, model_config.get("model"))
+        logger.info(
+            "Nav agent %s using model %s", self.agent_name, model_config.get("model")
+        )
 
         self.system_message = system_message
         self.llm: BaseChatModel = create_chat_model(model_config, llm_config_params)
@@ -50,15 +73,21 @@ class BaseNavAgent:
 
     def register_tools(self) -> None:
         """Register all the tools that the agent can perform."""
-        logger.info(f"[REGISTER_TOOLS_DEBUG] Registering tools for agent: {self.agent_name}")
+        logger.info(
+            f"[REGISTER_TOOLS_DEBUG] Registering tools for agent: {self.agent_name}"
+        )
         self.tools = registry_tools_to_structured_tools(self.agent_name)
-        logger.info(f"[REGISTER_TOOLS_DEBUG] Agent {self.agent_name} now has {len(self.tools)} tools: {[t.name for t in self.tools]}")
+        logger.info(
+            f"[REGISTER_TOOLS_DEBUG] Agent {self.agent_name} now has {len(self.tools)} tools: {[t.name for t in self.tools]}"
+        )
 
     async def shutdown(self) -> None:
         """Shutdown the agent."""
         pass
 
-    def load_tools(self, additional_tool_dirs: str = os.getenv("ADDITIONAL_TOOL_DIRS", "")) -> None:
+    def load_tools(
+        self, additional_tool_dirs: str = os.getenv("ADDITIONAL_TOOL_DIRS", "")
+    ) -> None:
         """Dynamically load additional tools from directories or Python files."""
         additional_tool_paths: list[str] = additional_tool_dirs.split(",")
 
@@ -84,7 +113,9 @@ class BaseNavAgent:
                 parent_dir = os.path.dirname(tool_path)
                 sys.path.insert(0, parent_dir)
                 try:
-                    module_name = os.path.basename(tool_path)[:-3]  # Strip .py extension
+                    module_name = os.path.basename(tool_path)[
+                        :-3
+                    ]  # Strip .py extension
                     importlib.import_module(module_name)
                     add_event(
                         EventType.TOOL,

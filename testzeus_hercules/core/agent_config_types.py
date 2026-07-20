@@ -71,7 +71,7 @@ class AgentConfigSource:
 
 
 # Standard agent types
-STANDARD_AGENT_TYPES = ["planner_agent", "nav_agent", "mem_agent", "helper_agent"]
+STANDARD_AGENT_TYPES = ["planner_agent", "nav_agent", "helper_agent"]
 
 # Default configuration values
 DEFAULT_LLM_CONFIG_PARAMS = LLMConfigParams(temperature=0.1)

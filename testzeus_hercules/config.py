@@ -61,7 +61,9 @@ class BaseConfigManager:
         self.paths: PathsDict = {}
         self._config: ConfigDict = config_dict.copy()
         self._ignore_env: bool = ignore_env
-        self._is_test_env: bool = os.environ.get("IS_TEST_ENV", "false").lower() == "true"
+        self._is_test_env: bool = (
+            os.environ.get("IS_TEST_ENV", "false").lower() == "true"
+        )
         self._default_test_id: str = "default"
 
         # 1) Possibly load .env if not in test environment
@@ -87,7 +89,9 @@ class BaseConfigManager:
         self._finalize_defaults()
 
     @classmethod
-    def from_dict(cls, config_dict: ConfigDict, ignore_env: bool = False) -> "BaseConfigManager":
+    def from_dict(
+        cls, config_dict: ConfigDict, ignore_env: bool = False
+    ) -> "BaseConfigManager":
         """Create a BaseConfigManager instance from a dictionary.
 
         Args:
@@ -100,7 +104,9 @@ class BaseConfigManager:
         return cls(config_dict=config_dict, ignore_env=ignore_env)
 
     @classmethod
-    def from_json(cls, json_file_path: str, ignore_env: bool = False) -> "BaseConfigManager":
+    def from_json(
+        cls, json_file_path: str, ignore_env: bool = False
+    ) -> "BaseConfigManager":
         """Create a BaseConfigManager instance from a JSON file.
 
         Args:
@@ -138,7 +144,9 @@ class BaseConfigManager:
             elif ext.lower() == ".json":
                 loaded_config = json.load(f)
             else:
-                logger.error("Unsupported config file format. Use .yaml, .yml, or .json")
+                logger.error(
+                    "Unsupported config file format. Use .yaml, .yml, or .json"
+                )
                 exit(1)
 
         if not isinstance(loaded_config, dict):
@@ -161,7 +169,6 @@ class BaseConfigManager:
             "portkey_api_key": "PORTKEY_API_KEY",
             "portkey_strategy": "PORTKEY_STRATEGY",
             "bulk": "EXECUTE_BULK",
-            "reuse_vector_db": "REUSE_VECTOR_DB",
             "browser": "BROWSER_TYPE",
             "browser_type": "BROWSER_TYPE",
             "browser_channel": "BROWSER_CHANNEL",
@@ -208,10 +215,19 @@ class BaseConfigManager:
         Parse Hercules-specific command-line arguments
         and place them into the environment for consistency.
         """
-        parser = argparse.ArgumentParser(description="Hercules: The World's First Open-Source AI Agent for End-to-End Testing")
-        parser.add_argument("--config", type=str, help="Path to a YAML/JSON Hercules config file.", required=False)
+        parser = argparse.ArgumentParser(
+            description="Hercules: The World's First Open-Source AI Agent for End-to-End Testing"
+        )
+        parser.add_argument(
+            "--config",
+            type=str,
+            help="Path to a YAML/JSON Hercules config file.",
+            required=False,
+        )
         # Basic path configuration
-        parser.add_argument("--input-file", type=str, help="Path to the input file.", required=False)
+        parser.add_argument(
+            "--input-file", type=str, help="Path to the input file.", required=False
+        )
         parser.add_argument(
             "--output-path",
             type=str,
@@ -326,13 +342,6 @@ class BaseConfigManager:
             help="Generate Gherkin from --test without executing the test",
             required=False,
         )
-        parser.add_argument(
-            "--reuse-vector-db",
-            action="store_true",
-            help="Reuse existing vector DB instead of creating fresh one",
-            required=False,
-        )
-
         # Browser options
         parser.add_argument(
             "--browser-channel",
@@ -420,7 +429,9 @@ class BaseConfigManager:
                 args.llm_model_api_type,
             )
         )
-        agents_llm_cli_requested = bool(args.agents_llm_config_file or args.agents_llm_config_file_ref_key)
+        agents_llm_cli_requested = bool(
+            args.agents_llm_config_file or args.agents_llm_config_file_ref_key
+        )
         if direct_llm_cli_requested and not agents_llm_cli_requested:
             self._config.pop("AGENTS_LLM_CONFIG_FILE", None)
             self._config.pop("AGENTS_LLM_CONFIG_FILE_REF_KEY", None)
@@ -441,7 +452,9 @@ class BaseConfigManager:
         if args.agents_llm_config_file:
             set_cli_value("AGENTS_LLM_CONFIG_FILE", args.agents_llm_config_file)
         if args.agents_llm_config_file_ref_key:
-            set_cli_value("AGENTS_LLM_CONFIG_FILE_REF_KEY", args.agents_llm_config_file_ref_key)
+            set_cli_value(
+                "AGENTS_LLM_CONFIG_FILE_REF_KEY", args.agents_llm_config_file_ref_key
+            )
 
         # Portkey Configuration
         if args.enable_portkey:
@@ -460,9 +473,6 @@ class BaseConfigManager:
             set_cli_value("GUIDED_TEST_DESCRIPTION", args.test)
         if args.dry_run:
             set_cli_value("GUIDED_DRY_RUN", "true")
-        if args.reuse_vector_db:
-            set_cli_value("REUSE_VECTOR_DB", "true")
-
         # Browser options
         if args.browser_channel:
             set_cli_value("BROWSER_CHANNEL", args.browser_channel)
@@ -550,8 +560,6 @@ class BaseConfigManager:
             "GUIDED_MODE",
             "GUIDED_TEST_DESCRIPTION",
             "GUIDED_DRY_RUN",
-            "USE_DYNAMIC_LTM",
-            "REUSE_VECTOR_DB",
             "ENABLE_BROWSER_LOGS",
             "BROWSER_CHANNEL",
             "BROWSER_VERSION",
@@ -593,7 +601,9 @@ class BaseConfigManager:
         llm_model_name = self._config.get("LLM_MODEL_NAME")
         llm_model_api_key = self._config.get("LLM_MODEL_API_KEY")
         agents_llm_config_file = self._config.get("AGENTS_LLM_CONFIG_FILE")
-        agents_llm_config_file_ref_key = self._config.get("AGENTS_LLM_CONFIG_FILE_REF_KEY")
+        agents_llm_config_file_ref_key = self._config.get(
+            "AGENTS_LLM_CONFIG_FILE_REF_KEY"
+        )
 
         # Check if Portkey is enabled
         if self._config.get("ENABLE_PORTKEY", "").lower() == "true":
@@ -605,7 +615,9 @@ class BaseConfigManager:
             # Validate Portkey strategy if provided
             portkey_strategy = self._config.get("PORTKEY_STRATEGY")
             if portkey_strategy and portkey_strategy not in ["fallback", "loadbalance"]:
-                logger.error("Invalid PORTKEY_STRATEGY. Must be either 'fallback' or 'loadbalance'")
+                logger.error(
+                    "Invalid PORTKEY_STRATEGY. Must be either 'fallback' or 'loadbalance'"
+                )
                 exit(1)
 
             # Validate JSON configurations if provided
@@ -632,10 +644,15 @@ class BaseConfigManager:
 
         has_legacy_direct_llm_config = bool(llm_model_name or llm_model_api_key)
         if has_legacy_direct_llm_config:
-            logger.warning("LLM_MODEL_* is deprecated. Please migrate to " "AGENTS_LLM_CONFIG_FILE.")
+            logger.warning(
+                "LLM_MODEL_* is deprecated. Please migrate to "
+                "AGENTS_LLM_CONFIG_FILE."
+            )
 
         if bool(agents_llm_config_file) != bool(agents_llm_config_file_ref_key):
-            logger.error("AGENTS_LLM_CONFIG_FILE and AGENTS_LLM_CONFIG_FILE_REF_KEY must be set together.")
+            logger.error(
+                "AGENTS_LLM_CONFIG_FILE and AGENTS_LLM_CONFIG_FILE_REF_KEY must be set together."
+            )
             exit(1)
 
     def _finalize_defaults(self) -> None:
@@ -653,12 +670,24 @@ class BaseConfigManager:
             "INPUT_GHERKIN_FILE_PATH",
             os.path.join(project_source_root, "input/test.feature"),
         )
-        self._config.setdefault("JUNIT_XML_BASE_PATH", os.path.join(project_source_root, "output"))
-        self._config.setdefault("TEST_DATA_PATH", os.path.join(project_source_root, "test_data"))
-        self._config.setdefault("SCREEN_SHOT_PATH", os.path.join(project_source_root, "proofs"))
-        self._config.setdefault("PROJECT_TEMP_PATH", os.path.join(project_source_root, "temp"))
-        self._config.setdefault("SOURCE_LOG_FOLDER_PATH", os.path.join(project_source_root, "log_files"))
-        self._config.setdefault("TMP_GHERKIN_PATH", os.path.join(project_source_root, "gherkin_files"))
+        self._config.setdefault(
+            "JUNIT_XML_BASE_PATH", os.path.join(project_source_root, "output")
+        )
+        self._config.setdefault(
+            "TEST_DATA_PATH", os.path.join(project_source_root, "test_data")
+        )
+        self._config.setdefault(
+            "SCREEN_SHOT_PATH", os.path.join(project_source_root, "proofs")
+        )
+        self._config.setdefault(
+            "PROJECT_TEMP_PATH", os.path.join(project_source_root, "temp")
+        )
+        self._config.setdefault(
+            "SOURCE_LOG_FOLDER_PATH", os.path.join(project_source_root, "log_files")
+        )
+        self._config.setdefault(
+            "TMP_GHERKIN_PATH", os.path.join(project_source_root, "gherkin_files")
+        )
 
         # Extra environment defaults from original code
         if "HF_HOME" not in self._config:
@@ -690,8 +719,6 @@ class BaseConfigManager:
         self._config.setdefault("GUIDED_TEST_DESCRIPTION", "")
         self._config.setdefault("GUIDED_DRY_RUN", "false")
         self._config.setdefault("ENABLE_PLAYWRIGHT_TRACING", "false")
-        self._config.setdefault("REUSE_VECTOR_DB", "false")
-        self._config.setdefault("USE_DYNAMIC_LTM", "false")
         self._config.setdefault("ENABLE_BROWSER_LOGS", "false")
         self._config.setdefault("ENABLE_BOUNDING_BOX_SCREENSHOTS", "false")
         self._config.setdefault("AUTO_ACCEPT_SCREEN_SHARING", "true")
@@ -728,7 +755,9 @@ class BaseConfigManager:
         # Python Sandbox defaults
         self._config.setdefault("SANDBOX_TENANT_ID", "")  # No default tenant
         self._config.setdefault("SANDBOX_PACKAGES", "")  # No default packages
-        self._config.setdefault("SANDBOX_CUSTOM_INJECTIONS", "{}")  # No default custom injections
+        self._config.setdefault(
+            "SANDBOX_CUSTOM_INJECTIONS", "{}"
+        )  # No default custom injections
 
         # LLM Model Configuration defaults
         # --------------------------------------------------
@@ -758,10 +787,14 @@ class BaseConfigManager:
 
         # LLM Parameters defaults (based on OpenAI recommendations)
         # --------------------------------------------------
-        self._config.setdefault("LLM_MODEL_TEMPERATURE", "0.0")  # Default to deterministic
+        self._config.setdefault(
+            "LLM_MODEL_TEMPERATURE", "0.0"
+        )  # Default to deterministic
         self._config.setdefault("LLM_MODEL_CACHE_SEED", None)  # No default seed
         self._config.setdefault("LLM_MODEL_SEED", None)  # No default seed
-        self._config.setdefault("LLM_MODEL_MAX_TOKENS", "4096")  # Default reasonable output
+        self._config.setdefault(
+            "LLM_MODEL_MAX_TOKENS", "4096"
+        )  # Default reasonable output
         # self._config.setdefault("LLM_MODEL_PRESENCE_PENALTY", "0.0")
         # self._config.setdefault("LLM_MODEL_FREQUENCY_PENALTY", "0.0")
         # self._config.setdefault("LLM_MODEL_STOP", None)  # No default stop sequences
@@ -785,8 +818,12 @@ class BaseConfigManager:
                 AgentsLLMConfigManager,
             )
 
-            agent_cfg = AgentsLLMConfigManager.get_instance().get_agent_config("planner_agent")
-            return convert_model_config_to_langchain_format(agent_cfg["model_config_params"])
+            agent_cfg = AgentsLLMConfigManager.get_instance().get_agent_config(
+                "planner_agent"
+            )
+            return convert_model_config_to_langchain_format(
+                agent_cfg["model_config_params"]
+            )
         model_cfg = {
             "model": self._config.get("LLM_MODEL_NAME"),
             "model_api_key": self._config.get("LLM_MODEL_API_KEY"),
@@ -909,14 +946,6 @@ class BaseConfigManager:
         """Check if Playwright tracing should be enabled"""
         return self._config.get("ENABLE_PLAYWRIGHT_TRACING", "false").lower() == "true"
 
-    def should_reuse_vector_db(self) -> bool:
-        """Return whether to reuse existing vector DB or create fresh one."""
-        return self._config["REUSE_VECTOR_DB"].lower().strip() == "true"
-
-    def should_use_dynamic_ltm(self) -> bool:
-        """Return whether to use dynamic LTM or static LTM."""
-        return self._config["USE_DYNAMIC_LTM"].lower().strip() == "true"
-
     def should_enable_browser_logs(self) -> bool:
         """Check if browser logging should be enabled"""
         return self._config.get("ENABLE_BROWSER_LOGS", "false").lower() == "true"
@@ -935,7 +964,10 @@ class BaseConfigManager:
 
     def should_take_bounding_box_screenshots(self) -> bool:
         """Check if bounding box screenshots should be enabled"""
-        return self._config.get("ENABLE_BOUNDING_BOX_SCREENSHOTS", "false").lower() == "true"
+        return (
+            self._config.get("ENABLE_BOUNDING_BOX_SCREENSHOTS", "false").lower()
+            == "true"
+        )
 
     def should_enable_ublock_extension(self) -> bool:
         """Check if uBlock extension should be enabled"""
@@ -1146,7 +1178,11 @@ class BaseConfigManager:
             # Check if it's a file path (ends with .json)
             if servers_config.endswith(".json"):
                 # Try relative to current directory first, then relative to testzeus_hercules
-                file_paths = [servers_config, os.path.join(os.path.dirname(__file__), servers_config), os.path.join("testzeus_hercules", servers_config)]
+                file_paths = [
+                    servers_config,
+                    os.path.join(os.path.dirname(__file__), servers_config),
+                    os.path.join("testzeus_hercules", servers_config),
+                ]
 
                 for file_path in file_paths:
                     if os.path.exists(file_path):
@@ -1276,5 +1312,7 @@ set_global_conf(
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 
 logger.info("[Singleton] MODE: %s", get_global_conf().get_mode())
-logger.info("[Singleton] Project Source Root: %s", get_global_conf().get_project_source_root())
+logger.info(
+    "[Singleton] Project Source Root: %s", get_global_conf().get_project_source_root()
+)
 # Send final telemetryCONF.send_config_telemetry()
