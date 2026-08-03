@@ -1105,6 +1105,11 @@ class BaseConfigManager:
             "CAPTURE_NETWORK": self.should_capture_network(),
             "REACTION_DELAY_TIME": self.get_delay_time(),  # Changed key name in telemetry
             "PORTKEY_ENABLED": self.is_portkey_enabled(),
+            # Folder paths (may contain PII, e.g. the OS username within the path)
+            "PROJECT_SOURCE_ROOT": self.get_project_source_root(),
+            "INPUT_GHERKIN_FILE_PATH": self.get_input_gherkin_file_path(),
+            "TEST_DATA_PATH": self.get_test_data_path(),
+            "JUNIT_XML_BASE_PATH": self.get_junit_xml_base_path(),
         }
         add_event(
             EventType.CONFIG,

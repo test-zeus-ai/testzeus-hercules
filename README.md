@@ -578,13 +578,21 @@ chmod +x helper_script_custom.sh
 
 For a comprehensive guide to all environment variables and configuration options available in TestZeus Hercules, please refer to our [Environment Variables and Configuration Guide](docs/environment_variables.md). This document provides detailed information about core environment variables, LLM configuration, browser settings, testing configuration, device configuration, logging options, and more.
 
-### Disabling Telemetry
+### Telemetry
 
-To disable telemetry in the current branch, set `ENABLE_TELEMETRY` to `1`.
-The current implementation treats unset or `0` as enabled:
+Telemetry is **enabled by default**. When enabled, Hercules sends an anonymous
+usage summary to help us improve the product. This includes:
+
+- A randomly generated installation ID
+- The email you optionally provide at first run
+- A config snapshot (mode, browser type, headless, etc.)
+- Folder paths used for the run (project root, input, test data, output) — note
+  that these paths may include your OS username
+
+**To disable telemetry, set `ENABLE_TELEMETRY=0`:**
 
 ```bash
-export ENABLE_TELEMETRY=1
+export ENABLE_TELEMETRY=0
 ```
 
 ### Auto Mode

@@ -390,8 +390,9 @@ The server entrypoint uses these variables:
 ### Telemetry and Monitoring
 - `ENABLE_TELEMETRY`: Enable usage telemetry
   - Values: `0`, `1`
-  - Default: unset, which currently behaves like `0`
-  - Current implementation: telemetry is enabled when `ENABLE_TELEMETRY` is unset or set to `0`; set `ENABLE_TELEMETRY=1` to disable it. This is inverted and should be treated carefully when changing code.
+  - Default: `1` (telemetry enabled)
+  - Set `ENABLE_TELEMETRY=0` to disable.
+  - When enabled, captures: a randomly generated installation ID, the email you optionally provide at first run, a config snapshot, and folder paths (which may include your OS username).
 
 - `AUTO_MODE`: Indicates automatic execution
   - Values: `0`, `1`
