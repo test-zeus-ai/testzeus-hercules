@@ -36,7 +36,6 @@ dependencies = [
     "langgraph>=1.0.10,<2",
     "langchain-core>=1.2.22,<2",
     "langchain-openai>=1.1.14,<2",
-    "langchain-community>=0.4.0,<1",
     "mcp>=1.23.3,<2",
     "psutil>=5.9.0,<6",
     "aiofiles>=24.1.0,<25",
