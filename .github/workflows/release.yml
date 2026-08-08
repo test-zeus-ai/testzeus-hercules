@@ -43,12 +43,12 @@ jobs:
           python-version: ${{ matrix.python-version }}
         id: setup_python
       - name: Cache UV cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.cache/uv
           key: uv-cache-${{ runner.os }}-${{ steps.setup_python.outputs.python-version }}-${{ env.UV_VERSION }}
       - name: Cache Packages
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.local
           key: uv-local-${{ runner.os }}-${{ steps.setup_python.outputs.python-version }}-${{ hashFiles('**/uv.lock') }}-${{ hashFiles('.github/workflows/*.yml') }}
