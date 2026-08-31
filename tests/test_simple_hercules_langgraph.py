@@ -435,3 +435,72 @@ def test_graph_chat_result_summary_uses_terminal_planner_json() -> None:
     )
 
     assert json.loads(result.summary)["final_response"] == "done"
+
+
+def test_graph_chat_result_summary_uses_terminal_helper_fallback() -> None:
+    for status, is_passed in (("PASS", True), ("FAIL", False)):
+        helper_response = f"{status}: checkout completed"
+        result = GraphChatResult(
+            messages=[
+                AIMessage(
+                    content=json.dumps(
+                        {"terminate": "no", "next_step": "keep going"}
+                    )
+                )
+            ],
+            last_helper_response=helper_response,
+        )
+
+        summary = json.loads(result.summary)
+
+        assert summary["terminate"] == "yes"
+        assert summary["final_response"] == helper_response
+        assert summary["is_assert"] is True
+        assert summary["is_passed"] is is_passed
+
+
+def test_graph_chat_result_summary_normalizes_terminate_marker() -> None:
+    result = GraphChatResult(
+        last_helper_response="Checkout completed\n##TERMINATE TASK##"
+    )
+
+    summary = json.loads(result.summary)
+
+    assert summary["terminate"] == "yes"
+    assert summary["final_response"] == "Checkout completed"
+
+
+def test_executor_keeps_last_nonempty_helper_response(monkeypatch) -> None:
+    async def run() -> None:
+        hercules = _hercules()
+        hercules.agents_map = {"browser_nav_agent": SimpleNamespace()}
+
+        async def build_helper_task(*_args: Any) -> str:
+            return "helper task"
+
+        async def run_nav_agent(*_args: Any) -> None:
+            return None
+
+        async def get_live_current_url() -> str:
+            return ""
+
+        monkeypatch.setattr(hercules, "_build_helper_task", build_helper_task)
+        monkeypatch.setattr(hercules, "_run_nav_agent", run_nav_agent)
+        monkeypatch.setattr(hercules, "_get_live_current_url", get_live_current_url)
+
+        result = await hercules._executor_node(
+            {
+                "messages": [HumanMessage(content="root task")],
+                "next_step": "check checkout",
+                "target_helper": "browser",
+                "step_token_log": [],
+                "step_timings": [],
+                "completed_step_signatures": [],
+                "last_helper_response": "PASS: checkout completed",
+                "current_url": "",
+            }
+        )
+
+        assert result["last_helper_response"] == "PASS: checkout completed"
+
+    asyncio.run(run())
