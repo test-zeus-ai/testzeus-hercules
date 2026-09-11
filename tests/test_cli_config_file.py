@@ -4,6 +4,7 @@ import logging
 import os
 import pathlib
 import sys
+import threading
 import types
 from typing import Any, Generator
 
@@ -22,6 +23,10 @@ def _clear_testzeus_modules() -> None:
 def _load_config_module(argv: list[str]) -> Any:
     """Load testzeus_hercules.config in isolation, stubbing internal package
     init so we don't drag in core/agents/tools (which require system deps)."""
+    # Snapshot modules so the purge below doesn't leak: other tests keep
+    # references to module objects and lazy imports would silently re-import
+    # fresh (unpatched) copies after eviction.
+    saved_modules = {name: mod for name, mod in sys.modules.items() if name == "testzeus_hercules" or name.startswith("testzeus_hercules.")}
     _clear_testzeus_modules()
 
     pkg = types.ModuleType("testzeus_hercules")
@@ -64,6 +69,9 @@ def _load_config_module(argv: list[str]) -> Any:
         return module
     finally:
         sys.argv = old_argv
+        for name in [n for n in sys.modules if n == "testzeus_hercules" or n.startswith("testzeus_hercules.")]:
+            del sys.modules[name]
+        sys.modules.update(saved_modules)
 
 
 @pytest.fixture(autouse=True)
@@ -199,3 +207,150 @@ def test_llm_temperature_cli_does_not_clear_agents_config(monkeypatch: pytest.Mo
     assert cfg["AGENTS_LLM_CONFIG_FILE"] == "agents_llm_config.json"
     assert cfg["AGENTS_LLM_CONFIG_FILE_REF_KEY"] == "litellm"
     assert cfg["LLM_MODEL_TEMPERATURE"] == "0.2"
+
+
+# --- _should_parse_cli_args allowlist regression (config.py:23-31) -----------
+# Subcommand CLIs (dashboard etc.) own their argparse flags; the shared base
+# config must not eagerly parse sys.argv there. argv0 "hercules-dashboard" with
+# ["--port", "8000"] must not reach _parse_arguments: "--port" is ambiguous
+# with "--portkey-*" in the base parser, so an eager parse would SystemExit(2).
+
+
+def test_dashboard_argv0_with_port_arg_does_not_parse_cli_args(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("EXECUTE_BULK", raising=False)
+
+    # Module-level set_global_conf() runs during _load_config_module under the
+    # test argv; if the allowlist regressed, this call would raise SystemExit on
+    # the ambiguous --port before returning.
+    module = _load_config_module(["hercules-dashboard", "--port", "8000"])
+
+    cfg = module.get_global_conf().get_config()
+    assert cfg["EXECUTE_BULK"] == "false"  # base config did not swallow subcommand flags
+
+
+def test_main_py_argv0_parses_cli_args(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("EXECUTE_BULK", raising=False)
+
+    # Parsing happens while the module executes under the test argv; --bulk
+    # landing in the config proves _parse_arguments ran for this argv0.
+    module = _load_config_module(["__main__.py", "--bulk"])
+
+    assert module.get_global_conf().get_config()["EXECUTE_BULK"] == "true"
+
+
+def test_console_script_argv0_parses_cli_args(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("EXECUTE_BULK", raising=False)
+
+    module = _load_config_module(["testzeus-hercules", "--bulk"])
+
+    assert module.get_global_conf().get_config()["EXECUTE_BULK"] == "true"
+
+
+def test_should_parse_cli_args_matches_basename_case_insensitively(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _load_config_module(["testzeus-hercules"])
+
+    monkeypatch.setattr(sys, "argv", ["/opt/venv/bin/hercules-dashboard", "--port", "8000"])
+    assert module._should_parse_cli_args() is False
+
+    monkeypatch.setattr(sys, "argv", ["/opt/venv/bin/testzeus-hercules", "--bulk"])
+    assert module._should_parse_cli_args() is True
+
+    monkeypatch.setattr(sys, "argv", ["__MAIN__.PY"])
+    assert module._should_parse_cli_args() is True
+
+    monkeypatch.setattr(sys, "argv", ["/opt/venv/bin/hercules-suite"])
+    assert module._should_parse_cli_args() is False
+
+
+# --- Dict > Env priority regression (BaseConfigManager.__init__) -------------
+# Environment values form the base layer; keys explicitly passed in config_dict
+# must win (documented priority: Dict > Env). Previously _merge_from_env()
+# overwrote caller-provided keys, silently discarding e.g. per-folder
+# INPUT_GHERKIN_FILE_PATH overrides in bulk mode.
+
+
+def test_config_dict_beats_env_for_same_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("INPUT_GHERKIN_FILE_PATH", "/from/env.feature")
+    module = _load_config_module(["testzeus-hercules"])
+
+    cfg = module.NonSingletonConfigManager({"INPUT_GHERKIN_FILE_PATH": "/from/dict.feature"}).get_config()
+
+    assert cfg["INPUT_GHERKIN_FILE_PATH"] == "/from/dict.feature"
+
+
+def test_env_value_used_when_dict_omits_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("INPUT_GHERKIN_FILE_PATH", "/from/env.feature")
+    module = _load_config_module(["testzeus-hercules"])
+
+    cfg = module.NonSingletonConfigManager({}).get_config()
+
+    assert cfg["INPUT_GHERKIN_FILE_PATH"] == "/from/env.feature"
+
+
+def test_default_used_when_env_and_dict_absent(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("INPUT_GHERKIN_FILE_PATH", raising=False)
+    module = _load_config_module(["testzeus-hercules"])
+
+    cfg = module.NonSingletonConfigManager({}).get_config()
+
+    assert cfg["INPUT_GHERKIN_FILE_PATH"] == os.path.join("./opt", "input", "test.feature")
+
+
+def test_set_global_conf_override_dict_beats_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("INPUT_GHERKIN_FILE_PATH", "/from/env.feature")
+    module = _load_config_module(["testzeus-hercules"])
+
+    module.set_global_conf({"INPUT_GHERKIN_FILE_PATH": "/from/dict.feature"}, override=True)
+
+    assert module.get_global_conf().get_config()["INPUT_GHERKIN_FILE_PATH"] == "/from/dict.feature"
+
+
+def test_cli_still_beats_both_env_and_dict(monkeypatch: pytest.MonkeyPatch) -> None:
+    # argparse mutates the config after init, so the CLI must win over both
+    # the environment and an explicitly passed config dict.
+    monkeypatch.setenv("INPUT_GHERKIN_FILE_PATH", "/from/env.feature")
+    module = _load_config_module(["testzeus-hercules"])
+
+    monkeypatch.setattr(sys, "argv", ["testzeus-hercules", "--input-file", "/from/cli.feature"])
+    cfg = module.NonSingletonConfigManager({"INPUT_GHERKIN_FILE_PATH": "/from/dict.feature"}).get_config()
+
+    assert cfg["INPUT_GHERKIN_FILE_PATH"] == "/from/cli.feature"
+
+
+# --- Concurrent version bumps must not lose increments (config.py) -----------
+# bump_config_version() is a read-modify-write on a module global; without the
+# lock, two concurrent bumps can both read the same value and write back one
+# increment (lost update), and readers can observe the dict update before the
+# version bump.
+
+
+def test_bump_config_version_concurrent_bumps_never_lose_an_increment() -> None:
+    module = _load_config_module(["testzeus-hercules"])
+    start = module.get_config_version()
+
+    threads = 8
+    bumps_per_thread = 50
+    barrier = threading.Barrier(threads)
+
+    def _bump() -> None:
+        barrier.wait()
+        for _ in range(bumps_per_thread):
+            module.bump_config_version()
+
+    workers = [threading.Thread(target=_bump) for _ in range(threads)]
+    for worker in workers:
+        worker.start()
+    for worker in workers:
+        worker.join()
+
+    assert module.get_config_version() == start + threads * bumps_per_thread
+
+
+def test_get_config_version_returns_current_value_after_bump() -> None:
+    module = _load_config_module(["testzeus-hercules"])
+    before = module.get_config_version()
+
+    bumped = module.bump_config_version()
+
+    assert bumped == before + 1
+    assert module.get_config_version() == bumped

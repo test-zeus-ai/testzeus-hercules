@@ -4,12 +4,55 @@ import argparse
 import json
 import os
 import re
+import sys
+import threading
 from typing import Any, Dict, List, Literal, Optional, Union
 
 import yaml
 from dotenv import load_dotenv
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.timestamp_helper import get_timestamp_str
+
+# Entrypoints that own the shared Hercules CLI flags. Subcommand CLIs
+# (dashboard, run_manager, suites, scheduler, mcp server) define their own
+# argparse parsers, so the base config must not eagerly parse sys.argv there —
+# it would error on flags like ``--port`` (ambiguous with ``--portkey-*``)
+# and swallow ``--config`` meant for the subcommand.
+_MAIN_CLI_ARGV0 = {"__main__.py", "testzeus-hercules", "interactive.py", "testzeus_hercules"}
+
+
+def _should_parse_cli_args() -> bool:
+    try:
+        argv0 = os.path.basename(sys.argv[0] or "")
+    except Exception:  # pragma: no cover - defensive; never block config init
+        return False
+    return argv0.lower() in _MAIN_CLI_ARGV0
+
+
+# Monotonic version counter for the global configuration. It is bumped whenever
+# configuration state is (re)built, merged, or explicitly updated, so consumers
+# (e.g. AgentsLLMConfigManager) can detect changes without relying on
+# ``id(config_dict)`` — object identity misses in-place edits and can alias a
+# recycled (freed) dict object. Updates and reads are lock-protected so
+# concurrent bumps never lose an increment (a plain ``+=`` is read-modify-write)
+# and readers always see a consistent snapshot.
+_config_version: int = 0
+_config_version_lock = threading.Lock()
+
+
+def get_config_version() -> int:
+    """Return the current global configuration version."""
+    with _config_version_lock:
+        return _config_version
+
+
+def bump_config_version() -> int:
+    """Bump the global configuration version and return the new value."""
+    global _config_version
+    with _config_version_lock:
+        _config_version += 1
+        return _config_version
+
 
 TS = get_timestamp_str()
 
@@ -61,9 +104,7 @@ class BaseConfigManager:
         self.paths: PathsDict = {}
         self._config: ConfigDict = config_dict.copy()
         self._ignore_env: bool = ignore_env
-        self._is_test_env: bool = (
-            os.environ.get("IS_TEST_ENV", "false").lower() == "true"
-        )
+        self._is_test_env: bool = os.environ.get("IS_TEST_ENV", "false").lower() == "true"
         self._default_test_id: str = "default"
 
         # 1) Possibly load .env if not in test environment
@@ -72,12 +113,14 @@ class BaseConfigManager:
             env_file_path: str = ".env"
             load_dotenv(env_file_path, verbose=True, override=True)
 
-        # 2) Merge environment variables if not ignoring env
+        # 2) Merge environment variables if not ignoring env. Environment
+        #    values form the base layer and keys explicitly provided in
+        #    config_dict win over them (documented priority: Dict > Env).
         if not self._ignore_env:
-            self._merge_from_env()
+            self._config = {**self._merge_from_env(self._config), **self._config}
 
         # 3) Parse command-line arguments/config after env so CLI wins.
-        if not self._ignore_env:
+        if not self._ignore_env and _should_parse_cli_args():
             self._parse_arguments()
 
         # 4) Validate runtime LLM config, but keep tests/import-only config usable.
@@ -88,10 +131,12 @@ class BaseConfigManager:
         #    (some might have been overridden by env/arguments)
         self._finalize_defaults()
 
+        # 6) Bump the global configuration version so change detectors
+        #    (e.g. AgentsLLMConfigManager) notice this (re)build.
+        bump_config_version()
+
     @classmethod
-    def from_dict(
-        cls, config_dict: ConfigDict, ignore_env: bool = False
-    ) -> "BaseConfigManager":
+    def from_dict(cls, config_dict: ConfigDict, ignore_env: bool = False) -> "BaseConfigManager":
         """Create a BaseConfigManager instance from a dictionary.
 
         Args:
@@ -104,9 +149,7 @@ class BaseConfigManager:
         return cls(config_dict=config_dict, ignore_env=ignore_env)
 
     @classmethod
-    def from_json(
-        cls, json_file_path: str, ignore_env: bool = False
-    ) -> "BaseConfigManager":
+    def from_json(cls, json_file_path: str, ignore_env: bool = False) -> "BaseConfigManager":
         """Create a BaseConfigManager instance from a JSON file.
 
         Args:
@@ -144,9 +187,7 @@ class BaseConfigManager:
             elif ext.lower() == ".json":
                 loaded_config = json.load(f)
             else:
-                logger.error(
-                    "Unsupported config file format. Use .yaml, .yml, or .json"
-                )
+                logger.error("Unsupported config file format. Use .yaml, .yml, or .json")
                 exit(1)
 
         if not isinstance(loaded_config, dict):
@@ -215,9 +256,7 @@ class BaseConfigManager:
         Parse Hercules-specific command-line arguments
         and place them into the environment for consistency.
         """
-        parser = argparse.ArgumentParser(
-            description="Hercules: The World's First Open-Source AI Agent for End-to-End Testing"
-        )
+        parser = argparse.ArgumentParser(description="Hercules: The World's First Open-Source AI Agent for End-to-End Testing")
         parser.add_argument(
             "--config",
             type=str,
@@ -225,9 +264,7 @@ class BaseConfigManager:
             required=False,
         )
         # Basic path configuration
-        parser.add_argument(
-            "--input-file", type=str, help="Path to the input file.", required=False
-        )
+        parser.add_argument("--input-file", type=str, help="Path to the input file.", required=False)
         parser.add_argument(
             "--output-path",
             type=str,
@@ -429,9 +466,7 @@ class BaseConfigManager:
                 args.llm_model_api_type,
             )
         )
-        agents_llm_cli_requested = bool(
-            args.agents_llm_config_file or args.agents_llm_config_file_ref_key
-        )
+        agents_llm_cli_requested = bool(args.agents_llm_config_file or args.agents_llm_config_file_ref_key)
         if direct_llm_cli_requested and not agents_llm_cli_requested:
             self._config.pop("AGENTS_LLM_CONFIG_FILE", None)
             self._config.pop("AGENTS_LLM_CONFIG_FILE_REF_KEY", None)
@@ -452,9 +487,7 @@ class BaseConfigManager:
         if args.agents_llm_config_file:
             set_cli_value("AGENTS_LLM_CONFIG_FILE", args.agents_llm_config_file)
         if args.agents_llm_config_file_ref_key:
-            set_cli_value(
-                "AGENTS_LLM_CONFIG_FILE_REF_KEY", args.agents_llm_config_file_ref_key
-            )
+            set_cli_value("AGENTS_LLM_CONFIG_FILE_REF_KEY", args.agents_llm_config_file_ref_key)
 
         # Portkey Configuration
         if args.enable_portkey:
@@ -495,9 +528,15 @@ class BaseConfigManager:
         if args.sandbox_custom_injections:
             set_cli_value("SANDBOX_CUSTOM_INJECTIONS", args.sandbox_custom_injections)
 
-    def _merge_from_env(self) -> None:
-        """
-        Merge any relevant environment variables into the configuration dictionary.
+    def _merge_from_env(self, base: Optional[ConfigDict] = None) -> ConfigDict:
+        """Return a copy of ``base`` overlaid with relevant environment variables.
+
+        A new dict is returned instead of mutating in place so callers can layer
+        priorities explicitly (defaults < env < config_dict < CLI-parse).
+
+        Args:
+            base: Optional starting dictionary. When None, only environment
+                variables are collected.
         """
         # The main keys used in your original config:
         relevant_keys = [
@@ -584,15 +623,19 @@ class BaseConfigManager:
             "MCP_SERVERS",
             "MCP_ENABLED",
             "MCP_TIMEOUT",
+            # API tooling
+            "API_REQUEST_TIMEOUT",
             # Python Sandbox configuration
             "SANDBOX_TENANT_ID",
             "SANDBOX_PACKAGES",
             "SANDBOX_CUSTOM_INJECTIONS",
         ]
 
+        merged: ConfigDict = dict(base) if base is not None else {}
         for key in relevant_keys:
             if key in os.environ:
-                self._config[key] = os.environ[key]
+                merged[key] = os.environ[key]
+        return merged
 
     def _check_llm_config(self) -> None:
         """
@@ -601,9 +644,7 @@ class BaseConfigManager:
         llm_model_name = self._config.get("LLM_MODEL_NAME")
         llm_model_api_key = self._config.get("LLM_MODEL_API_KEY")
         agents_llm_config_file = self._config.get("AGENTS_LLM_CONFIG_FILE")
-        agents_llm_config_file_ref_key = self._config.get(
-            "AGENTS_LLM_CONFIG_FILE_REF_KEY"
-        )
+        agents_llm_config_file_ref_key = self._config.get("AGENTS_LLM_CONFIG_FILE_REF_KEY")
 
         # Check if Portkey is enabled
         if self._config.get("ENABLE_PORTKEY", "").lower() == "true":
@@ -615,9 +656,7 @@ class BaseConfigManager:
             # Validate Portkey strategy if provided
             portkey_strategy = self._config.get("PORTKEY_STRATEGY")
             if portkey_strategy and portkey_strategy not in ["fallback", "loadbalance"]:
-                logger.error(
-                    "Invalid PORTKEY_STRATEGY. Must be either 'fallback' or 'loadbalance'"
-                )
+                logger.error("Invalid PORTKEY_STRATEGY. Must be either 'fallback' or 'loadbalance'")
                 exit(1)
 
             # Validate JSON configurations if provided
@@ -644,15 +683,10 @@ class BaseConfigManager:
 
         has_legacy_direct_llm_config = bool(llm_model_name or llm_model_api_key)
         if has_legacy_direct_llm_config:
-            logger.warning(
-                "LLM_MODEL_* is deprecated. Please migrate to "
-                "AGENTS_LLM_CONFIG_FILE."
-            )
+            logger.warning("LLM_MODEL_* is deprecated. Please migrate to " "AGENTS_LLM_CONFIG_FILE.")
 
         if bool(agents_llm_config_file) != bool(agents_llm_config_file_ref_key):
-            logger.error(
-                "AGENTS_LLM_CONFIG_FILE and AGENTS_LLM_CONFIG_FILE_REF_KEY must be set together."
-            )
+            logger.error("AGENTS_LLM_CONFIG_FILE and AGENTS_LLM_CONFIG_FILE_REF_KEY must be set together.")
             exit(1)
 
     def _finalize_defaults(self) -> None:
@@ -670,24 +704,12 @@ class BaseConfigManager:
             "INPUT_GHERKIN_FILE_PATH",
             os.path.join(project_source_root, "input/test.feature"),
         )
-        self._config.setdefault(
-            "JUNIT_XML_BASE_PATH", os.path.join(project_source_root, "output")
-        )
-        self._config.setdefault(
-            "TEST_DATA_PATH", os.path.join(project_source_root, "test_data")
-        )
-        self._config.setdefault(
-            "SCREEN_SHOT_PATH", os.path.join(project_source_root, "proofs")
-        )
-        self._config.setdefault(
-            "PROJECT_TEMP_PATH", os.path.join(project_source_root, "temp")
-        )
-        self._config.setdefault(
-            "SOURCE_LOG_FOLDER_PATH", os.path.join(project_source_root, "log_files")
-        )
-        self._config.setdefault(
-            "TMP_GHERKIN_PATH", os.path.join(project_source_root, "gherkin_files")
-        )
+        self._config.setdefault("JUNIT_XML_BASE_PATH", os.path.join(project_source_root, "output"))
+        self._config.setdefault("TEST_DATA_PATH", os.path.join(project_source_root, "test_data"))
+        self._config.setdefault("SCREEN_SHOT_PATH", os.path.join(project_source_root, "proofs"))
+        self._config.setdefault("PROJECT_TEMP_PATH", os.path.join(project_source_root, "temp"))
+        self._config.setdefault("SOURCE_LOG_FOLDER_PATH", os.path.join(project_source_root, "log_files"))
+        self._config.setdefault("TMP_GHERKIN_PATH", os.path.join(project_source_root, "gherkin_files"))
 
         # Extra environment defaults from original code
         if "HF_HOME" not in self._config:
@@ -752,12 +774,13 @@ class BaseConfigManager:
         self._config.setdefault("MCP_TIMEOUT", "30")
         self._config.setdefault("MCP_SERVERS", "{}")
 
+        # API tooling defaults
+        self._config.setdefault("API_REQUEST_TIMEOUT", "30")
+
         # Python Sandbox defaults
         self._config.setdefault("SANDBOX_TENANT_ID", "")  # No default tenant
         self._config.setdefault("SANDBOX_PACKAGES", "")  # No default packages
-        self._config.setdefault(
-            "SANDBOX_CUSTOM_INJECTIONS", "{}"
-        )  # No default custom injections
+        self._config.setdefault("SANDBOX_CUSTOM_INJECTIONS", "{}")  # No default custom injections
 
         # LLM Model Configuration defaults
         # --------------------------------------------------
@@ -787,14 +810,10 @@ class BaseConfigManager:
 
         # LLM Parameters defaults (based on OpenAI recommendations)
         # --------------------------------------------------
-        self._config.setdefault(
-            "LLM_MODEL_TEMPERATURE", "0.0"
-        )  # Default to deterministic
+        self._config.setdefault("LLM_MODEL_TEMPERATURE", "0.0")  # Default to deterministic
         self._config.setdefault("LLM_MODEL_CACHE_SEED", None)  # No default seed
         self._config.setdefault("LLM_MODEL_SEED", None)  # No default seed
-        self._config.setdefault(
-            "LLM_MODEL_MAX_TOKENS", "4096"
-        )  # Default reasonable output
+        self._config.setdefault("LLM_MODEL_MAX_TOKENS", "4096")  # Default reasonable output
         # self._config.setdefault("LLM_MODEL_PRESENCE_PENALTY", "0.0")
         # self._config.setdefault("LLM_MODEL_FREQUENCY_PENALTY", "0.0")
         # self._config.setdefault("LLM_MODEL_STOP", None)  # No default stop sequences
@@ -818,12 +837,8 @@ class BaseConfigManager:
                 AgentsLLMConfigManager,
             )
 
-            agent_cfg = AgentsLLMConfigManager.get_instance().get_agent_config(
-                "planner_agent"
-            )
-            return convert_model_config_to_langchain_format(
-                agent_cfg["model_config_params"]
-            )
+            agent_cfg = AgentsLLMConfigManager.get_instance().get_agent_config("planner_agent")
+            return convert_model_config_to_langchain_format(agent_cfg["model_config_params"])
         model_cfg = {
             "model": self._config.get("LLM_MODEL_NAME"),
             "model_api_key": self._config.get("LLM_MODEL_API_KEY"),
@@ -861,6 +876,7 @@ class BaseConfigManager:
     def set_default_test_id(self, test_id: str = "running_interactive") -> None:
         self._default_test_id = test_id
         self._config["DEFAULT_TEST_ID"] = test_id
+        bump_config_version()
 
     def reset_default_test_id(self) -> None:
         self.set_default_test_id("default")
@@ -896,11 +912,15 @@ class BaseConfigManager:
         """
         browser_cookies = self._config.get("BROWSER_COOKIES")
         if browser_cookies:
-            logger.info(f"BROWSER_COOKIES: {browser_cookies}")
             try:
-                return json.loads(browser_cookies)
+                cookies = json.loads(browser_cookies)
             except json.JSONDecodeError as e:
                 logger.error(f"Failed to parse BROWSER_COOKIES: {e}")
+                return None
+            # Cookie values are session credentials: log names/count only, never values.
+            names = [str(cookie.get("name")) for cookie in cookies if isinstance(cookie, dict) and cookie.get("name")] if isinstance(cookies, list) else []
+            logger.info("BROWSER_COOKIES set: %d cookie(s): %s", len(names), names)
+            return cookies
         return None
 
     def should_run_headless(self) -> bool:
@@ -964,10 +984,7 @@ class BaseConfigManager:
 
     def should_take_bounding_box_screenshots(self) -> bool:
         """Check if bounding box screenshots should be enabled"""
-        return (
-            self._config.get("ENABLE_BOUNDING_BOX_SCREENSHOTS", "false").lower()
-            == "true"
-        )
+        return self._config.get("ENABLE_BOUNDING_BOX_SCREENSHOTS", "false").lower() == "true"
 
     def should_enable_ublock_extension(self) -> bool:
         """Check if uBlock extension should be enabled"""
@@ -1175,6 +1192,23 @@ class BaseConfigManager:
         """Get MCP connection timeout in seconds."""
         return int(self._config.get("MCP_TIMEOUT", "30"))
 
+    def get_api_request_timeout(self) -> float:
+        """Get the HTTP request timeout in seconds used by the API tools.
+
+        Reads the ``API_REQUEST_TIMEOUT`` environment/config value. Invalid or
+        non-positive values warn and fall back to the 30-second default.
+        """
+        raw_value = self._config.get("API_REQUEST_TIMEOUT", "30")
+        try:
+            timeout = float(raw_value)
+        except (TypeError, ValueError):
+            logger.warning(f"Invalid API_REQUEST_TIMEOUT {raw_value!r}; falling back to 30 seconds.")
+            return 30.0
+        if timeout <= 0:
+            logger.warning(f"API_REQUEST_TIMEOUT must be positive, got {raw_value!r}; falling back to 30 seconds.")
+            return 30.0
+        return timeout
+
     def get_mcp_servers(self) -> dict:
         """Get MCP servers configuration."""
         try:
@@ -1282,6 +1316,7 @@ class SingletonConfigManager(BaseConfigManager):
             cls._instance = cls(config_dict=config_dict or {}, ignore_env=ignore_env)
         elif config_dict is not None:
             cls._instance._config.update(config_dict)
+            bump_config_version()
         return cls._instance
 
     @classmethod
@@ -1306,6 +1341,20 @@ def set_global_conf(
     return res
 
 
+def set_global_conf_keys(keys: ConfigDict) -> SingletonConfigManager:
+    """Update keys on the live singleton in place, without rebuilding it.
+
+    Unlike ``set_global_conf(..., override=True)`` — which reconstructs the
+    singleton and silently drops programmatically-set keys and runtime state —
+    this only updates the given keys on the existing config dict and bumps the
+    configuration version so change detectors re-initialize.
+    """
+    conf = get_global_conf()
+    conf.get_config().update(keys)
+    bump_config_version()
+    return conf
+
+
 set_global_conf(
     {
         "MODE": "prod",
@@ -1317,7 +1366,5 @@ set_global_conf(
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 
 logger.info("[Singleton] MODE: %s", get_global_conf().get_mode())
-logger.info(
-    "[Singleton] Project Source Root: %s", get_global_conf().get_project_source_root()
-)
+logger.info("[Singleton] Project Source Root: %s", get_global_conf().get_project_source_root())
 # Send final telemetryCONF.send_config_telemetry()
