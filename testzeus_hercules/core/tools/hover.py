@@ -122,7 +122,6 @@ async def do_hover(page: Page, selector: str, wait_before_execution: float) -> d
             logger.info(f'Element with selector: "{selector}" is scrolled into view. Waiting for the element to be visible.')
         except Exception as e:
 
-            traceback.print_exc()
             logger.exception(f"Error scrolling element into view: {e}")
             # If scrollIntoView fails, just move on
             pass
@@ -132,7 +131,6 @@ async def do_hover(page: Page, selector: str, wait_before_execution: float) -> d
             logger.info(f'Element with selector: "{selector}" is visible. Hovering over the element.')
         except Exception as e:
 
-            traceback.print_exc()
             logger.exception(f"Error waiting for element to be visible: {e}")
             # If the element is not visible, try to hover over it anyway
             pass
@@ -189,8 +187,7 @@ async def do_hover(page: Page, selector: str, wait_before_execution: float) -> d
             error_message=str(e),
         )
 
-        logger.error(f'Unable to hover over element with selector: "{selector}". Error: {e}')
-        traceback.print_exc()
+        logger.error(f'Unable to hover over element with selector: "{selector}". Error: {e}', exc_info=True)
         msg = f'Unable to hover over element with selector: "{selector}" since the selector is invalid or the element is not interactable. Consider retrieving the DOM again.'
         return {"summary_message": msg, "detailed_message": f"{msg}. Error: {e}"}
 
@@ -281,8 +278,7 @@ async def get_tooltip_text(page: Page, selector: str = "") -> str:
         return tooltip_text
     except Exception as e:
 
-        traceback.print_exc()
-        logger.error(f"Error retrieving tooltip text: {e}")
+        logger.error(f"Error retrieving tooltip text: {e}", exc_info=True)
         return ""
 
 

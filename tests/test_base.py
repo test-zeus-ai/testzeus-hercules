@@ -1,9 +1,9 @@
-import os
 import filecmp
 import logging
+import os
 import shutil
-from typing import Tuple
 import xml.etree.ElementTree as ET
+from typing import Tuple
 
 # Setting up logging
 logging.basicConfig(filename="test.log", level=logging.INFO)

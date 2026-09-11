@@ -511,6 +511,109 @@ AnchorBrowser supports connect_over_cdp, so video recording will work on the tes
 - Each platform may have different capabilities and configurations available through their respective helper scripts
 - Remote browser testing is particularly useful when running tests in Docker containers or CI/CD pipelines
 
+## Orchestration: Parallel Runs, Suites, and Monitoring
+
+### Parallel Scenario Execution
+
+Run one feature file as parallel per-scenario subprocesses (each scenario gets
+an isolated process state) and merge the results into a single JUnit XML:
+
+```bash
+python -m testzeus_hercules.orchestrator.run_manager \
+  opt/input/test.feature --max-parallel 4
+```
+
+Options: `--max-parallel` (default 4), `--out-dir` (merged JUnit directory,
+default `<workroot>/merged`), and `--timeout` (per-scenario seconds, default
+1800). The exit code follows the same CI gating as `testzeus-hercules`
+(respect `EXIT_CODE_COMPAT`).
+
+### Named Suites
+
+Group features into named suites in `.hercules/suites.yaml` (copy
+`.hercules/suites.example.yaml` as a starting point):
+
+```bash
+hercules-suite smoke --config .hercules/suites.yaml
+```
+
+Per-suite options: `tests` (feature files or directories), `plan` (compile a
+`test_plan.json` into a temporary feature instead), `retry` (per-scenario
+retries), `depends_on` (suites that run first), `env` (extra environment
+variables for every scenario subprocess), `shared_state` (exports
+`HERCULES_SUITE_STATE_FILE=<workroot>/suite_state.json` so features can chain
+suite-level state), and `max_parallel` (scenario subprocesses; default 1 runs
+features sequentially). `--max-parallel` on the CLI overrides the suite
+value.
+
+`env` entries may override the reserved workspace-injected variables
+(`HERCULES_HISTORY_DB`, `PROJECT_SOURCE_ROOT`, `INPUT_GHERKIN_FILE_PATH`,
+`TEST_DATA_PATH`); the override wins, and a warning is logged when it replaces
+an injected variable. Watch out for a relative `HERCULES_HISTORY_DB` here: it
+resolves inside the throwaway scenario workspace and silently vanishes when
+that workspace is cleaned up after a successful run.
+
+### Scheduled Monitoring
+
+`hercules-monitor` reruns suites on a schedule, detects regressions against
+the previous cycle (a scenario that passed last cycle and fails now), and
+posts a webhook summary. Config lives in `.hercules/monitor.yaml` (see
+`.hercules/monitor.example.yaml`):
+
+```bash
+hercules-monitor --config .hercules/monitor.yaml   # daemon loop
+hercules-monitor --once                            # single cycle, exit 1 on failures
+hercules-monitor --interval-hours 1                # override the configured interval
+```
+
+Key settings: `suites` (required), `interval_hours` (default 24, fractional
+OK), `webhook_url` (receives `{"text": "<summary>"}`), `notify_on`
+(`always`, `failure`, or `regression` — default `regression`), `baseline`
+(`last_run` or a pinned run id), and `state_file` (default
+`.hercules/monitor_state.json`). The first cycle has no baseline, so nothing
+counts as a regression yet; use `notify_on: failure` to also alert on plain
+failures.
+
+### Workspace Hygiene
+
+Parallel and suite runs manage their scratch space automatically:
+
+- **Scenario workspaces** (one throwaway `PROJECT_SOURCE_ROOT` per scenario)
+  are deleted after a successful run; workspaces of **failed** scenarios are
+  always kept so you can inspect videos, screenshots, and logs. Set
+  `HERCULES_KEEP_WORKSPACES=1` to keep everything (including the
+  compiled-plan tempdirs of plan-only suites) for debugging.
+- **Run retention:** before every monitoring cycle, `hercules-monitor` sweeps
+  `.hercules/suite_runs/` trees older than `HERCULES_RUN_RETENTION_HOURS`
+  hours (default `72`).
+- Run history lives in one shared SQLite DB (`opt/hercules_history.db`,
+  override with `HERCULES_HISTORY_DB`), so workspace cleanup never deletes
+  recorded runs.
+
+## Run History Dashboard
+
+Every run is recorded in a SQLite database (default
+`opt/hercules_history.db`, override with `HERCULES_HISTORY_DB`): runs, cases,
+steps, artifact paths, and healing events (classifications, selector-store
+hits, heal proposals). A local web UI reads from it:
+
+```bash
+hercules-dashboard                      # serves http://127.0.0.1:8001
+hercules-dashboard --host 0.0.0.0 --port 8001 \
+  --db opt/hercules_history.db --project-root .
+```
+
+- `/` — runs list with pass/fail counts and an "Import from output folders"
+  button that scans `output/*/` for `*_result.xml` and back-fills the DB.
+- `/run/<run_id>` — run metadata plus its case table.
+- `/case/<run_id>/<case>` — per-case detail: embedded video player,
+  screenshots, network log, and the failure classification.
+- `/trend` — pass-rate history chart (SVG) and flakiest cases.
+- `/live` — polling page that picks up new runs as they finish.
+
+Artifact URLs are restricted to files under `--project-root`, so keep it set
+to the directory that contains your `opt/` outputs.
+
 ## Viewing Results
 
 After test execution, results can be found in several locations:
@@ -518,6 +621,7 @@ After test execution, results can be found in several locations:
 1. **Test Reports**
    - HTML Report: `opt/output/run_<timestamp>/test.feature_result.html`
    - XML Report: `opt/output/run_<timestamp>/test.feature_result.xml`
+   - Markdown Report: `opt/output/run_<timestamp>/Hercules_Test_Report.md`
 
 2. **Execution Logs**
    - Agent Thoughts: `opt/log_files/<scenario_name>/run_<timestamp>/agent_inner_thoughts.json`
@@ -526,3 +630,45 @@ After test execution, results can be found in several locations:
    - Screenshots: `opt/proofs/<scenario_name>/run_<timestamp>/screenshots/`
    - Videos: `opt/proofs/<scenario_name>/run_<timestamp>/videos/`
    - Network Logs: `opt/proofs/<scenario_name>/run_<timestamp>/network_logs.json`
+
+4. **Failure Bundles** (per failed scenario)
+   - `opt/output/run_<timestamp>/bundles/<sanitized-case-name>/bundle.md` —
+     failure summary plus an auto-generated `## Classification` section. The
+     case name is sanitized for the filesystem (spaces and similar characters
+     become `_`); when two failing cases sanitize to the same directory name,
+     a short hash suffix is appended to keep them apart.
+   - Sibling `videos/`, `screenshots/`, and network log files referenced by
+     the bundle
+
+5. **Run History**
+   - SQLite database: `opt/hercules_history.db` (override with
+     `HERCULES_HISTORY_DB`) — runs, cases, steps, artifact paths, and healing
+     events; browsable via `hercules-dashboard`
+
+## CI Exit Codes & Reports
+
+- **Non-zero exit on failure:** Hercules exits with status `1` when any scenario fails or errors, so CI pipelines gate out of the box. Set `EXIT_CODE_COMPAT=1` to restore the legacy always-exit-0 behavior.
+- **Failure bundles:** failed scenarios get a self-contained folder under `output/run_<timestamp>/bundles/` with a `bundle.md` summary plus video, screenshots, and logs for debugging.
+- **Failure classification:** every failed case is auto-classified into `product_bug`, `test_fragility`, `environment`, or `contract_violation` (or `unclassified` when no signal matches). The classification replaces the placeholder in the case's `bundle.md` and is recorded as a healing event in the run history DB.
+- **`LOG_FILE_PATH`:** optional env var; when set, Hercules also streams its runtime logs to that file (rotating: 10 MB per file, 5 backups) for post-run inspection in CI.
+- **`LLM_MODEL_PRICING`:** optional pricing used to estimate run cost in reports when the provider does not report cost data. Set it per agent role as `model_pricing` in `agents_llm_config.json` (a float blended USD per 1M tokens, or `{"input": x, "output": y}`), or as an env var. Estimated values are marked `cost_source: estimated_from_model_pricing`; provider-reported cost always wins.
+
+Typical CI usage:
+
+```bash
+export LOG_FILE_PATH=$CI_JOB_DIR/hercules.log
+export HERCULES_HISTORY_DB=$CI_PROJECT_DIR/hercules_history.db
+testzeus-hercules --project-base=opt || test_status=$?
+# Non-zero exit means failed/errored scenarios; check
+# opt/output/run_<timestamp>/Hercules_Test_Report.md and bundles/ for details.
+```
+
+## Troubleshooting
+
+- **Scenario fails with `[PLANNER_STALL]`** — the planner produced no
+  executable progress 3 turns in a row (empty or already-completed steps) and
+  was terminated early to avoid a planner loop. This usually means the planner
+  model is too weak to emit strict planner JSON reliably, or a step is
+  unparseable/unsatisfiable for the target app. Try a stronger
+  `planner_agent` model in `agents_llm_config.json` and check the failing
+  feature's steps against what the app actually supports.
