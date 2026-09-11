@@ -1,7 +1,6 @@
 import json
 import os
 import re
-import traceback
 from typing import Annotated, Any
 
 import aiofiles
@@ -1263,6 +1262,5 @@ async def do_get_accessibility_info(page: Page, only_input_fields: bool = False)
 
         return enhanced_tree
     except Exception as e:
-        logger.error(f"Error while fetching DOM info: {e}")
-        traceback.print_exc()
+        logger.error(f"Error while fetching DOM info: {e}", exc_info=True)
         return None

@@ -84,8 +84,7 @@ async def custom_set_slider_value(page: Page, selector: str, value_to_set: float
         logger.debug(f"custom_set_slider_value result: {result}")
     except Exception as e:
 
-        traceback.print_exc()
-        logger.error(f"Error in custom_set_slider_value, Selector: {selector}, Value: {value_to_set}. Error: {str(e)}")
+        logger.error(f"Error in custom_set_slider_value, Selector: {selector}, Value: {value_to_set}. Error: {str(e)}", exc_info=True)
         raise
 
 

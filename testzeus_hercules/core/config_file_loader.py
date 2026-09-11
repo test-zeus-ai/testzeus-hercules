@@ -30,7 +30,9 @@ class ConfigFileLoader:
             KeyError: If ref_key is provided but not found in the file
         """
         try:
-            with open(file_path, "r") as file:
+            # utf-8-sig tolerates a leading BOM (common in Windows-edited
+            # configs) that would otherwise crash json.load with "Unexpected UTF-8 BOM".
+            with open(file_path, "r", encoding="utf-8-sig") as file:
                 file_config = json.load(file)
 
             if ref_key:

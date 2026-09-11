@@ -2,18 +2,19 @@ import uuid
 from collections.abc import AsyncGenerator
 from typing import List, Optional
 
-from fastapi import FastAPI, Depends, HTTPException
-from fastapi_users import FastAPIUsers, BaseUserManager, schemas as fa_models
+from fastapi import Depends, FastAPI, HTTPException
+from fastapi_users import BaseUserManager, FastAPIUsers
+from fastapi_users import schemas as fa_models
 from fastapi_users.authentication import (
     AuthenticationBackend,
     BearerTransport,
     JWTStrategy,
 )
-from fastapi_users.db import SQLAlchemyUserDatabase, SQLAlchemyBaseUserTableUUID
+from fastapi_users.db import SQLAlchemyBaseUserTableUUID, SQLAlchemyUserDatabase
 from pydantic import BaseModel
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, Table, select
+from sqlalchemy import Column, ForeignKey, Integer, String, Table, Text, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, relationship
 
 # ----- Configuration -----

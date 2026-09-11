@@ -1,7 +1,6 @@
 import asyncio
 import inspect
 import json
-import traceback
 from dataclasses import dataclass
 from typing import Annotated, Any, Optional
 
@@ -50,8 +49,7 @@ async def read_clipboard(clipboard_type: Annotated[str, "Clipboard content type:
             logger.info("Clipboard text successfully read.")
             return content
         except Exception as e:
-            logger.error(f"Error reading clipboard text: {e}")
-            traceback.print_exc()
+            logger.error(f"Error reading clipboard text: {e}", exc_info=True)
             raise e
     elif clipboard_type.lower() == "binary":
         try:
@@ -62,8 +60,7 @@ async def read_clipboard(clipboard_type: Annotated[str, "Clipboard content type:
             logger.info("Clipboard binary data successfully read.")
             return clipboard_items
         except Exception as e:
-            logger.error(f"Error reading clipboard binary data: {e}")
-            traceback.print_exc()
+            logger.error(f"Error reading clipboard binary data: {e}", exc_info=True)
             raise e
     else:
         error_msg = "Invalid clipboard_type. Must be 'text' or 'binary'."

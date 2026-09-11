@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from langchain_core.language_models.chat_models import BaseChatModel
-from testzeus_hercules.config import get_global_conf, set_global_conf
+from testzeus_hercules.config import get_global_conf, set_global_conf_keys
 from testzeus_hercules.core.agents_llm_config_manager import AgentsLLMConfigManager
 from testzeus_hercules.utils.llm_helper import (
     convert_model_config_to_langchain_format,
@@ -30,7 +30,13 @@ def ensure_litellm_provider() -> None:
             LITELLM_PROVIDER,
             ref_key,
         )
-        set_global_conf({"AGENTS_LLM_CONFIG_FILE_REF_KEY": LITELLM_PROVIDER}, override=True)
+        # Update the live singleton in place instead of rebuilding it with
+        # set_global_conf(..., override=True): a rebuild would lose keys set
+        # programmatically (making _check_llm_config exit the process) and
+        # silently reset all runtime state. set_global_conf_keys only updates
+        # the ref key and bumps the config version, so
+        # AgentsLLMConfigManager.get_instance() below re-initializes itself.
+        set_global_conf_keys({"AGENTS_LLM_CONFIG_FILE_REF_KEY": LITELLM_PROVIDER})
 
     manager = AgentsLLMConfigManager.get_instance()
     manager.initialize()
@@ -45,18 +51,22 @@ def get_litellm_chat_model(agent_name: str = "planner_agent") -> BaseChatModel:
     ensure_litellm_provider()
     agent_cfg = AgentsLLMConfigManager.get_instance().get_agent_config(agent_name)
     model_config_params = agent_cfg.get("model_config_params", {})
-    missing_fields = [
-        field
-        for field in ("model_api_key", "model_base_url")
-        if not model_config_params.get(field)
-    ]
+    model_cfg = convert_model_config_to_langchain_format(model_config_params)
+    # Validate the normalized params ("api_key"/"base_url"), not the
+    # pre-normalization agent-config keys ("model_api_key"/"model_base_url"),
+    # so fully-configured agents do not trigger a false warning.
+    missing_fields = [field for field in ("api_key", "base_url") if not model_cfg.get(field)]
     if missing_fields:
         logger.warning(
             "LiteLLM chat model config for %s is missing required field(s): %s",
             agent_name,
             ", ".join(missing_fields),
         )
-    model_cfg = convert_model_config_to_langchain_format(agent_cfg["model_config_params"])
-    model_name = model_cfg.get("model") or agent_cfg["model_config_params"].get("model_name", "")
+    model_name = model_cfg.get("model") or model_config_params.get("model_name", "")
+    if not model_name:
+        logger.warning(
+            "LiteLLM chat model config for %s has an empty model name; falling back to the documented default (gpt-4o)",
+            agent_name,
+        )
     llm_params = adapt_llm_params_for_model(model_name, agent_cfg["llm_config_params"])
     return create_chat_model(model_cfg, llm_params)
