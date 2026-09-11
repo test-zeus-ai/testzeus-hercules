@@ -19,7 +19,7 @@ class PlannerAgent:
         llm_config_params: dict,
         system_prompt: str | None = None,
     ) -> None:
-        base_prompt = system_prompt or self.prompt
+        base_prompt = system_prompt or get_planner_prompt()
         user_ltm = get_user_ltm()
         print("===== LTM =====")
         print(user_ltm)
@@ -320,3 +320,36 @@ Available Test Data: $basic_test_information
         )
 
         print_message_as_planner(message=message)
+
+
+# target_helper enum / helper-capability wording, kept byte-identical to the
+# base prompt unless mobile device automation is enabled (DEVICE_MANAGER=appium
+# and the Appium client importable). 'mobile' is injected dynamically so the
+# planner never routes to a helper that does not exist.
+_JSON_TARGET_HELPER_ENUM = "'browser'|'api'|'sec'|'sql'|'time_keeper'|'agent'|'mcp'|'executor'|'Not_Applicable'"
+_MOBILE_JSON_TARGET_HELPER_ENUM = "'browser'|'api'|'sec'|'sql'|'time_keeper'|'agent'|'mcp'|'executor'|'mobile'|'Not_Applicable'"
+_ALLOWED_TARGET_HELPER_LIST = "'browser', 'api', 'sec', 'sql', 'time_keeper', 'agent', 'mcp', 'executor', 'Not_Applicable'"
+_MOBILE_ALLOWED_TARGET_HELPER_LIST = "'browser', 'api', 'sec', 'sql', 'time_keeper', 'agent', 'mcp', 'executor', 'mobile', 'Not_Applicable'"
+_EXECUTOR_CAPABILITY_LINE = "- Executor: Execute Python automation scripts from files"
+
+
+def get_planner_prompt() -> str:
+    """Return the planner prompt, extended with the mobile helper when mobile automation is enabled.
+
+    When mobile is disabled the returned string is byte-identical to
+    :attr:`PlannerAgent.prompt`.
+    """
+    try:
+        from testzeus_hercules.core.mobile import mobile_enabled
+
+        if not mobile_enabled():
+            return PlannerAgent.prompt
+        from testzeus_hercules.core.mobile.prompts import MOBILE_HELPER_CAPABILITY_LINE
+    except Exception:
+        return PlannerAgent.prompt
+
+    prompt = PlannerAgent.prompt
+    prompt = prompt.replace(_JSON_TARGET_HELPER_ENUM, _MOBILE_JSON_TARGET_HELPER_ENUM)
+    prompt = prompt.replace(_ALLOWED_TARGET_HELPER_LIST, _MOBILE_ALLOWED_TARGET_HELPER_LIST)
+    prompt = prompt.replace(_EXECUTOR_CAPABILITY_LINE, f"{_EXECUTOR_CAPABILITY_LINE}\n- {MOBILE_HELPER_CAPABILITY_LINE}")
+    return prompt

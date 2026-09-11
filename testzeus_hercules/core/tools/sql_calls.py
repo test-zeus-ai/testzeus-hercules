@@ -1,4 +1,4 @@
-import traceback
+import re
 from typing import Annotated, Any, Dict, List, Optional, Union
 
 from sqlalchemy.exc import SQLAlchemyError
@@ -6,6 +6,84 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_en
 from sqlalchemy.sql import text
 from testzeus_hercules.core.tools.tool_registry import tool, tool_registry
 from testzeus_hercules.utils.logger import logger
+from testzeus_hercules.utils.redact import redact_url
+
+# Maximum number of rows materialized into the tool result. Anything beyond this
+# is dropped and flagged with a truncation notice (an unbounded SELECT * on a
+# big table would otherwise inflate both RSS and the LLM context).
+MAX_ROWS = 1000
+
+# Best-effort server-side statement timeout, in seconds, applied per dialect
+# right after connect (see _apply_safety_settings).
+MAX_STATEMENT_SECONDS = 30
+
+# Destructive statement keywords rejected inside a WITH clause. The "SELECT or
+# WITH" prefix guard alone lets write-through CTEs through ("WITH d AS (DELETE
+# FROM t RETURNING *) SELECT * FROM d" starts with "with" but deletes rows), so
+# the part of the query before the top-level SELECT is scanned with this
+# word-boundary pattern. The scan is conservative: a quoted identifier or
+# string literal containing one of these words (e.g. 'drop it') is a tolerated
+# false positive — such a query is rejected, never allowed through.
+_DESTRUCTIVE_KEYWORD_RE = re.compile(r"\b(INSERT|UPDATE|DELETE|MERGE|TRUNCATE|ALTER|DROP|CREATE|GRANT|REVOKE)\b", re.IGNORECASE)
+
+# Identifiers interpolated into SET search_path / USE must be plain words; a
+# quoted or delimited identifier like 'public; DROP TABLE x' must never reach
+# the f-string.
+_SAFE_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_]+$")
+
+# URL-shaped tokens in driver error text (DSNs usually appear embedded in the
+# message, not as the whole message) get redact_url applied; password-like
+# key=value / key: value assignments are stripped as well.
+_URL_TOKEN_RE = re.compile(r"[a-zA-Z][a-zA-Z0-9+.\-]*://[^\s'\"]+")
+_SECRET_ASSIGNMENT_RE = re.compile(r"(?i)\b(password|passwd|pwd)\s*[=:]\s*(?!\[REDACTED\])\S+")
+
+
+def _scrub_error(error: Exception) -> str:
+    """Return the driver error text with credentials redacted.
+
+    Driver exceptions echo the connection string (user/password/host) back, and
+    that text would otherwise flow straight into the LLM context.
+    """
+    message = str(error)
+    message = _URL_TOKEN_RE.sub(lambda match: redact_url(match.group(0)), message)
+    return _SECRET_ASSIGNMENT_RE.sub(lambda match: f"{match.group(1)}=[REDACTED]", message)
+
+
+def _top_level_select_index(query: str) -> int:
+    """Index of the first SELECT keyword at paren depth 0, or -1 if none.
+
+    CTE bodies live inside parentheses, so the main SELECT of a WITH query is
+    the first depth-0 SELECT; everything before it is the WITH section.
+    """
+    depth = 0
+    for match in re.finditer(r"\bselect\b|[()]", query, re.IGNORECASE):
+        token = match.group(0)
+        if token == "(":
+            depth += 1
+        elif token == ")":
+            depth = max(0, depth - 1)
+        elif depth == 0:
+            return match.start()
+    return -1
+
+
+async def _apply_safety_settings(connection: AsyncConnection, dialect_name: str) -> None:
+    """Best-effort per-dialect session hardening; failures never block the query.
+
+    Enforces read-only execution and a statement timeout where the dialect
+    supports it, as defense in depth behind the SELECT-only query guard.
+    """
+    try:
+        if dialect_name == "postgresql":
+            await connection.execute(text("SET default_transaction_read_only = on"))
+            await connection.execute(text(f"SET statement_timeout = '{MAX_STATEMENT_SECONDS}s'"))
+        elif dialect_name in ("mysql", "mariadb"):
+            await connection.execute(text(f"SET SESSION max_execution_time = {MAX_STATEMENT_SECONDS * 1000}"))
+        elif dialect_name == "sqlite":
+            await connection.execute(text("PRAGMA query_only = ON"))
+            await connection.execute(text(f"PRAGMA busy_timeout = {MAX_STATEMENT_SECONDS * 1000}"))
+    except Exception as e:
+        logger.debug(f"Could not apply read-only/timeout session settings for {dialect_name}: {e}")
 
 
 @tool(
@@ -41,14 +119,24 @@ async def execute_select_cte_query_sql(
         - MySQL: "mysql+aiomysql://user:password@host:port/database"
         - SQLite: "sqlite+aiosqlite:///path/to/database.db"
     - query (str): The SELECT SQL query to execute. Must start with 'SELECT' or 'WITH'.
+      Data-modifying statements are rejected, including write-through CTEs
+      ("WITH d AS (DELETE FROM t RETURNING *) SELECT ..."): the WITH section is
+      scanned for destructive keywords before execution. The scan is
+      conservative and may false-positive on quoted identifiers or string
+      literals containing those keywords — such queries are rejected, never
+      allowed through. Read-only session mode and a statement timeout are also
+      enforced where the dialect supports them.
     - schema_name (Optional[str|None]): Optional database schema_name to use.
       If not provided, assumes schema_name is specified in the query using dot notation.
+      Must contain only letters, digits and underscores.
     - params (Optional[Dict[str, Any]]): Optional parameters to pass to the query.
       Use this for parameterized queries to prevent SQL injection.
 
     Returns:
     - Union[List[Dict[str, Any]], Dict[str, str]]: The query results as a list of dictionaries,
-      or a dictionary containing an 'error' key with the error message.
+      or a dictionary containing an 'error' key with an error message (driver
+      details are redacted before returning). At most MAX_ROWS (1000) rows are
+      materialized; when truncated, a final {"notice": ...} entry is appended.
 
     Example Usage:
 
@@ -115,11 +203,26 @@ async def execute_select_cte_query_sql(
         if not (query_lower.startswith("select") or query_lower.startswith("with")):
             raise ValueError("Only SELECT queries are allowed.")
 
+        # A WITH query must not smuggle data-modifying statements through its
+        # CTE bodies; scan everything before the top-level SELECT.
+        if query_lower.startswith("with"):
+            select_idx = _top_level_select_index(query)
+            with_section = query[: select_idx if select_idx >= 0 else len(query)]
+            destructive_match = _DESTRUCTIVE_KEYWORD_RE.search(with_section)
+            if destructive_match:
+                raise ValueError(f"Only SELECT queries are allowed: data-modifying keyword '{destructive_match.group(0).upper()}' found in the WITH clause.")
+
         # Create the async engine
         engine: AsyncEngine = create_async_engine(connection_string, echo=False)
 
         async with engine.connect() as connection:  # type: AsyncConnection
+            # Defense in depth: read-only sessions + statement timeout where
+            # the dialect supports them (best-effort, never blocks the query).
+            await _apply_safety_settings(connection, engine.dialect.name)
+
             if schema_name:
+                if not _SAFE_IDENTIFIER_RE.match(schema_name):
+                    raise ValueError("schema_name must contain only letters, digits and underscores.")
                 if engine.dialect.name == "postgresql":
                     await connection.execute(text(f"SET search_path TO {schema_name}"))
                 elif engine.dialect.name in ["mysql", "mariadb"]:
@@ -128,18 +231,22 @@ async def execute_select_cte_query_sql(
 
             safe_params = params if isinstance(params, dict) else {}
             result = await connection.execute(text(query), safe_params)
-            rows = [dict(row._mapping) for row in result]
+            # Materialize at most MAX_ROWS rows; drop the rest and flag it.
+            raw_rows = await result.fetchmany(MAX_ROWS + 1)
+            await result.close()
+            truncated = len(raw_rows) > MAX_ROWS
+            rows = [dict(row._mapping) for row in raw_rows[:MAX_ROWS]]
+            if truncated:
+                rows.append({"notice": f"Result truncated to the first {MAX_ROWS} rows."})
             return rows
     except SQLAlchemyError as e:
 
-        traceback.print_exc()
-        logger.error(f"SQLAlchemy error occurred: {e}")
-        return {"error": str(e)}
+        logger.error(f"SQLAlchemy error occurred: {_scrub_error(e)}", exc_info=True)
+        return {"error": _scrub_error(e)}
     except Exception as e:
 
-        traceback.print_exc()
-        logger.error(f"An unexpected error occurred: {e}")
-        return {"error": str(e)}
+        logger.error(f"An unexpected error occurred: {_scrub_error(e)}", exc_info=True)
+        return {"error": _scrub_error(e)}
     finally:
         try:
             await engine.dispose()

@@ -82,18 +82,37 @@ Hercules can also expose its own tools to other MCP clients:
 testzeus-hercules-mcp
 ```
 
-By default this starts a streamable HTTP server at `http://0.0.0.0:8000/mcp`
-with tools such as `generate_gherkin`, `run_test`, and `get_test_results`.
+By default this starts a streamable HTTP server at `http://127.0.0.1:8000/mcp`
+(loopback only). The primary interface is the nine session-based `hercules_*`
+tools (`hercules_configure_session`, `hercules_generate_code_summary`,
+`hercules_generate_standardized_prd`, `hercules_generate_test_plan`,
+`hercules_generate_and_execute`, `hercules_get_run_results`,
+`hercules_open_dashboard`, `hercules_check_config`, `hercules_rerun`) — see
+`docs/mcp_server.md` for the full tool reference. The legacy trio
+(`generate_gherkin`, `run_test`, `get_test_results`) is still registered as a
+deprecated alias layer.
+
+> **Security note:** the MCP server exposes an **unauthenticated** tool
+> endpoint that can drive test execution (browsers, API calls, LLM usage) with
+> the privileges of the server process. The default loopback bind keeps it
+> local to your machine. If you set `MCP_HOST` to a non-loopback address, the
+> endpoint becomes reachable by anyone who can reach that interface — restrict
+> it with a firewall and/or put an authenticating reverse proxy in front, and
+> bind non-loopback only as an explicit, deliberate opt-in.
 
 Server environment variables:
 
 - `TESTZEUS_ROOT`: repo/project root for generated features and test output
-- `TESTZEUS_PYTHON`: Python executable to use when invoking Hercules
-- `MCP_HOST`: bind host, default `0.0.0.0`
+- `TESTZEUS_PYTHON`: reserved helper variable; the in-process server does not
+  shell out, so it is currently unused (kept for compatibility with external
+  tooling)
+- `MCP_HOST`: bind host, default `127.0.0.1` (loopback; see the security note
+  above before changing it)
 - `MCP_PORT`: bind port, default `8000`
 - `MCP_PATH`: HTTP path, default `/mcp`
 
-For local stdio-style client configuration, see `mcp_hercules.example.json`.
+For a client configuration example (streamable-http), see
+`mcp_hercules.example.json`.
 
 ## Example Testcase (Simple)
 

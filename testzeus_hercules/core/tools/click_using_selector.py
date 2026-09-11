@@ -115,10 +115,17 @@ async def click(
     )
 
     page = await browser_manager.get_current_page()
+    # The dialog handler is scoped to this click only: it must always be
+    # removed again (even when the click fails), otherwise one handler leaks
+    # per click and they pile up on the long-lived page.
     page.on("dialog", handle_dialog)
-    result = await do_click(page, query_selector, wait_before_execution, type_of_click)
+    try:
+        result = await do_click(page, query_selector, wait_before_execution, type_of_click)
 
-    await asyncio.sleep(get_global_conf().get_delay_time())  # sleep to allow the mutation observer to detect changes
+        await asyncio.sleep(get_global_conf().get_delay_time())  # sleep to allow the mutation observer to detect changes
+    finally:
+        page.remove_listener("dialog", handle_dialog)
+
     unsubscribe(detect_dom_changes)
 
     await browser_manager.wait_for_load_state_if_enabled(page=page)
@@ -156,6 +163,27 @@ async def do_click(page: Page, selector: str, wait_before_execution: float, type
                 success=False,
                 error_message=f'Element with selector: "{selector}" not found',
             )
+            # Best-effort healing hook (recording/logging only — never changes the
+            # retry flow; the md-refresh mechanism remains the primary recovery).
+            try:
+                from testzeus_hercules.healing.selector_store import get_default_store
+
+                store = get_default_store()
+                # A canonical name (role=/name=) is only available when the failing
+                # selector itself carries one; md ids are regenerated per run, so
+                # for them we can only mark the raw selector key as failing.
+                canonical_name = selector if "md=" not in selector else None
+                if canonical_name:
+                    entry = store.lookup(canonical_name) or {}
+                    proposal = entry.get("aria") or entry.get("css") or entry.get("xpath")
+                    if proposal:
+                        logger.warning(f"[HEAL] selector store proposal for {canonical_name}: {proposal} (not auto-applied)")
+                    store.record_failure(canonical_name)
+                else:
+                    store.record_failure(selector)
+            except Exception as e:
+
+                logger.debug(f"Selector-store failure hook skipped: {e}")
             raise ValueError(f'Element with selector: "{selector}" not found')
 
         logger.info(f'Element with selector: "{selector}" is attached. Scrolling it into view if needed.')
@@ -164,7 +192,6 @@ async def do_click(page: Page, selector: str, wait_before_execution: float, type
             logger.info(f'Element with selector: "{selector}" is attached and scrolled into view. Waiting for the element to be visible.')
         except Exception as e:
 
-            traceback.print_exc()
             logger.exception(f"Error scrolling element into view: {e}")
             # If scrollIntoView fails, just move on, not a big deal
             pass
@@ -284,8 +311,7 @@ async def do_click(page: Page, selector: str, wait_before_execution: float, type
                 }
         except Exception as js_error:
 
-            traceback.print_exc()
-            logger.error(f"JavaScript fallback click also failed: {js_error}")
+            logger.error(f"JavaScript fallback click also failed: {js_error}", exc_info=True)
             # Both standard and fallback methods failed, proceed with original error handling
             pass
 
@@ -301,7 +327,6 @@ async def do_click(page: Page, selector: str, wait_before_execution: float, type
             error_message=str(e),
         )
 
-        logger.error(f'Unable to click element with selector: "{selector}". Error: {e}')
-        traceback.print_exc()
+        logger.error(f'Unable to click element with selector: "{selector}". Error: {e}', exc_info=True)
         msg = f'Unable to click element with selector: "{selector}" since the selector is invalid. Proceed by retrieving DOM again.'
         return {"summary_message": msg, "detailed_message": f"{msg}. Error: {e}"}
