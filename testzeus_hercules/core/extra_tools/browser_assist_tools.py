@@ -1,6 +1,5 @@
 import os
 import time
-import traceback
 from typing import Annotated, Dict, Union
 
 from PIL import Image
@@ -59,7 +58,6 @@ async def take_browser_screenshot(
 
     except Exception as e:
 
-        traceback.print_exc()
         logger.exception(f"Error taking screenshot: {e}")
         return {"error": str(e)}
 
@@ -106,6 +104,5 @@ async def capture_the_screen() -> Annotated[str, "Path to of screenshot"]:
 
     except Exception as e:
 
-        traceback.print_exc()
         logger.exception(f"Error taking snapshot: {e}")
         return {"error": str(e)}

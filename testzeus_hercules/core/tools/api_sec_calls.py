@@ -280,7 +280,7 @@ for tag, explanation in security_terms_explanation.items():
                     duration = end_time - start_time
                     return {"error": error_message}, duration
 
-                with open(output_file, "r") as f:
+                with open(output_file, "r", encoding="utf-8") as f:
                     content = f.read()
 
                 logger.info("Nuclei command completed successfully.")
@@ -304,10 +304,8 @@ for tag, explanation in security_terms_explanation.items():
                         duration,
                     )
             except Exception as e:
-                import traceback
 
-                traceback.print_exc()
-                logger.error(f"An unexpected error occurred: {e}")
+                logger.error(f"An unexpected error occurred: {e}", exc_info=True)
                 file_logger(f"An unexpected error occurred: {e}")
                 end_time = time.perf_counter()
                 duration = end_time - start_time
