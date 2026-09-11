@@ -223,7 +223,7 @@ def parse_agent_response(content: str) -> Dict[str, Any]:
 
     try:
         content_json = parse_response(content)
-        return {
+        result: Dict[str, Any] = {
             "next_step": content_json.get("next_step"),
             "plan": content_json.get("plan"),
             "target_helper": content_json.get("target_helper", "Not_Applicable"),
@@ -235,6 +235,12 @@ def parse_agent_response(content: str) -> Dict[str, Any]:
             "is_terminated": content_json.get("is_terminated", False),
             "is_completed": content_json.get("is_completed", False),
         }
+        # Harness failure records ride on terminal results so the report side
+        # can render category/stage/evidence alongside the failure message.
+        for failure_key in ("execution_failure", "cleanup_failure"):
+            if content_json.get(failure_key) is not None:
+                result[failure_key] = content_json[failure_key]
+        return result
     except Exception:
         logger.error("Failed to parse agent response %s", content)
         return {}
@@ -285,18 +291,24 @@ def extract_planner_summary(messages: list[BaseMessage]) -> str:
         if not isinstance(msg, AIMessage) or getattr(msg, "tool_calls", None):
             continue
         content = str(msg.content or "").strip()
-        if _is_non_planner_content(content):
-            continue
+        # Planner-JSON detection must run BEFORE the non-planner substring
+        # heuristic: a terminal planner JSON that merely mentions e.g.
+        # "sync_playwright" is still a planner decision and must never be
+        # discarded. The heuristic only applies to messages that are not
+        # planner-shaped — and any such message is skipped regardless, so the
+        # heuristic can no longer drop a verdict.
         try:
             parsed = parse_response(content)
         except Exception:
             continue
-        if not _looks_like_planner_json(parsed):
+        if _looks_like_planner_json(parsed):
+            last_planner = content
+            if parsed.get("terminate") == "yes":
+                termination_summary = content
+                break
             continue
-        last_planner = content
-        if parsed.get("terminate") == "yes":
-            termination_summary = content
-            break
+        if _is_non_planner_content(content):
+            continue
 
     return termination_summary or last_planner or ""
 
@@ -309,13 +321,31 @@ class GraphChatResult:
     messages: list[BaseMessage] = field(default_factory=list)
     cost: dict[str, Any] = field(default_factory=dict)
     terminate: str = "no"
+    # Last non-empty navigation-helper answer; carries the real PASS/FAIL
+    # outcome when the final planner message is not a terminal decision.
+    last_helper_response: str = ""
 
     @property
     def summary(self) -> str:
+        # 1) A terminal planner JSON wins.
         planner_summary = extract_planner_summary(self.messages)
+        if planner_summary and parse_response(planner_summary).get("terminate") == "yes":
+            return planner_summary
+        # 2) A terminal helper answer (PASS/FAIL verdict or terminate marker)
+        # preserves the real test outcome even when the planner's latest
+        # message is a non-terminal decision.
+        helper_result = parse_response(self.last_helper_response)
+        if helper_result.get("terminate") == "yes":
+            return json.dumps(helper_result)
+        # 3) Non-terminal planner response.
         if planner_summary:
             return planner_summary
+        # 4) Generic completion message, preferring any helper text over a
+        # placeholder when the graph terminated without planner JSON.
         if self.terminate == "yes":
+            helper_response = self.last_helper_response.strip()
+            if helper_response:
+                return json.dumps({"terminate": "yes", "final_response": helper_response})
             return json.dumps(
                 {
                     "terminate": "yes",

@@ -1,6 +1,5 @@
 import json
 import os
-import traceback
 from typing import List, Tuple
 
 import yaml
@@ -99,8 +98,7 @@ def read_and_process_file(file_path: str, sanitized_filename: str) -> str:
                     new_read += f"\nfollowing is test_data from {sanitized_filename}\n" + minified_yaml + "\n"
                 except Exception as e:
 
-                    traceback.print_exc()
-                    logger.warning("Failed to parse YAML: %s", e)
+                    logger.warning("Failed to parse YAML: %s", e, exc_info=True)
                     new_read += f"\nfollowing is test_data from {sanitized_filename}\n" + raw_data + "\n"
             elif file_path.endswith(".json"):
                 # Load JSON, then dump with minimal separators
@@ -110,8 +108,7 @@ def read_and_process_file(file_path: str, sanitized_filename: str) -> str:
                     new_read += f"\nfollowing is test_data from {sanitized_filename}\n" + minified_json + "\n"
                 except Exception as e:
 
-                    traceback.print_exc()
-                    logger.warning("Failed to parse JSON: %s", e)
+                    logger.warning("Failed to parse JSON: %s", e, exc_info=True)
                     new_read += f"\nfollowing is test_data from {sanitized_filename}\n" + raw_data + "\n"
             else:
                 # General file types: remove redundant empty lines

@@ -2,13 +2,21 @@ import json
 import os
 from typing import Any, Dict, Optional, cast
 
-from testzeus_hercules.config import get_global_conf
+from testzeus_hercules.config import (
+    bump_config_version,
+    get_config_version,
+    get_global_conf,
+)
 from testzeus_hercules.core.agent_config_types import AgentConfig
 from testzeus_hercules.core.agents_llm_config import AgentsLLMConfig
 from testzeus_hercules.core.config_env_loader import ConfigEnvLoader
 from testzeus_hercules.core.config_file_loader import ConfigFileLoader
 from testzeus_hercules.core.config_portkey_loader import PortkeyConfigLoader
 from testzeus_hercules.utils.logger import logger
+
+# Config keys the manager depends on. They are fingerprinted (together with the
+# global config version) so in-place edits via get_config() are detected too.
+_WATCHED_CONFIG_KEYS = ("AGENTS_LLM_CONFIG_FILE", "AGENTS_LLM_CONFIG_FILE_REF_KEY")
 
 
 class AgentsLLMConfigManager:
@@ -20,7 +28,7 @@ class AgentsLLMConfigManager:
 
     _instance: Optional["AgentsLLMConfigManager"] = None
     _config: Optional[AgentsLLMConfig] = None
-    _last_global_config_id: Optional[int] = None
+    _last_global_config_fingerprint: Optional[tuple] = None
     _portkey_loader: Optional[PortkeyConfigLoader] = None
 
     def __init__(self) -> None:
@@ -29,6 +37,22 @@ class AgentsLLMConfigManager:
             raise RuntimeError("Use get_instance() instead")
         AgentsLLMConfigManager._instance = self
         self._portkey_loader = PortkeyConfigLoader()
+
+    @classmethod
+    def _global_config_fingerprint(cls) -> tuple:
+        """Build a change-detection fingerprint of the global config.
+
+        Uses the monotonic ``config_version`` counter instead of
+        ``id(config_dict)`` — object identity misses in-place edits and can
+        alias a recycled (freed) dict. The watched config keys are included so
+        raw in-place mutations (``conf.get_config()[key] = value``) are caught
+        as well, since they do not bump the version counter.
+        """
+        global_config = get_global_conf().get_config()
+        return (
+            get_config_version(),
+            *(global_config.get(key) for key in _WATCHED_CONFIG_KEYS),
+        )
 
     @classmethod
     def get_instance(cls) -> "AgentsLLMConfigManager":
@@ -42,11 +66,10 @@ class AgentsLLMConfigManager:
             cls._instance = cls()
 
         # Check if global config has changed
-        global_config = get_global_conf()
-        config_id = id(global_config.get_config())
-        if cls._instance._last_global_config_id != config_id:
+        fingerprint = cls._global_config_fingerprint()
+        if cls._instance._last_global_config_fingerprint != fingerprint:
             logger.info("Global config changed, reinitializing AgentsLLMConfigManager")
-            cls._instance._last_global_config_id = config_id
+            cls._instance._last_global_config_fingerprint = fingerprint
             cls._instance.initialize()
 
         return cls._instance
@@ -128,7 +151,12 @@ class AgentsLLMConfigManager:
         config_file = global_config.get("AGENTS_LLM_CONFIG_FILE")
         config_ref_key = global_config.get("AGENTS_LLM_CONFIG_FILE_REF_KEY")
 
-        if config_file and os.path.exists(config_file):
+        if config_file:
+            # An explicitly configured file must be usable — failing silently
+            # over to env/default config hides misconfiguration (or, worse,
+            # causes real API spend against an unintended default model).
+            if not os.path.exists(config_file):
+                raise ValueError(f"AGENTS_LLM_CONFIG_FILE is set to '{config_file}' but the file does not exist. " "Create the file or unset AGENTS_LLM_CONFIG_FILE to use environment configuration.")
             try:
                 logger.info(f"Loading agent config from file: {config_file}")
                 if config_ref_key:
@@ -155,8 +183,7 @@ class AgentsLLMConfigManager:
                 logger.info(f"Successfully loaded configuration from file with provider: {active_provider}")
                 return
             except Exception as e:
-                logger.error(f"Failed to load config from file: {e}")
-                logger.info("Falling back to environment variables")
+                raise ValueError(f"Failed to load agents LLM config file '{config_file}': {e}") from e
 
         # Fall back to environment variables (Env priority)
         logger.info("Loading config from environment variables")
@@ -309,7 +336,21 @@ class AgentsLLMConfigManager:
 
         config = self._config.get_agent_config(agent_name)
         if not config:
-            raise ValueError(f"No configuration found for agent: {agent_name}")
+            # Partial provider stanzas (e.g. only planner_agent defined in the
+            # config file) would otherwise raise ValueError at first use
+            # mid-run. Fall back to the environment-derived config for the
+            # missing role instead.
+            active_provider = self._config.get_active_provider()
+            logger.warning(
+                "No configuration for agent '%s' under provider '%s'; falling back to environment-derived config",
+                agent_name,
+                active_provider,
+            )
+            env_config = ConfigEnvLoader.load_from_env().get(agent_name)
+            if env_config:
+                config = self._config.normalize_agent_config(env_config)
+            if not config:
+                raise ValueError(f"No configuration found for agent: {agent_name}")
 
         # Check if Portkey is enabled
         global_config = get_global_conf()
@@ -374,4 +415,4 @@ class AgentsLLMConfigManager:
         """Reset the configuration state."""
         logger.info("Resetting config state")
         self._config = None
-        self._last_global_config_id = None
+        self._last_global_config_fingerprint = None
