@@ -1,0 +1,110 @@
+# =============================================================================
+# EXAMPLE workflow — copy this file into YOUR repository as
+# .github/workflows/hercules.yml (do not expect it to run in this repo).
+#
+# It runs TestZeus Hercules agentic tests on pull requests using the
+# composite action shipped in this repository (.github/actions/run-tests).
+#
+# Prerequisites (in the repo where you copy this):
+#   1. agents_llm_config.json at the repo root (see agents_llm_config-example.json.txt)
+#      containing your provider config; the activated provider is selected with
+#      `llm-config-ref-key`.
+#   2. A repository secret holding your LLM API key (LLM_API_KEY below), passed
+#      through to Hercules via the `env-vars` input.
+#   3. The action's `runner: docker` mode pulls ghcr.io/testzeus/hercules:latest;
+#      either make sure that image exists for you, or use `runner: uv`
+#      (installs from source; slower but no image needed).
+# =============================================================================
+
+name: Hercules Tests
+
+on:
+  pull_request:
+    # Limit to meaningful changes; adjust to your layout.
+    paths:
+      - "frontend/**"
+      - "api/**"
+      - "tests/**"
+      - ".github/workflows/hercules.yml"
+
+# Prevent parallel PR updates from racing for the same PR comment.
+concurrency:
+  group: hercules-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  # Required for the pr-comment feature (create/update PR comments).
+  pull-requests: write
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Blocking UI tests: a failing test fails the PR check.
+  # ---------------------------------------------------------------------------
+  frontend-tests:
+    name: Hercules frontend tests (blocking)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Hercules tests
+        id: hercules
+        uses: ./.github/actions/run-tests   # local composite action (this repo)
+        # For a fork/consumer repo with the action published, use instead:
+        # uses: testzeus/hercules/.github/actions/run-tests@main
+        with:
+          # Single feature file (copied to opt/input/test.feature) ...
+          feature: tests/checkout_frontend/input/checkout_frontend.feature
+          # ... or parallel scenarios from that feature:
+          # max-parallel: '3'
+          # ... or the whole tests/ directory:
+          # bulk: 'true'
+          # ... or a named suite from .hercules/suites.yaml:
+          # suite: regression
+          # suite-config: .hercules/suites.yaml
+          runner: docker # or: uv (builds/installs from source, python-version below)
+          # image: ghcr.io/testzeus/hercules:latest
+          # python-version: '3.12'
+          llm-config: agents_llm_config.json
+          llm-config-ref-key: openai_gpt
+          blocking: 'true' # default; failures fail this job
+          # Multiline KEY=VALUE environment passthrough (secrets included).
+          env-vars: |
+            LLM_MODEL_API_KEY=${{ secrets.LLM_API_KEY }}
+          artifact-name: hercules-frontend-results
+          # pr-comment: 'true' # only one job should own the comment
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # The action's outputs (available even when the run failed):
+      - name: Show result paths
+        if: always()
+        run: |
+          echo "outcome:     ${{ steps.hercules.outputs.outcome }}"
+          echo "junit-path:  ${{ steps.hercules.outputs.junit-path }}"
+          echo "report-path: ${{ steps.hercules.outputs.report-path }}"
+
+  # ---------------------------------------------------------------------------
+  # Non-blocking API tests: failures are reported but do NOT fail the PR,
+  # and this job posts/updates the PR results comment.
+  # ---------------------------------------------------------------------------
+  api-tests:
+    name: Hercules API tests (advisory)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Hercules tests
+        uses: ./.github/actions/run-tests
+        with:
+          feature: tests/api_smoke/input/api_smoke.feature
+          runner: docker
+          llm-config: agents_llm_config.json
+          llm-config-ref-key: openai_gpt
+          # blocking: false -> runs Hercules with EXIT_CODE_COMPAT=1 so test
+          # failures do NOT fail the job (legacy exit-code behaviour).
+          blocking: 'false'
+          env-vars: |
+            LLM_MODEL_API_KEY=${{ secrets.LLM_API_KEY }}
+          artifact-name: hercules-api-results
+          pr-comment: 'true'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
