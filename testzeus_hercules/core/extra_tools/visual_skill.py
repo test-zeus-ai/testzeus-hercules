@@ -2,7 +2,6 @@ import asyncio
 import json
 import os
 import time
-import traceback
 from typing import Annotated, Dict, Union
 
 from langchain_core.messages import AIMessage
@@ -128,7 +127,6 @@ async def compare_visual_screenshot(
 
     except Exception as e:
 
-        traceback.print_exc()
         logger.exception(f"Error in compare_visual: {e}")
         return {"error": str(e)}
 
@@ -145,8 +143,7 @@ async def _write_comparison_to_file(comparison_data: Dict, filepath: str) -> Non
         logger.info(f"Comparison data saved to: {filepath}")
     except Exception as e:
 
-        traceback.print_exc()
-        logger.error(f"Failed to write comparison data to file: {e}")
+        logger.error(f"Failed to write comparison data to file: {e}", exc_info=True)
 
 
 @tool(
@@ -251,6 +248,5 @@ async def validate_visual_feature(
 
     except Exception as e:
 
-        traceback.print_exc()
         logger.exception(f"Error in validate_visual_feature: {e}")
         return {"error": str(e)}

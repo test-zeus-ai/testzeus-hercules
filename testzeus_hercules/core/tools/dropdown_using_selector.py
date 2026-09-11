@@ -372,33 +372,54 @@ async def bulk_select_option(
 
     logger.info("Executing bulk select option command")
 
+    failed_entries = 0
     for entry in entries:
-        selector, _ = _normalize_select_option_entry(entry)
-        result = await select_option(entry)
+        try:
+            selector, _ = _normalize_select_option_entry(entry)
+            result = await select_option(entry)
 
-        if isinstance(result, str):
-            if "new elements have appeared in view" in result and "success" in result.lower():
-                success_part = result.split(".\nAs a consequence")[0]
+            if isinstance(result, str):
+                if "new elements have appeared in view" in result and "success" in result.lower():
+                    success_part = result.split(".\nAs a consequence")[0]
 
-                results.append(
-                    {
-                        "selector": selector,
-                        "result": success_part,
-                    }
-                )
+                    results.append(
+                        {
+                            "selector": selector,
+                            "result": success_part,
+                        }
+                    )
+                else:
+                    results.append(
+                        {
+                            "selector": selector,
+                            "result": result,
+                        }
+                    )
             else:
                 results.append(
                     {
                         "selector": selector,
-                        "result": result,
+                        "result": str(result),
                     }
                 )
-        else:
+        except Exception as e:
+            # One malformed entry must not abort the whole bulk operation:
+            # record the failure and keep applying the remaining entries.
+            failed_entries += 1
+            logger.warning(f"bulk_select_option: skipping entry {entry!r}: {e}")
             results.append(
                 {
-                    "selector": selector,
-                    "result": str(result),
+                    "option": entry,
+                    "error": str(e),
                 }
             )
+
+    if failed_entries:
+        applied = len(entries) - failed_entries
+        results.append(
+            {
+                "summary": f"{applied} of {len(entries)} entries applied successfully; {failed_entries} failed.",
+            }
+        )
 
     return results
