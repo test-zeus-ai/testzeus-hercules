@@ -80,7 +80,11 @@ def create_chat_model(
     """Create a LangChain chat model from Hercules agent configuration."""
     llm_config_params = llm_config_params or {}
     model_name = model_config.get("model") or model_config.get("model_name") or DEFAULT_MODEL
-    adapted = adapt_llm_params_for_model(model_name, dict(llm_config_params))
+    adapted = adapt_llm_params_for_model(
+        model_name,
+        dict(llm_config_params),
+        transport="openai_compatible",
+    )
 
     api_key = model_config.get("api_key") or model_config.get("model_api_key") or os.getenv("MODEL_API_KEY")
     if not api_key:
@@ -165,7 +169,7 @@ def create_multimodal_agent(
         model_cfg: Dict[str, Any] = agent_cfg["model_config_params"]
         llm_params_raw: Dict[str, Any] = agent_cfg["llm_config_params"]
         model_name: str = model_cfg.get("model") or model_cfg.get("model_name") or DEFAULT_MODEL
-        adapted_llm_params = adapt_llm_params_for_model(model_name, llm_params_raw)
+        adapted_llm_params = adapt_llm_params_for_model(model_name, llm_params_raw, transport="openai_compatible")
         langchain_cfg = convert_model_config_to_langchain_format(model_cfg)
         llm = create_chat_model(langchain_cfg, adapted_llm_params)
 

@@ -58,5 +58,9 @@ def get_litellm_chat_model(agent_name: str = "planner_agent") -> BaseChatModel:
         )
     model_cfg = convert_model_config_to_langchain_format(agent_cfg["model_config_params"])
     model_name = model_cfg.get("model") or agent_cfg["model_config_params"].get("model_name", "")
-    llm_params = adapt_llm_params_for_model(model_name, agent_cfg["llm_config_params"])
+    llm_params = adapt_llm_params_for_model(
+        model_name,
+        agent_cfg["llm_config_params"],
+        transport="openai_compatible",
+    )
     return create_chat_model(model_cfg, llm_params)
