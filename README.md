@@ -1251,7 +1251,7 @@ Now that TestZeus Hercules is installed and ready to go, dive into [our document
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=test-zeus-ai/testzeus-hercules&type=Date)](https://star-history.com/#test-zeus-ai/testzeus-hercules&Date)
+[![Star History Chart](https://star-history.dera.page/svg?repos=test-zeus-ai/testzeus-hercules&type=Date)](https://star-history.dera.page/#test-zeus-ai/testzeus-hercules&Date)
 
 ## ✅ Citation
 If you use Hercules in your research or project, please cite:
