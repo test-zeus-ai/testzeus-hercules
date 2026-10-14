@@ -120,10 +120,13 @@ async def execute_select_cte_query_sql(
 
         async with engine.connect() as connection:  # type: AsyncConnection
             if schema_name:
+                # Quote as an identifier via the dialect's preparer instead of interpolating
+                # the raw string into SQL, so schema_name can't inject additional SQL.
+                quoted_schema_name = engine.dialect.identifier_preparer.quote(schema_name)
                 if engine.dialect.name == "postgresql":
-                    await connection.execute(text(f"SET search_path TO {schema_name}"))
+                    await connection.execute(text(f"SET search_path TO {quoted_schema_name}"))
                 elif engine.dialect.name in ["mysql", "mariadb"]:
-                    await connection.execute(text(f"USE {schema_name}"))
+                    await connection.execute(text(f"USE {quoted_schema_name}"))
                 # For SQLite, schema_name setting is not applicable
 
             safe_params = params if isinstance(params, dict) else {}
