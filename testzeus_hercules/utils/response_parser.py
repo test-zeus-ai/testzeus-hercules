@@ -4,6 +4,47 @@ from typing import Any
 
 from testzeus_hercules.utils.logger import logger
 
+TERMINATE_TASK_MARKER = "##TERMINATE TASK##"
+_TERMINAL_STATUS_PATTERN = re.compile(r"^\s*(PASS|FAIL)\b", re.IGNORECASE)
+_TERMINAL_FAILURE_MARKERS = (
+    "[error]",
+    "[tool error]",
+    "incomplete",
+    "uncertain",
+    "max nav rounds",
+)
+
+
+def _parse_terminal_text(message: str) -> dict[str, Any]:
+    """Normalize explicit plain-text terminal responses."""
+    stripped = message.strip()
+    status_match = _TERMINAL_STATUS_PATTERN.match(stripped)
+    has_terminate_marker = TERMINATE_TASK_MARKER in stripped
+    if status_match is None and not has_terminate_marker:
+        return {}
+
+    final_response = stripped.replace(TERMINATE_TASK_MARKER, "").strip() or stripped
+    terminal_response: dict[str, Any] = {
+        "terminate": "yes",
+        "final_response": final_response,
+    }
+
+    status = status_match.group(1).upper() if status_match else ""
+    has_failure_marker = any(
+        marker in final_response.lower() for marker in _TERMINAL_FAILURE_MARKERS
+    )
+    if status or has_failure_marker:
+        is_passed = status == "PASS" and not has_failure_marker
+        terminal_response.update(
+            {
+                "is_assert": True,
+                "is_passed": is_passed,
+                "assert_summary": final_response,
+            }
+        )
+
+    return terminal_response
+
 
 def parse_response(message: str) -> dict[str, Any]:
     """
@@ -56,7 +97,12 @@ def parse_response(message: str) -> dict[str, Any]:
                 break
         else:
             message = json_candidates[-1]  # take the last complete JSON object
-    elif not any(key in message for key in ("plan", "next_step", "terminate", "final_response")):
+    elif not any(
+        key in message for key in ("plan", "next_step", "terminate", "final_response")
+    ):
+        terminal_response = _parse_terminal_text(message)
+        if terminal_response:
+            return terminal_response
         logger.debug("Skipping non-JSON response parsing for message: %s", message[:200])
         return {}
 
