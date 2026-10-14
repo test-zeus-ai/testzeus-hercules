@@ -84,8 +84,14 @@ For GPT-5 response limits, prefer `max_completion_tokens` inside
 The framework automatically converts parameters based on the model family:
 
 - **GPT-5 models**: `max_tokens` → `max_completion_tokens`
-- **Claude models**: `max_tokens` → `max_tokens_to_sample`
+- **Claude models**: `max_tokens_to_sample` is accepted as a legacy input and
+  normalized to `max_tokens` for both Anthropic Messages API and
+  OpenAI-compatible transports.
 - **Other models**: `max_completion_tokens` → `max_tokens` (if needed)
+
+For Python integrations, `adapt_llm_params_for_model` accepts an
+`unsupported_params` iterable to omit provider-specific parameters. This option
+is currently programmatic and is not exposed in `agents_llm_config.json`.
 
 ### Example Conversions
 

@@ -1,5 +1,5 @@
 import re
-from typing import Any, Dict
+from typing import Any, Dict, Iterable
 
 from .logger import logger
 
@@ -12,16 +12,24 @@ def _is_gpt5_model(model_name: str) -> bool:
     return bool(re.match(r"^gpt-5", model_name))
 
 
-def adapt_llm_params_for_model(model_name: str, llm_config: Dict[str, Any]) -> Dict[str, Any]:
+def adapt_llm_params_for_model(
+    model_name: str,
+    llm_config: Dict[str, Any],
+    *,
+    transport: str = "native",
+    unsupported_params: Iterable[str] | None = None,
+) -> Dict[str, Any]:
     """
     Normalize token-limit params for different providers/families.
 
     For GPT-5 models, converts max_tokens to max_completion_tokens.
-    For Claude models, converts max_tokens to max_tokens_to_sample.
+    For Claude models, accepts legacy max_tokens_to_sample input and emits
+    max_tokens for both native Anthropic and OpenAI-compatible transports.
     For other models, ensures max_tokens is present.
     """
     params = dict(llm_config or {})
     params.pop("cache_seed", None)
+    params = {key: value for key, value in params.items() if value is not None}
 
     if _is_gpt5_model(model_name):
         # GPT-5 and newer models use max_completion_tokens
@@ -45,16 +53,17 @@ def adapt_llm_params_for_model(model_name: str, llm_config: Dict[str, Any]) -> D
             params["max_completion_tokens"] = 4096
 
     elif model_name.startswith(("claude", "anthropic")):
-        # Claude models use max_tokens_to_sample
-        if "max_tokens" in params and "max_tokens_to_sample" not in params:
-            params["max_tokens_to_sample"] = params.pop("max_tokens")
+        legacy_token_key = "max_tokens_to_sample" in params
+        if "max_tokens" not in params and legacy_token_key:
+            params["max_tokens"] = params["max_tokens_to_sample"]
+        params.pop("max_tokens_to_sample", None)
+        if legacy_token_key:
             logger.warning(
-                "Deprecated param 'max_tokens' supplied for %s; auto-translating to 'max_tokens_to_sample'.",
+                "Deprecated param 'max_tokens_to_sample' supplied for %s; translating to 'max_tokens'.",
                 model_name,
             )
-        # Set default if neither is present
-        if "max_tokens_to_sample" not in params:
-            params["max_tokens_to_sample"] = 4096
+        if "max_tokens" not in params:
+            params["max_tokens"] = 4096
 
     else:
         # Other models use max_tokens
@@ -77,6 +86,10 @@ def adapt_llm_params_for_model(model_name: str, llm_config: Dict[str, Any]) -> D
             if p in params:
                 logger.info("Removing o-series param '%s' for non-o-series model %s.", p, model_name)
                 params.pop(p)
+
+    omitted = set(unsupported_params or ())
+    for param in omitted:
+        params.pop(param, None)
 
     params["model"] = model_name
     return params
