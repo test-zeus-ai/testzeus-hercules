@@ -454,6 +454,15 @@ Cookies are added to the browser context after it's created, ensuring compatibil
 
 Hercules supports running tests on various remote browser platforms using the CDP (Chrome DevTools Protocol) endpoint URL. Here's how to configure different providers:
 
+### Browser Use
+
+1. Set the CDP URL directly:
+```bash
+export CDP_ENDPOINT_URL=wss://connect.browser-use.com?apiKey=your_api_key
+```
+
+Browser Use supports connect_over_cdp, so video recording will work on the test execution host.
+
 ### BrowserStack
 
 1. Set up your credentials:
@@ -507,7 +516,7 @@ AnchorBrowser supports connect_over_cdp, so video recording will work on the tes
 - When using CDP_ENDPOINT_URL, Hercules will connect to the remote browser instance instead of launching a local browser.
 - Video recording capabilities depend on the platform:
   - Platforms using Playwright's connect API (BrowserStack, LambdaTest) do not support video recording
-  - Platforms using connect_over_cdp (BrowserBase, AnchorBrowser) support video recording on the test execution host
+  - Platforms using connect_over_cdp (Browser Use, BrowserBase, AnchorBrowser) support video recording on the test execution host
 - Each platform may have different capabilities and configurations available through their respective helper scripts
 - Remote browser testing is particularly useful when running tests in Docker containers or CI/CD pipelines
 
