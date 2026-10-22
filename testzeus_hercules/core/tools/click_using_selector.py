@@ -11,6 +11,7 @@ from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.dom_helper import get_element_outer_html
 from testzeus_hercules.utils.dom_mutation_observer import subscribe, unsubscribe
+from testzeus_hercules.utils.env_flags import selector_recording_enabled
 from testzeus_hercules.utils.logger import logger
 
 page_data_store = {}
@@ -137,6 +138,28 @@ async def click(
     return result["detailed_message"]
 
 
+def _record_selector_failure(selector: str) -> None:
+    """Count a failed selector in the healing store and log any stored proposal; never raises."""
+    try:
+        from testzeus_hercules.healing.selector_store import get_default_store
+
+        store = get_default_store()
+        # A canonical name (role=/name=) is only available when the failing
+        # selector itself carries one; md ids are regenerated per run, so
+        # for them we can only mark the raw selector key as failing.
+        canonical_name = selector if "md=" not in selector else None
+        if canonical_name:
+            entry = store.lookup(canonical_name) or {}
+            proposal = entry.get("aria") or entry.get("css") or entry.get("xpath")
+            if proposal:
+                logger.warning(f"[HEAL] selector store proposal for {canonical_name}: {proposal} (not auto-applied)")
+            store.record_failure(canonical_name)
+        else:
+            store.record_failure(selector)
+    except Exception as e:
+        logger.debug(f"Selector-store failure hook skipped: {e}")
+
+
 async def do_click(page: Page, selector: str, wait_before_execution: float, type_of_click: str) -> dict[str, str]:
     logger.info(f'Executing ClickElement with "{selector}" as the selector. Wait time before execution: {wait_before_execution} seconds.')
 
@@ -165,25 +188,11 @@ async def do_click(page: Page, selector: str, wait_before_execution: float, type
             )
             # Best-effort healing hook (recording/logging only — never changes the
             # retry flow; the md-refresh mechanism remains the primary recovery).
-            try:
-                from testzeus_hercules.healing.selector_store import get_default_store
-
-                store = get_default_store()
-                # A canonical name (role=/name=) is only available when the failing
-                # selector itself carries one; md ids are regenerated per run, so
-                # for them we can only mark the raw selector key as failing.
-                canonical_name = selector if "md=" not in selector else None
-                if canonical_name:
-                    entry = store.lookup(canonical_name) or {}
-                    proposal = entry.get("aria") or entry.get("css") or entry.get("xpath")
-                    if proposal:
-                        logger.warning(f"[HEAL] selector store proposal for {canonical_name}: {proposal} (not auto-applied)")
-                    store.record_failure(canonical_name)
-                else:
-                    store.record_failure(selector)
-            except Exception as e:
-
-                logger.debug(f"Selector-store failure hook skipped: {e}")
+            # Like the recording side (browser_logger), it only touches the
+            # selector store (hit/failure counts, flushes under opt/) when
+            # ENABLE_SELECTOR_RECORDING is on.
+            if selector_recording_enabled():
+                _record_selector_failure(selector)
             raise ValueError(f'Element with selector: "{selector}" not found')
 
         logger.info(f'Element with selector: "{selector}" is attached. Scrolling it into view if needed.')

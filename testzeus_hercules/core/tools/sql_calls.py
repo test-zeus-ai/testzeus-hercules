@@ -62,23 +62,58 @@ def _top_level_select_index(query: str) -> int:
     return -1
 
 
+def _safety_statements(dialect_name: str) -> List[str]:
+    """Per-dialect read-only + statement-timeout statements, in execution order.
+
+    AsyncConnection autobegins a transaction on the first execute, so a
+    session default such as Postgres ``default_transaction_read_only`` only
+    applies to *later* transactions. Each dialect therefore also marks the
+    transaction the query actually runs in as read-only:
+
+    - PostgreSQL: ``SET TRANSACTION READ ONLY`` (current transaction; allowed
+      at any point in it) plus the session default.
+    - MySQL/MariaDB: ``SET SESSION TRANSACTION READ ONLY`` (session default)
+      and ``SET TRANSACTION READ ONLY`` (next transaction — the SET statements
+      here do not open one, so it covers the query).
+    - SQLite: ``PRAGMA query_only``.
+    """
+    if dialect_name == "postgresql":
+        return [
+            "SET TRANSACTION READ ONLY",
+            "SET default_transaction_read_only = on",
+            f"SET statement_timeout = '{MAX_STATEMENT_SECONDS}s'",
+        ]
+    if dialect_name in ("mysql", "mariadb"):
+        return [
+            "SET SESSION TRANSACTION READ ONLY",
+            "SET TRANSACTION READ ONLY",
+            f"SET SESSION max_execution_time = {MAX_STATEMENT_SECONDS * 1000}",
+        ]
+    if dialect_name == "sqlite":
+        return ["PRAGMA query_only = ON", f"PRAGMA busy_timeout = {MAX_STATEMENT_SECONDS * 1000}"]
+    return []
+
+
 async def _apply_safety_settings(connection: AsyncConnection, dialect_name: str) -> None:
     """Best-effort per-dialect session hardening; failures never block the query.
 
     Enforces read-only execution and a statement timeout where the dialect
-    supports it, as defense in depth behind the SELECT-only query guard.
+    supports it, as defense in depth behind the SELECT-only query guard. Each
+    statement is attempted on its own; if one fails the connection's
+    transaction is rolled back (a failed statement aborts a Postgres
+    transaction) and the remaining settings are skipped, so the query still
+    runs.
     """
-    try:
-        if dialect_name == "postgresql":
-            await connection.execute(text("SET default_transaction_read_only = on"))
-            await connection.execute(text(f"SET statement_timeout = '{MAX_STATEMENT_SECONDS}s'"))
-        elif dialect_name in ("mysql", "mariadb"):
-            await connection.execute(text(f"SET SESSION max_execution_time = {MAX_STATEMENT_SECONDS * 1000}"))
-        elif dialect_name == "sqlite":
-            await connection.execute(text("PRAGMA query_only = ON"))
-            await connection.execute(text(f"PRAGMA busy_timeout = {MAX_STATEMENT_SECONDS * 1000}"))
-    except Exception as e:
-        logger.debug(f"Could not apply read-only/timeout session settings for {dialect_name}: {e}")
+    for statement in _safety_statements(dialect_name):
+        try:
+            await connection.execute(text(statement))
+        except Exception as e:
+            logger.debug(f"Could not apply read-only/timeout session setting {statement!r} for {dialect_name}: {e}")
+            try:
+                await connection.rollback()
+            except Exception:
+                pass
+            return
 
 
 @tool(
@@ -227,9 +262,11 @@ async def execute_select_cte_query_sql(
 
             safe_params = params if isinstance(params, dict) else {}
             result = await connection.execute(text(query), safe_params)
+            # AsyncConnection.execute returns an already-buffered (sync)
+            # CursorResult, so fetchmany/close are plain calls, not awaitables.
             # Materialize at most MAX_ROWS rows; drop the rest and flag it.
-            raw_rows = await result.fetchmany(MAX_ROWS + 1)
-            await result.close()
+            raw_rows = result.fetchmany(MAX_ROWS + 1)
+            result.close()
             truncated = len(raw_rows) > MAX_ROWS
             rows = [dict(row._mapping) for row in raw_rows[:MAX_ROWS]]
             if truncated:

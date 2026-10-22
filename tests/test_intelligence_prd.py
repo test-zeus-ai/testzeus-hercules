@@ -647,3 +647,25 @@ def test_build_normalized_prd_failed_chunk_is_counted_and_order_survives(tmp_pat
 
     assert prd.source_metadata["failed_chunks"] == 1
     assert [requirement.title for requirement in prd.requirements] == [f"Chunk {index} Requirement" for index in (1, 2, 4, 5, 6)]
+
+
+def test_parse_json_array_repair_keeps_apostrophes_in_double_quoted_strings() -> None:
+    # Only a trailing comma is wrong; the single-quote rewrite must not run and
+    # corrupt the apostrophes inside valid double-quoted strings.
+    content = '[{"title": "User\'s cart", "description": "it\'s the user\'s view"},]'
+    parsed = parse_json_array(content)
+    assert parsed == [{"title": "User's cart", "description": "it's the user's view"}]
+
+
+def test_parse_json_array_single_quote_repair_still_works() -> None:
+    assert parse_json_array("[{'title': 'Login'},]") == [{"title": "Login"}]
+
+
+def test_extract_text_url_metadata_is_redacted(monkeypatch) -> None:
+    monkeypatch.setattr(prd_parser, "fetch_text", lambda url, **kwargs: FetchResult(url=url, status_code=200, text="<p>hi</p>"))
+    metadata: dict = {}
+    extract_text("https://bob:s3cret@wiki.example.com/prd?token=abc123&page=2", metadata)
+    for key in ("url", "source"):
+        assert "s3cret" not in metadata[key] and "abc123" not in metadata[key]
+        assert "wiki.example.com/prd" in metadata[key]
+        assert "page=2" in metadata[key]

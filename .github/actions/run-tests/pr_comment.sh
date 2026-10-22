@@ -187,10 +187,11 @@ if len(cases) > max_rows:
     lines.append(f"| ... and {len(cases) - max_rows} more cases (see artifacts) | |" + (" | |" if include_details else " |"))
 
 if bad > 0:
-    lines += [
-        "",
-        "Failure details (messages, screenshots, traces, bundles) are in the run artifacts; they are not posted here to avoid leaking sensitive data.",
-    ]
+    if include_details:
+        note = "Failure messages above are redacted and truncated; full details (screenshots, traces, bundles) are in the run artifacts."
+    else:
+        note = "Failure details (messages, screenshots, traces, bundles) are in the run artifacts; they are not posted here to avoid leaking sensitive data."
+    lines += ["", note]
 if run_url:
     lines += [
         "",

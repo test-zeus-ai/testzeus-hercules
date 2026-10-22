@@ -525,8 +525,11 @@ python -m testzeus_hercules.orchestrator.run_manager \
 
 Options: `--max-parallel` (default 4), `--out-dir` (merged JUnit directory,
 default `<workroot>/merged`), and `--timeout` (per-scenario seconds, default
-1800). The exit code follows the same CI gating as `testzeus-hercules`
-(respect `EXIT_CODE_COMPAT`).
+1800). Each scenario subprocess runs with `STRICT_EXIT_CODE=true` (an
+inherited `EXIT_CODE_COMPAT` is dropped from its env) and only counts as passed
+when it exits 0 *and* its JUnit XML reports no failures/errors. The run manager
+itself exits 1 when any scenario failed or errored (`EXIT_CODE_COMPAT=1` forces
+0), and 2 when the feature file contains no scenarios.
 
 ### Named Suites
 
@@ -544,7 +547,9 @@ variables for every scenario subprocess), `shared_state` (exports
 `HERCULES_SUITE_STATE_FILE=<workroot>/suite_state.json` so features can chain
 suite-level state), and `max_parallel` (scenario subprocesses; default 1 runs
 features sequentially). `--max-parallel` on the CLI overrides the suite
-value.
+value. `hercules-suite` exits 1 when any scenario failed or errored
+(`EXIT_CODE_COMPAT=1` forces 0) and 2 with a one-line error for configuration
+problems (missing or invalid suites file, unknown suite, dependency cycle).
 
 `env` entries may override the reserved workspace-injected variables
 (`HERCULES_HISTORY_DB`, `PROJECT_SOURCE_ROOT`, `INPUT_GHERKIN_FILE_PATH`,
@@ -584,15 +589,17 @@ Parallel and suite runs manage their scratch space automatically:
   `HERCULES_KEEP_WORKSPACES=1` to keep everything (including the
   compiled-plan tempdirs of plan-only suites) for debugging.
 - **Run retention:** before every monitoring cycle, `hercules-monitor` sweeps
-  `.hercules/suite_runs/` trees older than `HERCULES_RUN_RETENTION_HOURS`
-  hours (default `72`).
-- Run history lives in one shared SQLite DB (`opt/hercules_history.db`,
-  override with `HERCULES_HISTORY_DB`), so workspace cleanup never deletes
-  recorded runs.
+  `.hercules/suite_runs/` trees and `.hercules/parallel_*` run-manager
+  workroots older than `HERCULES_RUN_RETENTION_HOURS` hours (default `72`);
+  the run manager sweeps old `.hercules/parallel_*` workroots at the start of
+  every run too.
+- Run history (opt-in, `ENABLE_RUN_HISTORY=true`) lives in one shared SQLite
+  DB (`opt/hercules_history.db`, override with `HERCULES_HISTORY_DB`), so
+  workspace cleanup never deletes recorded runs.
 
 ## Run History Dashboard
 
-Every run is recorded in a SQLite database (default
+With `ENABLE_RUN_HISTORY=true`, every run is recorded in a SQLite database (default
 `opt/hercules_history.db`, override with `HERCULES_HISTORY_DB`): runs, cases,
 steps, artifact paths, and healing events (failure classifications, selector-store
 hits, heal proposals). Healing events are **observability only**: Hercules records
@@ -601,7 +608,7 @@ no auto-healing). A local web UI reads from it:
 
 ```bash
 hercules-dashboard                      # serves http://127.0.0.1:8001 (loopback only)
-hercules-dashboard --port 8001 --db opt/hercules_history.db --project-root .
+hercules-dashboard --port 8001 --db opt/hercules_history.db --project-root opt
 ```
 
 The dashboard serves run history, artifacts and failure evidence, so it binds
@@ -625,8 +632,11 @@ names with `DASHBOARD_ALLOWED_HOSTS=dash.example.com`.
 - `/trend` — pass-rate history chart (SVG) and flakiest cases.
 - `/live` — polling page that picks up new runs as they finish.
 
-Artifact URLs are restricted to files under `--project-root`, so keep it set
-to the directory that contains your `opt/` outputs.
+`--project-root` defaults to the configured `PROJECT_SOURCE_ROOT` (`opt`). It
+must be the directory that *contains* `output/` (i.e. `opt`, not the repository
+root): the import button scans `<project-root>/output/*/`, and artifact URLs are
+restricted to files under it, so pointing it at `.` both breaks the import and
+widens what `/artifact` may serve.
 
 ## Viewing Results
 
@@ -635,7 +645,7 @@ After test execution, results can be found in several locations:
 1. **Test Reports**
    - HTML Report: `opt/output/run_<timestamp>/test.feature_result.html`
    - XML Report: `opt/output/run_<timestamp>/test.feature_result.xml`
-   - Markdown Report: `opt/output/run_<timestamp>/Hercules_Test_Report.md`
+   - Markdown Report: `opt/output/run_<timestamp>/Hercules_Test_Report.md` (opt-in, `ENABLE_RUN_REPORTING=true`)
 
 2. **Execution Logs**
    - Agent Thoughts: `opt/log_files/<scenario_name>/run_<timestamp>/agent_inner_thoughts.json`
@@ -645,25 +655,33 @@ After test execution, results can be found in several locations:
    - Videos: `opt/proofs/<scenario_name>/run_<timestamp>/videos/`
    - Network Logs: `opt/proofs/<scenario_name>/run_<timestamp>/network_logs.json`
 
-4. **Failure Bundles** (per failed scenario)
+4. **Failure Bundles** (per failed scenario; opt-in, `ENABLE_FAILURE_BUNDLES=true`)
    - `opt/output/run_<timestamp>/bundles/<sanitized-case-name>/bundle.md` —
-     failure summary plus an auto-generated `## Classification` section. The
+     failure summary plus a `## Classification` section (filled in when
+     `ENABLE_FAILURE_CLASSIFICATION=true`). The
      case name is sanitized for the filesystem (spaces and similar characters
      become `_`); when two failing cases sanitize to the same directory name,
      a short hash suffix is appended to keep them apart.
    - Sibling `videos/`, `screenshots/`, and network log files referenced by
      the bundle
 
-5. **Run History**
+5. **Run History** (opt-in, `ENABLE_RUN_HISTORY=true`)
    - SQLite database: `opt/hercules_history.db` (override with
      `HERCULES_HISTORY_DB`) — runs, cases, steps, artifact paths, and healing
      events; browsable via `hercules-dashboard`
 
 ## CI Exit Codes & Reports
 
-- **Non-zero exit on failure:** Hercules exits with status `1` when any scenario fails or errors, so CI pipelines gate out of the box. Set `EXIT_CODE_COMPAT=1` to restore the legacy always-exit-0 behavior.
-- **Failure bundles:** failed scenarios get a self-contained folder under `output/run_<timestamp>/bundles/` with a `bundle.md` summary plus video, screenshots, and logs for debugging.
-- **Failure classification:** every failed case is auto-classified into `product_bug`, `test_fragility`, `environment`, or `contract_violation` (or `unclassified` when no signal matches). The classification replaces the placeholder in the case's `bundle.md` and is recorded as a healing event in the run history DB.
+These are all **opt-in** (off by default, so plain runs behave like before);
+enable them with environment variables. The GitHub Action
+(`.github/actions/run-tests`) sets `STRICT_EXIT_CODE` via `blocking: true` and the
+reporting flags via `reports: true` (both defaults).
+
+- **Non-zero exit on failure (`STRICT_EXIT_CODE=true`):** Hercules exits with status `1` when any scenario fails or errors, so CI pipelines can gate on it. Without the flag the legacy exit code is kept; `EXIT_CODE_COMPAT=1` forces the legacy always-exit-0 behavior even when the flag is set. (`hercules-run-manager` and `hercules-suite` exit `1` on failures by default.)
+- **Markdown report (`ENABLE_RUN_REPORTING=true`):** writes `output/run_<timestamp>/Hercules_Test_Report.md`.
+- **Failure bundles (`ENABLE_FAILURE_BUNDLES=true`):** failed scenarios get a self-contained folder under `output/run_<timestamp>/bundles/` with a `bundle.md` summary plus video, screenshots, and logs for debugging.
+- **Run history (`ENABLE_RUN_HISTORY=true`):** records the run in the history DB (`opt/hercules_history.db` or `HERCULES_HISTORY_DB`).
+- **Failure classification (`ENABLE_FAILURE_CLASSIFICATION=true`):** every failed case is classified into `product_bug`, `test_fragility`, `environment`, or `contract_violation` (or `unclassified` when no signal matches). The classification replaces the placeholder in the case's `bundle.md` and is recorded as a healing event in the run history DB.
 - **`LOG_FILE_PATH`:** optional env var; when set, Hercules also streams its runtime logs to that file (rotating: 10 MB per file, 5 backups) for post-run inspection in CI.
 - **`LLM_MODEL_PRICING`:** optional pricing used to estimate run cost in reports when the provider does not report cost data. Set it per agent role as `model_pricing` in `agents_llm_config.json` (a float blended USD per 1M tokens, or `{"input": x, "output": y}`), or as an env var. Estimated values are marked `cost_source: estimated_from_model_pricing`; provider-reported cost always wins.
 
@@ -671,6 +689,8 @@ Typical CI usage:
 
 ```bash
 export LOG_FILE_PATH=$CI_JOB_DIR/hercules.log
+export STRICT_EXIT_CODE=true
+export ENABLE_RUN_REPORTING=true ENABLE_FAILURE_BUNDLES=true ENABLE_RUN_HISTORY=true ENABLE_FAILURE_CLASSIFICATION=true
 export HERCULES_HISTORY_DB=$CI_PROJECT_DIR/hercules_history.db
 testzeus-hercules --project-base=opt || test_status=$?
 # Non-zero exit means failed/errored scenarios; check

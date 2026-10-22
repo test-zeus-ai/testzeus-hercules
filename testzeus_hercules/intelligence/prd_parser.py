@@ -116,11 +116,20 @@ _TRAILING_COMMA_RE = re.compile(r",\s*([}\]])")
 _SINGLE_QUOTED_STRING_RE = re.compile(r"'([^'\\]*(?:\\.[^'\\]*)*)'")
 
 
-def _repair_json_segment(segment: str) -> str:
-    """Best-effort repair of common LLM JSON mistakes (trailing commas, single quotes)."""
-    repaired = _TRAILING_COMMA_RE.sub(r"\1", segment)
-    repaired = _SINGLE_QUOTED_STRING_RE.sub(lambda match: json.dumps(match.group(1)), repaired)
-    return repaired
+def _repair_json_segments(segment: str) -> list[str]:
+    """Best-effort repairs of common LLM JSON mistakes, least invasive first.
+
+    The trailing-comma fix alone is tried before the single-quote rewrite: the
+    quote rewrite also hits apostrophes inside valid double-quoted strings
+    (``"user's cart"``), so it must only be used when nothing else parses.
+    """
+    without_trailing_commas = _TRAILING_COMMA_RE.sub(r"\1", segment)
+    quotes_rewritten = _SINGLE_QUOTED_STRING_RE.sub(lambda match: json.dumps(match.group(1)), without_trailing_commas)
+    repairs: list[str] = []
+    for candidate in (without_trailing_commas, quotes_rewritten):
+        if candidate != segment and candidate not in repairs:
+            repairs.append(candidate)
+    return repairs
 
 
 def _parse_typed_segment(cleaned: str, open_char: str, close_char: str, expected: type, expected_name: str, context: str) -> Any:
@@ -145,15 +154,13 @@ def _parse_typed_segment(cleaned: str, open_char: str, close_char: str, expected
             return parsed
 
     for segment in segments:
-        repaired = _repair_json_segment(segment)
-        if repaired == segment:
-            continue
-        try:
-            parsed = json.loads(repaired)
-        except (json.JSONDecodeError, RecursionError):
-            continue
-        if isinstance(parsed, expected):
-            return parsed
+        for repaired in _repair_json_segments(segment):
+            try:
+                parsed = json.loads(repaired)
+            except (json.JSONDecodeError, RecursionError):
+                continue
+            if isinstance(parsed, expected):
+                return parsed
 
     if last_error is not None:
         raise ValueError(f"{context}: response contains an invalid JSON {expected_name}: {last_error}") from last_error
@@ -334,7 +341,8 @@ def _fetch_url_text(url: str, metadata: dict[str, Any]) -> str:
         raise ValueError(f"Refusing to fetch PRD source URL {redact_url(url)}: {exc}") from exc
     except httpx.HTTPError as exc:
         raise ValueError(f"Failed to fetch PRD source URL {redact_url(url)}: {exc}") from exc
-    metadata["url"] = url
+    # Never persist credentials: userinfo and token-like query values are redacted.
+    metadata["url"] = redact_url(url)
     metadata["http_status_code"] = result.status_code
     raw = result.text
     stripped = strip_html_tags(raw)
@@ -351,9 +359,10 @@ def extract_text(source: str, metadata: dict[str, Any] | None = None) -> str:
     a dict is supplied.
     """
     meta = metadata if metadata is not None else {}
-    meta["source"] = source
+    is_url = source.startswith(("http://", "https://"))
+    meta["source"] = redact_url(source) if is_url else source
 
-    if source.startswith(("http://", "https://")):
+    if is_url:
         meta["source_type"] = "url"
         meta["file_type"] = "html"
         return _fetch_url_text(source, meta)
@@ -639,8 +648,9 @@ async def build_normalized_prd(source: str, llm: Any = None, max_chars_per_chunk
 
     metadata: dict[str, Any] = {"version": NORMALIZED_PRD_VERSION}
     text = await asyncio.to_thread(extract_text, source, metadata)
+    display_source = metadata.get("source", source)  # redacted for URL sources
     if not text.strip():
-        raise ValueError(f"No text content could be extracted from PRD source: {source}")
+        raise ValueError(f"No text content could be extracted from PRD source: {display_source}")
 
     chunks = chunk_text(text, max_chars=max_chars_per_chunk)
     metadata["chunk_count"] = len(chunks)
@@ -653,7 +663,7 @@ async def build_normalized_prd(source: str, llm: Any = None, max_chars_per_chunk
 
     async def _extract_chunk(index: int, chunk: str) -> list[PRDRequirement]:
         async with semaphore:
-            logger.info("Extracting requirements from chunk %d/%d of %s", index + 1, len(chunks), source)
+            logger.info("Extracting requirements from chunk %d/%d of %s", index + 1, len(chunks), display_source)
             return await _extract_requirements_from_chunk(chunk, llm, index)
 
     # Extract concurrently (bounded by the semaphore) instead of one serialized
@@ -672,8 +682,8 @@ async def build_normalized_prd(source: str, llm: Any = None, max_chars_per_chunk
     requirements = _dedupe_requirements(extracted)
     if not requirements:
         if failed_chunks:
-            raise ValueError(f"No requirements could be extracted from PRD source: {source} " f"({failed_chunks} of {len(chunks)} chunk extractions failed; see source_metadata.failed_chunks)")
-        raise ValueError(f"No requirements could be extracted from PRD source: {source}")
+            raise ValueError(f"No requirements could be extracted from PRD source: {display_source} " f"({failed_chunks} of {len(chunks)} chunk extractions failed; see source_metadata.failed_chunks)")
+        raise ValueError(f"No requirements could be extracted from PRD source: {display_source}")
 
     for index, requirement in enumerate(requirements, start=1):
         requirement.id = f"REQ-{index:03d}"

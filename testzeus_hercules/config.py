@@ -6,7 +6,8 @@ import os
 import re
 import sys
 import threading
-from typing import Any, Dict, List, Literal, Optional, Union
+from contextlib import contextmanager
+from typing import Any, Dict, Iterator, List, Literal, Optional, Union
 
 import yaml
 from dotenv import load_dotenv
@@ -48,6 +49,27 @@ def _should_parse_cli_args() -> bool:
     except Exception:  # pragma: no cover - defensive; never block config init
         return False
     return argv0.lower() not in _SUBCOMMAND_CLI_ARGV0
+
+
+# Keys applied with ``explicit_config_overrides`` win over the CLI as well as the
+# environment while the config is rebuilt (guided / bulk per-run overrides).
+_explicit_override_keys: Optional[Dict[str, Any]] = None
+
+
+@contextmanager
+def explicit_config_overrides(keys: Dict[str, Any]) -> Iterator[None]:
+    """Make ``keys`` win over env and CLI flags for config builds inside this block.
+
+    Bulk mode re-builds the config per test folder; without this the re-parsed
+    ``--project-base`` flag would put every folder back on the CLI project root.
+    """
+    global _explicit_override_keys
+    previous = _explicit_override_keys
+    _explicit_override_keys = dict(keys)
+    try:
+        yield
+    finally:
+        _explicit_override_keys = previous
 
 
 # Monotonic version counter for the global configuration. It is bumped whenever
@@ -147,6 +169,8 @@ class BaseConfigManager:
         # 3) Parse command-line arguments/config after env so CLI wins.
         if not self._ignore_env and _should_parse_cli_args():
             self._parse_arguments()
+            if _explicit_override_keys:
+                self._config.update(_explicit_override_keys)
 
         # 4) Validate runtime LLM config, but keep tests/import-only config usable.
         if self._should_validate_llm_config():
@@ -1227,6 +1251,7 @@ class BaseConfigManager:
         """Get MCP connection timeout in seconds."""
         return int(self._config.get("MCP_TIMEOUT", "30"))
 
+    # No caller in this layer yet: the API verification layer consumes it.
     def get_api_request_timeout(self) -> float:
         """Get the HTTP request timeout in seconds used by the API tools.
 

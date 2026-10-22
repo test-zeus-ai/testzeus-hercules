@@ -184,7 +184,7 @@ def test_rerun_timeout_returns_error_dict(workspace, monkeypatch) -> None:
     result = run(mcp_server.hercules_rerun(session_id=state.session_id))
     assert "error" in result
     assert "timed out" in result["error"]
-    assert result["feature_file"] == str(last_feature)
+    assert result["feature_file"] == os.path.join("opt", "input", "last.feature")  # display path
 
 
 def test_check_config_ping_timeout_returns_check_dict(workspace, monkeypatch) -> None:

@@ -44,6 +44,7 @@ import json
 import os
 import re
 import shutil
+import sys
 import tempfile
 import time
 import uuid
@@ -643,7 +644,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out-dir", default=None, help="Directory for the merged junit XML (default: <workroot>/merged).")
     args = parser.parse_args(argv)
 
-    summary = asyncio.run(run_suite(args.suite_name, path=args.config, max_parallel_override=args.max_parallel, out_dir=args.out_dir))
+    try:
+        summary = asyncio.run(run_suite(args.suite_name, path=args.config, max_parallel_override=args.max_parallel, out_dir=args.out_dir))
+    except (FileNotFoundError, ValueError, yaml.YAMLError) as exc:
+        # Configuration problems (missing/invalid suites file, unknown suite,
+        # dependency cycle, empty suite): one clear line, not a traceback.
+        print(f"hercules-suite: error: {exc}", file=sys.stderr)
+        return 2
 
     for entry in summary.get("per_scenario", []):
         error_text = str(entry.get("error") or "")

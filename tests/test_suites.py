@@ -882,3 +882,27 @@ def test_suites_cli_prints_skipped_status_for_gated_features(workspace, monkeypa
     assert main(["s", "--config", path]) == 1
     out = capsys.readouterr().out
     assert "[FAILED] dep" in out and "[SKIPPED] own" in out and "skipped: dependency 'base' failed" in out
+
+
+def test_main_cli_missing_config_is_a_clean_error(tmp_path, capsys) -> None:
+    assert main(["smoke", "--config", str(tmp_path / "missing.yaml")]) == 2
+    err = capsys.readouterr().err
+    assert "hercules-suite: error: Suites config not found" in err
+    assert "Traceback" not in err
+
+
+def test_main_cli_unknown_suite_is_a_clean_error(tmp_path, capsys) -> None:
+    feature = tmp_path / "a.feature"
+    feature.write_text("Feature: a\n\n  Scenario: s\n    Given a step\n", encoding="utf-8")
+    config = tmp_path / "suites.yaml"
+    config.write_text(f"smoke:\n  tests: [{feature}]\n", encoding="utf-8")
+    assert main(["nope", "--config", str(config)]) == 2
+    err = capsys.readouterr().err
+    assert "Unknown suite 'nope'" in err and "Traceback" not in err
+
+
+def test_main_cli_invalid_yaml_is_a_clean_error(tmp_path, capsys) -> None:
+    config = tmp_path / "suites.yaml"
+    config.write_text("smoke: [unclosed\n", encoding="utf-8")
+    assert main(["smoke", "--config", str(config)]) == 2
+    assert "hercules-suite: error:" in capsys.readouterr().err

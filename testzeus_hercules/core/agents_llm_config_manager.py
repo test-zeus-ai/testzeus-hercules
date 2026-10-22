@@ -12,6 +12,7 @@ from testzeus_hercules.core.agents_llm_config import AgentsLLMConfig
 from testzeus_hercules.core.config_env_loader import ConfigEnvLoader
 from testzeus_hercules.core.config_file_loader import ConfigFileLoader
 from testzeus_hercules.core.config_portkey_loader import PortkeyConfigLoader
+from testzeus_hercules.utils.env_flags import strict_agents_llm_config_enabled
 from testzeus_hercules.utils.logger import logger
 
 # Config keys the manager depends on. They are fingerprinted (together with the
@@ -151,12 +152,17 @@ class AgentsLLMConfigManager:
         config_file = global_config.get("AGENTS_LLM_CONFIG_FILE")
         config_ref_key = global_config.get("AGENTS_LLM_CONFIG_FILE_REF_KEY")
 
-        if config_file:
-            # An explicitly configured file must be usable — failing silently
-            # over to env/default config hides misconfiguration (or, worse,
-            # causes real API spend against an unintended default model).
-            if not os.path.exists(config_file):
-                raise ValueError(f"AGENTS_LLM_CONFIG_FILE is set to '{config_file}' but the file does not exist. " "Create the file or unset AGENTS_LLM_CONFIG_FILE to use environment configuration.")
+        # Default (origin/main): a missing or unparseable config file is logged
+        # and the environment config is used. STRICT_AGENTS_LLM_CONFIG=true
+        # fails fast instead, so a misconfiguration cannot silently run against
+        # an unintended default model.
+        strict = strict_agents_llm_config_enabled()
+        if config_file and not os.path.exists(config_file):
+            message = f"AGENTS_LLM_CONFIG_FILE is set to '{config_file}' but the file does not exist."
+            if strict:
+                raise ValueError(f"{message} Create the file or unset AGENTS_LLM_CONFIG_FILE to use environment configuration.")
+            logger.warning(f"{message} Falling back to environment variables.")
+        if config_file and os.path.exists(config_file):
             try:
                 logger.info(f"Loading agent config from file: {config_file}")
                 if config_ref_key:
@@ -183,7 +189,11 @@ class AgentsLLMConfigManager:
                 logger.info(f"Successfully loaded configuration from file with provider: {active_provider}")
                 return
             except Exception as e:
-                raise ValueError(f"Failed to load agents LLM config file '{config_file}': {e}") from e
+                if strict:
+                    raise ValueError(f"Failed to load agents LLM config file '{config_file}': {e}") from e
+                logger.error(f"Failed to load config from file: {e}")
+                logger.info("Falling back to environment variables")
+                self._config = AgentsLLMConfig()
 
         # Fall back to environment variables (Env priority)
         logger.info("Loading config from environment variables")

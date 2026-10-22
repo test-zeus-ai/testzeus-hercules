@@ -20,10 +20,12 @@ class _FakeResult:
     def __init__(self, rows):
         self._rows = rows
 
-    async def fetchmany(self, size):
+    # Mirrors SQLAlchemy: AsyncConnection.execute returns a buffered, *sync*
+    # CursorResult, so fetchmany/close are plain methods (awaiting them fails).
+    def fetchmany(self, size):
         return self._rows[:size]
 
-    async def close(self):
+    def close(self):
         pass
 
 
@@ -38,6 +40,10 @@ class _FakeConnection:
         self.dialect = SimpleNamespace(name=dialect)
         self._rows = rows or []
         self._fail_on_enter = fail_on_enter
+        self.rollbacks = 0
+
+    async def rollback(self):
+        self.rollbacks += 1
 
     async def __aenter__(self):
         if self._fail_on_enter is not None:
@@ -138,6 +144,9 @@ def test_postgres_read_only_and_timeout_statements_sent(monkeypatch) -> None:
     monkeypatch.setattr(sql_calls, "create_async_engine", lambda cs, echo=False: engine)
     _run(execute_select_cte_query_sql(connection_string="postgresql+asyncpg://u:p@h/db", query="SELECT 1"))
     stmts = _statements(engine.connection)
+    # The query runs in the transaction AsyncConnection autobegins, so the
+    # current transaction must be marked read-only, not just the session default.
+    assert stmts[0] == "SET TRANSACTION READ ONLY"
     assert "SET default_transaction_read_only = on" in stmts
     assert f"SET statement_timeout = '{sql_calls.MAX_STATEMENT_SECONDS}s'" in stmts
     assert stmts.index("SET default_transaction_read_only = on") < stmts.index("SELECT 1")  # applied right after connect
@@ -152,17 +161,22 @@ def test_sqlite_query_only_pragma_attempted(monkeypatch) -> None:
     assert f"PRAGMA busy_timeout = {sql_calls.MAX_STATEMENT_SECONDS * 1000}" in stmts
 
 
-def test_mysql_statement_timeout_sent(monkeypatch) -> None:
-    engine = _FakeEngine(dialect="mysql")
+@pytest.mark.parametrize("dialect", ["mysql", "mariadb"])
+def test_mysql_read_only_and_statement_timeout_sent(monkeypatch, dialect) -> None:
+    engine = _FakeEngine(dialect=dialect)
     monkeypatch.setattr(sql_calls, "create_async_engine", lambda cs, echo=False: engine)
     _run(execute_select_cte_query_sql(connection_string="mysql+aiomysql://u:p@h/db", query="SELECT 1"))
-    assert f"SET SESSION max_execution_time = {sql_calls.MAX_STATEMENT_SECONDS * 1000}" in _statements(engine.connection)
+    stmts = _statements(engine.connection)
+    assert f"SET SESSION max_execution_time = {sql_calls.MAX_STATEMENT_SECONDS * 1000}" in stmts
+    assert "SET SESSION TRANSACTION READ ONLY" in stmts
+    assert "SET TRANSACTION READ ONLY" in stmts
+    assert stmts.index("SET TRANSACTION READ ONLY") < stmts.index("SELECT 1")
 
 
 def test_safety_settings_failure_does_not_block_query(monkeypatch) -> None:
     class _FailingSafetyConnection(_FakeConnection):
         async def execute(self, statement, params=None):
-            if str(statement).startswith(("SET default_transaction", "SET statement_timeout", "PRAGMA")):
+            if str(statement).startswith(("SET TRANSACTION", "SET default_transaction", "SET statement_timeout", "PRAGMA")):
                 raise SQLAlchemyError("read-only not supported")
             return await super().execute(statement, params)
 
@@ -171,6 +185,8 @@ def test_safety_settings_failure_does_not_block_query(monkeypatch) -> None:
     monkeypatch.setattr(sql_calls, "create_async_engine", lambda cs, echo=False: engine)
     result = _run(execute_select_cte_query_sql(connection_string="postgresql+asyncpg://u:p@h/db", query="SELECT 1 AS ok"))
     assert result == [{"ok": 1}]
+    # A failed SET aborts a Postgres transaction: it is rolled back so the query can still run.
+    assert engine.connection.rollbacks == 1
 
 
 # ── finding 2: schema_name is quoted as an identifier, never interpolated ───
@@ -297,3 +313,27 @@ def test_error_logging_is_scrubbed_and_has_no_traceback(monkeypatch) -> None:
     for message, kwargs in records:
         assert "s3cret-pw" not in message and "hunter2" not in message
         assert not kwargs.get("exc_info"), "exc_info would re-emit the unscrubbed exception"
+
+
+# ── real engine: the result-handling path against an actual async driver ───
+
+
+def test_real_sqlite_engine_select_and_read_only(tmp_path) -> None:
+    pytest.importorskip("aiosqlite")
+    import sqlite3
+
+    db = tmp_path / "real.sqlite"
+    with sqlite3.connect(db) as conn:
+        conn.execute("CREATE TABLE t (id INTEGER, name TEXT)")
+        conn.executemany("INSERT INTO t VALUES (?, ?)", [(i, f"n{i}") for i in range(sql_calls.MAX_ROWS + 5)])
+    url = f"sqlite+aiosqlite:///{db}"
+
+    rows = _run(execute_select_cte_query_sql(connection_string=url, query="SELECT id, name FROM t WHERE id < :n ORDER BY id", params={"n": 3}))
+    assert rows == [{"id": 0, "name": "n0"}, {"id": 1, "name": "n1"}, {"id": 2, "name": "n2"}]
+
+    capped = _run(execute_select_cte_query_sql(connection_string=url, query="SELECT id FROM t ORDER BY id"))
+    assert len(capped) == sql_calls.MAX_ROWS + 1
+    assert capped[-1] == {"notice": f"Result truncated to the first {sql_calls.MAX_ROWS} rows."}
+
+    cte = _run(execute_select_cte_query_sql(connection_string=url, query="WITH x AS (SELECT id FROM t WHERE id = 7) SELECT * FROM x"))
+    assert cte == [{"id": 7}]

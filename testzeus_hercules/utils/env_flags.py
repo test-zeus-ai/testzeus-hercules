@@ -63,6 +63,11 @@ def strict_verdict_enabled() -> bool:
     return env_flag("STRICT_VERDICT")
 
 
+def strict_agents_llm_config_enabled() -> bool:
+    """``STRICT_AGENTS_LLM_CONFIG``: a missing/unparseable ``AGENTS_LLM_CONFIG_FILE`` raises instead of falling back to env config."""
+    return env_flag("STRICT_AGENTS_LLM_CONFIG")
+
+
 def strict_exit_code_enabled() -> bool:
     """``STRICT_EXIT_CODE``: exit the process with status 1 when any scenario failed or errored.
 

@@ -318,8 +318,10 @@ def test_failed_graph_result_attaches_execution_failure_with_existing_evidence(t
     assert record["category"] == "agent_chain_failure"
     assert record["stage"] == "scenario_execution"
     assert record["error_type"] == "RuntimeError"
-    # The record message is redacted even though the raw summary text is not.
+    # The record message and the summary text (final_response/assert_summary) are redacted.
     assert "token=abc123" not in record["message"] and "sk-abc123def456" not in record["message"]
+    for text in (parsed["final_response"], parsed["assert_summary"]):
+        assert "token=abc123" not in text and "sk-abc123def456" not in text, text
     assert "token=***" in record["message"]
     assert os.path.isfile(record["evidence_path"]), record["evidence_path"]
 

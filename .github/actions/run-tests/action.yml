@@ -61,11 +61,20 @@ inputs:
     default: ''
   base-url:
     description: >-
-      Convenience: exported as the APP_URL environment variable. Hercules itself
-      reads the target URL from the feature steps, so put the URL there; use this
-      only for custom tooling that reads APP_URL.
+      Convenience: when non-empty, exported to the Hercules run as the APP_URL
+      environment variable. Hercules itself reads the target URL from the feature
+      steps, so put the URL there; use this only for features/tooling that read APP_URL.
     required: false
     default: ''
+  reports:
+    description: >-
+      When true (default), enable the opt-in reporting features for the run:
+      ENABLE_RUN_REPORTING (Hercules_Test_Report.md), ENABLE_FAILURE_BUNDLES,
+      ENABLE_RUN_HISTORY (history DB at opt/hercules_history.db unless
+      HERCULES_HISTORY_DB is set) and ENABLE_FAILURE_CLASSIFICATION. Set false
+      to leave all of them to `env-vars`.
+    required: false
+    default: 'true'
   blocking:
     description: >-
       When true (default) the step fails if any test fails (Hercules runs with
@@ -130,9 +139,14 @@ runs:
     - name: Install Hercules dependencies (uv)
       if: inputs.runner == 'uv'
       shell: bash
+      env:
+        # The Hercules project is this action's own checkout (.github/actions/run-tests
+        # -> repository root), not the consumer's workspace.
+        HERCULES_PROJECT: ${{ github.action_path }}/../../..
       run: |
-        uv sync --all-extras
-        uv run playwright install --with-deps
+        set -euo pipefail
+        uv sync --project "$HERCULES_PROJECT" --all-extras
+        uv run --project "$HERCULES_PROJECT" -- playwright install --with-deps
 
     - name: Pull Hercules image (docker)
       if: inputs.runner == 'docker'
@@ -143,6 +157,34 @@ runs:
         set -euo pipefail
         case "$IMAGE" in -*) echo "::error::Invalid image reference: $IMAGE" >&2; exit 1 ;; esac
         docker pull -- "$IMAGE"
+
+    # ------------------------------------------------------------------
+    # (c0) Parse env-vars (multiline KEY=VALUE) into $GITHUB_ENV
+    # ------------------------------------------------------------------
+    - name: Export env-vars
+      shell: bash
+      env:
+        ENV_VARS_INPUT: ${{ inputs.env-vars }}
+      run: |
+        names=""
+        while IFS= read -r line || [ -n "$line" ]; do
+          line="${line%$'\r'}"
+          [ -z "$line" ] && continue
+          case "$line" in '#'*) continue ;; esac
+          case "$line" in *=*) ;; *) echo "::warning::Ignoring malformed env-vars line (expected KEY=VALUE)" ; continue ;; esac
+          name="${line%%=*}"
+          # Only plain variable names; never let a value rewrite the runner/loader/shell environment.
+          if ! [[ "$name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+            echo "::warning::Ignoring env-vars entry with an invalid variable name" ; continue
+          fi
+          case "$name" in
+            PATH|BASH_ENV|ENV|SHELL|IFS|PYTHONPATH|PYTHONSTARTUP|LD_*|DYLD_*|NODE_OPTIONS|GITHUB_*|RUNNER_*)
+              echo "::warning::Ignoring env-vars entry for protected variable $name" ; continue ;;
+          esac
+          printf '%s\n' "$line" >> "$GITHUB_ENV"
+          names="${names}${names:+ }${name}"
+        done <<< "$ENV_VARS_INPUT"
+        echo "HERCULES_PASSTHROUGH_VARS=$names" >> "$GITHUB_ENV"
 
     # ------------------------------------------------------------------
     # (b) Prepare inputs: single feature copy / bulk layout check / mode validation
@@ -174,11 +216,17 @@ runs:
             echo "Mode: suite '$INPUT_SUITE'"
             ;;
           bulk)
-            if [ ! -d tests ] || [ -z "$(ls -A tests 2>/dev/null)" ]; then
-              echo "::error::bulk=true but no non-empty tests/ directory found in the repository." >&2
-              exit 1
+            # Hercules reads <PROJECT_SOURCE_ROOT>/tests; the run step points
+            # PROJECT_SOURCE_ROOT at the repository root unless env-vars set it.
+            if [ -n "${PROJECT_SOURCE_ROOT:-}" ]; then
+              echo "Mode: bulk (PROJECT_SOURCE_ROOT from env-vars: $PROJECT_SOURCE_ROOT)"
+            else
+              if [ ! -d tests ] || [ -z "$(ls -A tests 2>/dev/null)" ]; then
+                echo "::error::bulk=true but no non-empty tests/ directory found in the repository." >&2
+                exit 1
+              fi
+              echo "Mode: bulk (tests/ layout)"
             fi
-            echo "Mode: bulk (tests/ layout)"
             ;;
           single)
             if [ -z "$INPUT_FEATURE" ]; then
@@ -196,34 +244,6 @@ runs:
         esac
 
         echo "mode=$mode" >> "$GITHUB_OUTPUT"
-
-    # ------------------------------------------------------------------
-    # (c0) Parse env-vars (multiline KEY=VALUE) into $GITHUB_ENV
-    # ------------------------------------------------------------------
-    - name: Export env-vars
-      shell: bash
-      env:
-        ENV_VARS_INPUT: ${{ inputs.env-vars }}
-      run: |
-        names=""
-        while IFS= read -r line || [ -n "$line" ]; do
-          line="${line%$'\r'}"
-          [ -z "$line" ] && continue
-          case "$line" in '#'*) continue ;; esac
-          case "$line" in *=*) ;; *) echo "::warning::Ignoring malformed env-vars line (expected KEY=VALUE)" ; continue ;; esac
-          name="${line%%=*}"
-          # Only plain variable names; never let a value rewrite the runner/loader/shell environment.
-          if ! [[ "$name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
-            echo "::warning::Ignoring env-vars entry with an invalid variable name" ; continue
-          fi
-          case "$name" in
-            PATH|BASH_ENV|ENV|SHELL|IFS|PYTHONPATH|PYTHONSTARTUP|LD_*|DYLD_*|NODE_OPTIONS|GITHUB_*|RUNNER_*)
-              echo "::warning::Ignoring env-vars entry for protected variable $name" ; continue ;;
-          esac
-          printf '%s\n' "$line" >> "$GITHUB_ENV"
-          names="${names}${names:+ }${name}"
-        done <<< "$ENV_VARS_INPUT"
-        echo "HERCULES_PASSTHROUGH_VARS=$names" >> "$GITHUB_ENV"
 
     # ------------------------------------------------------------------
     # (c1) Run Hercules
@@ -245,6 +265,8 @@ runs:
         LLM_CONFIG_REF_KEY: ${{ inputs.llm-config-ref-key }}
         BASE_URL: ${{ inputs.base-url }}
         BLOCKING: ${{ inputs.blocking }}
+        REPORTS: ${{ inputs.reports }}
+        HERCULES_PROJECT: ${{ github.action_path }}/../../..
       run: |
         set -euo pipefail
 
@@ -261,11 +283,17 @@ runs:
         # Build the Hercules command as an argv ARRAY (never a shell string): workflow inputs are
         # passed as discrete arguments, so quotes/metacharacters in them cannot change the command.
         # Env settings are collected separately and applied with `docker -e` / `export`.
+        # Workspace root as seen by Hercules (the docker runner mounts it at /workspace).
+        if [ "$RUNNER_MODE" = "docker" ]; then WS_ROOT=/workspace; else WS_ROOT="$GITHUB_WORKSPACE"; fi
+        # Merged JUnit of suite/parallel runs lands here so the result discovery
+        # and the artifact upload (opt/output) pick it up.
+        MERGED_OUT=opt/output/merged
+
         CMD=()
         RUN_ENV=()
         case "$RUN_MODE" in
           suite)
-            CMD=(hercules-suite "$INPUT_SUITE" --config "$SUITE_CONFIG")
+            CMD=(hercules-suite "$INPUT_SUITE" --config "$SUITE_CONFIG" --out-dir "$MERGED_OUT")
             if [ "$MAX_PARALLEL" != "1" ]; then
               CMD+=(--max-parallel "$MAX_PARALLEL")
             fi
@@ -273,11 +301,15 @@ runs:
           bulk)
             CMD=(python -m testzeus_hercules)
             RUN_ENV+=(EXECUTE_BULK=true)
+            # Hercules reads <PROJECT_SOURCE_ROOT>/tests (default ./opt/tests): point it at the repo root.
+            if [ -z "${PROJECT_SOURCE_ROOT:-}" ]; then
+              RUN_ENV+=("PROJECT_SOURCE_ROOT=$WS_ROOT")
+            fi
             ;;
           single)
             if [ "$MAX_PARALLEL" != "1" ]; then
               # Parallel scenario execution via run_manager on the original feature path.
-              CMD=(python -m testzeus_hercules.orchestrator.run_manager "$INPUT_FEATURE" --max-parallel "$MAX_PARALLEL")
+              CMD=(python -m testzeus_hercules.orchestrator.run_manager "$INPUT_FEATURE" --max-parallel "$MAX_PARALLEL" --out-dir "$MERGED_OUT")
             else
               CMD=(python -m testzeus_hercules)
             fi
@@ -293,6 +325,20 @@ runs:
           RUN_ENV+=(STRICT_EXIT_CODE=true)
         else
           RUN_ENV+=(EXIT_CODE_COMPAT=1)
+        fi
+
+        # Opt-in reporting features (report, failure bundles, history DB, classification).
+        if [ "$REPORTS" = "true" ]; then
+          RUN_ENV+=(ENABLE_RUN_REPORTING=true ENABLE_FAILURE_BUNDLES=true ENABLE_RUN_HISTORY=true ENABLE_FAILURE_CLASSIFICATION=true)
+          if [ -z "${HERCULES_HISTORY_DB:-}" ]; then
+            # One history DB for every mode (bulk/suite/parallel move PROJECT_SOURCE_ROOT around).
+            mkdir -p opt
+            RUN_ENV+=("HERCULES_HISTORY_DB=$WS_ROOT/opt/hercules_history.db")
+          fi
+        fi
+
+        if [ -n "$BASE_URL" ]; then
+          RUN_ENV+=("APP_URL=$BASE_URL")
         fi
 
         if [ "$RUNNER_MODE" = "docker" ]; then
@@ -315,7 +361,16 @@ runs:
           done
 
           if [ -n "$LLM_CONFIG" ] && [ -f "$LLM_CONFIG" ]; then
-            cfg="/workspace/${LLM_CONFIG#./}"
+            case "$LLM_CONFIG" in
+              /*)
+                # Only the workspace is mounted: map an absolute path inside it, reject anything else.
+                case "$LLM_CONFIG" in
+                  "$GITHUB_WORKSPACE"/*) cfg="/workspace/${LLM_CONFIG#"$GITHUB_WORKSPACE"/}" ;;
+                  *) echo "::error::llm-config '$LLM_CONFIG' is outside the workspace and is not visible to the docker runner; put it in the repository or use a relative path." >&2; exit 1 ;;
+                esac
+                ;;
+              *) cfg="/workspace/${LLM_CONFIG#./}" ;;
+            esac
             DOCKER_ARGS+=(-e "AGENTS_LLM_CONFIG_FILE=$cfg" -e "AGENTS_LLM_CONFIG_FILE_REF_KEY=$LLM_CONFIG_REF_KEY")
           fi
 
@@ -336,7 +391,9 @@ runs:
           for kv in ${RUN_ENV[@]+"${RUN_ENV[@]}"}; do
             export "$kv"
           done
-          uv run -- "${CMD[@]}"
+          # --project: the Hercules environment is this action's checkout; the
+          # command still runs in the consumer's workspace (cwd).
+          uv run --project "$HERCULES_PROJECT" -- "${CMD[@]}"
         fi
 
     # ------------------------------------------------------------------
@@ -348,8 +405,9 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        junit="$( { ls -1t opt/output/*/*_result.xml .hercules/suite_runs/*/merged/*_result.xml 2>/dev/null || true; } | head -n1 )"
-        report="$( { ls -1t opt/output/*/Hercules_Test_Report.md 2>/dev/null || true; } | head -n1 )"
+        # opt/output/merged holds the suite/parallel merged XML; tests/*/output is bulk mode.
+        junit="$( { ls -1t opt/output/*/*_result.xml tests/*/output/*/*_result.xml .hercules/suite_runs/*/merged/*_result.xml 2>/dev/null || true; } | head -n1 )"
+        report="$( { ls -1t opt/output/*/Hercules_Test_Report.md tests/*/output/*/Hercules_Test_Report.md 2>/dev/null || true; } | head -n1 )"
         echo "junit-path=$junit" >> "$GITHUB_OUTPUT"
         echo "report-path=$report" >> "$GITHUB_OUTPUT"
         echo "JUnit XML: ${junit:-<none>}"
@@ -363,10 +421,16 @@ runs:
       uses: actions/upload-artifact@v4
       with:
         name: ${{ inputs.artifact-name }}
+        # tests/*/ = bulk mode outputs; .hercules/ = suite/parallel scenario
+        # workspaces (only failed scenarios keep theirs: videos, logs, proofs).
         path: |
           opt/output
           opt/proofs
           opt/hercules_history.db
+          tests/*/output
+          tests/*/proofs
+          .hercules/suite_runs
+          .hercules/parallel_*
         if-no-files-found: ignore
         retention-days: 14
 
