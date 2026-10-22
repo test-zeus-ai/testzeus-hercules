@@ -4,7 +4,11 @@ from typing import Optional
 
 import yaml  # Requires PyYAML installed: pip install pyyaml
 from testzeus_hercules.config import get_global_conf
-from testzeus_hercules.core.memory.state_handler import get_run_data, get_stored_data
+from testzeus_hercules.core.memory.state_handler import (
+    clear_runtime_state,
+    get_run_data,
+    get_stored_data,
+)
 from testzeus_hercules.core.memory.static_data_loader import load_data
 from testzeus_hercules.utils.logger import logger
 
@@ -29,6 +33,14 @@ class StaticLTM:
     def __new__(cls) -> "StaticLTM":
         test_data_path = get_global_conf().get_test_data_path()
         if cls._instance is None or cls._loaded_for != test_data_path:
+            # The stored/run state in state_handler is process-global (keyed by
+            # the per-scenario test id): when the test-data path changes it
+            # belongs to the previous suite, so drop it before folding it into
+            # the fresh memory - suite B's LTM must not inherit suite A's
+            # stored secrets. Same-path reads keep the state: cross-scenario
+            # sharing within a suite is intended.
+            if cls._loaded_for is not None and cls._loaded_for != test_data_path:
+                clear_runtime_state()
             # Build fully before publishing so a failed load cannot leave a half-initialised instance cached.
             instance = super().__new__(cls)
             instance._initialize()

@@ -30,6 +30,7 @@ This document provides a comprehensive guide to all environment variables and co
   - [MCP Integration](#mcp-integration)
   - [Telemetry and Monitoring](#telemetry-and-monitoring)
   - [Additional Features](#additional-features)
+- [Reliability, Reporting and Strictness Flags](#reliability-reporting-and-strictness-flags)
 - [Configuration Priority](#configuration-priority)
 
 ## Core Environment Variables
@@ -196,6 +197,11 @@ LLM Parameters:
 ## Testing Configuration
 
 ### Test Execution
+- `SKIP_BROWSER`: Do not launch a browser for the run
+  - Values: `1`, `true`, `yes` (case-insensitive); anything else keeps the browser
+  - Default: unset (browser enabled)
+  - Implementation: For pure API/MCP/SQL scenarios; skips the Chromium startup per scenario and the empty screenshot/video folders
+
 - `EXECUTE_BULK`: Execute tests in bulk from tests directory
   - Values: `true`, `false`
   - Default: `false`
@@ -286,6 +292,11 @@ LLM Parameters:
   - Values: `text`, `json`
   - Default: `text`
   - Implementation: Controls logger output format in `logger.py`
+
+- `LOG_FILE_PATH`: Also write logs to this file
+  - Values: a file path (parent directories are created)
+  - Default: unset (console only)
+  - Implementation: Rotating file handler in `logger.py` (10 MB per file, 5 backups), same format as the console output
 
 ### Debugging Tools
 - `ENABLE_PLAYWRIGHT_TRACING`: Enable Playwright tracing
@@ -416,16 +427,55 @@ The server entrypoint uses these variables:
 - `NO_WAIT_FOR_LOAD_STATE`: Skip waiting for Playwright load state in supported browser operations
   - Values: `true`, `false`
 
+## Reliability, Reporting and Strictness Flags
+
+These flags control the core-loop hardening and run-reporting features. Everything
+that could change results, exit codes or the files written by a run is **opt-in and
+defaults to the previous behaviour**. Boolean flags accept `1`, `true`, `yes` or `on`
+(case-insensitive); anything else, including unset, means off.
+
+| Variable | Default | Effect when enabled |
+|----------|---------|---------------------|
+| `STRICT_EXIT_CODE` | off | The process exits with status `1` when any scenario failed or errored. By default the exit status is `0` regardless of scenario results (`EXIT_CODE_COMPAT=1` still forces this legacy behaviour even when `STRICT_EXIT_CODE` is set). |
+| `STRICT_VERDICT` | off | A scenario only counts as passed when it terminated cleanly **and** the planner explicitly recorded `is_passed: true`. By default a scenario without an explicit assertion passes when it terminated, and an asserting scenario passes on a truthy `is_passed`. Missing results and structured execution/cleanup failures are always failures. |
+| `ENABLE_OBSERVER_INVARIANTS` | off | After each helper step the proof artifacts are judged and a claimed pass is overruled by HTTP 5xx responses or uncaught console exceptions (`Uncaught`, `TypeError`, `Cannot read`). Off by default because these signals can fail otherwise healthy scenarios. |
+| `ENABLE_RUN_REPORTING` | off | Writes `Hercules_Test_Report.md` next to the merged JUnit XML. |
+| `ENABLE_FAILURE_BUNDLES` | off | Copies per-failure evidence (screenshots, video, network log) into a `bundles/` directory next to the JUnit XML. |
+| `ENABLE_RUN_HISTORY` | off | Records every run and testcase in the `hercules_history.db` run-history database. |
+| `ENABLE_FAILURE_CLASSIFICATION` | off | Classifies failed testcases and annotates their bundle and run-history entry (best effort). |
+| `STRICT_AGENTS_LLM_CONFIG` | off | A configured `AGENTS_LLM_CONFIG_FILE` that is missing or cannot be parsed raises an error at startup. By default the problem is logged and the `LLM_MODEL_*` environment configuration is used. |
+| `CONFIG_DICT_OVERRIDES_ENV` | off | Values passed programmatically as a config dict win over environment variables. By default environment variables win. Guided and bulk mode always apply their per-run overrides (generated feature file, per-folder project root, input file and test data path) this way, and these per-run overrides also win over CLI flags such as `--project-base`. |
+| `HERCULES_DISABLE_CLI_PARSE` | off | Skip parsing the shared Hercules command-line flags. They are parsed for every entrypoint except known subcommand CLIs (`hercules-dashboard`, `hercules-suite`). |
+
+Always on (bug and safety fixes, no flag): cancellation (Ctrl-C, `asyncio.wait_for`) is never
+swallowed by the scenario loop, filename sanitisation, network-log and error redaction,
+cleanup error aggregation, tool-result size capping and planner failure containment.
+
+Planner guards (always on):
+
+- **Corrective re-prompt.** A malformed planner decision (for example `is_assert` as the string
+  `"true"`, or an empty `next_step` while `terminate` is `"no"`) gets one corrective re-prompt that
+  names the problem. Only if the second answer is still invalid is the scenario failed.
+- **Stall guard.** When the planner returns an empty or unparseable `next_step` three turns in a row,
+  the scenario ends as failed ("no executable progress") instead of looping until the
+  planner round limit (500 turns). Repeating a step that already ran (for example clicking "Next page"
+  several times) counts as progress; it is only logged as `PLANNER_REPEAT_NOTICE`.
+
+The optional mobile (Appium) and healing hooks are inert unless `DEVICE_MANAGER=appium` is
+set and the Appium client is installed.
+
 ## Configuration Priority
 
 The effective configuration is assembled in this order:
 
-1. Built-in defaults
-2. `.env` values
+1. Built-in defaults (only fill keys that no other source set)
+2. Values passed programmatically as a config dict
 3. Process environment variables
-4. `--config` YAML/JSON file values
-5. Command-line arguments
+4. `.env` values (loaded with `override=True`, so a key in `.env` replaces the same process
+   environment variable; `.env` is not loaded when `IS_TEST_ENV=true`)
+5. `--config` YAML/JSON file values
+6. Command-line arguments
 
-Later sources override earlier sources. If both `AGENTS_LLM_CONFIG_FILE` and
+Later sources override earlier sources (set `CONFIG_DICT_OVERRIDES_ENV=true` to move the config dict above the process environment and `.env`). If both `AGENTS_LLM_CONFIG_FILE` and
 direct `LLM_MODEL_*` settings are present, the selected runtime path depends on
 which CLI/config values are active for that run.

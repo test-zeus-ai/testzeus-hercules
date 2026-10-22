@@ -1,12 +1,21 @@
 import asyncio
+import importlib
+import importlib.machinery
+import importlib.util
 import json
+import logging
+import sys
+import types
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import StructuredTool
 from testzeus_hercules.core.simple_hercules import SimpleHercules
-from testzeus_hercules.utils.llm_helper import GraphChatResult
+from testzeus_hercules.reporting.bundle import parse_junit_testcases
+from testzeus_hercules.utils.junit_helper import build_junit_xml
+from testzeus_hercules.utils.llm_helper import GraphChatResult, parse_agent_response
 
 
 class FakeLLM:
@@ -26,9 +35,7 @@ class FakeLLM:
 
 
 class FakeAgent:
-    def __init__(
-        self, name: str, responses: list[AIMessage], tools: list[Any] | None = None
-    ) -> None:
+    def __init__(self, name: str, responses: list[AIMessage], tools: list[Any] | None = None) -> None:
         self.agent_name = name
         self.system_message = f"{name} system"
         self.llm = FakeLLM(responses)
@@ -120,12 +127,8 @@ def test_nav_agent_executes_multiple_non_stale_tool_calls_in_order() -> None:
             return "second result"
 
         tools = [
-            StructuredTool.from_function(
-                func=first_tool, name="first", description="first"
-            ),
-            StructuredTool.from_function(
-                func=second_tool, name="second", description="second"
-            ),
+            StructuredTool.from_function(func=first_tool, name="first", description="first"),
+            StructuredTool.from_function(func=second_tool, name="second", description="second"),
         ]
         agent = FakeAgent(
             "api_nav_agent",
@@ -166,23 +169,13 @@ def test_nav_agent_reports_invalid_tool_arguments() -> None:
                 ),
                 AIMessage(content="current_output: handled\n##TERMINATE TASK##"),
             ],
-            [
-                StructuredTool.from_function(
-                    func=first_tool, name="first", description="first"
-                )
-            ],
+            [StructuredTool.from_function(func=first_tool, name="first", description="first")],
         )
 
-        result = await _hercules()._run_nav_agent(
-            agent, "call malformed", "api_nav_agent"
-        )
+        result = await _hercules()._run_nav_agent(agent, "call malformed", "api_nav_agent")
 
         assert "##TERMINATE TASK##" in result
-        tool_messages = [
-            message
-            for message in agent.llm.calls[1]
-            if isinstance(message, ToolMessage)
-        ]
+        tool_messages = [message for message in agent.llm.calls[1] if isinstance(message, ToolMessage)]
         assert tool_messages
         assert "expected tool arguments to be a dict" in tool_messages[-1].content
 
@@ -195,10 +188,7 @@ def test_browser_stale_dom_guard_skips_later_tool_calls() -> None:
 
         def click() -> str:
             calls.append("click")
-            return (
-                "Success. As a consequence of this action, new elements have appeared "
-                "in view. Get all_fields DOM to complete the interaction."
-            )
+            return "Success. As a consequence of this action, new elements have appeared " "in view. Get all_fields DOM to complete the interaction."
 
         def get_page_text() -> str:
             calls.append("get_page_text")
@@ -206,9 +196,7 @@ def test_browser_stale_dom_guard_skips_later_tool_calls() -> None:
 
         tools = [
             StructuredTool.from_function(func=click, name="click", description="click"),
-            StructuredTool.from_function(
-                func=get_page_text, name="get_page_text", description="read"
-            ),
+            StructuredTool.from_function(func=get_page_text, name="get_page_text", description="read"),
         ]
         agent = FakeAgent(
             "browser_nav_agent",
@@ -225,18 +213,12 @@ def test_browser_stale_dom_guard_skips_later_tool_calls() -> None:
             tools,
         )
 
-        result = await _hercules()._run_nav_agent(
-            agent, "click then read", "browser_nav_agent"
-        )
+        result = await _hercules()._run_nav_agent(agent, "click then read", "browser_nav_agent")
 
         assert calls == ["click"]
         assert "##TERMINATE TASK##" in result
         second_call_messages = agent.llm.calls[1]
-        assert any(
-            isinstance(message, HumanMessage)
-            and "browser state changed" in message.content
-            for message in second_call_messages
-        )
+        assert any(isinstance(message, HumanMessage) and "browser state changed" in message.content for message in second_call_messages)
 
     asyncio.run(run())
 
@@ -289,9 +271,7 @@ def test_helper_task_prefers_live_current_url(monkeypatch) -> None:
 
 
 def test_cost_metrics_include_langgraph_token_totals() -> None:
-    metrics = _hercules()._build_cost_metrics(
-        {"total_prompt_tokens": 7, "total_completion_tokens": 11}
-    )
+    metrics = _hercules()._build_cost_metrics({"total_prompt_tokens": 7, "total_completion_tokens": 11})
 
     usage = metrics["usage_including_cached_inference"]["langgraph"]
     assert usage["prompt_tokens"] == 7
@@ -333,11 +313,7 @@ def test_executor_accumulates_nav_agent_token_usage() -> None:
                     },
                 )
             ],
-            [
-                StructuredTool.from_function(
-                    func=lambda: "unused", name="available", description="available"
-                )
-            ],
+            [StructuredTool.from_function(func=lambda: "unused", name="available", description="available")],
         )
         hercules.agents_map = {"api_nav_agent": agent}
         result = await hercules._executor_node(
@@ -423,17 +399,11 @@ def test_nav_agent_max_rounds_returns_explicit_error() -> None:
                     tool_calls=[{"name": "missing", "args": {}, "id": "call_2"}],
                 ),
             ],
-            [
-                StructuredTool.from_function(
-                    func=lambda: "unused", name="available", description="available"
-                )
-            ],
+            [StructuredTool.from_function(func=lambda: "unused", name="available", description="available")],
         )
         hercules = SimpleHercules(stake_id="test", browser_nav_max_chat_round=2)
 
-        result = await hercules._run_nav_agent(
-            agent, "do impossible thing", "api_nav_agent"
-        )
+        result = await hercules._run_nav_agent(agent, "do impossible thing", "api_nav_agent")
 
         assert result.startswith("[ERROR] api_nav_agent max nav rounds")
         assert "[empty or tool-calls-only assistant response]" in result
@@ -455,12 +425,406 @@ def test_graph_chat_result_summary_uses_terminal_planner_json() -> None:
                 content="",
                 tool_calls=[{"name": "tool", "args": {}, "id": "call_1"}],
             ),
-            AIMessage(
-                content=json.dumps({"terminate": "no", "next_step": "keep going"})
-            ),
+            AIMessage(content=json.dumps({"terminate": "no", "next_step": "keep going"})),
             AIMessage(content=json.dumps(terminal)),
         ],
         terminate="yes",
     )
 
     assert json.loads(result.summary)["final_response"] == "done"
+
+
+# ── terminal helper results are preserved in the exported summary ─────────────
+
+
+def test_summary_prefers_terminal_pass_helper_text_over_nonterminal_planner() -> None:
+    result = GraphChatResult(
+        messages=[AIMessage(content=json.dumps({"terminate": "no", "next_step": "keep going", "target_helper": "browser"}))],
+        terminate="yes",
+        last_helper_response="PASS: checkout completed successfully",
+    )
+
+    summary = json.loads(result.summary)
+    assert summary["terminate"] == "yes"
+    assert summary["is_assert"] is True
+    assert summary["is_passed"] is True
+    assert "checkout completed" in summary["final_response"]
+
+
+def test_summary_prefers_terminal_fail_helper_text_over_nonterminal_planner() -> None:
+    result = GraphChatResult(
+        messages=[AIMessage(content=json.dumps({"terminate": "no", "next_step": "keep going", "target_helper": "browser"}))],
+        terminate="yes",
+        last_helper_response="FAIL: checkout could not complete",
+    )
+
+    summary = json.loads(result.summary)
+    assert summary["terminate"] == "yes"
+    assert summary["is_assert"] is True
+    assert summary["is_passed"] is False
+
+
+def test_summary_normalizes_terminate_marker_helper_text() -> None:
+    result = GraphChatResult(
+        messages=[AIMessage(content=json.dumps({"terminate": "no", "next_step": "keep going", "target_helper": "browser"}))],
+        terminate="yes",
+        last_helper_response="Task completed\n##TERMINATE TASK##",
+    )
+
+    summary = json.loads(result.summary)
+    assert summary["terminate"] == "yes"
+    assert summary["final_response"] == "Task completed"
+
+
+def test_summary_terminal_planner_beats_terminal_helper() -> None:
+    terminal_planner = json.dumps({"terminate": "yes", "final_response": "planner verdict", "is_assert": True, "is_passed": True, "assert_summary": "ok"})
+    result = GraphChatResult(
+        messages=[AIMessage(content=json.dumps({"terminate": "no", "next_step": "keep going"})), AIMessage(content=terminal_planner)],
+        terminate="yes",
+        last_helper_response="PASS: helper verdict",
+    )
+
+    assert json.loads(result.summary)["final_response"] == "planner verdict"
+
+
+def test_summary_uses_helper_text_when_nothing_terminal_was_parsed() -> None:
+    result = GraphChatResult(
+        messages=[],
+        terminate="yes",
+        last_helper_response="plain helper narration without a verdict",
+    )
+
+    summary = json.loads(result.summary)
+    assert summary == {"terminate": "yes", "final_response": "plain helper narration without a verdict"}
+
+
+def test_summary_generic_message_when_no_helper_text_exists() -> None:
+    result = GraphChatResult(messages=[], terminate="yes", last_helper_response="")
+
+    assert json.loads(result.summary) == {"terminate": "yes", "final_response": "Test ended without planner JSON."}
+
+
+# ── executor None-coercion: a blank helper run must not clobber history ───────
+
+
+def test_executor_node_keeps_previous_helper_response_when_helper_returns_none(monkeypatch) -> None:
+    async def run() -> None:
+        hercules = _hercules()
+        agent = FakeAgent("browser_nav_agent", [AIMessage(content="unused")])
+        hercules.agents_map = {"browser_nav_agent": agent}
+
+        async def returning_none(nav_agent: Any, task: str, agent_name: str) -> None:
+            return None
+
+        monkeypatch.setattr(hercules, "_run_nav_agent", returning_none)
+
+        result = await hercules._executor_node(
+            {
+                "messages": [HumanMessage(content="root task")],
+                "next_step": "check something",
+                "target_helper": "browser",
+                "step_token_log": [],
+                "step_timings": [],
+                "completed_step_signatures": [],
+                "last_helper_response": "PASS: previous step verified",
+                "current_url": "",
+            }
+        )
+
+        assert result["last_helper_response"] == "PASS: previous step verified"
+        assert result["messages"][-1].content == "[browser_nav_agent]: "
+
+    asyncio.run(run())
+
+
+def test_executor_node_replaces_previous_helper_response_with_fresh_result(monkeypatch) -> None:
+    async def run() -> None:
+        hercules = _hercules()
+        agent = FakeAgent("browser_nav_agent", [AIMessage(content="unused")])
+        hercules.agents_map = {"browser_nav_agent": agent}
+
+        async def fresh_result(nav_agent: Any, task: str, agent_name: str) -> str:
+            return "PASS: fresh outcome"
+
+        monkeypatch.setattr(hercules, "_run_nav_agent", fresh_result)
+
+        result = await hercules._executor_node(
+            {
+                "messages": [HumanMessage(content="root task")],
+                "next_step": "check something else",
+                "target_helper": "browser",
+                "step_token_log": [],
+                "step_timings": [],
+                "completed_step_signatures": [],
+                "last_helper_response": "PASS: previous step verified",
+                "current_url": "",
+            }
+        )
+
+        assert result["last_helper_response"] == "PASS: fresh outcome"
+
+    asyncio.run(run())
+
+
+# ── tool invocation goes through the Runnable seam with a direct fallback ─────
+
+
+class _FakeAsyncSeamTool:
+    """Tool object exposing the async Runnable seam plus its raw coroutine."""
+
+    def __init__(self, result: str, error: Exception | None = None) -> None:
+        self.result = result
+        self.error = error
+        self.seam_used = False
+
+    async def _run(self) -> str:
+        if self.error is not None:
+            raise self.error
+        return self.result
+
+    @property
+    def coroutine(self):
+        return self._run
+
+    async def ainvoke(self, tool_input: dict[str, Any]) -> str:
+        self.seam_used = True
+        return await self._run()
+
+
+class _FakeSyncSeamTool:
+    """Tool object exposing the sync Runnable seam plus its raw function."""
+
+    def __init__(self, result: str) -> None:
+        self.result = result
+        self.seam_used = False
+
+    def func(self, **_kwargs: Any) -> str:
+        return self.result
+
+    def invoke(self, tool_input: dict[str, Any]) -> str:
+        self.seam_used = True
+        return self.result
+
+
+class _FallbackOnlyTool:
+    """Tool object with no Runnable seam — direct function call fallback."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def func(self, **_kwargs: Any) -> str:
+        self.calls += 1
+        return "fallback result"
+
+
+def test_execute_tool_call_prefers_async_runnable_seam() -> None:
+    async def run() -> None:
+        tool = _FakeAsyncSeamTool(result="seam result")
+        result = await _hercules()._execute_tool_call(tool, "async_tool", {})
+
+        assert result == "seam result"
+        assert tool.seam_used is True
+
+    asyncio.run(run())
+
+
+def test_execute_tool_call_prefers_sync_runnable_seam() -> None:
+    async def run() -> None:
+        tool = _FakeSyncSeamTool(result="sync seam result")
+        result = await _hercules()._execute_tool_call(tool, "sync_tool", {})
+
+        assert result == "sync seam result"
+        assert tool.seam_used is True
+
+    asyncio.run(run())
+
+
+def test_execute_tool_call_falls_back_without_runnable_seam() -> None:
+    async def run() -> None:
+        tool = _FallbackOnlyTool()
+        result = await _hercules()._execute_tool_call(tool, "plain_tool", {})
+
+        assert result == "fallback result"
+        assert tool.calls == 1
+
+    asyncio.run(run())
+
+
+def test_execute_tool_call_reports_seam_errors_as_tool_errors() -> None:
+    async def run() -> None:
+        tool = _FakeAsyncSeamTool(result="unused", error=RuntimeError("boom"))
+        result = await _hercules()._execute_tool_call(tool, "broken_tool", {})
+
+        assert result == "[TOOL ERROR] broken_tool: boom"
+
+    asyncio.run(run())
+
+
+class _AttributeErrorAfterSideEffectTool:
+    """Tool whose ainvoke runs the side effect and then raises AttributeError."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def _run(self) -> str:
+        self.calls += 1
+        return "side effect done"
+
+    @property
+    def coroutine(self):
+        return self._run
+
+    async def ainvoke(self, tool_input: dict[str, Any]) -> str:
+        await self._run()
+        raise AttributeError("post-side-effect failure inside the tool")
+
+
+def test_execute_tool_call_does_not_rerun_tool_when_seam_raises_attribute_error() -> None:
+    # A post-side-effect AttributeError from the seam must be contained as a
+    # [TOOL ERROR], never re-executed through the raw coroutine fallback.
+    async def run() -> None:
+        tool = _AttributeErrorAfterSideEffectTool()
+        result = await _hercules()._execute_tool_call(tool, "flaky_tool", {})
+
+        assert tool.calls == 1
+        assert result.startswith("[TOOL ERROR]")
+
+    asyncio.run(run())
+
+
+def test_execute_tool_call_runs_bare_async_function_tool() -> None:
+    # A bare `async def` tool object has no .coroutine/.func attributes: the
+    # sync fallback calls it and must await the returned coroutine instead of
+    # stringifying it into "<coroutine object ...>".
+    async def run() -> None:
+        calls = 0
+
+        async def bare_async_tool() -> str:
+            nonlocal calls
+            calls += 1
+            return "bare async result"
+
+        result = await _hercules()._execute_tool_call(bare_async_tool, "bare_async_tool", {})
+
+        assert result == "bare async result"
+        assert calls == 1
+
+    asyncio.run(run())
+
+
+# ── mobile (Appium) gate: instantiation, validation and executor fallback ─────
+
+
+def _force_appium_unavailable(monkeypatch) -> None:
+    """DEVICE_MANAGER=appium while the Appium client cannot be found."""
+    monkeypatch.setenv("DEVICE_MANAGER", "appium")
+    real_find_spec = importlib.util.find_spec
+
+    def fake_find_spec(name, *args, **kwargs):
+        if name == "appium":
+            return None
+        return real_find_spec(name, *args, **kwargs)
+
+    monkeypatch.setattr(importlib.util, "find_spec", fake_find_spec)
+
+
+def _install_stub_appium_module(monkeypatch) -> None:
+    """Minimal appium stub (technique from tests/conftest_mobile.py, not imported):
+    a real ModuleSpec makes importlib.util.find_spec("appium") succeed."""
+    module = types.ModuleType("appium")
+    module.__spec__ = importlib.machinery.ModuleSpec("appium", None)
+    monkeypatch.setitem(sys.modules, "appium", module)
+    monkeypatch.setenv("DEVICE_MANAGER", "appium")
+
+
+class _JUnitFakeConf:
+    """Minimal config stand-in for build_junit_xml (mirrors test_assertion_ledger_junit)."""
+
+    def __init__(self, tmp_path) -> None:
+        self.junit_base = tmp_path / "junit"
+        self.junit_base.mkdir(parents=True, exist_ok=True)
+        self.test_id = "default"
+
+    def get_junit_xml_base_path(self) -> str:
+        return str(self.junit_base)
+
+    def get_mode(self) -> str:
+        return "prod"
+
+    def set_default_test_id(self, test_id: str = "default") -> None:
+        self.test_id = test_id
+
+    def get_default_test_id(self) -> str:
+        return self.test_id
+
+
+def test_terminal_planner_json_mentioning_sync_playwright_reports_green_junit(tmp_path, monkeypatch) -> None:
+    """A terminal planner JSON mentioning sync_playwright was dropped by the
+    non-planner substring heuristic, so the run reported
+    "Test ended without planner JSON." (false RED). The verdict must survive
+    summary extraction and render a GREEN junit testcase."""
+
+    async def run() -> None:
+        terminal = json.dumps(
+            {
+                "plan": "Verify the sync_playwright integration.",
+                "next_step": "",
+                "terminate": "yes",
+                "final_response": "verified the sync_playwright integration",
+                "is_assert": True,
+                "assert_summary": "EXPECTED RESULT: sync_playwright integration verified.\nACTUAL RESULT: verified the sync_playwright integration.",
+                "is_passed": True,
+                "target_helper": "Not_Applicable",
+            }
+        )
+        hercules = SimpleHercules(stake_id="planner-verdict", planner_max_chat_round=3)
+        hercules.agents_map = {
+            "planner_agent": SimpleNamespace(
+                system_message="planner system",
+                llm=FakeLLM([AIMessage(content=terminal)]),
+                on_planner_message=lambda _content: None,
+            ),
+            **{
+                name: FakeAgent(name, [AIMessage(content="unused ##TERMINATE TASK##")])
+                for name in (
+                    "browser_nav_agent",
+                    "api_nav_agent",
+                    "sec_nav_agent",
+                    "sql_nav_agent",
+                    "time_keeper_nav_agent",
+                    "mcp_nav_agent",
+                    "executor_nav_agent",
+                )
+            },
+        }
+        hercules._graph = hercules._build_graph()
+
+        result = await hercules.process_command("verify the sync_playwright integration")
+
+        assert result is not None
+        summary = json.loads(result.summary)
+        assert summary["terminate"] == "yes"
+        assert summary["is_passed"] is True
+        assert summary["final_response"] == "verified the sync_playwright integration"
+
+        # The junit report built from the exported summary is GREEN.
+        conf = _JUnitFakeConf(tmp_path)
+        import testzeus_hercules.utils.junit_helper as junit_helper
+
+        monkeypatch.setattr(junit_helper, "get_global_conf", lambda: conf)
+        proofs = tmp_path / "proofs"
+        proofs.mkdir(parents=True, exist_ok=True)
+        junit_path = await build_junit_xml(
+            summary,
+            execution_time=1.0,
+            cost_metric={},
+            feature="Feature: Planner verdict",
+            scenario="Scenario: sync_playwright verdict",
+            proofs_path=str(proofs),
+        )
+        cases = parse_junit_testcases(junit_path)
+        assert len(cases) == 1
+        assert cases[0]["status"] == "passed"
+        assert cases[0]["failure_message"] is None
+
+    asyncio.run(run())

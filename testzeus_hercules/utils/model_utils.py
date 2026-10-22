@@ -61,6 +61,12 @@ def adapt_llm_params_for_model(model_name: str, llm_config: Dict[str, Any]) -> D
                     "Deprecated param 'max_tokens_to_sample' supplied for %s; translating to 'max_tokens'.",
                     model_name,
                 )
+        if "max_completion_tokens" in params and "max_tokens" not in params:
+            params["max_tokens"] = params.pop("max_completion_tokens")
+            logger.info(
+                "Converting 'max_completion_tokens' to 'max_tokens' for %s model.",
+                model_name,
+            )
         if "max_tokens" not in params:
             params["max_tokens"] = 4096
 

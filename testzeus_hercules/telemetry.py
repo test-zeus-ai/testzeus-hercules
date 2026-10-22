@@ -66,6 +66,10 @@ if ENABLE_TELEMETRY:
 
     sentry_sdk.init(
         dsn=DSN,
+        # Probing for optional integrations (langchain/torch/transformers/...) costs
+        # ~10s of import time on every CLI/MCP/suite start; telemetry delivery does
+        # not need the auto-instrumentation hooks.
+        auto_enabling_integrations=False,
         before_send=my_before_send,
         max_breadcrumbs=0,
         send_default_pii=False,
@@ -165,6 +169,11 @@ async def send_message_to_sentry() -> None:
     """
     if not ENABLE_TELEMETRY:
         return  # Skip sending if telemetry is disabled
+    if not event_collector["buckets"]:
+        # Nothing was ever recorded (no RUN event, no buckets) — e.g. a process
+        # that only imported the stack. Skip the empty summary instead of paying
+        # a Sentry event plus the shutdown flush for it.
+        return
     try:
         message = build_final_message()
         with sentry_sdk.push_scope() as scope:
@@ -188,6 +197,69 @@ def build_final_message() -> Dict[str, Any]:
     return message
 
 
+async def shutdown_wrapper() -> None:
+    await send_message_to_sentry()
+
+
+# Strong references to in-flight shutdown tasks: asyncio only keeps weak
+# references to running tasks, so without this set a task scheduled from a
+# signal handler can be garbage-collected mid-flight. Done callbacks discard
+# finished tasks, so the set stays empty at rest.
+_pending_shutdown_tasks: set = set()
+
+
+# Handlers that were installed for SIGTERM/SIGINT before ours; a real signal is
+# forwarded to them after the telemetry flush so Ctrl-C / SIGTERM still stop the
+# process (KeyboardInterrupt / default termination) instead of being swallowed.
+_previous_signal_handlers: dict = {}
+
+
+def _chain_previous_signal_handler(signum: int, frame: Any) -> None:
+    previous = _previous_signal_handlers.get(signum)
+    if callable(previous):
+        previous(signum, frame)
+    elif previous == signal.SIG_DFL:
+        signal.signal(signum, signal.SIG_DFL)
+        os.kill(os.getpid(), signum)
+
+
+def _handle_shutdown_signal(signum: Optional[int] = None, frame: Any = None) -> None:
+    """Run the shutdown coroutine from a signal handler without leaking tasks.
+
+    Usable both as a ``signal.signal`` handler (called with ``(signum, frame)``)
+    and as an ``atexit`` callback (called with no arguments).
+
+    With an event loop running in this thread (the normal path while the app is
+    driven by asyncio), the coroutine is scheduled on that loop as a referenced
+    task. Otherwise the coroutine is driven by a fresh loop via ``asyncio.run``;
+    if even that is impossible, log and skip. For a real signal the handler that
+    was installed before ours is invoked afterwards (default SIGINT handler raises
+    KeyboardInterrupt, default SIGTERM terminates), so the signal is not swallowed.
+    """
+    _schedule_shutdown_flush()
+    if signum is not None:
+        _chain_previous_signal_handler(signum, frame)
+
+
+def _schedule_shutdown_flush() -> None:
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop is not None:
+        task = loop.create_task(shutdown_wrapper())
+        _pending_shutdown_tasks.add(task)
+        task.add_done_callback(_pending_shutdown_tasks.discard)
+        return
+
+    try:
+        asyncio.run(shutdown_wrapper())
+    except RuntimeError as exc:
+        # e.g. a loop is running in another thread and cannot be used here
+        print(f"Could not send telemetry on shutdown: {exc}")
+
+
 def register_shutdown() -> None:
     """
     Register a shutdown handler to run send_message_to_sentry on exit,
@@ -196,21 +268,11 @@ def register_shutdown() -> None:
     if not ENABLE_TELEMETRY:
         return  # Do not register shutdown if telemetry is disabled
 
-    async def shutdown_wrapper():
-        await send_message_to_sentry()
-
-    def on_shutdown():
-        # Schedule shutdown_wrapper to be run asynchronously
-        asyncio.create_task(shutdown_wrapper())
-
-    # loop = asyncio.get_event_loop()
-    signal.signal(signal.SIGTERM, on_shutdown)
-    signal.signal(signal.SIGINT, on_shutdown)
-    # loop.add_signal_handler(signal.SIGTERM, on_shutdown)
-    # loop.add_signal_handler(signal.SIGINT, on_shutdown)
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        _previous_signal_handlers[sig] = signal.signal(sig, _handle_shutdown_signal)
 
     # Register with atexit to ensure it runs when the program exits
-    atexit.register(lambda: asyncio.run(shutdown_wrapper()))
+    atexit.register(_handle_shutdown_signal)
 
 
 # Call the register_shutdown function to ensure our cleanup is registered
