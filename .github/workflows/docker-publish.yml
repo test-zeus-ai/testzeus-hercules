@@ -1,0 +1,86 @@
+name: Publish Docker image
+
+# Builds testzeus/hercules for linux/amd64 and linux/arm64 and pushes it to Docker Hub.
+# The published image used to be arm64-only (Intel/AMD hosts could not run it) and was last
+# pushed in May 2025; this replaces the commented-out publish step in release.yml.
+#
+# Needs the DOCKERHUB_USERNAME repository variable and the DOCKERHUB_TOKEN secret. Without them
+# the image is still built (both architectures) but not pushed, so the workflow also works as a
+# build check on manual runs.
+
+on:
+  push:
+    tags:
+      - '*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag to publish (defaults to the ref name; 'latest' is also pushed for release tags)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE_NAME: testzeus/hercules
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      INPUT_TAG: ${{ inputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # torch + the CUDA wheels make this a multi-GB image; free runner disk before building.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - name: Resolve image tags
+        id: tags
+        run: |
+          tag="${INPUT_TAG:-${GITHUB_REF_NAME}}"
+          # Image tags may not contain '/' (branch names on manual runs).
+          tag="${tag//\//-}"
+          tags="${IMAGE_NAME}:${tag}"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ] && [ -z "${INPUT_TAG}" ]; then
+            tags="${tags},${IMAGE_NAME}:latest"
+          fi
+          echo "tags=${tags}" >> "$GITHUB_OUTPUT"
+          echo "Will tag: ${tags}"
+          if [ -n "${DOCKERHUB_USERNAME}" ] && [ -n "${DOCKERHUB_TOKEN}" ]; then
+            echo "push=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "push=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::DOCKERHUB_USERNAME / DOCKERHUB_TOKEN not set; building both architectures without pushing."
+          fi
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        if: steps.tags.outputs.push == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ env.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: ${{ steps.tags.outputs.push == 'true' }}
+          tags: ${{ steps.tags.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
