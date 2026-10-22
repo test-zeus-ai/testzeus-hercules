@@ -180,12 +180,45 @@ def test_compute_exit_code_all_passed() -> None:
     assert compute_exit_code(summaries) == 0
 
 
+def test_strict_exit_code_flag_defaults_off(monkeypatch) -> None:
+    from testzeus_hercules.utils.env_flags import strict_exit_code_enabled
+
+    monkeypatch.delenv("STRICT_EXIT_CODE", raising=False)
+    monkeypatch.delenv("EXIT_CODE_COMPAT", raising=False)
+    assert strict_exit_code_enabled() is False
+
+    monkeypatch.setenv("STRICT_EXIT_CODE", "True")
+    assert strict_exit_code_enabled() is True
+
+    monkeypatch.setenv("EXIT_CODE_COMPAT", "1")
+    assert strict_exit_code_enabled() is False
+
+
 def test_compute_exit_code_empty_summaries() -> None:
     assert compute_exit_code([]) == 0
     assert compute_exit_code(None) == 0  # type: ignore[arg-type]
 
 
-def test_sequential_process_returns_populated_summary(fake_run_env) -> None:
+def test_sequential_process_default_writes_no_extra_outputs(fake_run_env, monkeypatch) -> None:
+    for flag in ("ENABLE_RUN_REPORTING", "ENABLE_FAILURE_BUNDLES", "ENABLE_RUN_HISTORY", "ENABLE_FAILURE_CLASSIFICATION"):
+        monkeypatch.delenv(flag, raising=False)
+
+    summary = asyncio.run(sequential_process())
+
+    # Legacy outputs only: junit xml + html. Reporting/bundles/history/classification are opt-in.
+    assert os.path.isfile(summary["junit_xml"])
+    assert summary["report_md"] is None
+    assert summary["bundles"] == []
+    assert "run_id" not in summary
+    assert "classifications" not in summary
+    out_dir = os.path.dirname(os.path.abspath(summary["junit_xml"]))
+    assert not os.path.exists(os.path.join(out_dir, "Hercules_Test_Report.md"))
+    assert not os.path.exists(os.path.join(out_dir, "bundles"))
+
+
+def test_sequential_process_returns_populated_summary(fake_run_env, monkeypatch) -> None:
+    monkeypatch.setenv("ENABLE_RUN_REPORTING", "true")
+    monkeypatch.setenv("ENABLE_FAILURE_BUNDLES", "true")
     summary = asyncio.run(sequential_process())
 
     assert summary["total"] == 1
@@ -209,12 +242,20 @@ def test_sequential_process_returns_populated_summary(fake_run_env) -> None:
 
 # --- main() exit-code wiring --------------------------------------------------
 # main() runs a_main() in-process (fake runner above provides the run) and then
-# funnels the summaries through _finalize_exit_code: SystemExit(1) on failures,
-# legacy all-zero exit when EXIT_CODE_COMPAT=1.
+# funnels the summaries through _finalize_exit_code: legacy all-zero exit by
+# default, SystemExit(1) on failures only with STRICT_EXIT_CODE=true.
+
+
+def test_main_exits_zero_by_default_despite_failures(fake_failed_run_env, monkeypatch) -> None:
+    monkeypatch.delenv("EXIT_CODE_COMPAT", raising=False)
+    monkeypatch.delenv("STRICT_EXIT_CODE", raising=False)
+
+    assert main_module.main() is None  # legacy: no SystemExit
 
 
 def test_main_raises_system_exit_1_when_run_failed(fake_failed_run_env, monkeypatch) -> None:
     monkeypatch.delenv("EXIT_CODE_COMPAT", raising=False)
+    monkeypatch.setenv("STRICT_EXIT_CODE", "true")
 
     with pytest.raises(SystemExit) as excinfo:
         main_module.main()
@@ -222,7 +263,8 @@ def test_main_raises_system_exit_1_when_run_failed(fake_failed_run_env, monkeypa
     assert excinfo.value.code == 1
 
 
-def test_main_exit_code_compat_exits_zero_despite_failures(fake_failed_run_env, monkeypatch) -> None:
+def test_main_exit_code_compat_overrides_strict_exit_code(fake_failed_run_env, monkeypatch) -> None:
+    monkeypatch.setenv("STRICT_EXIT_CODE", "true")
     monkeypatch.setenv("EXIT_CODE_COMPAT", "1")
 
     assert main_module.main() is None  # no SystemExit: process would exit 0
@@ -234,9 +276,11 @@ def test_main_passing_run_exits_zero(fake_run_env, monkeypatch) -> None:
     assert main_module.main() is None
 
 
-def test_main_failed_run_writes_failed_junit_summary(fake_failed_run_env) -> None:
+def test_main_failed_run_writes_failed_junit_summary(fake_failed_run_env, monkeypatch) -> None:
     # The failing summary flows all the way into the merged JUnit XML before the
     # exit code is computed, so the artifact records the failure too.
+    monkeypatch.delenv("EXIT_CODE_COMPAT", raising=False)
+    monkeypatch.setenv("STRICT_EXIT_CODE", "true")
     junit_dir = fake_failed_run_env.junit_base
     with pytest.raises(SystemExit):
         main_module.main()
@@ -256,6 +300,7 @@ def _raise_no_space(_args: list[str]) -> None:
 
 
 def test_sequential_process_survives_html_conversion_failure(fake_run_env, monkeypatch) -> None:
+    monkeypatch.setenv("ENABLE_RUN_REPORTING", "true")
     monkeypatch.setattr(main_module, "prepare_html", _raise_no_space)
 
     summary = asyncio.run(sequential_process())
@@ -279,6 +324,7 @@ def test_main_exit_code_logic_survives_html_conversion_failure(fake_run_env, mon
 
 def test_main_failed_run_still_exits_1_when_html_conversion_fails(fake_failed_run_env, monkeypatch) -> None:
     monkeypatch.delenv("EXIT_CODE_COMPAT", raising=False)
+    monkeypatch.setenv("STRICT_EXIT_CODE", "true")
     monkeypatch.setattr(main_module, "prepare_html", _raise_no_space)
 
     with pytest.raises(SystemExit) as excinfo:
@@ -290,7 +336,8 @@ def test_main_failed_run_still_exits_1_when_html_conversion_fails(fake_failed_ru
 # --- colliding run output dirs --------------------------------------------------
 
 
-def test_sequential_process_disambiguates_existing_output_dir(fake_run_env) -> None:
+def test_sequential_process_disambiguates_existing_output_dir(fake_run_env, monkeypatch) -> None:
+    monkeypatch.setenv("ENABLE_RUN_REPORTING", "true")
     output_dir = fake_run_env.junit_base
     # Simulate a same-second run that already populated the shared output dir.
     (output_dir / "stale_result.xml").write_text("<testsuites/>", encoding="utf-8")

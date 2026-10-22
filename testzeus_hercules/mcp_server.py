@@ -25,6 +25,9 @@ Environment variables (all optional):
     MCP_HOST          – bind host,  default 127.0.0.1
     MCP_PORT          – bind port,  default 8000
     MCP_PATH          – URL path,   default /mcp
+    MCP_AUTH_TOKEN    – bearer token required on every request when set; REQUIRED
+                        (>= 16 chars) to bind a non-loopback MCP_HOST
+    MCP_ALLOWED_HOSTS – extra comma-separated Host header names to accept
     HERCULES_MCP_EXEC_TIMEOUT – per-run execution deadline in seconds, default 1800
 """
 
@@ -42,6 +45,7 @@ from uuid import uuid4
 
 import httpx
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 
 # Module-level imports for every collaborator the tools use, so tests (and
 # callers) can monkeypatch symbols in THIS namespace, e.g.
@@ -77,7 +81,16 @@ from testzeus_hercules.orchestrator.session import (
 )
 from testzeus_hercules.reporting.bundle import parse_junit_testcases
 from testzeus_hercules.utils.gherkin_generator import generate_gherkin_from_description
+from testzeus_hercules.utils.http_security import (
+    BearerTokenMiddleware,
+    InsecureBindError,
+    build_host_allowlist,
+    enforce_bind_policy,
+    normalize_token,
+    parse_csv,
+)
 from testzeus_hercules.utils.litellm_helper import get_litellm_chat_model
+from testzeus_hercules.utils.path_guard import PathOutsideRootsError, resolve_within
 
 # ── configuration ─────────────────────────────────────────────────────────────
 
@@ -101,6 +114,34 @@ def _run_feature_path() -> Path:
 
 def _result_dir() -> Path:
     return Path(_hercules_root()) / "opt" / "output"
+
+
+def _env_flag(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _allowed_roots() -> list[str]:
+    """Directories MCP clients may point project_path/prd_path at.
+
+    The Hercules root (TESTZEUS_ROOT or cwd), the configured PROJECT_SOURCE_ROOT /
+    TEST_DATA_PATH, and any entries of ``HERCULES_MCP_ALLOWED_ROOTS``
+    (``os.pathsep``-separated). Client-supplied paths outside these are refused.
+    """
+    roots = [_hercules_root()]
+    try:
+        from testzeus_hercules.config import get_global_conf
+
+        conf = get_global_conf()
+        roots += [conf.get_project_source_root(), conf.get_test_data_path()]
+    except Exception:  # config import is best-effort; the Hercules root still applies
+        pass
+    roots += [item for item in os.getenv("HERCULES_MCP_ALLOWED_ROOTS", "").split(os.pathsep) if item.strip()]
+    return roots
+
+
+def _confine_path(path: str, label: str, extra_roots: tuple[str, ...] = ()) -> str:
+    """Resolve a client-supplied local path inside the allowed roots (realpath + prefix check)."""
+    return resolve_within(path, [*_allowed_roots(), *extra_roots], label=label)
 
 
 def _display_path(path: str | Path) -> str:
@@ -258,12 +299,12 @@ mcp = FastMCP(
         "(2) hercules_generate_code_summary — scan the codebase for frameworks/routes/entry points; "
         "(3) hercules_generate_standardized_prd — turn a PRD document into normalized requirements; "
         "(4) hercules_generate_test_plan — generate test cases with requirement coverage; "
-        "(5) hercules_generate_and_execute — run raw Gherkin, a plain-English description, or a subset of the plan (test_ids); "
+        "(5) hercules_generate_and_execute — run raw Gherkin, a plain-English description, or a reviewed subset of the plan (test_ids + approve_plan=true); "
         "(6) hercules_get_run_results — fetch per-scenario statuses, markdown report and failure bundles. "
         "Utilities: hercules_check_config (diagnose LLM config / browser setup), hercules_rerun (re-run plan cases or last run), "
         "hercules_open_dashboard (locate the latest report). "
         "Every tool takes an optional session_id; when omitted the most recent session is used. "
-        "Sessions persist (credentials redacted) under .hercules/sessions.json."
+        "Sessions persist (app_url userinfo redacted; credentials are never stored) under .hercules/sessions.json."
     ),
 )
 
@@ -311,6 +352,10 @@ async def _build_standard_prd(state: SessionState, prd_path: str) -> tuple[Norma
     source = _resolve_prd_source(state, prd_path)
     if not source:
         raise ValueError("No PRD source available. Pass prd_path (file or URL), configure prd_path via " "hercules_configure_session, or set the session's project_path so README.md can be used.")
+    if not source.startswith(("http://", "https://")):
+        # Local PRD sources are read and sent to the LLM: confine them (realpath) to the
+        # allowed roots plus this session's project_path. URLs go through the SSRF guard in prd_parser.
+        source = _confine_path(source, "prd_path", (state.project_path,) if state.project_path else ())
     prd = await build_normalized_prd(source)
     out_path = os.path.join(str(_session_state_dir(state)), "standard_prd.json")
     prd_to_json(prd, out_path)
@@ -380,35 +425,47 @@ async def hercules_configure_session(
 
     Call this FIRST. All other hercules_* tools accept a session_id and fall
     back to the most recent session when it is omitted. Sessions persist under
-    .hercules/sessions.json (credentials are stored REDACTED as '***').
+    .hercules/sessions.json (app_url userinfo is redacted there).
 
     Args:
-        app_url: Base URL of the application under test, e.g. https://staging.example.com.
-        project_path: Absolute path of the project source tree to scan/test. Defaults to the session cwd if omitted here later.
-        test_type: "frontend", "backend" or "mixed".
-        test_scope: "codebase" (test the whole app) or "diff" (focus on recent changes).
-        credentials: Optional login credentials dict (e.g. {"username": ..., "password": ...}). Persisted redacted.
-        prd_path: Optional path or URL of a PRD document for hercules_generate_standardized_prd.
+        app_url: Base URL of the application under test, e.g. https://staging.example.com. Recorded and probed for reachability only; the URL a run actually visits comes from the Gherkin you execute.
+        project_path: Path of the project source tree to scan. Must be inside the Hercules root (TESTZEUS_ROOT/cwd), PROJECT_SOURCE_ROOT/TEST_DATA_PATH or HERCULES_MCP_ALLOWED_ROOTS.
+        test_type: Informational label: "frontend", "backend" or "mixed". Recorded on the session; it does not change what runs.
+        test_scope: Only "codebase" is supported. "diff" is rejected (diff-scoped testing is not implemented).
+        credentials: DEPRECATED and ignored: credentials are never stored or echoed. Put login steps/secrets in the Gherkin (or environment) instead.
+        prd_path: Optional PRD file (inside the allowed roots) or http(s) URL (public hosts only) for hercules_generate_standardized_prd.
 
     Returns:
         {"session_id", "app_url" (userinfo-redacted), "app_url_reachable", "project_path",
-        "test_type", "test_scope", "prd_path", "next_action"}.
+        "test_type", "test_scope", "prd_path", "next_action", optional "warnings"}.
         app_url_reachable is true/false (HEAD/GET probe) or null when not checkable.
-        In-memory session state keeps the full URL so runs can still authenticate.
+        In-memory session state keeps the full URL; it is never echoed.
     """
     if test_type not in ("frontend", "backend", "mixed"):
         return _error(f"Invalid test_type {test_type!r}; use 'frontend', 'backend' or 'mixed'.")
-    if test_scope not in ("codebase", "diff"):
-        return _error(f"Invalid test_scope {test_scope!r}; use 'codebase' or 'diff'.")
+    if test_scope == "diff":
+        return _error("test_scope='diff' is not supported yet; use 'codebase'.")
+    if test_scope != "codebase":
+        return _error(f"Invalid test_scope {test_scope!r}; only 'codebase' is supported.")
+
+    warnings: list[str] = []
+    if credentials:
+        warnings.append("credentials are ignored (never stored); provide login steps in the Gherkin instead.")
+    try:
+        resolved_project = _confine_path(project_path, "project_path") if project_path else ""
+        resolved_prd = prd_path
+        if prd_path and not prd_path.startswith(("http://", "https://")):
+            resolved_prd = _confine_path(prd_path, "prd_path", (resolved_project,) if resolved_project else ())
+    except PathOutsideRootsError as exc:
+        return _error(str(exc))
 
     reachable = await _check_app_url(app_url)
     state = get_session_manager().create_session(
         app_url=app_url,
-        project_path=os.path.abspath(project_path) if project_path else "",
+        project_path=resolved_project,
         test_type=test_type,
         test_scope=test_scope,
-        credentials=credentials,
-        prd_path=prd_path,
+        prd_path=resolved_prd,
     )
     state.app_url_reachable = reachable
     get_session_manager().save_session_state(state)
@@ -417,7 +474,7 @@ async def hercules_configure_session(
     if reachable is False:
         # Redact userinfo here too: the warning may surface credentials otherwise.
         next_action += f" (warning: app_url was not reachable — verify {redact_url(app_url)!r} before executing tests)"
-    return {
+    result = {
         "session_id": state.session_id,
         # Echo the redacted URL; the raw URL stays on the in-memory session state.
         "app_url": redact_url(state.app_url),
@@ -428,6 +485,9 @@ async def hercules_configure_session(
         "prd_path": state.prd_path,
         "next_action": next_action,
     }
+    if warnings:
+        result["warnings"] = warnings
+    return result
 
 
 # ── tool 2: hercules_generate_code_summary ────────────────────────────────────
@@ -443,7 +503,7 @@ async def hercules_generate_code_summary(session_id: str = "", project_path: str
 
     Args:
         session_id: Session to attach the summary to (omit for the most recent session).
-        project_path: Project source tree to scan; falls back to the session's project_path.
+        project_path: Project source tree to scan (inside the allowed roots); falls back to the session's project_path.
 
     Returns:
         {"summary": {frameworks, languages (top 5), entry_points_count, routes_count},
@@ -454,7 +514,10 @@ async def hercules_generate_code_summary(session_id: str = "", project_path: str
     except (KeyError, ValueError) as exc:
         return _error(str(exc))
 
-    path = os.path.abspath(project_path) if project_path else state.project_path
+    try:
+        path = _confine_path(project_path, "project_path") if project_path else state.project_path
+    except PathOutsideRootsError as exc:
+        return _error(str(exc))
     if not path or not os.path.isdir(path):
         return _error(f"project_path {path!r} is not a directory. Pass project_path or set it via hercules_configure_session.")
 
@@ -534,7 +597,7 @@ async def hercules_generate_standardized_prd(session_id: str = "", prd_path: str
 
 @mcp.tool()
 async def hercules_generate_test_plan(session_id: str = "", prd_path: str = "", cases_per_requirement: int = 3) -> dict:
-    """Generate a structured test plan (TestSprite-flavored) from the standardized PRD via LLM.
+    """Generate a structured test plan from the standardized PRD via LLM.
 
     Reuses the session's standardized PRD produced by
     hercules_generate_standardized_prd; pass prd_path to (re)build the PRD from
@@ -562,6 +625,7 @@ async def hercules_generate_test_plan(session_id: str = "", prd_path: str = "", 
         return _error(str(exc))
 
     state.test_plan_path = out_path
+    state.plan_approved = False  # a freshly generated (LLM/PRD-derived) plan must be re-approved
     get_session_manager().save_session_state(state)
 
     return {
@@ -569,7 +633,7 @@ async def hercules_generate_test_plan(session_id: str = "", prd_path: str = "", 
         "case_count": len(plan.test_cases),
         "coverage": coverage_matrix(plan),
         "test_cases": [{"id": case.id, "title": case.title, "category": case.category, "priority": case.priority, "tags": case.tags} for case in plan.test_cases],
-        "next_action": "Call hercules_generate_and_execute (optionally with test_ids) to run selected cases.",
+        "next_action": "Review the plan at test_plan_path, then call hercules_generate_and_execute with approve_plan=true (optionally with test_ids) to run selected cases.",
     }
 
 
@@ -583,8 +647,14 @@ async def hercules_generate_and_execute(
     gherkin: str = "",
     description: str = "",
     additional_instructions: str = "",
+    approve_plan: bool = False,
 ) -> dict:
     """Generate a feature file and execute it IN-PROCESS via the Hercules runner.
+
+    This tool EXECUTES what you pass (gherkin / description) with the configured
+    browser and tools. A plan generated from a PRD is untrusted LLM output, so
+    running it requires ``approve_plan=true`` (or HERCULES_MCP_AUTO_APPROVE_PLAN=true)
+    after you have reviewed the plan file.
 
     Source priority: gherkin > description (LLM-generated Gherkin) > session
     test plan subset (requires hercules_generate_test_plan first; test_ids
@@ -602,6 +672,7 @@ async def hercules_generate_and_execute(
         gherkin: Raw Gherkin feature content to run directly (highest priority).
         description: Plain-English description; Gherkin is generated from it via LLM.
         additional_instructions: Extra hints for the agent, appended as Gherkin comments in the feature file.
+        approve_plan: Confirm you reviewed the PRD-derived test plan and want it executed (only needed for plan-based runs; remembered for hercules_rerun until the plan is regenerated).
 
     Returns:
         {"success", "duration_s", "summaries", "run_report_md", "bundles_count",
@@ -636,6 +707,14 @@ async def hercules_generate_and_execute(
                 feature_path.write_text(content, encoding="utf-8")
             elif state.test_plan_path and os.path.isfile(state.test_plan_path):
                 source_kind = "test_plan"
+                if not (approve_plan or state.plan_approved or _env_flag("HERCULES_MCP_AUTO_APPROVE_PLAN")):
+                    return _error(
+                        "The test plan was generated by an LLM from a PRD and has not been approved. Review it at "
+                        f"{_display_path(state.test_plan_path)} and call again with approve_plan=true (or pass gherkin explicitly)."
+                    )
+                if approve_plan and not state.plan_approved:
+                    state.plan_approved = True
+                    get_session_manager().save_session_state(state)
                 plan = plan_from_json(state.test_plan_path)
                 if test_ids:
                     valid_ids = {case.id for case in plan.test_cases}
@@ -847,12 +926,13 @@ async def hercules_check_config(session_id: str = "", ping_model: bool = False) 
 
 
 @mcp.tool()
-async def hercules_rerun(session_id: str = "", test_ids: list[str] | None = None) -> dict:
+async def hercules_rerun(session_id: str = "", test_ids: list[str] | None = None, approve_plan: bool = False) -> dict:
     """Re-run a previous test: the session test-plan subset (test_ids) or the last executed feature file.
 
     Args:
         session_id: Session whose plan/last run should be re-executed (omit for the most recent session).
         test_ids: Restrict the re-run to these test case ids; ignored when no test plan exists.
+        approve_plan: Approve the session's PRD-derived test plan for execution (see hercules_generate_and_execute).
 
     Returns:
         Same shape as hercules_generate_and_execute.
@@ -863,7 +943,7 @@ async def hercules_rerun(session_id: str = "", test_ids: list[str] | None = None
         return _error(str(exc))
 
     if state.test_plan_path and os.path.isfile(state.test_plan_path):
-        return await hercules_generate_and_execute(session_id=state.session_id, test_ids=test_ids)
+        return await hercules_generate_and_execute(session_id=state.session_id, test_ids=test_ids, approve_plan=approve_plan)
 
     last_feature: str | None = None
     saw_recorded = False
@@ -970,27 +1050,79 @@ async def get_test_results(run_id: str = "") -> str:
 # ── entrypoint ────────────────────────────────────────────────────────────────
 
 
+def _mcp_auth_token() -> str | None:
+    return normalize_token(os.getenv("MCP_AUTH_TOKEN"))
+
+
+def _transport_security(allowlist: set[str] | None) -> TransportSecuritySettings:
+    """FastMCP DNS-rebinding settings for a Host allowlist (None = wildcard bind, token-gated)."""
+    if allowlist is None:
+        # Wildcard bind (the bearer token is mandatory there): any Host name may reach this machine.
+        return TransportSecuritySettings(enable_dns_rebinding_protection=False)
+    hosts: list[str] = []
+    origins: list[str] = []
+    for name in sorted(allowlist):
+        display = f"[{name}]" if ":" in name else name
+        hosts += [display, f"{display}:*"]
+        origins += [f"http://{display}", f"http://{display}:*", f"https://{display}", f"https://{display}:*"]
+    return TransportSecuritySettings(enable_dns_rebinding_protection=True, allowed_hosts=hosts, allowed_origins=origins)
+
+
+def build_http_app(host: str | None = None, port: int | None = None, path: str | None = None, token: str | None = None):
+    """Build the hardened streamable-http ASGI app for this server.
+
+    Applies host/port/path to the FastMCP settings (they are NOT read from the
+    environment by FastMCP itself), enforces the bind policy (non-loopback
+    requires ``MCP_AUTH_TOKEN``), configures DNS-rebinding protection and wraps
+    the app in bearer-token auth when a token is configured.
+
+    Raises:
+        InsecureBindError: non-loopback ``host`` without a sufficiently long token.
+    """
+    host = host if host is not None else _mcp_host()
+    port = port if port is not None else _mcp_port()
+    path = path if path is not None else _mcp_path()
+    token = token if token is not None else _mcp_auth_token()
+    enforce_bind_policy("the Hercules MCP server", host, token, "MCP_AUTH_TOKEN")
+
+    mcp.settings.host = host
+    mcp.settings.port = port
+    mcp.settings.streamable_http_path = path
+
+    mcp.settings.transport_security = _transport_security(build_host_allowlist(host, parse_csv(os.getenv("MCP_ALLOWED_HOSTS"))))
+    # The session manager is created lazily by streamable_http_app(); drop any one
+    # built with earlier settings so the new transport security applies.
+    mcp._session_manager = None  # noqa: SLF001
+
+    app = mcp.streamable_http_app()
+    if token:
+        app.add_middleware(BearerTokenMiddleware, token=token, realm="hercules-mcp")
+    return app
+
+
 def main() -> None:
     """Entrypoint for the testzeus-hercules-mcp console script."""
+    import uvicorn
+
     host = _mcp_host()
     port = _mcp_port()
     path = _mcp_path()
+    token = _mcp_auth_token()
+    try:
+        app = build_http_app(host, port, path, token)
+    except InsecureBindError as exc:
+        raise SystemExit(str(exc)) from exc
     print(f"Starting TestZeus Hercules MCP server on http://{host}:{port}{path}")
+    if token:
+        print("Bearer-token auth enabled (MCP_AUTH_TOKEN): send 'Authorization: Bearer <token>'.")
+    else:
+        print("No MCP_AUTH_TOKEN set: auth disabled (loopback bind only).")
     print("Add to your mcp_servers config:")
-    print(
-        json.dumps(
-            {
-                "mcpServers": {
-                    "testzeus-hercules": {
-                        "transport": "streamable-http",
-                        "url": f"http://{host}:{port}{path}",
-                    }
-                }
-            },
-            indent=4,
-        )
-    )
-    mcp.run(transport="streamable-http")
+    client_entry: dict[str, Any] = {"transport": "streamable-http", "url": f"http://{host}:{port}{path}"}
+    if token:
+        client_entry["headers"] = {"Authorization": "Bearer <MCP_AUTH_TOKEN>"}
+    print(json.dumps({"mcpServers": {"testzeus-hercules": client_entry}}, indent=4))
+    uvicorn.run(app, host=host, port=port, log_level="info")
 
 
 if __name__ == "__main__":

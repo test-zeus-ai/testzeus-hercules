@@ -11,7 +11,7 @@
 #      `llm-config-ref-key`.
 #   2. A repository secret holding your LLM API key (LLM_API_KEY below), passed
 #      through to Hercules via the `env-vars` input.
-#   3. The action's `runner: docker` mode pulls ghcr.io/testzeus/hercules:latest;
+#   3. The action's `runner: docker` mode pulls testzeus/hercules:latest;
 #      either make sure that image exists for you, or use `runner: uv`
 #      (installs from source; slower but no image needed).
 # =============================================================================
@@ -63,7 +63,7 @@ jobs:
           # suite: regression
           # suite-config: .hercules/suites.yaml
           runner: docker # or: uv (builds/installs from source, python-version below)
-          # image: ghcr.io/testzeus/hercules:latest
+          # image: testzeus/hercules:latest
           # python-version: '3.12'
           llm-config: agents_llm_config.json
           llm-config-ref-key: openai_gpt

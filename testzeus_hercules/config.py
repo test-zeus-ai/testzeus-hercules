@@ -13,20 +13,41 @@ from dotenv import load_dotenv
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.timestamp_helper import get_timestamp_str
 
-# Entrypoints that own the shared Hercules CLI flags. Subcommand CLIs
-# (dashboard, run_manager, suites, scheduler, mcp server) define their own
-# argparse parsers, so the base config must not eagerly parse sys.argv there —
-# it would error on flags like ``--port`` (ambiguous with ``--portkey-*``)
-# and swallow ``--config`` meant for the subcommand.
+# Subcommand CLIs (dashboard, suites, ...) define their own argparse parsers with
+# flags that may clash with the shared Hercules flags (e.g. ``--config``), so the
+# base config must not swallow their argv. They are skipped by name; any other
+# entrypoint (custom scripts, ``python -m``, wrappers) parses the shared flags.
+_SUBCOMMAND_CLI_ARGV0 = {"hercules-dashboard", "hercules-suite", "hercules-suites", "hercules-monitor", "hercules-run-manager"}
+
+
+# Entrypoints that historically owned the shared Hercules CLI flags.
 _MAIN_CLI_ARGV0 = {"__main__.py", "testzeus-hercules", "interactive.py", "testzeus_hercules"}
 
 
+def _is_main_cli_entrypoint() -> bool:
+    try:
+        return os.path.basename(sys.argv[0] or "").lower() in _MAIN_CLI_ARGV0
+    except Exception:  # pragma: no cover - defensive
+        return False
+
+
+def _env_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes")
+
+
 def _should_parse_cli_args() -> bool:
+    """Return True unless CLI parsing is explicitly disabled.
+
+    Disabled by ``HERCULES_DISABLE_CLI_PARSE=true`` or when running as one of the
+    known subcommand entrypoints that own their own flags.
+    """
+    if _env_flag("HERCULES_DISABLE_CLI_PARSE"):
+        return False
     try:
         argv0 = os.path.basename(sys.argv[0] or "")
     except Exception:  # pragma: no cover - defensive; never block config init
         return False
-    return argv0.lower() in _MAIN_CLI_ARGV0
+    return argv0.lower() not in _SUBCOMMAND_CLI_ARGV0
 
 
 # Monotonic version counter for the global configuration. It is bumped whenever
@@ -113,11 +134,15 @@ class BaseConfigManager:
             env_file_path: str = ".env"
             load_dotenv(env_file_path, verbose=True, override=True)
 
-        # 2) Merge environment variables if not ignoring env. Environment
-        #    values form the base layer and keys explicitly provided in
-        #    config_dict win over them (documented priority: Dict > Env).
+        # 2) Merge environment variables if not ignoring env. By default the
+        #    environment wins over config_dict (legacy behaviour). Set
+        #    CONFIG_DICT_OVERRIDES_ENV=true to make keys explicitly passed in
+        #    config_dict win over the environment (Dict > Env).
         if not self._ignore_env:
-            self._config = {**self._merge_from_env(self._config), **self._config}
+            if _env_flag("CONFIG_DICT_OVERRIDES_ENV"):
+                self._config = {**self._merge_from_env(self._config), **self._config}
+            else:
+                self._config = self._merge_from_env(self._config)
 
         # 3) Parse command-line arguments/config after env so CLI wins.
         if not self._ignore_env and _should_parse_cli_args():
@@ -256,7 +281,13 @@ class BaseConfigManager:
         Parse Hercules-specific command-line arguments
         and place them into the environment for consistency.
         """
-        parser = argparse.ArgumentParser(description="Hercules: The World's First Open-Source AI Agent for End-to-End Testing")
+        # Legacy entrypoints keep argparse prefix matching (``--input`` for
+        # ``--input-file``). For any other entrypoint, abbreviations are off so its own
+        # flags (e.g. ``--port``) are not mistaken for ours (``--portkey-*``) and are ignored.
+        parser = argparse.ArgumentParser(
+            description="Hercules: The World's First Open-Source AI Agent for End-to-End Testing",
+            allow_abbrev=_is_main_cli_entrypoint(),
+        )
         parser.add_argument(
             "--config",
             type=str,

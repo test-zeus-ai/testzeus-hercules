@@ -594,14 +594,28 @@ Parallel and suite runs manage their scratch space automatically:
 
 Every run is recorded in a SQLite database (default
 `opt/hercules_history.db`, override with `HERCULES_HISTORY_DB`): runs, cases,
-steps, artifact paths, and healing events (classifications, selector-store
-hits, heal proposals). A local web UI reads from it:
+steps, artifact paths, and healing events (failure classifications, selector-store
+hits, heal proposals). Healing events are **observability only**: Hercules records
+them and logs proposals, but never rewrites a step or selector automatically (there is
+no auto-healing). A local web UI reads from it:
 
 ```bash
-hercules-dashboard                      # serves http://127.0.0.1:8001
-hercules-dashboard --host 0.0.0.0 --port 8001 \
-  --db opt/hercules_history.db --project-root .
+hercules-dashboard                      # serves http://127.0.0.1:8001 (loopback only)
+hercules-dashboard --port 8001 --db opt/hercules_history.db --project-root .
 ```
+
+The dashboard serves run history, artifacts and failure evidence, so it binds
+loopback by default and rejects requests whose `Host` header is not a loopback
+name (DNS-rebinding defence). To expose it on another interface you must set a
+token, and the command refuses to start without one:
+
+```bash
+export DASHBOARD_AUTH_TOKEN="$(openssl rand -hex 24)"   # >= 16 chars
+hercules-dashboard --host 0.0.0.0 --port 8001            # clients: Authorization: Bearer <token> (or Basic, any user, token as password)
+```
+
+Put TLS in front of it (reverse proxy) when it leaves your machine. Add public
+names with `DASHBOARD_ALLOWED_HOSTS=dash.example.com`.
 
 - `/` — runs list with pass/fail counts and an "Import from output folders"
   button that scans `output/*/` for `*_result.xml` and back-fills the DB.

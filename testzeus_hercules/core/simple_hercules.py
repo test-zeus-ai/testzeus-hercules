@@ -39,6 +39,7 @@ from testzeus_hercules.utils.error_evidence import (
     _redact_error_text,
     persist_error_evidence,
 )
+from testzeus_hercules.utils.env_flags import observer_invariants_enabled
 from testzeus_hercules.utils.llm_helper import (
     GraphChatResult,
     convert_model_config_to_langchain_format,
@@ -108,7 +109,7 @@ class SimpleHercules:
         stake_id: str,
         save_chat_logs_to_files: bool = True,
         planner_max_chat_round: int = 500,
-        browser_nav_max_chat_round: int = 50,
+        browser_nav_max_chat_round: int = 10,
     ) -> None:
         self.timestamp = get_timestamp_str()
         self.planner_number_of_rounds = planner_max_chat_round
@@ -156,7 +157,7 @@ class SimpleHercules:
         helper_agent_config: dict[str, Any],
         save_chat_logs_to_files: bool = True,
         planner_max_chat_round: int = 500,
-        browser_nav_max_chat_round: int = 50,
+        browser_nav_max_chat_round: int = 10,
     ) -> "SimpleHercules":
         logger.info(
             "Creating SimpleHercules (LangGraph), planner rounds=%s, nav rounds=%s",
@@ -495,6 +496,42 @@ class SimpleHercules:
         if terminate_is_no and not next_step:
             raise ValueError("next_step must be non-empty while terminate is 'no'")
 
+    @staticmethod
+    def _corrective_planner_prompt(error: ValueError) -> str:
+        return (
+            f"Your previous reply was not a valid decision: {error}. "
+            'Reply again with ONLY the corrected JSON decision: terminate must be "yes" or "no", '
+            "is_assert and is_passed must be JSON booleans (true/false, not strings), and next_step must be "
+            'non-empty while terminate is "no".'
+        )
+
+    async def _invoke_planner(
+        self,
+        planner: PlannerAgent,
+        messages: list[AnyMessage],
+        state: AgentState,
+        turn: int,
+        start: float,
+    ) -> tuple[Any, dict[str, Any] | None]:
+        """Call the planner LLM once; return ``(response, None)`` or ``(None, failed_planner_state)``."""
+        self._log_model_call("planner_agent", messages)
+        try:
+            response = await self._ainvoke_with_context_fallback(
+                planner.llm,
+                messages,
+                planner.system_message,
+                "planner_agent",
+            )
+        except TimeoutError as e:
+            return None, self._planner_timeout_result(state, messages, turn, start, e)
+        except Exception as e:
+            # Any other planner LLM failure (rate limits, connection errors,
+            # provider 5xx, malformed tool messages) must terminate the graph
+            # cleanly so the scenario is recorded as failed instead of the
+            # exception escaping and aborting the whole run.
+            return None, self._planner_failure_result(state, messages, turn, start, f"Planner LLM call failed: {e}", "PLANNER_ERROR")
+        return response, None
+
     # ------------------------------------------------------------------
     # Planner node — uses PlannerAgent with its full system prompt
     # ------------------------------------------------------------------
@@ -553,36 +590,13 @@ class SimpleHercules:
         if not messages or not isinstance(messages[0], SystemMessage):
             messages = [SystemMessage(content=planner.system_message)] + messages
 
-        self._log_model_call("planner_agent", messages)
-        try:
-            response = await self._ainvoke_with_context_fallback(
-                planner.llm,
-                messages,
-                planner.system_message,
-                "planner_agent",
-            )
-        except TimeoutError as e:
-            return self._planner_timeout_result(state, messages, turn, start, e)
-        except Exception as e:
-            # Any other planner LLM failure (rate limits, connection errors,
-            # provider 5xx, malformed tool messages) must terminate the graph
-            # cleanly so the scenario is recorded as failed instead of the
-            # exception escaping and aborting the whole run.
-            return self._planner_failure_result(state, messages, turn, start, f"Planner LLM call failed: {e}", "PLANNER_ERROR")
+        response, failure = await self._invoke_planner(planner, messages, state, turn, start)
+        if failure is not None:
+            return failure
 
-        # Token accounting
+        # Token accounting (accumulated over the optional corrective re-prompt)
         prompt_tokens, completion_tokens = self._token_counts(response)
-        step_entry = {
-            "node": "planner",
-            "turn": turn,
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": prompt_tokens + completion_tokens,
-        }
         response_cost = self._extract_response_cost(response)
-        if response_cost is not None:
-            step_entry["cost"] = response_cost
-        logger.info("[TOKEN_COUNT] %s", step_entry)
 
         content = str(response.content) if response.content else ""
         logger.warning("[PLANNER_DEBUG] turn=%d raw=%s", turn, repr(content)[:400])
@@ -593,22 +607,60 @@ class SimpleHercules:
         except Exception:
             parsed = {}
 
-        # A malformed planner decision must end the graph in a failed state
-        # instead of silently misrouting helpers. Empty/unparseable responses
-        # keep their existing stall-based handling.
+        # A malformed planner decision (e.g. is_assert as the string "true", an
+        # empty next_step while terminate is "no") gets ONE corrective re-prompt
+        # before the scenario is failed, so a single formatting slip does not
+        # turn a healthy run red. Empty/unparseable responses keep their existing
+        # stall-based handling.
         if any(key in parsed for key in self._PLANNER_DECISION_KEYS):
             try:
                 self._validate_planner_decision(parsed)
-            except ValueError as e:
-                return self._planner_failure_result(
-                    state,
-                    messages,
-                    turn,
-                    start,
-                    f"Invalid planner decision: {e}",
-                    "PLANNER_INVALID_DECISION",
-                    expectation="planner produces a valid decision",
-                )
+            except ValueError as first_error:
+                logger.warning("[PLANNER_INVALID_DECISION] %s; re-prompting the planner once.", first_error)
+                messages = messages + [
+                    AIMessage(content=content),
+                    HumanMessage(content=self._corrective_planner_prompt(first_error)),
+                ]
+                response, failure = await self._invoke_planner(planner, messages, state, turn, start)
+                if failure is not None:
+                    return failure
+                retry_prompt_tokens, retry_completion_tokens = self._token_counts(response)
+                prompt_tokens += retry_prompt_tokens
+                completion_tokens += retry_completion_tokens
+                retry_cost = self._extract_response_cost(response)
+                if retry_cost is not None:
+                    response_cost = (response_cost or 0.0) + retry_cost
+                content = str(response.content) if response.content else ""
+                logger.warning("[PLANNER_DEBUG] turn=%d retry raw=%s", turn, repr(content)[:400])
+                planner.on_planner_message(content)
+                try:
+                    parsed = parse_response(content)
+                except Exception:
+                    parsed = {}
+                if any(key in parsed for key in self._PLANNER_DECISION_KEYS):
+                    try:
+                        self._validate_planner_decision(parsed)
+                    except ValueError as e:
+                        return self._planner_failure_result(
+                            state,
+                            messages,
+                            turn,
+                            start,
+                            f"Invalid planner decision: {e}",
+                            "PLANNER_INVALID_DECISION",
+                            expectation="planner produces a valid decision",
+                        )
+
+        step_entry = {
+            "node": "planner",
+            "turn": turn,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": prompt_tokens + completion_tokens,
+        }
+        if response_cost is not None:
+            step_entry["cost"] = response_cost
+        logger.info("[TOKEN_COUNT] %s", step_entry)
 
         # PlannerAgent schema: next_step, target_helper, terminate, is_assert, etc.
         next_step = str(parsed.get("next_step") or "")
@@ -1119,9 +1171,12 @@ class SimpleHercules:
 
         logger.info("[EXECUTOR] %s response: %s", agent_name, helper_response[:300])
 
-        # Observer invariants: judge the proof artifacts written so far.
-        # Containment-wrapped — a poll failure is logged and swallowed.
-        self._poll_invariants_safely()
+        # Observer invariants (opt-in, ENABLE_OBSERVER_INVARIANTS=true): judge the
+        # proof artifacts written so far. Containment-wrapped — a poll failure is
+        # logged and swallowed. Off by default: HTTP 5xx / console TypeError
+        # evidence can fail a scenario that the planner legitimately passed.
+        if observer_invariants_enabled():
+            self._poll_invariants_safely()
 
         # Feed the helper's full response back into the planner conversation
         messages: list[AnyMessage] = list(state.get("messages", []))

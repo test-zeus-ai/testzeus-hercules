@@ -1,23 +1,67 @@
-"""Confine model-supplied filesystem paths to the configured roots.
+"""Confine model/client-supplied filesystem paths to configured roots.
 
-Tools that read local files on the model's behalf (multipart uploads, Hurl
-suites, OpenAPI specs) must not be steerable at arbitrary files. Every such
-path is resolved with ``os.path.realpath`` (so ``..`` traversal and symlinks
-are followed) and must then sit inside one of the allowed roots:
+Two entry points share this module:
 
-- the test data folder (``TEST_DATA_PATH``),
-- the project source root (``PROJECT_SOURCE_ROOT``),
-- any extra roots listed in ``API_ALLOWED_PATHS`` (``os.pathsep``-separated).
+- ``resolve_within(path, roots)``: strict containment check against explicit roots
+  (MCP session / PRD paths).
+- ``resolve_in_roots(path)``: API tooling (multipart uploads, Hurl suites, OpenAPI
+  specs); roots default to ``TEST_DATA_PATH``, ``PROJECT_SOURCE_ROOT`` and any extra
+  roots in ``API_ALLOWED_PATHS`` (``os.pathsep``-separated). Relative paths are tried
+  against each root.
+
+Paths are resolved with ``os.path.realpath`` first, so ``..`` traversal and symlinks
+that leave a root are rejected.
 """
 
+from __future__ import annotations
+
 import os
-from typing import Iterable, List, Optional
+from collections.abc import Iterable
+from typing import List, Optional
 
 from testzeus_hercules.config import get_global_conf
 
 
-class PathConfinementError(ValueError):
-    """Raised when a path resolves outside every allowed root."""
+class PathOutsideRootsError(ValueError):
+    """The path resolves outside every allowed root."""
+
+
+def _real(path: str) -> str:
+    return os.path.realpath(os.path.expanduser(path))
+
+
+def is_within(path: str, root: str) -> bool:
+    """True when ``path`` (after symlink resolution) is ``root`` or inside it."""
+    real_root = _real(root)
+    real_path = _real(path)
+    try:
+        return os.path.commonpath([real_path, real_root]) == real_root
+    except ValueError:  # e.g. different drives on Windows
+        return False
+
+
+def resolve_within(path: str, roots: Iterable[str], label: str = "path") -> str:
+    """Return the realpath of ``path`` when it lies inside one of ``roots``.
+
+    Symlinks are resolved before the prefix check, so a link inside a root that
+    points outside it is rejected.
+
+    Raises:
+        PathOutsideRootsError: ``path`` is outside every root (or no root is configured).
+    """
+    candidates = [root for root in roots if root]
+    if not path:
+        raise PathOutsideRootsError(f"{label} is empty")
+    for root in candidates:
+        if is_within(path, root):
+            return _real(path)
+    raise PathOutsideRootsError(
+        f"{label} {os.path.basename(path.rstrip(os.sep)) or path!r} is outside the allowed roots; place it under the project/test-data directory or add its directory to the allowed roots setting."
+    )
+
+
+class PathConfinementError(PathOutsideRootsError):
+    """Raised by ``resolve_in_roots`` when a path resolves outside every allowed root."""
 
 
 def allowed_roots() -> List[str]:

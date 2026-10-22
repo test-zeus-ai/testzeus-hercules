@@ -161,3 +161,45 @@ def test_persist_refuses_symlinked_target_via_o_nofollow(workspace) -> None:
 def test_unsupported_extension_returns_error_string(workspace) -> None:
     assert persist_findings("file.exe", "x").startswith("Error writing file:")
     assert recall_findings("file.exe").startswith("Error reading file:")
+
+
+# ── configured test-data directory outside the workspace stays usable ─────────
+
+
+@pytest.fixture()
+def workspace_with_external_test_data(tmp_path):
+    root = tmp_path / "workspace"
+    root.mkdir()
+    test_data = tmp_path / "shared_test_data"
+    test_data.mkdir()
+    os.environ["IS_TEST_ENV"] = "true"
+    SingletonConfigManager.reset_instance()
+    try:
+        set_global_conf(
+            {"PROJECT_SOURCE_ROOT": str(root), "TEST_DATA_PATH": str(test_data), "LLM_MODEL_NAME": "test-model", "LLM_MODEL_API_KEY": "test-key"},
+            ignore_env=True,
+        )
+        yield root, test_data
+    finally:
+        SingletonConfigManager.reset_instance()
+
+
+def test_absolute_path_in_external_test_data_dir_allowed(workspace_with_external_test_data) -> None:
+    _root, test_data = workspace_with_external_test_data
+    target = test_data / "users.json"
+    assert persist_findings(str(target), '{"u": 1}') == f"Successfully wrote data to {target}"
+    assert recall_findings(str(target)) == {"u": 1}
+
+
+def test_relative_read_falls_back_to_test_data_dir(workspace_with_external_test_data) -> None:
+    _root, test_data = workspace_with_external_test_data
+    (test_data / "users.json").write_text('{"u": 2}', encoding="utf-8")
+    assert recall_findings("users.json") == {"u": 2}
+
+
+def test_external_test_data_does_not_open_other_directories(workspace_with_external_test_data, tmp_path) -> None:
+    other = tmp_path / "other"
+    other.mkdir()
+    result = persist_findings(str(other / "x.txt"), "no")
+    assert result.startswith("Error writing file:") and "outside the workspace root" in result
+    assert not (other / "x.txt").exists()

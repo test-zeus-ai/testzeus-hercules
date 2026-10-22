@@ -9,6 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 from testzeus_hercules.intelligence import prd_parser
+from testzeus_hercules.utils.url_guard import FetchResult
 from testzeus_hercules.intelligence.normalized_prd import (
     NormalizedPRD,
     PRDRequirement,
@@ -74,21 +75,15 @@ def test_extract_text_missing_file_raises(tmp_path) -> None:
 
 
 def test_extract_text_url_strips_html(monkeypatch) -> None:
-    class FakeResponse:
-        status_code = 200
-        text = "<html><head><style>body{color:red}</style></head><body><h1>Hello</h1><p>World &amp; more</p></body></html>"
+    html = "<html><head><style>body{color:red}</style></head><body><h1>Hello</h1><p>World &amp; more</p></body></html>"
+    seen: dict = {}
 
-        def raise_for_status(self) -> None:
-            return None
+    def fake_fetch(url, **kwargs):
+        seen["url"] = url
+        seen["kwargs"] = kwargs
+        return FetchResult(url=url, status_code=200, text=html)
 
-    calls: dict = {}
-
-    def fake_get(url, **kwargs):
-        calls["url"] = url
-        calls["kwargs"] = kwargs
-        return FakeResponse()
-
-    monkeypatch.setattr(prd_parser.httpx, "get", fake_get)
+    monkeypatch.setattr(prd_parser, "fetch_text", fake_fetch)
 
     metadata: dict = {}
     text = extract_text("https://example.com/prd", metadata)
@@ -98,8 +93,26 @@ def test_extract_text_url_strips_html(monkeypatch) -> None:
     assert "<" not in text
     assert metadata["source_type"] == "url"
     assert metadata["url"] == "https://example.com/prd"
-    assert calls["kwargs"]["follow_redirects"] is True
-    assert calls["kwargs"]["timeout"] == 30
+    assert seen["kwargs"]["allow_private"] is False
+
+
+def test_extract_text_url_private_hosts_opt_in(monkeypatch) -> None:
+    seen: dict = {}
+
+    def fake_fetch(url, **kwargs):
+        seen.update(kwargs)
+        return FetchResult(url=url, status_code=200, text="ok")
+
+    monkeypatch.setattr(prd_parser, "fetch_text", fake_fetch)
+    monkeypatch.setenv("PRD_FETCH_ALLOW_PRIVATE_HOSTS", "true")
+    extract_text("http://wiki.internal/prd", {})
+    assert seen["allow_private"] is True
+
+
+@pytest.mark.parametrize("url", ["http://127.0.0.1:8000/prd", "http://169.254.169.254/latest/meta-data/", "http://10.0.0.5/x", "http://[::1]/x"])
+def test_extract_text_url_blocks_internal_targets_by_default(url) -> None:
+    with pytest.raises(ValueError, match="Refusing to fetch"):
+        extract_text(url, {})
 
 
 def test_extract_text_docx_falls_back_to_zipfile(tmp_path, monkeypatch) -> None:
