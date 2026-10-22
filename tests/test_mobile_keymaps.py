@@ -121,8 +121,9 @@ def test_expand_key_sequence_rejects_unknown_names() -> None:
 def test_press_key_sequence_keycode_order_on_fake_driver(fake_manager) -> None:
     manager, driver = fake_manager
     asyncio.run(manager.press_key_sequence("Control+A,Enter"))
-    # modifier down, main key, modifier up (reverse order), then next segment
-    assert driver.keycodes == [113, 29, 113, 66]
+    # the client has no key_down/key_up: Ctrl travels as the meta-state of the A press
+    assert driver.keycodes == [29, 66]
+    assert driver.metastates == [0x1000 | 0x2000, None]
 
 
 def test_press_key_and_hardware_key_on_fake_driver(fake_manager) -> None:

@@ -1,8 +1,12 @@
 """Shared offline doubles for the mobile device automation test suite.
 
 No test here touches a real device, opens a socket, or spawns a process:
-the Appium client is stubbed in ``sys.modules`` when needed, and the manager
-is exercised through its ``_driver_factory`` injection seam.
+the manager is exercised through its ``_driver_factory`` injection seam, and
+gesture tests drive the REAL selenium W3C action classes (installed with the
+``mobile`` extra) against a driver double that records the actions payload, so
+a removed or renamed client API fails here instead of at runtime. The Appium
+package itself is only stubbed in ``sys.modules`` for gating tests that need
+the client "present" or "absent" regardless of the dev environment.
 
 Modules of the mobile package are imported ONCE at conftest import time and
 re-exported; tests must use these references (not fresh imports) so that
@@ -12,6 +16,7 @@ cause class-identity mismatches.
 
 import base64
 import importlib.machinery
+import importlib.util
 import sys
 import types
 
@@ -24,6 +29,10 @@ from testzeus_hercules.core.mobile import settings as mobile_settings
 from testzeus_hercules.core.mobile import tools as mobile_tools
 
 AppiumManager = appium_manager_module.AppiumManager
+
+# Gesture tests exercise real selenium W3C actions; skip (not fail) when the
+# ``mobile`` extra is not installed in this environment.
+requires_selenium = pytest.mark.skipif(importlib.util.find_spec("selenium") is None, reason="selenium (mobile extra) not installed")
 
 _MOBILE_MODULE_NAMES = (
     "testzeus_hercules.core.mobile.tools",
@@ -70,10 +79,12 @@ class FakeDriver:
 
     def __init__(self, session_id: str = "sess-1") -> None:
         self.session_id = session_id
-        self.keycodes: list = []  # press_keycode + key_down/key_up, in call order
+        self.keycodes: list = []  # press_keycode codes, in call order
+        self.metastates: list = []  # metastate passed with each press_keycode (None when absent)
         self.swipes: list = []
         self.screenshots: list = []
-        self.touch_actions: list = []  # performed stub TouchAction action tuples
+        self.w3c_actions: list = []  # W3C "actions" payloads sent through driver.execute
+        self.scripts: list = []  # (script, args) passed to execute_script
         self.finds: list = []
         self.quit_called = 0
         self.record_started = False
@@ -83,15 +94,19 @@ class FakeDriver:
         self.page_source = self.PAGE_SOURCE
         self._recording_b64 = base64.b64encode(b"fake-mp4-bytes").decode()
 
-    # keys
-    def press_keycode(self, code: int) -> None:
-        self.keycodes.append(code)
+    # keys (the real client has press_keycode(keycode, metastate=None, flags=None) and NO key_down/key_up)
+    def press_keycode(self, keycode: int, metastate=None, flags=None) -> None:
+        self.keycodes.append(keycode)
+        self.metastates.append(metastate)
 
-    def key_down(self, code: int) -> None:
-        self.keycodes.append(code)
+    # raw WebDriver command + script execution
+    def execute(self, command, params=None):
+        self.w3c_actions.append((command, params))
+        return {"value": None}
 
-    def key_up(self, code: int) -> None:
-        self.keycodes.append(code)
+    def execute_script(self, script: str, *args):
+        self.scripts.append((script, args))
+        return None
 
     # recording
     def start_recording_screen(self) -> None:
@@ -137,9 +152,11 @@ class CountingSourceDriver(FakeDriver):
     def __init__(self, session_id: str = "sess-count") -> None:
         self.session_id = session_id
         self.keycodes: list = []
+        self.metastates: list = []
         self.swipes: list = []
         self.screenshots: list = []
-        self.touch_actions: list = []
+        self.w3c_actions: list = []
+        self.scripts: list = []
         self.finds: list = []
         self.quit_called = 0
         self.record_started = False
@@ -155,30 +172,6 @@ class CountingSourceDriver(FakeDriver):
         return FakeDriver.PAGE_SOURCE
 
 
-class StubTouchAction:
-    """Records the classic TouchAction chain onto ``driver.touch_actions``."""
-
-    def __init__(self, driver) -> None:
-        self.driver = driver
-        self.actions: list = []
-
-    def press(self, x=None, y=None, el=None) -> "StubTouchAction":
-        self.actions.append(("press", x, y))
-        return self
-
-    def long_press(self, el=None, x=None, y=None, duration: int = 1000) -> "StubTouchAction":
-        self.actions.append(("long_press", el, duration))
-        return self
-
-    def release(self) -> "StubTouchAction":
-        self.actions.append(("release",))
-        return self
-
-    def perform(self) -> "StubTouchAction":
-        self.driver.touch_actions.append(list(self.actions))
-        return self
-
-
 class StubAppiumOptions:
     def __init__(self) -> None:
         self.capabilities: dict = {}
@@ -190,16 +183,15 @@ class StubAppiumOptions:
 def install_stub_appium(monkeypatch, remote=None) -> dict:
     """Inject a minimal ``appium`` package into sys.modules.
 
-    The stub exposes exactly the surface the mobile package lazy-imports:
-    ``webdriver.Remote``, ``webdriver.common.touch_action.TouchAction`` and
-    ``options.common.base.AppiumOptions``. Each module gets a real
+    The stub exposes exactly the surface the mobile package lazy-imports from
+    appium: ``webdriver.Remote`` and ``options.common.base.AppiumOptions``
+    (gestures and keys use selenium / driver methods, not appium submodules).
+    Each module gets a real
     ``ModuleSpec`` so ``importlib.util.find_spec("appium")`` succeeds.
     """
     names = (
         "appium",
         "appium.webdriver",
-        "appium.webdriver.common",
-        "appium.webdriver.common.touch_action",
         "appium.options",
         "appium.options.common",
         "appium.options.common.base",
@@ -212,8 +204,6 @@ def install_stub_appium(monkeypatch, remote=None) -> dict:
 
     appium_mod = modules["appium"]
     webdriver_mod = modules["appium.webdriver"]
-    common_mod = modules["appium.webdriver.common"]
-    touch_mod = modules["appium.webdriver.common.touch_action"]
     options_mod = modules["appium.options"]
     options_common_mod = modules["appium.options.common"]
     options_base_mod = modules["appium.options.common.base"]
@@ -222,9 +212,6 @@ def install_stub_appium(monkeypatch, remote=None) -> dict:
         raise AssertionError("webdriver.Remote must not be called in offline tests; inject _driver_factory instead")
 
     webdriver_mod.Remote = staticmethod(remote if remote is not None else _remote_not_allowed)
-    webdriver_mod.common = common_mod
-    touch_mod.TouchAction = StubTouchAction
-    common_mod.touch_action = touch_mod
     appium_mod.webdriver = webdriver_mod
     appium_mod.options = options_mod
     options_mod.common = options_common_mod
@@ -270,6 +257,46 @@ def install_stub_selenium(monkeypatch) -> list:
         module.__spec__ = importlib.machinery.ModuleSpec(name, None)
         monkeypatch.setitem(sys.modules, name, module)
     return sent
+
+
+def touch_sequences(driver: "FakeDriver") -> list:
+    """Return, per W3C actions payload sent, the touch pointer's ``(type, ...)`` steps.
+
+    Each step is ``(type, x, y)`` for ``pointerMove``, ``("pause", duration_ms)``
+    for pauses and ``(type,)`` otherwise, so tests can assert the exact gesture.
+    """
+    sequences = []
+    for _command, params in driver.w3c_actions:
+        for source in params["actions"]:
+            if source["type"] != "pointer":
+                continue
+            assert source["parameters"] == {"pointerType": "touch"}
+            steps = []
+            for action in source["actions"]:
+                if action["type"] == "pointerMove":
+                    steps.append(("pointerMove", action["x"], action["y"]))
+                elif action["type"] == "pause":
+                    steps.append(("pause", action["duration"]))
+                else:
+                    steps.append((action["type"],))
+            sequences.append(steps)
+    return sequences
+
+
+def hide_appium(monkeypatch) -> None:
+    """Make ``importlib.util.find_spec`` report the Appium client as absent.
+
+    The dev env installs the real client (``mobile`` extra), so tests that need
+    "client missing" must say so explicitly instead of relying on its absence.
+    """
+    real_find_spec = importlib.util.find_spec
+
+    def fake(name, *args, **kwargs):
+        if name == "appium" or name.startswith("appium."):
+            return None
+        return real_find_spec(name, *args, **kwargs)
+
+    monkeypatch.setattr(importlib.util, "find_spec", fake)
 
 
 def purge_mobile_modules() -> None:

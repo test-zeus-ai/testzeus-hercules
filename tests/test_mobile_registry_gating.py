@@ -20,7 +20,7 @@ def test_no_registration_when_device_manager_unset(monkeypatch, registry_guard) 
 
 def test_no_registration_when_appium_client_missing(monkeypatch, registry_guard) -> None:
     monkeypatch.setenv("DEVICE_MANAGER", "appium")
-    # no stub installed: find_spec("appium") is None
+    cm.hide_appium(monkeypatch)  # the dev env has the real client; simulate its absence
     cm.drop_mobile_registrations(registry_guard)
 
     mobile = cm.import_mobile_package()

@@ -50,6 +50,17 @@ ANDROID_MODIFIER_KEYCODES: dict = {
     "meta": 117,
 }
 
+# Modifier keycode -> Android ``KeyEvent`` meta-state mask (generic ON flag OR
+# the left-side flag). ``press_keycode(code, metastate=...)`` applies the mask
+# to a single key press, which is how modifier combinations are expressed: the
+# client has no ``key_down``/``key_up``.
+ANDROID_MODIFIER_METASTATES: dict = {
+    113: 0x1000 | 0x2000,  # META_CTRL_ON | META_CTRL_LEFT_ON
+    59: 0x1 | 0x40,  # META_SHIFT_ON | META_SHIFT_LEFT_ON
+    57: 0x2 | 0x10,  # META_ALT_ON | META_ALT_LEFT_ON
+    117: 0x10000 | 0x20000,  # META_META_ON | META_META_LEFT_ON
+}
+
 # Unicode key characters accepted by iOS keyboards (XCUITest).
 IOS_UNICODE_KEYS: dict = {
     "enter": "\ue007",
@@ -89,6 +100,16 @@ def ios_unicode_key(name: str) -> str:
     if key not in IOS_UNICODE_KEYS:
         raise ValueError(f"Unknown iOS key name: {name!r}. Supported keys: {sorted(IOS_UNICODE_KEYS)}")
     return IOS_UNICODE_KEYS[key]
+
+
+def android_metastate(modifier_codes: List[int]) -> int:
+    """Return the combined Android meta-state mask for modifier keycodes."""
+    state = 0
+    for code in modifier_codes:
+        if code not in ANDROID_MODIFIER_METASTATES:
+            raise ValueError(f"Unknown modifier keycode: {code!r}")
+        state |= ANDROID_MODIFIER_METASTATES[code]
+    return state
 
 
 def single_char_keycode(char: str) -> int:

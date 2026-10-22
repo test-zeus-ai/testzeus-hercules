@@ -10,6 +10,8 @@ from tests.conftest_mobile import (  # noqa: F401
     clean_manager_state,
     fake_manager,
     mobile_env,
+    requires_selenium,
+    touch_sequences,
 )
 
 pytest_plugins = ["tests.conftest_mobile"]
@@ -87,12 +89,14 @@ def test_close_mobile_session_without_session(mobile_env, clean_manager_state) -
 # ── element / gesture success paths ─────────────────────────────────────────
 
 
+@requires_selenium
 def test_tap_within_viewport(fake_manager) -> None:
     _manager, driver = fake_manager
     result = _run(mobile_tools.tap(500, 900))
 
     assert result.startswith("Successfully performed tap")
-    assert driver.touch_actions and driver.touch_actions[0][0] == ("press", 500, 900)
+    # A real W3C touch sequence: move to the point, press, brief pause, release.
+    assert touch_sequences(driver) == [[("pointerMove", 500, 900), ("pointerDown",), ("pause", 0), ("pointerUp",)]]
 
 
 def test_tap_outside_viewport_is_rejected(fake_manager) -> None:
@@ -101,7 +105,7 @@ def test_tap_outside_viewport_is_rejected(fake_manager) -> None:
 
     assert result.startswith("Error:")
     assert "outside the device viewport" in result
-    assert driver.touch_actions == []
+    assert driver.w3c_actions == []
 
 
 def test_tap_negative_coordinate_is_rejected(fake_manager) -> None:
@@ -136,13 +140,15 @@ def test_scroll_up_and_down_use_swipe(fake_manager) -> None:
     assert up_swipe[0] == down_swipe[0] == 540  # horizontal center of 1080
 
 
+@requires_selenium
 def test_long_press_element(fake_manager) -> None:
     _manager, driver = fake_manager
     result = _run(mobile_tools.long_press_element("ok_button", duration_ms=1500))
 
     assert result.startswith("Successfully long pressed element")
     assert driver.finds == [("accessibility id", "ok_button")]
-    assert driver.touch_actions[0][0] == ("long_press", driver.element, 1500)
+    # FakeElement is at (10, 20) sized 100x40 -> center (60, 40); held for 1500 ms.
+    assert touch_sequences(driver) == [[("pointerMove", 60, 40), ("pointerDown",), ("pause", 1500), ("pointerUp",)]]
 
 
 def test_click_element(fake_manager) -> None:
@@ -174,7 +180,9 @@ def test_key_tools_record_keycodes(fake_manager) -> None:
     assert _run(mobile_tools.press_key_sequence("Shift+Tab,Enter")).startswith("Successfully pressed key sequence")
     assert _run(mobile_tools.press_back_button()).startswith("Successfully pressed the back button")
     assert _run(mobile_tools.press_home_button()).startswith("Successfully pressed the home button")
-    assert driver.keycodes == [66, 3, 59, 61, 59, 66, 4, 3]
+    # enter, home, Shift+Tab (Tab with the shift meta-state), Enter, back, home
+    assert driver.keycodes == [66, 3, 61, 66, 4, 3]
+    assert driver.metastates == [None, None, 0x41, None, None, None]
 
 
 def test_unknown_key_names_return_error_strings(fake_manager) -> None:
@@ -252,8 +260,9 @@ def test_tools_without_session_return_graceful_string(mobile_env, clean_manager_
 
 
 def test_tools_without_appium_client_return_install_hint(monkeypatch, clean_manager_state) -> None:
-    # appium absent (no stub), DEVICE_MANAGER may be anything
+    # appium absent (hidden: the dev env has the real client), DEVICE_MANAGER may be anything
     monkeypatch.setenv("DEVICE_MANAGER", "appium")
+    cm.hide_appium(monkeypatch)
     result = _run(mobile_tools.tap(1, 1))
     assert result == mobile_tools.INSTALL_HINT_MESSAGE
     assert "pip install 'testzeus-hercules[mobile]'" in result

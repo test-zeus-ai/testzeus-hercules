@@ -12,6 +12,8 @@ Design notes (deliberate departures from the classic implementation):
 - ``_driver_factory`` is a constructor injection seam for tests: when given,
   it is used instead of building ``webdriver.Remote`` and no Appium import is
   attempted.
+- Gestures use W3C pointer actions (``selenium.webdriver.common.actions``) and
+  ``mobile:`` scripts, never the removed ``TouchAction``/``key_down`` APIs.
 - No local Appium server spawn and no emulator boot: ``APPIUM_SERVER_URL``
   (default ``http://127.0.0.1:4723``) must point at a running Appium server.
 """
@@ -32,6 +34,7 @@ from testzeus_hercules.core.mobile.keymaps import (
     ANDROID_KEYCODES,
     android_hardware_keycode,
     android_keycode,
+    android_metastate,
     expand_key_sequence,
     ios_unicode_key,
 )
@@ -80,12 +83,21 @@ IOS_INPUT_TYPES = {
     "XCUIElementTypeTextView",
 }
 
-# iOS hardware buttons are routed through the ``mobile: pressButton`` script.
+# iOS hardware buttons are routed through the ``mobile: pressButton`` script,
+# using the documented XCUITest names (home, volumeUp, volumeDown). iOS has no
+# hardware back button: ``press_back`` taps the navigation-bar back button or
+# swipes from the left screen edge instead.
 IOS_HARDWARE_BUTTONS = {
-    "volume_up": "volumeup",
-    "volume_down": "volumedown",
+    "volume_up": "volumeUp",
+    "volume_down": "volumeDown",
     "home": "home",
 }
+IOS_BACK_BUTTON_CLASS_CHAIN = "**/XCUIElementTypeNavigationBar[1]/XCUIElementTypeButton[1]"
+_IOS_CLASS_CHAIN_LOCATOR = "-ios class chain"
+
+# Accessibility dumps are a few hundred KB at most; refuse absurd payloads.
+MAX_PAGE_SOURCE_CHARS = 10_000_000
+_XML_DTD_MARKERS = ("<!doctype", "<!entity")
 
 _ACCESSIBILITY_ID_LOCATOR = "accessibility id"
 
@@ -105,6 +117,22 @@ def _appium_client_available() -> bool:
         return False
 
 
+def _parse_page_source(page_source: Optional[str]) -> ET.Element:
+    """Parse a driver page source with entity expansion ruled out.
+
+    Appium page sources never carry a DTD, so documents declaring one (the
+    carrier of entity-expansion payloads) and oversized documents are rejected
+    before reaching the XML parser.
+    """
+    text = page_source or ""
+    if len(text) > MAX_PAGE_SOURCE_CHARS:
+        raise ET.ParseError(f"page source too large ({len(text)} characters)")
+    lowered = text.lower()
+    if any(marker in lowered for marker in _XML_DTD_MARKERS):
+        raise ET.ParseError("page source declares a DTD/entities, which is not allowed")
+    return ET.fromstring(text)
+
+
 def parse_accessibility_tree(page_source: str, platform: str) -> Dict[str, Any]:
     """Parse a driver ``page_source`` XML dump into a normalized tree dict.
 
@@ -116,7 +144,7 @@ def parse_accessibility_tree(page_source: str, platform: str) -> Dict[str, Any]:
     input_classes = IOS_INPUT_TYPES if platform == "ios" else ANDROID_INPUT_CLASSES
 
     try:
-        root = ET.fromstring(page_source or "")
+        root = _parse_page_source(page_source)
     except ET.ParseError as e:
         logger.warning("Failed to parse accessibility tree page source: %s", e)
         return {"platform": platform, "node_count": 0, "nodes": [], "error": str(e)}
@@ -280,6 +308,8 @@ class AppiumManager:
         self._accessibility_tree_cache: Optional[Dict[str, Any]] = None
         self._latest_video_path: Optional[str] = None
         self._thread_pool: Optional[ThreadPoolExecutor] = None
+        self._create_lock: Optional[asyncio.Lock] = None
+        self._create_lock_loop: Optional[asyncio.AbstractEventLoop] = None
 
         self._record_video = get_global_conf().should_record_video()
         self._take_screenshots = get_global_conf().should_take_screenshots()
@@ -346,51 +376,68 @@ class AppiumManager:
             extra=get_appium_capabilities(),
         )
 
+    def _get_create_lock(self) -> asyncio.Lock:
+        """Return the session-creation lock bound to the running event loop."""
+        loop = asyncio.get_running_loop()
+        if self._create_lock is None or self._create_lock_loop is not loop:
+            self._create_lock = asyncio.Lock()
+            self._create_lock_loop = loop
+        return self._create_lock
+
     async def create_session(self, capabilities: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Create an Appium session against the configured server URL.
 
-        When ``_driver_factory`` was injected (tests), it is used instead of
-        ``webdriver.Remote`` and no Appium import is attempted.
+        Serialized per manager so concurrent callers cannot each open (and
+        leak) a device session. When ``_driver_factory`` was injected (tests),
+        it is used instead of ``webdriver.Remote`` and no Appium import is
+        attempted. A driver that comes back without a session id is quit
+        before the error is raised.
         """
-        if self.driver is not None:
-            logger.info("Appium session already active for stake_id %s; reusing it", self.stake_id)
-            return {"session_id": str(getattr(self.driver, "session_id", "")), "capabilities": self._session_capabilities, "reused": True}
+        async with self._get_create_lock():
+            if self.driver is not None:
+                logger.info("Appium session already active for stake_id %s; reusing it", self.stake_id)
+                return {"session_id": str(getattr(self.driver, "session_id", "")), "capabilities": self._session_capabilities, "reused": True}
 
-        caps = capabilities if capabilities is not None else self.build_default_capabilities()
+            caps = capabilities if capabilities is not None else self.build_default_capabilities()
 
-        def _connect() -> Any:
-            if self._driver_factory is not None:
-                return self._driver_factory()
-            if not _appium_client_available():
-                raise AppiumClientMissingError(APPIUM_INSTALL_HINT)
-            from appium import webdriver
-            from appium.options.common.base import AppiumOptions
+            def _connect() -> Any:
+                if self._driver_factory is not None:
+                    return self._driver_factory()
+                if not _appium_client_available():
+                    raise AppiumClientMissingError(APPIUM_INSTALL_HINT)
+                from appium import webdriver
+                from appium.options.common.base import AppiumOptions
 
-            options = AppiumOptions()
-            for cap_name, cap_value in caps.items():
-                if isinstance(cap_value, bool) or isinstance(cap_value, (int, float)):
-                    options.set_capability(cap_name, cap_value)
-                else:
-                    options.set_capability(cap_name, str(cap_value))
-            return webdriver.Remote(command_executor=get_appium_server_url(), options=options)
+                options = AppiumOptions()
+                for cap_name, cap_value in caps.items():
+                    if isinstance(cap_value, bool) or isinstance(cap_value, (int, float)):
+                        options.set_capability(cap_name, cap_value)
+                    else:
+                        options.set_capability(cap_name, str(cap_value))
+                return webdriver.Remote(command_executor=get_appium_server_url(), options=options)
 
-        self.driver = await self._run_in_ui_thread(_connect, "create_session")
-        self._session_capabilities = dict(caps)
-        self._accessibility_tree_cache = None
+            driver = await self._run_in_ui_thread(_connect, "create_session")
+            session_id = str(getattr(driver, "session_id", "") or "")
+            if not session_id:
+                # Do not leak a half-open session: end it before reporting.
+                try:
+                    await self._run_in_ui_thread(driver.quit, "quit_sessionless_driver")
+                except Exception as e:
+                    logger.warning("Error quitting Appium driver that reported no session id: %s", e)
+                raise MobileEnvironmentError("Appium session did not report a session id; check the Appium server logs")
 
-        session_id = str(getattr(self.driver, "session_id", "") or "")
-        if not session_id:
-            self.driver = None
-            raise MobileEnvironmentError("Appium session did not report a session id; check the Appium server logs")
+            self.driver = driver
+            self._session_capabilities = dict(caps)
+            self._accessibility_tree_cache = None
 
-        os.makedirs(self._screenshots_dir, exist_ok=True)
-        os.makedirs(self._video_dir, exist_ok=True)
+            os.makedirs(self._screenshots_dir, exist_ok=True)
+            os.makedirs(self._video_dir, exist_ok=True)
 
-        # Auto-start screen recording for the run (gated + best-effort).
-        await self.start_screen_recording()
+            # Auto-start screen recording for the run (gated + best-effort).
+            await self.start_screen_recording()
 
-        logger.info("Appium session created for stake_id %s (session_id=%s)", self.stake_id, session_id)
-        return {"session_id": session_id, "capabilities": self._session_capabilities, "reused": False}
+            logger.info("Appium session created for stake_id %s (session_id=%s)", self.stake_id, session_id)
+            return {"session_id": session_id, "capabilities": self._session_capabilities, "reused": False}
 
     async def quit_session(self) -> None:
         """Stop recording (best-effort) and end the Appium session."""
@@ -506,10 +553,25 @@ class AppiumManager:
             raise MobileEnvironmentError("No active Appium session. Please initialize a session first.")
         return self.driver
 
-    def _make_touch_action(self) -> Any:
-        from appium.webdriver.common.touch_action import TouchAction
+    def _touch_press(self, x: int, y: int, hold_ms: int = 0) -> None:
+        """Press (and optionally hold) at a point with one W3C touch pointer.
 
-        return TouchAction(self.driver)
+        Replaces the removed ``TouchAction``: a ``pointerMove`` / ``pointerDown`` /
+        ``pause`` / ``pointerUp`` sequence sent via the W3C actions endpoint,
+        which UiAutomator2 and XCUITest both implement.
+        """
+        from selenium.webdriver.common.actions import interaction
+        from selenium.webdriver.common.actions.action_builder import ActionBuilder
+        from selenium.webdriver.common.actions.pointer_input import PointerInput
+
+        touch = PointerInput(interaction.POINTER_TOUCH, "touch")
+        builder = ActionBuilder(self.driver, mouse=touch, duration=0)
+        pointer = builder.pointer_action
+        pointer.move_to_location(int(x), int(y))
+        pointer.pointer_down()
+        pointer.pause(max(0, int(hold_ms)) / 1000)
+        pointer.pointer_up()
+        builder.perform()
 
     def _clear_accessibility_cache(self) -> None:
         self._accessibility_tree_cache = None
@@ -578,7 +640,8 @@ class AppiumManager:
 
         def _do() -> None:
             element = driver.find_element(_ACCESSIBILITY_ID_LOCATOR, accessibility_id)
-            self._make_touch_action().long_press(element, duration=duration_ms).perform()
+            center_x, center_y = _element_center(element)
+            self._touch_press(center_x, center_y, hold_ms=duration_ms)
 
         try:
             await self._run_in_ui_thread(_do, f"long_press_element({accessibility_id})")
@@ -595,7 +658,7 @@ class AppiumManager:
         await self._maybe_screenshot("tap_start")
 
         def _do() -> None:
-            self._make_touch_action().press(x=int(x), y=int(y)).release().perform()
+            self._touch_press(int(x), int(y))
 
         try:
             await self._run_in_ui_thread(_do, f"perform_tap({x},{y})")
@@ -696,12 +759,13 @@ class AppiumManager:
         else:
 
             def _do_android() -> None:
+                # The Appium client has no key_down/key_up: modifiers travel as
+                # the meta-state mask of the main key press.
                 for modifier_codes, main_code in segments:
-                    for modifier_code in modifier_codes:
-                        driver.key_down(modifier_code)
-                    driver.press_keycode(main_code)
-                    for modifier_code in reversed(modifier_codes):
-                        driver.key_up(modifier_code)
+                    if modifier_codes:
+                        driver.press_keycode(main_code, metastate=android_metastate(modifier_codes))
+                    else:
+                        driver.press_keycode(main_code)
 
             await self._run_in_ui_thread(_do_android, f"press_key_sequence({sequence})")
         self._clear_accessibility_cache()
@@ -710,13 +774,21 @@ class AppiumManager:
         driver = self._require_driver()
         if get_device_os() == "ios":
 
-            def _do_ios() -> None:
-                driver.execute_script("mobile: pressButton", {"name": "back"})
-
-            await self._run_in_ui_thread(_do_ios, "press_back")
+            await self._run_in_ui_thread(lambda: self._ios_navigate_back(driver), "press_back")
         else:
             await self._run_in_ui_thread(lambda: driver.press_keycode(android_hardware_keycode("back")), "press_back")
         self._clear_accessibility_cache()
+
+    def _ios_navigate_back(self, driver: Any) -> None:
+        """iOS has no back button: tap the nav-bar back button, else swipe from the left edge."""
+        try:
+            driver.find_element(_IOS_CLASS_CHAIN_LOCATOR, IOS_BACK_BUTTON_CLASS_CHAIN).click()
+            return
+        except Exception as e:
+            logger.debug("No navigation-bar back button found (%s); using the edge-swipe back gesture", e)
+        size = driver.get_window_size()
+        width, height = int(size["width"]), int(size["height"])
+        driver.swipe(1, height // 2, max(2, int(width * 0.7)), height // 2, 300)
 
     async def press_home(self) -> None:
         driver = self._require_driver()
@@ -746,8 +818,14 @@ class AppiumManager:
     def clear_accessibility_tree_cache(self) -> None:
         self._accessibility_tree_cache = None
 
-    async def read_screen(self, use_cache: bool = True) -> str:
-        tree = await self.get_accessibility_tree(use_cache)
+    async def read_screen(self, use_cache: bool = True, refresh: bool = False) -> str:
+        """Render the screen legend. ``refresh=True`` bypasses the cached tree.
+
+        The cache is cleared by every mutating action, but cannot notice
+        changes the app makes by itself (loading, animation); ``refresh``
+        forces a fresh page-source fetch for those cases.
+        """
+        tree = await self.get_accessibility_tree(use_cache and not refresh)
         return render_screen_legend(tree)
 
     async def take_screenshot(self, name: Optional[str] = None) -> Optional[str]:
@@ -763,6 +841,13 @@ class AppiumManager:
         driver = self._require_driver()
         size = await self._run_in_ui_thread(lambda: driver.get_window_size(), "get_viewport_size")
         return {"width": int(size["width"]), "height": int(size["height"])}
+
+
+def _element_center(element: Any) -> "tuple[int, int]":
+    """Return the center point of a located element from its location and size."""
+    location = element.location
+    size = element.size
+    return int(location["x"] + size["width"] / 2), int(location["y"] + size["height"] / 2)
 
 
 def _keycode_display_name(keycode: int) -> str:

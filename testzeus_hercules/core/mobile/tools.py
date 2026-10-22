@@ -387,17 +387,19 @@ async def press_home_button() -> Annotated[str, "Home navigation result"]:
 
 @tool(
     agent_names=["mobile_nav_agent"],
-    description="""Reads the current device screen as a compact accessibility-tree legend with element identifiers, values and bounds. Use this before/after actions to understand the screen state.""",
+    description="""Reads the current device screen as a compact accessibility-tree legend with element identifiers, values and bounds. Use this before/after actions to understand the screen state. The reading is reused until an action changes the screen; pass refresh=true to force a fresh reading.""",
     name="read_mobile_screen",
 )
-async def read_mobile_screen() -> Annotated[str, "Accessibility-tree legend of the current screen"]:
+async def read_mobile_screen(
+    refresh: Annotated[bool, "Set true to bypass the cached reading and fetch the screen again (use when the app may have changed on its own)"] = False,
+) -> Annotated[str, "Accessibility-tree legend of the current screen"]:
     add_event(EventType.INTERACTION, EventData(detail="read_mobile_screen"))
     try:
         manager = _current_manager()
         ready_error = _ensure_ready(manager)
         if ready_error:
             return ready_error
-        legend = await manager.read_screen()
+        legend = await manager.read_screen(refresh=bool(refresh))
         return legend if legend.strip() else "The screen legend is empty; try scrolling or re-reading the screen."
     except Exception as e:
         return _format_error("read_mobile_screen", e)
