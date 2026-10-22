@@ -1507,7 +1507,7 @@ class SimpleHercules:
         result attribute) so the junit renderer can show
         category/stage/type/evidence.
         """
-        final_response = f'Command "{command}" failed with an unexpected error: {error}'
+        final_response = f'Command "{command}" failed with an unexpected error: {_redact_error_text(str(error))}'
         assert_summary = "EXPECTED RESULT: the command completes without internal errors.\n" f"ACTUAL RESULT: {final_response}."
         execution_failure = self._persist_failure_evidence(command, error)
         content_payload: dict[str, Any] = {
