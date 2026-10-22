@@ -13,10 +13,14 @@ Install the framework with the `mobile` extra to pull in the Appium client:
 pip install "testzeus-hercules[mobile]"
 ```
 
-You also need a running Appium server (v2.x) with the driver matching your
-target platform installed (`appium driver install uiautomator2` for Android,
-`appium driver install xcuitest` for iOS), plus a connected device/emulator
-(Android) or simulator (iOS).
+From a source checkout use `uv sync --extra mobile` (or `--all-extras`).
+
+> **The Appium server is not started or managed by Hercules.** You must run
+> one yourself (Appium 2.x) and point `APPIUM_SERVER_URL` at it, with the driver
+> matching your target platform installed (`appium driver install uiautomator2`
+> for Android, `appium driver install xcuitest` for iOS), plus a connected
+> device/emulator (Android) or booted simulator (iOS). Hercules never spawns an
+> Appium server or boots an emulator.
 
 ## Quickstart
 
@@ -59,19 +63,28 @@ no mobile agent is created, and behavior is unchanged.
 | `APPIUM_PLATFORM_VERSION`| `platformVersion` capability                          | unset                                          |
 | `APPIUM_CAPABILITIES`    | JSON object merged over the built-in capabilities     | `{}`                                           |
 
-All variables are read directly from the environment; no framework config file
-changes are needed.
+Settings are resolved **at use time** (not frozen at import) through the global
+configuration, with the process environment as fallback. A key therefore works
+from the environment, from a `.env` file, or from a `--config` YAML/JSON file
+(e.g. `device_manager: appium`); a value present in the config wins over the
+environment. `ENABLE_UI_ASSERTIONS=true` (see below) is read the same way.
 
 ## Capabilities
 
 The manager builds a W3C capabilities dict automatically:
 
 - **Android base**: `platformName: Android`, `automationName: UiAutomator2`,
-  `autoGrantPermissions: true`, `noReset: false`, `newCommandTimeout: 300`,
-  `settings[waitForIdleTimeout]: 0` (keeps UiAutomator2 from waiting on idle).
-- **iOS base**: `platformName: iOS`, `automationName: XCUITest`, plus stable
-  defaults for the WebDriverAgent lifecycle (`useNewWDA`, WDA timeouts,
+  `noReset: false`, `newCommandTimeout: 300`, `settings[waitForIdleTimeout]: 0`
+  (keeps UiAutomator2 from waiting on idle).
+- **iOS base**: `platformName: iOS`, `automationName: XCUITest`, `noReset: false`
+  (same as Android, which is also the Appium default), plus stable defaults for
+  the WebDriverAgent lifecycle (`useNewWDA`, WDA timeouts,
   `preventWDAAttachments`, `clearSystemFiles`, etc.).
+
+Permissions are **not** granted automatically and `startIWDP` is not enabled;
+opt in per run when your app needs them, e.g.
+`APPIUM_CAPABILITIES='{"autoGrantPermissions": true}'` (Android) or
+`'{"startIWDP": true}'` (iOS web views).
 
 Optional keys (`app`, `udid`, `platformVersion`) are added when their
 environment variables are set.
@@ -97,19 +110,36 @@ When enabled, the `mobile_nav_agent` helper exposes these tools:
 - **Elements** (by accessibility id): `click_element`, `enter_text`, `clear_text`
 - **Keys**: `press_key`, `press_hardware_key`, `press_key_sequence`,
   `press_back_button`, `press_home_button`
-- **Reading**: `read_mobile_screen` (accessibility-tree legend),
+- **Reading**: `read_mobile_screen` (accessibility-tree legend; the reading is
+  reused until an action changes the screen, pass `refresh=true` to force a
+  fresh one when the app may have changed on its own),
   `get_mobile_viewport_size`, `take_mobile_screenshot`
 - **Recording**: `start_screen_recording`, `stop_screen_recording`
+
+Taps and long presses are sent as W3C touch pointer actions (the old Appium
+`TouchAction` API no longer exists in the supported client versions), and
+modifier combinations such as `Control+A` are sent as the main key's Android
+meta-state (the client has no `key_down`/`key_up`).
 
 Key names supported by `press_key`: `enter`, `tab`, `space`, `backspace`,
 `delete`, `escape`, `up`, `down`, `left`, `right`. Hardware buttons supported by
 `press_hardware_key`: `volume_up`, `volume_down`, `power`, `camera`, `call`,
-`end_call`, `menu`, `back`, `home`, `app_switch`. `press_key_sequence` accepts
+`end_call`, `menu`, `back`, `home`, `app_switch` (iOS supports only
+`volume_up`, `volume_down` and `home`, sent as `mobile: pressButton` with the
+XCUITest names `volumeUp`/`volumeDown`/`home`). iOS has no hardware back button:
+`press_back_button` taps the navigation-bar back button and falls back to a
+swipe from the left screen edge. `press_key_sequence` accepts
 comma-separated segments with `+`-joined modifiers, e.g. `Control+A,Enter`
 (Android uses modifier keycodes; unknown names are rejected). On iOS only keys
 with a unicode keyboard mapping can be used in sequences; unmapped keys are
 reported as errors naming the unsupported key instead of being silently
 skipped.
+
+### UI assertions (opt-in)
+
+`assert_ui` and `capture_ui_value` are opt-in tools (`ENABLE_UI_ASSERTIONS=true`,
+see the API verification docs). The mobile agent's prompt mentions them only
+when the flag is on, so the agent is never told about tools it does not have.
 
 All tools return human-readable strings and never raise: without an active
 session they answer with a "No active Appium session" hint, and without the
@@ -132,6 +162,16 @@ effort) when the session closes. Both are gated by the existing
 open when the runner shuts down are quit best-effort (pending recording
 saved, driver session ended) along with their worker pools, so an aborted
 scenario cannot leak the device session.
+
+## Safety notes
+
+- Accessibility-tree XML from the device is parsed with DTD/entity declarations
+  and oversized documents rejected up front.
+- Session creation is serialized per manager; a driver that returns without a
+  session id is quit rather than leaked.
+- With `DEVICE_MANAGER` unset (the default) the mobile subsystem is inert: no
+  tools or agent are registered, the planner prompt is unchanged and runner
+  teardown touches no device session.
 
 ## Troubleshooting
 
