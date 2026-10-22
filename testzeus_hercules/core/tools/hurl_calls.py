@@ -43,6 +43,41 @@ HURL_BINARY = "hurl"
 # --variable argv, which is visible to every local user via the process list).
 _VARIABLE_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]*$")
 
+# Environment variables hurl may legitimately need. Everything else in the
+# parent's environment (API keys, cloud credentials, tokens) stays out of the
+# subprocess; LC_* names and HURL_VARIABLE_* entries are handled separately.
+_HURL_ENV_ALLOWLIST = frozenset(
+    {
+        "PATH",
+        "HOME",
+        "USER",
+        "LANG",
+        "LANGUAGE",
+        "TMPDIR",
+        "TEMP",
+        "TMP",
+        "TZ",
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+        "NO_PROXY",
+        "SSL_CERT_FILE",
+        "SSL_CERT_DIR",
+        "REQUESTS_CA_BUNDLE",
+        "CURL_CA_BUNDLE",
+        "SYSTEMROOT",
+        "USERPROFILE",
+    }
+)
+
+
+def _hurl_environment(variables: Dict[str, str]) -> Dict[str, str]:
+    """Minimal environment for the hurl subprocess plus the HURL_VARIABLE_* entries set by this tool."""
+    env = {key: value for key, value in os.environ.items() if key.upper() in _HURL_ENV_ALLOWLIST or key.startswith("LC_")}
+    env.update({f"HURL_VARIABLE_{name}": value for name, value in variables.items()})
+    return env
+
+
 _SECRET_HEADER_LINE_RE = re.compile(r"(?im)^(\s*(?:authorization|proxy-authorization|cookie|set-cookie|x-api-key|api-key)\s*:\s*).+$")
 _URL_TOKEN_RE = re.compile(r"https?://[^\s'\"<>]+")
 
@@ -184,7 +219,7 @@ async def run_hurl_suite(
     if invalid_names:
         return _minified({"assertion": "ERROR", "suite": suite, "reason": f"Invalid hurl variable name(s): {', '.join(invalid_names)} (use letters, digits, '_' or '-')."})
     secret_values = _secret_variable_values(resolved_variables)
-    process_env = {**os.environ, **{f"HURL_VARIABLE_{name}": value for name, value in resolved_variables.items()}}
+    process_env = _hurl_environment(resolved_variables)
 
     # A directory (not mkstemp): hurl panics when the report path already
     # exists, so the report file itself must not pre-exist.
