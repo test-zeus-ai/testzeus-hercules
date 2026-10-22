@@ -8,8 +8,19 @@ first suite's test data.
 
 import os
 
-from testzeus_hercules.config import set_global_conf
+import pytest
+from testzeus_hercules.config import get_global_conf, set_global_conf
 from testzeus_hercules.core.memory.static_ltm import StaticLTM, get_user_ltm
+
+
+@pytest.fixture(autouse=True)
+def _restore_global_state():
+    """Keep these tests from leaking a tmp TEST_DATA_PATH or a populated StaticLTM into later tests."""
+    previous_path = get_global_conf().get_config().get("TEST_DATA_PATH")
+    yield
+    if previous_path is not None:
+        set_global_conf({"TEST_DATA_PATH": previous_path}, override=True)
+    StaticLTM.reset()
 
 
 def _make_suite(tmp_path, name: str, body: str) -> str:
@@ -68,3 +79,16 @@ def test_reset_forces_a_reload_from_disk(tmp_path) -> None:
     memory = get_user_ltm() or ""
     assert "AFTER_MARKER" in memory
     assert "BEFORE_MARKER" not in memory
+
+
+def test_reset_is_a_no_op_for_an_unchanged_path_until_called(tmp_path) -> None:
+    """Without reset(), an unchanged path keeps serving the cached memory even if the file changes."""
+    StaticLTM.reset()
+    suite = _make_suite(tmp_path, "suite_cached", "ONE_MARKER")
+    _point_at(suite)
+    assert "ONE_MARKER" in (get_user_ltm() or "")
+
+    with open(os.path.join(suite, "test_data.txt"), "w", encoding="utf-8") as handle:
+        handle.write("TWO_MARKER")
+
+    assert "ONE_MARKER" in (get_user_ltm() or ""), "cache should be reused while the path is unchanged"

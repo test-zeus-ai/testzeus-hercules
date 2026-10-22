@@ -17,6 +17,10 @@ class StaticLTM:
     (see ``__main__.sequential_process``); keying on the path means the reload
     happens on its own, instead of every such caller having to remember to
     invalidate first.
+
+    Only the test data path is tracked. ``stored_data`` and ``run_data`` are also
+    snapshotted at construction (keyed by test id), so they are not refreshed
+    between scenarios that share one test data path; call ``reset()`` for that.
     """
 
     _instance: Optional["StaticLTM"] = None
@@ -25,8 +29,10 @@ class StaticLTM:
     def __new__(cls) -> "StaticLTM":
         test_data_path = get_global_conf().get_test_data_path()
         if cls._instance is None or cls._loaded_for != test_data_path:
-            cls._instance = super().__new__(cls)
-            cls._instance._initialize()
+            # Build fully before publishing so a failed load cannot leave a half-initialised instance cached.
+            instance = super().__new__(cls)
+            instance._initialize()
+            cls._instance = instance
             cls._loaded_for = test_data_path
         return cls._instance
 
