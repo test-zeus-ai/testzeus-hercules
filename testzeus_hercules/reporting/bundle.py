@@ -77,7 +77,7 @@ def resolve_bundle_dir_names(testcase_names: list[str]) -> dict[str, str]:
             # The same testcase name appears twice: one shared bundle dir.
             mapping[raw_name] = safe
             continue
-        digest = hashlib.sha1(raw_name.encode("utf-8")).hexdigest()
+        digest = hashlib.sha1(raw_name.encode("utf-8"), usedforsecurity=False).hexdigest()
         length = 8
         dir_name = f"{safe}_{digest[:length]}"
         while _fold_dir_name(dir_name) in claimed and claimed[_fold_dir_name(dir_name)] != raw_name:

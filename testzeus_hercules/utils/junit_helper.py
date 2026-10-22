@@ -623,7 +623,7 @@ def _results_file_path(junit_base_path: str, feature: str, scenario: str) -> str
     feature_r = _sanitize_scenario_filename(feature.replace(" ", "_").replace(":", ""))
     scenario_r = _sanitize_scenario_filename(scenario.replace(" ", "_").replace(":", ""))
     # surrogatepass: hostile names may carry lone surrogates that plain UTF-8 refuses to encode.
-    name_hash = hashlib.sha1("\x00".join((feature, scenario)).encode("utf-8", "surrogatepass")).hexdigest()[:8]
+    name_hash = hashlib.sha1("\x00".join((feature, scenario)).encode("utf-8", "surrogatepass"), usedforsecurity=False).hexdigest()[:8]
     return f"{junit_base_path}/{feature_r}_{scenario_r}_{name_hash}_results.xml"
 
 

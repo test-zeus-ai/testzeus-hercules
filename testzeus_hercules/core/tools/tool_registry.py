@@ -155,7 +155,7 @@ def assertion_subject(subject: str) -> str:
     Parameters:
     - subject (str): The examined payload (usually the minified response body).
     """
-    return hashlib.sha1(subject.encode("utf-8", errors="ignore")).hexdigest()[:12]
+    return hashlib.sha1(subject.encode("utf-8", errors="ignore"), usedforsecurity=False).hexdigest()[:12]
 
 
 def tool(agent_names: list[str], description: str, name: str | None = None) -> Callable[[toolType], toolType]:
