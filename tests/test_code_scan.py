@@ -12,6 +12,7 @@ from testzeus_hercules.orchestrator.code_scan.code_summary import (
 from testzeus_hercules.orchestrator.code_scan.git_diff import (
     get_diff_summary,
     suggest_test_targets,
+    validate_base_ref,
 )
 
 
@@ -224,6 +225,22 @@ def test_get_diff_summary_bad_base_ref_falls_back(tmp_path) -> None:
 
     assert any("base_ref" in warning for warning in diff["warnings"])
     assert ("pending.py", "A") in {(entry["path"], entry["status"]) for entry in diff["changed_files"]}
+
+
+@pytest.mark.parametrize("bad_ref", ["--output=pwned.txt", "-p", "HEAD~1 --stat", "a;b", "", "--help"])
+def test_get_diff_summary_rejects_option_like_base_ref(tmp_path, bad_ref) -> None:
+    repo = tmp_path / "repo"
+    _init_repo_with_two_commits(repo)
+
+    with pytest.raises(ValueError, match="Invalid base_ref"):
+        get_diff_summary(str(repo), base_ref=bad_ref)
+
+    assert not (repo / "pwned.txt").exists()
+
+
+@pytest.mark.parametrize("good_ref", ["HEAD~1", "origin/main", "v1.2.3", "feature/x-y", "HEAD@{1}", "abc123"])
+def test_validate_base_ref_accepts_normal_refs(good_ref) -> None:
+    assert validate_base_ref(good_ref) == good_ref
 
 
 def test_get_diff_summary_non_git_dir_raises(tmp_path) -> None:

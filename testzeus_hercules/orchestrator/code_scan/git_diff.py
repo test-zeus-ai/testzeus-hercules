@@ -6,6 +6,7 @@ All functions are offline and heuristic: they shell out to the local
 
 from __future__ import annotations
 
+import re
 import subprocess
 from pathlib import PurePosixPath
 from typing import Any
@@ -65,13 +66,29 @@ def _parse_porcelain(stdout: str) -> tuple[list[dict[str, str]], int]:
     return entries, untracked
 
 
+_SAFE_REF_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_./@^~{}:+-]*$")
+
+
+def validate_base_ref(base_ref: str) -> str:
+    """Reject refs that git could parse as options or that contain odd characters.
+
+    A leading ``-`` would be an option (e.g. ``--output=<file>``); whitespace and shell/control
+    characters have no place in a ref name. Raises ValueError for such input.
+    """
+    if not isinstance(base_ref, str) or not base_ref or base_ref.startswith("-") or not _SAFE_REF_RE.fullmatch(base_ref):
+        raise ValueError(f"Invalid base_ref {base_ref!r}: expected a branch, tag or commit-ish that does not start with '-'.")
+    return base_ref
+
+
 def get_diff_summary(project_path: str, base_ref: str = "HEAD~1", include_uncommitted: bool = True) -> dict:
     """Summarize git changes against ``base_ref`` plus optional uncommitted work.
 
-    Raises ValueError when ``project_path`` is not inside a git work tree.
+    Raises ValueError when ``project_path`` is not inside a git work tree, or when
+    ``base_ref`` is not a safe ref name (see :func:`validate_base_ref`).
     A nonexistent ``base_ref`` degrades gracefully: a warning is recorded
     and only uncommitted changes are reported.
     """
+    base_ref = validate_base_ref(base_ref)
     check = _run_git(project_path, "rev-parse", "--is-inside-work-tree")
     if check.returncode != 0 or check.stdout.strip() != "true":
         raise ValueError(f"Not a git repository: {project_path}")
@@ -88,7 +105,7 @@ def get_diff_summary(project_path: str, base_ref: str = "HEAD~1", include_uncomm
                 seen.add(key)
                 changed_files.append(entry)
 
-    name_status = _run_git(project_path, "diff", "--name-status", base_ref)
+    name_status = _run_git(project_path, "diff", "--name-status", base_ref, "--")
     base_valid = name_status.returncode == 0
     if base_valid:
         extend(_parse_name_status(name_status.stdout))
@@ -116,7 +133,7 @@ def get_diff_summary(project_path: str, base_ref: str = "HEAD~1", include_uncomm
 
     diff_stat = ""
     if base_valid:
-        stat = _run_git(project_path, "diff", "--stat", base_ref)
+        stat = _run_git(project_path, "diff", "--stat", base_ref, "--")
         if stat.returncode == 0:
             diff_stat = "\n".join(stat.stdout.splitlines()[-_MAX_STAT_LINES:])
         else:

@@ -7,12 +7,15 @@ Drives the LLM-free tools over a real MCP round-trip:
   4. hercules_generate_standardized_prd  (expected: graceful error without an LLM key)
   5. hercules_get_run_results            (expected: no-runs notice)
 
-Usage: python mcp_smoke_client.py [base_url]
+Usage: python mcp_smoke_client.py [base_url]   (set MCP_AUTH_TOKEN if the server requires a token;
+run the server from the repo root so tests/api_testing_app is inside its allowed roots)
 """
 
 import asyncio
 import json
+import os
 import sys
+from pathlib import Path
 
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
@@ -30,7 +33,9 @@ async def call_tool(session: ClientSession, name: str, args: dict) -> dict:
 
 async def main() -> None:
     base_url = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8000/mcp"
-    async with streamablehttp_client(base_url) as (read, write, _):
+    token = os.getenv("MCP_AUTH_TOKEN", "").strip()  # only needed when the server was started with MCP_AUTH_TOKEN
+    headers = {"Authorization": f"Bearer {token}"} if token else None
+    async with streamablehttp_client(base_url, headers=headers) as (read, write, _):
         async with ClientSession(read, write) as session:
             await session.initialize()
             tools = await session.list_tools()
@@ -42,7 +47,7 @@ async def main() -> None:
             cfg = await call_tool(
                 session,
                 "hercules_configure_session",
-                {"app_url": "http://127.0.0.1:5055", "project_path": "/home/wxsys/Project/testzeus-hercules/tests/api_testing_app", "test_type": "backend"},
+                {"app_url": "http://127.0.0.1:5055", "project_path": str(Path(__file__).resolve().parents[1] / "tests" / "api_testing_app"), "test_type": "backend"},
             )
             print(f"[3] hercules_configure_session → {json.dumps(cfg, indent=2)[:600]}")
             session_id = cfg.get("session_id", "")
