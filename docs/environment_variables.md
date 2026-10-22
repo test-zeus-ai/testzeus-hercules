@@ -197,6 +197,11 @@ LLM Parameters:
 ## Testing Configuration
 
 ### Test Execution
+- `SKIP_BROWSER`: Do not launch a browser for the run
+  - Values: `1`, `true`, `yes` (case-insensitive); anything else keeps the browser
+  - Default: unset (browser enabled)
+  - Implementation: For pure API/MCP/SQL scenarios; skips the Chromium startup per scenario and the empty screenshot/video folders
+
 - `EXECUTE_BULK`: Execute tests in bulk from tests directory
   - Values: `true`, `false`
   - Default: `false`
@@ -287,6 +292,11 @@ LLM Parameters:
   - Values: `text`, `json`
   - Default: `text`
   - Implementation: Controls logger output format in `logger.py`
+
+- `LOG_FILE_PATH`: Also write logs to this file
+  - Values: a file path (parent directories are created)
+  - Default: unset (console only)
+  - Implementation: Rotating file handler in `logger.py` (10 MB per file, 5 backups), same format as the console output
 
 ### Debugging Tools
 - `ENABLE_PLAYWRIGHT_TRACING`: Enable Playwright tracing
@@ -439,8 +449,17 @@ defaults to the previous behaviour**. Boolean flags accept `1`, `true`, `yes` or
 
 Always on (bug and safety fixes, no flag): cancellation (Ctrl-C, `asyncio.wait_for`) is never
 swallowed by the scenario loop, filename sanitisation, network-log and error redaction,
-cleanup error aggregation, tool-result size capping, planner failure containment, and one
-corrective re-prompt for an invalid planner decision before the scenario is failed.
+cleanup error aggregation, tool-result size capping and planner failure containment.
+
+Planner guards (always on):
+
+- **Corrective re-prompt.** A malformed planner decision (for example `is_assert` as the string
+  `"true"`, or an empty `next_step` while `terminate` is `"no"`) gets one corrective re-prompt that
+  names the problem. Only if the second answer is still invalid is the scenario failed.
+- **Stall guard.** When the planner returns an empty or unparseable `next_step` three turns in a row,
+  the scenario ends as failed ("no executable progress") instead of looping until the
+  planner round limit (500 turns). Repeating a step that already ran (for example clicking "Next page"
+  several times) counts as progress; it is only logged as `PLANNER_REPEAT_NOTICE`.
 
 The optional mobile (Appium) and healing hooks are inert unless `DEVICE_MANAGER=appium` is
 set and the Appium client is installed.
@@ -449,13 +468,14 @@ set and the Appium client is installed.
 
 The effective configuration is assembled in this order:
 
-1. Built-in defaults
+1. Built-in defaults (only fill keys that no other source set)
 2. Values passed programmatically as a config dict
-3. `.env` values
-4. Process environment variables
+3. Process environment variables
+4. `.env` values (loaded with `override=True`, so a key in `.env` replaces the same process
+   environment variable; `.env` is not loaded when `IS_TEST_ENV=true`)
 5. `--config` YAML/JSON file values
 6. Command-line arguments
 
-Later sources override earlier sources (set `CONFIG_DICT_OVERRIDES_ENV=true` to move the config dict above the environment). If both `AGENTS_LLM_CONFIG_FILE` and
+Later sources override earlier sources (set `CONFIG_DICT_OVERRIDES_ENV=true` to move the config dict above the process environment and `.env`). If both `AGENTS_LLM_CONFIG_FILE` and
 direct `LLM_MODEL_*` settings are present, the selected runtime path depends on
 which CLI/config values are active for that run.
