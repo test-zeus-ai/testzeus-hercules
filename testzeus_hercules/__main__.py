@@ -18,6 +18,13 @@ from testzeus_hercules.reporting.markdown_report import (
     generate_markdown_report,
 )
 from testzeus_hercules.telemetry import EventData, EventType, add_event
+from testzeus_hercules.utils.env_flags import (
+    failure_bundles_enabled,
+    failure_classification_enabled,
+    run_history_enabled,
+    run_reporting_enabled,
+    strict_exit_code_enabled,
+)
 from testzeus_hercules.utils.gherkin_generator import (
     generate_gherkin_from_description,
     print_feature_block,
@@ -37,18 +44,26 @@ from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.test_builder import run_guided_mode
 
 
+async def _shutdown_runner_best_effort(runner: SingleCommandInputRunner) -> None:
+    """Tear a crashed/cancelled runner down; never raises (CancelledError of the caller aside)."""
+    runner_shutdown = getattr(runner, "shutdown", None)
+    if callable(runner_shutdown):
+        with contextlib.suppress(Exception):
+            await runner_shutdown()
+
+
 async def sequential_process() -> dict:
     """Run every scenario in the configured feature file and build the result summary.
 
-    Produces the merged JUnit XML, then runs three best-effort post-processing
-    steps (each logs a warning and never fails the run itself):
-    - HTML conversion of the JUnit XML (``summary["html"]``, ``None`` on failure);
-    - markdown report (``summary["report_md"]``);
-    - per-failure evidence bundles (``summary["bundles"]``).
-    Afterwards two more best-effort steps run:
-    - run history: the run and its cases are recorded in the run-history DB
+    Produces the merged JUnit XML and the HTML conversion (best effort,
+    ``summary["html"]`` is ``None`` on failure). The following extra outputs are
+    opt-in (off by default, each best effort: a failure logs a warning and never
+    fails the run itself):
+    - ``ENABLE_RUN_REPORTING``: markdown report (``summary["report_md"]``);
+    - ``ENABLE_FAILURE_BUNDLES``: per-failure evidence bundles (``summary["bundles"]``);
+    - ``ENABLE_RUN_HISTORY``: the run and its cases are recorded in the run-history DB
       (``summary["run_id"]``);
-    - auto-classification: every failed/errored testcase is classified
+    - ``ENABLE_FAILURE_CLASSIFICATION``: every failed/errored testcase is classified
       (``summary["classifications"]``), its bundle.md gets the classification
       section and a "classification" healing event is recorded in the run history.
     """
@@ -99,6 +114,7 @@ async def sequential_process() -> dict:
         runner_result: dict = {}
         cost_metrics: dict = {}
         execution_time: float = 0.0
+        cancelled_exc: asyncio.CancelledError | None = None
 
         try:
             await runner.start()
@@ -151,12 +167,25 @@ async def sequential_process() -> dict:
             logger.info(f"Run completed for testcase: {scenario}")
             if cost_metrics:
                 logger.info(f"Test run cost is : {cost_metrics}")
-        except (Exception, asyncio.CancelledError) as exc:
+        except asyncio.CancelledError as exc:
+            # Cancellation (Ctrl-C, asyncio.wait_for / asyncio.timeout around the run)
+            # must stop the whole run, not just this scenario: record the scenario as
+            # cancelled, tear its sessions down, then re-raise after its junit entry
+            # has been written (see below).
+            cancelled_exc = exc
+            logger.warning("Scenario %s was cancelled; cleaning up and aborting the run.", scenario)
+            runner_result = {
+                "terminate": "yes",
+                "is_assert": True,
+                "is_passed": False,
+                "final_response": "Scenario cancelled before completion.",
+                "assert_summary": "EXPECTED RESULT: the scenario runs to completion.\nACTUAL RESULT: it was cancelled.",
+            }
+            await _shutdown_runner_best_effort(runner)
+        except Exception as exc:
             # One scenario's crash must not abort the run (which would silently
             # skip remaining scenarios and the merged reports): record it as a
             # failed junit entry and continue with the next scenario.
-            # CancelledError is caught too: a single cancelled scenario (e.g.
-            # an internal timeout) must not kill the remaining scenarios.
             logger.error(f"Scenario {scenario} crashed with an unexpected error: {type(exc).__name__}: {exc}", exc_info=True)
             crash_summary = f"Scenario crashed with an unexpected error: {type(exc).__name__}: {exc}"
             runner_result = {
@@ -169,10 +198,7 @@ async def sequential_process() -> dict:
             # The crashed scenario must not leak its browser/agent sessions into
             # the next scenario of the batch: tear the runner down best-effort
             # (its own cleanup inside start() may already have run).
-            runner_shutdown = getattr(runner, "shutdown", None)
-            if callable(runner_shutdown):
-                with contextlib.suppress(Exception):
-                    await runner_shutdown()
+            await _shutdown_runner_best_effort(runner)
 
         # The runner may never have initialized its browser manager (crash during
         # start()); fall back to loop-local values so the junit entry is still built.
@@ -210,6 +236,9 @@ async def sequential_process() -> dict:
                 # and the in-memory run summary are unaffected.
                 logger.error("Could not build fallback junit entry for scenario %s: %s: %s", scenario, type(fallback_exc).__name__, fallback_exc, exc_info=True)
 
+        if cancelled_exc is not None:
+            raise cancelled_exc
+
     final_result_file_name = f"{junit_base_path}/{feature_file_name}_result.xml"
     try:
         await JUnitXMLGenerator.merge_junit_xml(result_of_tests, final_result_file_name)
@@ -238,19 +267,21 @@ async def sequential_process() -> dict:
     errors = sum(1 for case in testcases if case["status"] == "error")
 
     report_md_path: str | None = None
-    try:
-        await asyncio.to_thread(generate_markdown_report, final_result_file_name, run_meta={"feature_file": input_gherkin_file_path})
-        report_md_path = os.path.join(os.path.dirname(os.path.abspath(final_result_file_name)), REPORT_FILE_NAME)
-    except Exception as exc:
-        logger.warning("Could not generate markdown report for %s: %s", feature_file_name, exc)
+    if run_reporting_enabled():
+        try:
+            await asyncio.to_thread(generate_markdown_report, final_result_file_name, run_meta={"feature_file": input_gherkin_file_path})
+            report_md_path = os.path.join(os.path.dirname(os.path.abspath(final_result_file_name)), REPORT_FILE_NAME)
+        except Exception as exc:
+            logger.warning("Could not generate markdown report for %s: %s", feature_file_name, exc)
 
     bundles: list[str] = []
-    try:
-        # create_failure_bundles is declared async but does only blocking I/O,
-        # so drive it on a fresh loop inside the worker thread.
-        bundles = await asyncio.to_thread(asyncio.run, create_failure_bundles(final_result_file_name))
-    except Exception as exc:
-        logger.warning("Could not create failure bundles for %s: %s", feature_file_name, exc)
+    if failure_bundles_enabled():
+        try:
+            # create_failure_bundles is declared async but does only blocking I/O,
+            # so drive it on a fresh loop inside the worker thread.
+            bundles = await asyncio.to_thread(asyncio.run, create_failure_bundles(final_result_file_name))
+        except Exception as exc:
+            logger.warning("Could not create failure bundles for %s: %s", feature_file_name, exc)
 
     summary = {
         "total": len(testcases),
@@ -264,20 +295,24 @@ async def sequential_process() -> dict:
         "feature_file": input_gherkin_file_path,
     }
 
-    # Run history: persist the run and its testcases into the run-history DB so
-    # trends and healing events can be tracked across runs (best effort).
-    try:
-        from testzeus_hercules.reporting.run_db import (
-            record_run_summary,  # lazy: keeps the DB import out of the hot path
-        )
+    # Run history (opt-in, ENABLE_RUN_HISTORY): persist the run and its testcases
+    # into the run-history DB so trends and healing events can be tracked across
+    # runs (best effort).
+    if run_history_enabled():
+        try:
+            from testzeus_hercules.reporting.run_db import (
+                record_run_summary,  # lazy: keeps the DB import out of the hot path
+            )
 
-        summary["run_id"] = await asyncio.to_thread(record_run_summary, summary)
-    except Exception as exc:
-        logger.warning("Could not record run history for %s: %s", feature_file_name, exc)
+            summary["run_id"] = await asyncio.to_thread(record_run_summary, summary)
+        except Exception as exc:
+            logger.warning("Could not record run history for %s: %s", feature_file_name, exc)
 
-    # Auto-classify every failed/errored testcase, annotate its bundle and record a
-    # classification healing event in the run history (best effort).
-    summary["classifications"] = await _classify_failed_cases(testcases, final_result_file_name, summary)
+    # Auto-classify every failed/errored testcase (opt-in, ENABLE_FAILURE_CLASSIFICATION),
+    # annotate its bundle and record a classification healing event in the run
+    # history (best effort).
+    if failure_classification_enabled():
+        summary["classifications"] = await _classify_failed_cases(testcases, final_result_file_name, summary)
 
     return summary
 
@@ -369,7 +404,10 @@ def _write_classification_into_bundle(bundle_md: str, classification_markdown: s
 
 
 def compute_exit_code(run_summaries: list[dict]) -> int:
-    """Map run summaries to a process exit code: 1 when any run failed, else 0."""
+    """Map run summaries to the strict exit code: 1 when any run failed, else 0.
+
+    Only applied to the process exit status when ``STRICT_EXIT_CODE=true``.
+    """
     for summary in run_summaries or []:
         if summary.get("failed", 0) > 0 or summary.get("errors", 0) > 0:
             return 1
@@ -385,6 +423,25 @@ def _print_banner() -> None:
    ###     //   ##
    ###    //   #########
 """)
+
+
+def _apply_explicit_overrides(keys: dict) -> None:
+    """Rebuild the global config so the programmatic per-run ``keys`` win over the environment.
+
+    Guided mode and bulk mode pass the generated feature file / per-folder project
+    root. With the legacy Env > Dict precedence an env value such as
+    ``INPUT_GHERKIN_FILE_PATH`` would silently make every bulk folder run the same
+    file, so the rebuild is done with Dict > Env scoped to this call only.
+    """
+    previous = os.environ.get("CONFIG_DICT_OVERRIDES_ENV")
+    os.environ["CONFIG_DICT_OVERRIDES_ENV"] = "true"
+    try:
+        set_global_conf(keys, override=True)
+    finally:
+        if previous is None:
+            os.environ.pop("CONFIG_DICT_OVERRIDES_ENV", None)
+        else:
+            os.environ["CONFIG_DICT_OVERRIDES_ENV"] = previous
 
 
 async def a_main() -> list[dict]:
@@ -406,7 +463,7 @@ async def a_main() -> list[dict]:
 
         llm = get_litellm_chat_model("planner_agent")
         feature_path = await run_guided_mode(llm, test_description=guided_test)
-        set_global_conf({"INPUT_GHERKIN_FILE_PATH": feature_path}, override=True)
+        _apply_explicit_overrides({"INPUT_GHERKIN_FILE_PATH": feature_path})
         logger.info("Running generated test...")
         summaries.append(await sequential_process())
         return summaries
@@ -425,13 +482,12 @@ async def a_main() -> list[dict]:
             if os.path.isdir(test_dir):
                 logger.info(f"Processing test folder: {test_folder}")
                 test_dir_name = os.path.basename(test_dir)
-                set_global_conf(
+                _apply_explicit_overrides(
                     {
                         "PROJECT_SOURCE_ROOT": test_dir,
                         "INPUT_GHERKIN_FILE_PATH": os.path.join(test_dir, "input", f"{test_dir_name}.feature"),
                         "TEST_DATA_PATH": os.path.join(test_dir, "test_data"),
-                    },
-                    override=True,
+                    }
                 )
                 summaries.append(await sequential_process())
         return summaries
@@ -442,7 +498,10 @@ async def a_main() -> list[dict]:
 
 
 def _finalize_exit_code(summaries: list[dict]) -> None:
-    """Log the aggregate result and exit non-zero when CI gating is active."""
+    """Log the aggregate result and, with ``STRICT_EXIT_CODE=true``, exit non-zero on failures.
+
+    By default the process exits 0 regardless of scenario results (legacy behaviour).
+    """
     totals = {"total": 0, "passed": 0, "failed": 0, "errors": 0}
     for summary in summaries:
         for key in totals:
@@ -450,11 +509,11 @@ def _finalize_exit_code(summaries: list[dict]) -> None:
 
     logger.info(f"Test run finished: {totals['passed']} passed, {totals['failed']} failed, {totals['errors']} errors")
 
-    if os.getenv("EXIT_CODE_COMPAT", "") == "1":
+    if not strict_exit_code_enabled():
         return
 
     if compute_exit_code(summaries) == 1:
-        logger.warning("CI gating active: exiting with status 1 due to test failures/errors. " "Set EXIT_CODE_COMPAT=1 to restore legacy behavior.")
+        logger.warning("STRICT_EXIT_CODE active: exiting with status 1 due to test failures/errors.")
         raise SystemExit(1)
 
 

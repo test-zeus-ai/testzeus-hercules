@@ -7,6 +7,9 @@ is monkeypatched, so nothing ever hits the network.
 """
 
 import asyncio
+import signal
+
+import pytest
 
 import testzeus_hercules.telemetry as telemetry
 
@@ -61,3 +64,49 @@ def test_shutdown_signal_never_raises_when_loop_is_unusable(monkeypatch, capsys)
     telemetry._handle_shutdown_signal()  # must not raise out of a signal handler
 
     assert "Could not send telemetry on shutdown" in capsys.readouterr().out
+
+
+def test_shutdown_handler_accepts_the_real_signal_signature(monkeypatch) -> None:
+    sent: list[bool] = []
+
+    async def fake_send() -> None:
+        sent.append(True)
+
+    monkeypatch.setattr(telemetry, "send_message_to_sentry", fake_send)
+    monkeypatch.setitem(telemetry._previous_signal_handlers, signal.SIGTERM, signal.SIG_IGN)
+
+    # signal.signal handlers are invoked as handler(signum, frame).
+    telemetry._handle_shutdown_signal(signal.SIGTERM, None)
+
+    assert sent == [True]
+
+
+def test_shutdown_handler_runs_as_a_real_installed_signal_handler(monkeypatch) -> None:
+    sent: list[bool] = []
+    forwarded: list[int] = []
+
+    async def fake_send() -> None:
+        sent.append(True)
+
+    monkeypatch.setattr(telemetry, "send_message_to_sentry", fake_send)
+    monkeypatch.setitem(telemetry._previous_signal_handlers, signal.SIGUSR1, lambda signum, frame: forwarded.append(signum))
+    previous = signal.signal(signal.SIGUSR1, telemetry._handle_shutdown_signal)
+    try:
+        signal.raise_signal(signal.SIGUSR1)  # would raise TypeError with a zero-arg handler
+    finally:
+        signal.signal(signal.SIGUSR1, previous)
+
+    assert sent == [True]
+    assert forwarded == [signal.SIGUSR1]
+
+
+def test_shutdown_signal_is_forwarded_to_the_previous_handler(monkeypatch) -> None:
+    async def fake_send() -> None:
+        return None
+
+    monkeypatch.setattr(telemetry, "send_message_to_sentry", fake_send)
+    # The previous SIGINT handler (Python's default) raises KeyboardInterrupt: Ctrl-C must still stop the run.
+    monkeypatch.setitem(telemetry._previous_signal_handlers, signal.SIGINT, signal.default_int_handler)
+
+    with pytest.raises(KeyboardInterrupt):
+        telemetry._handle_shutdown_signal(signal.SIGINT, None)

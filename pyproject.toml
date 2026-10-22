@@ -99,6 +99,11 @@ testzeus_hercules = ["py.typed"]
 requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
+[tool.pytest.ini_options]
+markers = [
+    "live: end-to-end tests that need real LLM credentials and a browser (deselect offline with -m 'not live')",
+]
+
 [tool.isort]
 profile = "black"
 multi_line_output = 3

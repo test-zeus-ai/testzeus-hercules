@@ -35,6 +35,7 @@ orchestration sections of the README).
   - [Run History and Workspace Hygiene](#run-history-and-workspace-hygiene)
   - [Telemetry and Monitoring](#telemetry-and-monitoring)
   - [Additional Features](#additional-features)
+- [Reliability, Reporting and Strictness Flags](#reliability-reporting-and-strictness-flags)
 - [Configuration Priority](#configuration-priority)
 
 ## Core Environment Variables
@@ -487,20 +488,45 @@ The server entrypoint uses these variables:
 - `NO_WAIT_FOR_LOAD_STATE`: Skip waiting for Playwright load state in supported browser operations
   - Values: `true`, `false`
 
+## Reliability, Reporting and Strictness Flags
+
+These flags control the core-loop hardening and run-reporting features. Everything
+that could change results, exit codes or the files written by a run is **opt-in and
+defaults to the previous behaviour**. Boolean flags accept `1`, `true`, `yes` or `on`
+(case-insensitive); anything else, including unset, means off.
+
+| Variable | Default | Effect when enabled |
+|----------|---------|---------------------|
+| `STRICT_EXIT_CODE` | off | The process exits with status `1` when any scenario failed or errored. By default the exit status is `0` regardless of scenario results (`EXIT_CODE_COMPAT=1` still forces this legacy behaviour even when `STRICT_EXIT_CODE` is set). |
+| `STRICT_VERDICT` | off | A scenario only counts as passed when it terminated cleanly **and** the planner explicitly recorded `is_passed: true`. By default a scenario without an explicit assertion passes when it terminated, and an asserting scenario passes on a truthy `is_passed`. Missing results and structured execution/cleanup failures are always failures. |
+| `ENABLE_OBSERVER_INVARIANTS` | off | After each helper step the proof artifacts are judged and a claimed pass is overruled by HTTP 5xx responses or uncaught console exceptions (`Uncaught`, `TypeError`, `Cannot read`). Off by default because these signals can fail otherwise healthy scenarios. |
+| `ENABLE_RUN_REPORTING` | off | Writes `Hercules_Test_Report.md` next to the merged JUnit XML. |
+| `ENABLE_FAILURE_BUNDLES` | off | Copies per-failure evidence (screenshots, video, network log) into a `bundles/` directory next to the JUnit XML. |
+| `ENABLE_RUN_HISTORY` | off | Records every run and testcase in the `hercules_history.db` run-history database. |
+| `ENABLE_FAILURE_CLASSIFICATION` | off | Classifies failed testcases and annotates their bundle and run-history entry (best effort). |
+| `CONFIG_DICT_OVERRIDES_ENV` | off | Values passed programmatically as a config dict win over environment variables. By default environment variables win. Guided and bulk mode always apply their per-run overrides (generated feature file, per-folder project root) this way. |
+| `HERCULES_DISABLE_CLI_PARSE` | off | Skip parsing the shared Hercules command-line flags. They are parsed for every entrypoint except known subcommand CLIs (`hercules-dashboard`, `hercules-suite`). |
+
+Always on (bug and safety fixes, no flag): cancellation (Ctrl-C, `asyncio.wait_for`) is never
+swallowed by the scenario loop, filename sanitisation, network-log and error redaction,
+cleanup error aggregation, tool-result size capping, planner failure containment, and one
+corrective re-prompt for an invalid planner decision before the scenario is failed.
+
+The optional mobile (Appium) and healing hooks are inert unless `DEVICE_MANAGER=appium` is
+set and the Appium client is installed.
+
 ## Configuration Priority
 
 The effective configuration is assembled in this order:
 
 1. Built-in defaults
-2. Process environment variables (they form the base layer)
-3. `.env` values (loaded with `load_dotenv(override=True)`, so a `.env` entry
-   **wins over** the same variable pre-set in the process environment)
-4. `--config` YAML/JSON file values
-5. Command-line arguments
+2. Values passed programmatically as a config dict
+3. `.env` values
+4. Process environment variables
+5. `--config` YAML/JSON file values
+6. Command-line arguments
 
-Later steps override earlier steps. Note step 3 in particular: because `.env`
-is loaded with `override=True`, it overrides pre-set process environment
-variables, not the other way around. If both `AGENTS_LLM_CONFIG_FILE` and
+Later sources override earlier sources (set `CONFIG_DICT_OVERRIDES_ENV=true` to move the config dict above the environment). If both `AGENTS_LLM_CONFIG_FILE` and
 direct `LLM_MODEL_*` settings are present, the selected runtime path depends on
 which CLI/config values are active for that run.
 

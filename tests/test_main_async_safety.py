@@ -149,7 +149,10 @@ def fake_run_env(monkeypatch, tmp_path):
     return conf, offloaded
 
 
-def test_sequential_process_offloads_blocking_work_to_threads(fake_run_env) -> None:
+def test_sequential_process_offloads_blocking_work_to_threads(fake_run_env, monkeypatch) -> None:
+    # The reporting steps are opt-in; enable them all to cover their offloading.
+    for flag in ("ENABLE_RUN_REPORTING", "ENABLE_FAILURE_BUNDLES", "ENABLE_RUN_HISTORY"):
+        monkeypatch.setenv(flag, "true")
     _conf, offloaded = fake_run_env
     summary = asyncio.run(main_module.sequential_process())
 

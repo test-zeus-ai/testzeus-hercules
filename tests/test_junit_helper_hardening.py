@@ -8,7 +8,7 @@ policy:
    must be stripped instead of aborting XML construction;
 3. merge_junit_xml must skip unreadable inputs, keep them on disk, and only
    delete the successfully parsed inputs after the merged XML was written;
-4. verdict strictness: a case is green only when it terminated cleanly AND
+4. verdict strictness (opt-in, STRICT_VERDICT=true): a case is green only when it terminated cleanly AND
    recorded a verified pass — an aborted, cancelled, unproven or harness-failed
    scenario must produce a Failure carrying the scenario's own reason.
 """
@@ -216,20 +216,33 @@ def test_verdict_assert_branch_pass_matrix(junit_env) -> None:
 
 
 def test_verdict_assert_branch_failure_matrix(junit_env) -> None:
-    # Failed assertion, missing is_passed, and a non-clean terminate are all red.
+    # Failed assertion and missing is_passed are red in both verdict modes.
     for json_data in (
         {"terminate": "yes", "is_assert": True, "is_passed": False, "assert_summary": "expected 200 got 500"},
         {"terminate": "yes", "is_assert": True, "assert_summary": "no is_passed recorded"},
-        {"terminate": "no", "is_assert": True, "is_passed": True, "assert_summary": "did not terminate cleanly"},
     ):
         case = _build_and_parse(junit_env, json_data)
         assert case["status"] == "failed", json_data
         assert json_data["assert_summary"] in (case["failure_message"] or ""), json_data
 
 
-def test_verdict_non_assert_terminate_yes_without_is_passed_is_failure(junit_env) -> None:
-    # A scenario that asserted nothing and terminated cleanly is NOT a pass:
+def test_verdict_strict_assert_with_non_clean_terminate_is_failure(junit_env, monkeypatch) -> None:
+    monkeypatch.setenv("STRICT_VERDICT", "true")
+    case = _build_and_parse(junit_env, {"terminate": "no", "is_assert": True, "is_passed": True, "assert_summary": "did not terminate cleanly"})
+    assert case["status"] == "failed"
+    assert "did not terminate cleanly" in (case["failure_message"] or "")
+
+
+def test_verdict_legacy_assert_pass_ignores_terminate(junit_env, monkeypatch) -> None:
+    monkeypatch.delenv("STRICT_VERDICT", raising=False)
+    case = _build_and_parse(junit_env, {"terminate": "no", "is_assert": True, "is_passed": True, "assert_summary": "asserted"})
+    assert case["status"] == "passed"
+
+
+def test_verdict_non_assert_terminate_yes_without_is_passed_is_failure_when_strict(junit_env, monkeypatch) -> None:
+    # STRICT_VERDICT: a scenario that asserted nothing and terminated cleanly is NOT a pass:
     # the planner's own summary must surface as the failure message.
+    monkeypatch.setenv("STRICT_VERDICT", "true")
     case = _build_and_parse(
         junit_env,
         {"terminate": "yes", "final_response": "ended after the browser session dropped", "is_assert": False},
@@ -238,13 +251,33 @@ def test_verdict_non_assert_terminate_yes_without_is_passed_is_failure(junit_env
     assert "ended after the browser session dropped" in (case["failure_message"] or "")
 
 
-def test_verdict_non_assert_explicit_fail_is_failure(junit_env) -> None:
+def test_verdict_non_assert_terminate_yes_without_is_passed_passes_by_default(junit_env, monkeypatch) -> None:
+    # Legacy default: no explicit assertion + clean terminate keeps passing.
+    monkeypatch.delenv("STRICT_VERDICT", raising=False)
+    case = _build_and_parse(
+        junit_env,
+        {"terminate": "yes", "final_response": "completed the flow", "is_assert": False},
+    )
+    assert case["status"] == "passed"
+
+
+def test_verdict_non_assert_explicit_fail_is_failure_when_strict(junit_env, monkeypatch) -> None:
+    monkeypatch.setenv("STRICT_VERDICT", "true")
     case = _build_and_parse(
         junit_env,
         {"terminate": "yes", "is_assert": False, "is_passed": False, "assert_summary": "run aborted mid-way"},
     )
     assert case["status"] == "failed"
     assert "run aborted mid-way" in (case["failure_message"] or "")
+
+
+def test_verdict_non_assert_explicit_fail_passes_by_default(junit_env, monkeypatch) -> None:
+    monkeypatch.delenv("STRICT_VERDICT", raising=False)
+    case = _build_and_parse(
+        junit_env,
+        {"terminate": "yes", "is_assert": False, "is_passed": False, "assert_summary": "run aborted mid-way"},
+    )
+    assert case["status"] == "passed"
 
 
 def test_verdict_non_assert_terminate_no_is_failure(junit_env) -> None:
