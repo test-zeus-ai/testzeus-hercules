@@ -4,6 +4,7 @@ import asyncio
 import xml.etree.ElementTree as ET
 
 import pytest
+from testzeus_hercules.config import get_global_conf
 from tests import conftest_mobile as cm
 from tests.conftest_mobile import (  # noqa: F401
     FakeDriver,
@@ -220,7 +221,7 @@ def test_read_mobile_screen_tool_refresh_flag(fake_manager) -> None:
 def test_prompt_omits_ui_assertion_tools_by_default(monkeypatch) -> None:
     from testzeus_hercules.core.mobile import prompts
 
-    monkeypatch.delenv("ENABLE_UI_ASSERTIONS", raising=False)
+    monkeypatch.setitem(get_global_conf().get_config(), "ENABLE_UI_ASSERTIONS", "false")
     assert prompts.get_mobile_nav_system_prompt() == prompts.MOBILE_NAV_SYSTEM_PROMPT
     assert "assert_ui" not in prompts.MOBILE_NAV_SYSTEM_PROMPT
     assert "capture_ui_value" not in prompts.MOBILE_NAV_SYSTEM_PROMPT
@@ -229,7 +230,7 @@ def test_prompt_omits_ui_assertion_tools_by_default(monkeypatch) -> None:
 def test_prompt_mentions_ui_assertion_tools_when_enabled(monkeypatch) -> None:
     from testzeus_hercules.core.mobile import prompts
 
-    monkeypatch.setenv("ENABLE_UI_ASSERTIONS", "true")
+    monkeypatch.setitem(get_global_conf().get_config(), "ENABLE_UI_ASSERTIONS", "true")
     prompt = prompts.get_mobile_nav_system_prompt()
     assert "assert_ui" in prompt and "capture_ui_value" in prompt
     assert prompt.endswith("Available Test Data: $basic_test_information")  # placeholder still last
@@ -245,9 +246,9 @@ def test_mobile_agent_prompt_follows_the_flag(monkeypatch) -> None:
         captured["prompt"] = agent_prompt
 
     monkeypatch.setattr(mobile_nav_agent.MultimodalBaseNavAgent, "__init__", fake_init)
-    monkeypatch.delenv("ENABLE_UI_ASSERTIONS", raising=False)
+    monkeypatch.setitem(get_global_conf().get_config(), "ENABLE_UI_ASSERTIONS", "false")
     mobile_nav_agent.MobileNavAgent({}, {}, None)
     assert "assert_ui" not in captured["prompt"]
-    monkeypatch.setenv("ENABLE_UI_ASSERTIONS", "true")
+    monkeypatch.setitem(get_global_conf().get_config(), "ENABLE_UI_ASSERTIONS", "true")
     mobile_nav_agent.MobileNavAgent({}, {}, None)
     assert "assert_ui" in captured["prompt"]

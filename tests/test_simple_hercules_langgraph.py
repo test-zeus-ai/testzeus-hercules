@@ -778,7 +778,7 @@ def test_mobile_target_helper_is_contained_planner_failure_when_gate_closed(monk
             SimpleHercules._validate_planner_decision({"terminate": "no", "next_step": "tap the button", "target_helper": "mobile"})
 
         payload = json.dumps({"next_step": "tap the button", "target_helper": "mobile", "terminate": "no"})
-        planner_llm = FakeLLM([AIMessage(content=payload)])
+        planner_llm = FakeLLM([AIMessage(content=payload), AIMessage(content=payload)])  # the corrective re-prompt gets the same invalid answer
         hercules = SimpleHercules(stake_id="mobile-gate", planner_max_chat_round=3)
         hercules.agents_map = {
             "planner_agent": SimpleNamespace(
@@ -794,7 +794,7 @@ def test_mobile_target_helper_is_contained_planner_failure_when_gate_closed(monk
 
         assert result is not None
         assert result.terminate == "yes"
-        assert len(planner_llm.calls) == 1, "the invalid mobile decision must end the graph on the first planner turn"
+        assert len(planner_llm.calls) == 2, "the invalid mobile decision gets one corrective re-prompt, then ends the graph"
         parsed = parse_agent_response(result.summary)
         assert parsed["is_passed"] is False
         assert "Invalid planner decision" in (parsed["final_response"] or "")

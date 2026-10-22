@@ -159,4 +159,7 @@ def ui_assertions_enabled() -> bool:
     verification layer; the mobile prompt only mentions them when the same flag
     is on, so the agent is never told about tools it does not have.
     """
-    return _setting("ENABLE_UI_ASSERTIONS").lower() in {"1", "true", "yes", "on"}
+    try:
+        return bool(get_global_conf().get_enable_ui_assertions())
+    except Exception:  # pragma: no cover - defensive: config must never break the mobile prompt
+        return False
