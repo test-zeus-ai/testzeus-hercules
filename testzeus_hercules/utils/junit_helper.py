@@ -641,6 +641,7 @@ async def build_junit_xml(
     logs_path: str = None,
     network_logs_path: str = None,
     planner_thoughts_path: str = None,
+    junit_base_path: Optional[str] = None,
 ) -> str:
     """
     Build a JUnit XML file from test data.
@@ -651,11 +652,13 @@ async def build_junit_xml(
         cost_metric (Dict[str, Any]): The cost metrics associated with the test case.
         feature (str): The feature name.
         scenario (str): The scenario name.
+        junit_base_path (Optional[str]): Directory for the per-scenario file;
+            defaults to the configured junit output directory.
 
     Returns:
         str: The path to the generated JUnit XML file.
     """
-    file_path = _results_file_path(get_global_conf().get_junit_xml_base_path(), feature, scenario)
+    file_path = _results_file_path(junit_base_path or get_global_conf().get_junit_xml_base_path(), feature, scenario)
 
     generator = JUnitXMLGenerator(
         feature,
@@ -673,7 +676,7 @@ async def build_junit_xml(
     return file_path
 
 
-async def build_fallback_junit_xml(feature: str, scenario: str, error: BaseException) -> str:
+async def build_fallback_junit_xml(feature: str, scenario: str, error: BaseException, junit_base_path: Optional[str] = None) -> str:
     """
     Build a minimal red testcase entry when normal junit generation failed.
 
@@ -682,7 +685,7 @@ async def build_fallback_junit_xml(feature: str, scenario: str, error: BaseExcep
     so the merged report still records — and fails — that scenario instead of
     dropping it entirely.
     """
-    file_path = _results_file_path(get_global_conf().get_junit_xml_base_path(), feature, scenario)
+    file_path = _results_file_path(junit_base_path or get_global_conf().get_junit_xml_base_path(), feature, scenario)
     reason = f"JUnit report generation failed: {type(error).__name__}: {error}"
     generator = JUnitXMLGenerator(feature, "", file_path, None, None, None, None, None, None)
     generator.add_test_case(

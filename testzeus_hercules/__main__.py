@@ -73,15 +73,17 @@ async def sequential_process() -> dict:
     """
     dont_close_browser = get_global_conf().get_dont_close_browser()
 
-    # The run timestamp has second resolution and is fixed at import time, so two
-    # runs sharing a project root within the same second would overwrite each
-    # other's evidence and inherit stale failure bundles. Keep the plain
-    # timestamp name for the normal (fresh) case; when the dir already holds
-    # artifacts from another run, disambiguate with a short uuid suffix.
+    # The merged junit/html results keep their origin/main location
+    # (``junit_base_path``). The per-scenario XMLs are intermediates: the run
+    # timestamp has second resolution, so two runs sharing a project root would
+    # overwrite (and then merge or delete) each other's per-scenario files. When
+    # the output dir already holds artifacts, write them to a run-private
+    # subdirectory instead (removed again once it is empty after the merge).
     junit_base_path = get_global_conf().get_junit_xml_base_path()
+    scenario_junit_path = junit_base_path
     if os.path.isdir(junit_base_path) and os.listdir(junit_base_path):
-        junit_base_path = f"{junit_base_path}_{uuid.uuid4().hex[:8]}"
-        os.makedirs(junit_base_path, exist_ok=True)
+        scenario_junit_path = os.path.join(junit_base_path, f".hercules_run_{uuid.uuid4().hex[:8]}")
+        os.makedirs(scenario_junit_path, exist_ok=True)
 
     list_of_feats = await process_feature_file(dont_append_header=dont_close_browser)
     input_gherkin_file_path = get_global_conf().get_input_gherkin_file_path()
@@ -223,6 +225,7 @@ async def sequential_process() -> dict:
                     network_logs_path=getattr(browser_manager, "request_response_log_file", None),
                     logs_path=get_global_conf().get_source_log_folder_path(stake_id),
                     planner_thoughts_path=get_global_conf().get_source_log_folder_path(stake_id) + "/agent_inner_thoughts.json",
+                    junit_base_path=scenario_junit_path,
                 )
             )
         except Exception as exc:
@@ -232,7 +235,7 @@ async def sequential_process() -> dict:
             # still recorded — and failed — in the merged report.
             logger.error("Could not build junit entry for scenario %s: %s: %s", scenario, type(exc).__name__, exc, exc_info=True)
             try:
-                result_of_tests.append(await build_fallback_junit_xml(feature_name, scenario, exc))
+                result_of_tests.append(await build_fallback_junit_xml(feature_name, scenario, exc, junit_base_path=scenario_junit_path))
             except Exception as fallback_exc:
                 # Even the fallback can raise (e.g. ENOSPC); the batch must not
                 # die with zero merged output. This scenario simply has no
@@ -253,6 +256,11 @@ async def sequential_process() -> dict:
         logger.error("Failed to write merged junit results to %s: %s", final_result_file_name, exc)
         raise
     logger.info(f"Results published in junitxml file: {final_result_file_name}")
+    if scenario_junit_path != junit_base_path:
+        try:
+            os.rmdir(scenario_junit_path)
+        except OSError:
+            pass  # not empty (debug mode keeps per-scenario files) or already gone
 
     final_result_html_file_name = f"{junit_base_path}/{feature_file_name}_result.html"
     html_path: str | None = final_result_html_file_name

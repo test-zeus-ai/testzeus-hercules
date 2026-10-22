@@ -343,6 +343,60 @@ def test_scenario_loop_isolates_crashing_scenario(monkeypatch, tmp_path) -> None
     assert any("runner exploded" in (case["failure_message"] or "") for case in cases)
 
 
+# ── concurrent runs: per-scenario XMLs are run-private, merged output stays put ──
+
+
+def test_non_empty_output_dir_keeps_merged_location_and_isolates_scenario_files(monkeypatch, tmp_path) -> None:
+    import testzeus_hercules.utils.junit_helper as junit_helper
+
+    class _FailingRunner:
+        def __init__(self, stake_id: str, command: str, dont_terminate_browser_after_run: bool = False) -> None:
+            self.stake_id = stake_id
+            self.result = None
+            self.execution_time = 0.0
+            self.browser_manager = None
+
+        async def clean_up(self) -> None:
+            return None
+
+        async def start(self) -> None:
+            raise RuntimeError("boom")
+
+    conf = _install_two_scenario_run(monkeypatch, tmp_path, _FailingRunner)
+    # Another run sharing the output dir has a per-scenario file in flight with
+    # exactly the name this run would use.
+    foreign = junit_helper._results_file_path(str(conf.junit_base), "Feature: Loop Safety", "Scenario: First scenario")
+    with open(foreign, "w", encoding="utf-8") as handle:
+        handle.write("<other-run/>")
+
+    written: list[str] = []
+    real_fallback = main_module.build_fallback_junit_xml
+
+    async def spy_fallback(*args, **kwargs):
+        path = await real_fallback(*args, **kwargs)
+        written.append(path)
+        return path
+
+    async def failing_build(*args, **kwargs):
+        raise ValueError("force fallback path")
+
+    monkeypatch.setattr(main_module, "build_junit_xml", failing_build)
+    monkeypatch.setattr(main_module, "build_fallback_junit_xml", spy_fallback)
+
+    summary = asyncio.run(sequential_process())
+
+    # The merged result keeps the origin/main location...
+    assert summary["junit_xml"] == f"{conf.junit_base}/test.feature_result.xml"
+    assert summary["total"] == 2
+    # ...the per-scenario files went to a run-private subdirectory (cleaned up after the merge)...
+    assert written and all(os.path.dirname(path) != str(conf.junit_base) for path in written)
+    assert all(os.path.basename(os.path.dirname(path)).startswith(".hercules_run_") for path in written)
+    assert not any(name.startswith(".hercules_run_") for name in os.listdir(conf.junit_base))
+    # ...and the other run's in-flight file was neither overwritten nor deleted.
+    with open(foreign, encoding="utf-8") as handle:
+        assert handle.read() == "<other-run/>"
+
+
 # ── finding 1 (end to end): crashing planner LLM through the real runner + loop ──
 
 
