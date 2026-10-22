@@ -24,6 +24,7 @@ from typing import Annotated, Any, Dict, List, Optional
 from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.tools.api_calls import (
     interpolate_value,
+    sensitive_variable_values,
     stringify_interpolated_value,
     truncate_for_log,
 )
@@ -45,7 +46,8 @@ _VARIABLE_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]*$")
 
 # Environment variables hurl may legitimately need. Everything else in the
 # parent's environment (API keys, cloud credentials, tokens) stays out of the
-# subprocess; LC_* names and HURL_VARIABLE_* entries are handled separately.
+# subprocess; LC_* names and the parent's own HURL_VARIABLE_* entries (hurl's
+# documented way to inject variables, e.g. from CI) are passed through.
 _HURL_ENV_ALLOWLIST = frozenset(
     {
         "PATH",
@@ -71,14 +73,22 @@ _HURL_ENV_ALLOWLIST = frozenset(
 )
 
 
+_HURL_VARIABLE_ENV_PREFIX = "HURL_VARIABLE_"
+
+
 def _hurl_environment(variables: Dict[str, str]) -> Dict[str, str]:
-    """Minimal environment for the hurl subprocess plus the HURL_VARIABLE_* entries set by this tool."""
-    env = {key: value for key, value in os.environ.items() if key.upper() in _HURL_ENV_ALLOWLIST or key.startswith("LC_")}
-    env.update({f"HURL_VARIABLE_{name}": value for name, value in variables.items()})
+    """Minimal environment for the hurl subprocess: allowlisted entries, the parent's
+    HURL_VARIABLE_* entries, then this tool's variables (which take precedence)."""
+    env = {key: value for key, value in os.environ.items() if key.upper() in _HURL_ENV_ALLOWLIST or key.startswith(("LC_", _HURL_VARIABLE_ENV_PREFIX))}
+    env.update({f"{_HURL_VARIABLE_ENV_PREFIX}{name}": value for name, value in variables.items()})
     return env
 
 
-_SECRET_HEADER_LINE_RE = re.compile(r"(?im)^(\s*(?:authorization|proxy-authorization|cookie|set-cookie|x-api-key|api-key)\s*:\s*).+$")
+_SECRET_HEADER_NAMES = r"(?:authorization|proxy-authorization|cookie|set-cookie|x-api-key|api-key|x-form-login)"
+_SECRET_HEADER_LINE_RE = re.compile(r"(?im)^(\s*" + _SECRET_HEADER_NAMES + r"\s*:\s*).+$")
+# XML-safe variant for the JUnit report copy: the value stops at markup/quotes,
+# so redaction never swallows a closing tag or attribute quote.
+_SECRET_HEADER_XML_RE = re.compile(r"(?i)(\b" + _SECRET_HEADER_NAMES + r"\s*:\s*)[^<\"'\r\n]+")
 _URL_TOKEN_RE = re.compile(r"https?://[^\s'\"<>]+")
 
 # Characters of hurl's raw stdout/stderr echoed back in the result payload.
@@ -96,16 +106,20 @@ def _minified(payload: Dict[str, Any]) -> str:
     return json.dumps(payload, separators=(",", ":"))
 
 
-def _redact_output(text: str, secret_values: List[str]) -> str:
+def _redact_output(text: str, secret_values: List[str], xml: bool = False) -> str:
     """Scrub secrets from raw hurl output: sensitive variable values, auth/cookie header lines and URL credentials."""
     text = scrub_secret_values(text, secret_values)
-    text = _SECRET_HEADER_LINE_RE.sub(lambda match: match.group(1) + REDACTED_PLACEHOLDER, text)
+    header_re = _SECRET_HEADER_XML_RE if xml else _SECRET_HEADER_LINE_RE
+    text = header_re.sub(lambda match: match.group(1) + REDACTED_PLACEHOLDER, text)
     return _URL_TOKEN_RE.sub(lambda match: redact_url(match.group(0)), text)
 
 
-def _secret_variable_values(variables: Dict[str, str]) -> List[str]:
-    """Values of the variables whose NAME marks them as secret-bearing (scrubbed from output)."""
-    return [value for name, value in variables.items() if is_sensitive_name(name)]
+def _secret_variable_values(process_env: Dict[str, str]) -> List[str]:
+    """Values scrubbed from hurl's output: every HURL_VARIABLE_* entry whose NAME marks it
+    as secret-bearing, plus the scenario's secret-named captured variables (a captured
+    token passed on under a harmless hurl-side name is still scrubbed)."""
+    hurl_secrets = [value for key, value in process_env.items() if key.startswith(_HURL_VARIABLE_ENV_PREFIX) and is_sensitive_name(key[len(_HURL_VARIABLE_ENV_PREFIX) :])]
+    return hurl_secrets + sensitive_variable_values()
 
 
 def _suite_files(hurl_path: str) -> List[str]:
@@ -209,6 +223,10 @@ async def run_hurl_suite(
         files = [resolve_in_roots(item) for item in _suite_files(resolved_input)]
     except PathConfinementError as e:
         return _minified({"assertion": "ERROR", "suite": suite, "reason": str(e)})
+    # Only real suites run: a single-file input must be a .hurl file (a
+    # directory input already globs *.hurl), so arbitrary files are never fed to hurl.
+    if not all(item.lower().endswith(".hurl") for item in files):
+        return _minified({"assertion": "ERROR", "suite": suite, "reason": f"'{hurl_path}' is not a .hurl file; pass a .hurl file or a directory of them."})
     if not files or not all(os.path.exists(item) for item in files):
         return _minified({"assertion": "ERROR", "suite": suite, "reason": f"No .hurl input found at '{hurl_path}'."})
 
@@ -218,8 +236,8 @@ async def run_hurl_suite(
     invalid_names = sorted(name for name in resolved_variables if not _VARIABLE_NAME_RE.match(name))
     if invalid_names:
         return _minified({"assertion": "ERROR", "suite": suite, "reason": f"Invalid hurl variable name(s): {', '.join(invalid_names)} (use letters, digits, '_' or '-')."})
-    secret_values = _secret_variable_values(resolved_variables)
     process_env = _hurl_environment(resolved_variables)
+    secret_values = _secret_variable_values(process_env)
 
     # A directory (not mkstemp): hurl panics when the report path already
     # exists, so the report file itself must not pre-exist.
@@ -303,7 +321,7 @@ async def run_hurl_suite(
                 }
             )
 
-        saved_copy = _save_report_copy(junit_path, suite)
+        saved_copy = _save_report_copy(junit_path, suite, secret_values)
 
         executed = report["executed"]
         failed = report["failed"]
@@ -345,8 +363,13 @@ def _append_log(raw_output: str) -> None:
         logger.warning(f"Failed to append to hurl_logs.log: {e}")
 
 
-def _save_report_copy(junit_path: str, suite: str) -> Optional[str]:
-    """Save a copy of the JUnit report under proofs/hurl_results/."""
+def _save_report_copy(junit_path: str, suite: str, secret_values: Optional[List[str]] = None) -> Optional[str]:
+    """Save a redacted copy of the JUnit report under proofs/hurl_results/.
+
+    Failure messages in the report can echo request/response content, so the
+    copy gets the same scrubbing as the hurl output (secret values, auth
+    header lines, URL credentials).
+    """
     try:
         proof_path = get_global_conf().get_proof_path()
         results_dir = os.path.join(proof_path, "hurl_results")
@@ -354,7 +377,10 @@ def _save_report_copy(junit_path: str, suite: str) -> Optional[str]:
         # The uuid suffix keeps same-millisecond saves from colliding on (and
         # silently overwriting) one path.
         copy_path = os.path.join(results_dir, f"{suite}-{int(time.time() * 1000)}-{uuid.uuid4().hex[:8]}.xml")
-        shutil.copyfile(junit_path, copy_path)
+        with open(junit_path, "r", encoding="utf-8", errors="replace") as report_file:
+            report_text = report_file.read()
+        with open(copy_path, "w", encoding="utf-8") as copy_file:
+            copy_file.write(_redact_output(report_text, secret_values or [], xml=True))
         return copy_path
     except Exception as e:
         logger.warning(f"Failed to save the Hurl JUnit report copy: {e}")

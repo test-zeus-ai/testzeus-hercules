@@ -166,14 +166,46 @@ def resolve_in_roots(path: str, roots: Optional[Iterable[str]] = None) -> str:
     the working directory; the first existing, confined candidate wins, so a
     missing file still reports "not found" rather than a confinement error.
 
+    Like ``resolve_within``, the filesystem root and the home directory are
+    never accepted as roots, and secret/state files (dotfiles, ``*.env``,
+    ``agents_llm_config*``, keys, databases, see ``is_sensitive_name``) are
+    refused by requested name and by resolved name, so a symlink cannot expose
+    one either.
+
     Raises:
-        PathConfinementError: the path is empty, contains a NUL byte or
-            resolves outside every allowed root.
+        PathConfinementError: the path is empty, contains a NUL byte,
+            resolves outside every allowed root or names a sensitive file.
     """
     text = str(path or "")
     if not text.strip() or "\x00" in text:
         raise PathConfinementError("Path is empty or invalid.")
-    allowed = [os.path.realpath(os.path.abspath(root)) for root in roots] if roots is not None else allowed_roots()
+    raw_roots = [str(root) for root in roots if root] if roots is not None else allowed_roots()
+    allowed = []
+    for root in raw_roots:
+        if _is_overbroad_root(root):
+            if root not in _WARNED_OVERBROAD_ROOTS:
+                _WARNED_OVERBROAD_ROOTS.add(root)
+                _LOGGER.warning("Ignoring allowed root %r: the filesystem root and the home directory are too broad; configure a specific project directory instead.", root)
+            continue
+        allowed.append(os.path.realpath(os.path.abspath(root)))
+    if _names_sensitive_file(text):
+        raise PathConfinementError(f"Access denied: '{os.path.basename(text.rstrip('/' + os.sep))}' looks like a secret or state file and cannot be used.")
+    resolved_path = _resolve_candidates(text, allowed)
+    if _names_sensitive_file(resolved_path):
+        raise PathConfinementError(f"Access denied: '{os.path.basename(text.rstrip('/' + os.sep))}' resolves to a secret or state file and cannot be used.")
+    return resolved_path
+
+
+def _names_sensitive_file(path: str) -> bool:
+    """``is_sensitive_name`` on the basename, ignoring the '.'/'..' directory references."""
+    base = os.path.basename(str(path).rstrip("/\\"))
+    if base in ("", ".", ".."):
+        return False
+    return is_sensitive_name(base)
+
+
+def _resolve_candidates(text: str, allowed: List[str]) -> str:
+    """Return the first confined, existing candidate for ``text`` (see ``resolve_in_roots``)."""
     if os.path.isabs(text):
         candidates = [text]
     else:

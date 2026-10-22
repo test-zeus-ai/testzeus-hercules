@@ -516,3 +516,70 @@ def test_valid_schema_still_validates_instances() -> None:
     parsed = json.loads(failed)
     assert parsed["assertion"] == "FAILED"
     assert parsed["violation_count"] == 1
+
+
+# ── review fixes: repeated query keys, deep/broad redaction, URL secrets in errors ──
+
+
+def test_repeated_inline_query_keys_are_all_sent(monkeypatch) -> None:
+    seen: list = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(str(request.url))
+        return httpx.Response(200, json={})
+
+    _install_transport(monkeypatch, handler)
+    _run(generic_http_api("GET", "http://host.test/echo?tag=a&tag=b&status=paid", query_params={"status": "refunded"}))
+
+    from urllib.parse import parse_qsl, urlsplit
+
+    assert parse_qsl(urlsplit(seen[0]).query) == [("tag", "a"), ("tag", "b"), ("status", "refunded")]
+
+
+def test_api_logs_redact_form_login_query_secrets_and_nested_json(monkeypatch) -> None:
+    captured = _capture_api_logs(monkeypatch)
+    request = httpx.Request(
+        "POST",
+        "https://api.test/x?client_secret=cs-1&refresh_token=rt-1&page=2",
+        headers={"X-Form-Login": "user:fl-pw"},
+        json={"user": {"credentials": {"password": "deep-pw"}}, "items": [{"auth": {"api_token": "deep-tok"}}]},
+    )
+    _run(api_calls.log_request(request))
+    response = httpx.Response(200, json={"data": {"session": {"access_token": "deep-at"}}}, request=request)
+    _run(api_calls.log_response(response))
+
+    logged = "\n".join(captured)
+    for secret in ("cs-1", "rt-1", "fl-pw", "deep-pw", "deep-tok", "deep-at"):
+        assert secret not in logged, secret
+    assert "page=2" in logged
+
+
+def test_http_error_text_never_carries_query_secrets(monkeypatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(401, json={"m": "no"})
+
+    _install_transport(monkeypatch, handler)
+    errors: list = []
+    monkeypatch.setattr(api_calls.logger, "error", lambda message, *args, **kwargs: errors.append(str(message)))
+    result = _run(generic_http_api("GET", "https://api.test/x?token=q-secret&client_secret=c-secret"))
+
+    assert json.loads(result)["status_code"] == 401
+    for text in [result] + errors:
+        assert "q-secret" not in text and "c-secret" not in text
+
+
+def test_transport_error_text_never_carries_query_secrets(monkeypatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise RuntimeError(f"boom while fetching {request.url}")
+
+    _install_transport(monkeypatch, handler)
+    result = _run(generic_http_api("GET", "https://api.test/x?api_key=k-secret"))
+
+    assert "k-secret" not in result
+    assert json.loads(result)["status_type"] == "failure"
+
+
+def test_multipart_upload_of_a_secret_file_is_refused(monkeypatch, tmp_path, allow_tmp) -> None:
+    (tmp_path / ".env").write_text("OPENAI_API_KEY=sk-1")
+    with pytest.raises(ValueError, match="Access denied"):
+        api_calls.build_multipart_fields({"payload": {"file_path": ".env"}})
