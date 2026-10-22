@@ -61,22 +61,30 @@ def test_form_field_name_is_exposed_separately() -> None:
 FORM = """<form>
 <label><input type=checkbox id=c1 checked> Newsletter</label>
 <label><input type=checkbox id=c2> Terms</label>
+<input type=checkbox id=c3 name=remember>
+<label><input type=checkbox id=c4 disabled> Locked</label>
 <label><input type=radio name=colour id=r1 checked> Red</label>
 <label><input type=radio name=colour id=r2> Blue</label>
 <div role=switch aria-checked=true tabindex=0>Dark mode</div>
 <div role=checkbox aria-checked=mixed tabindex=0>Select all</div>
+<ul role=listbox><li role=option aria-selected=true tabindex=0>Small</li><li role=option aria-selected=false tabindex=0>Large</li></ul>
 <label>Email <input id=email type=email></label>
+<button id=go type=button>Go</button><label for=go>Button label</label>
 </form>"""
 
 
 async def _launch(playwright):
     try:
         return await playwright.chromium.launch(headless=True)
-    except Exception:
+    except Exception as error:
+        if "Executable doesn't exist" not in str(error):
+            raise
         executable = os.environ.get("HERCULES_TEST_CHROMIUM")
-        if not executable or not Path(executable).exists():
-            pytest.skip("no launchable Chromium (install Playwright browsers or set HERCULES_TEST_CHROMIUM)")
-        return await playwright.chromium.launch(headless=True, executable_path=executable)
+        if executable and Path(executable).exists():
+            return await playwright.chromium.launch(headless=True, executable_path=executable)
+        if os.environ.get("CI"):
+            raise  # CI installs the browsers; a silent skip here would hide a broken install
+        pytest.skip("no launchable Chromium (install Playwright browsers or set HERCULES_TEST_CHROMIUM)")
 
 
 def _controls(tree: dict) -> list[dict]:
@@ -90,11 +98,11 @@ def test_real_tree_reports_live_state_labels_and_updates_after_clicks(tmp_path) 
 
 async def _check_real_tree(tmp_path: Path) -> None:
     from playwright.async_api import async_playwright
-    from testzeus_hercules.config import get_global_conf, set_global_conf
+    from testzeus_hercules.config import get_global_conf, set_global_conf_keys
     from testzeus_hercules.utils.get_detailed_accessibility_tree import do_get_accessibility_info
 
     previous_root = get_global_conf().get_config().get("PROJECT_SOURCE_ROOT")
-    set_global_conf({"PROJECT_SOURCE_ROOT": str(tmp_path)}, override=True)
+    set_global_conf_keys({"PROJECT_SOURCE_ROOT": str(tmp_path)})
     try:
         async with async_playwright() as playwright:
             browser = await _launch(playwright)
@@ -103,14 +111,21 @@ async def _check_real_tree(tmp_path: Path) -> None:
                 await page.set_content(FORM)
 
                 before = _controls(await do_get_accessibility_info(page, only_input_fields=False))
-                by_name = {c.get("name"): c for c in before if c.get("role") in {"checkbox", "radio", "switch"}}
+                by_name = {c.get("name"): c for c in before if c.get("role") in {"checkbox", "radio", "switch", "option"}}
                 assert by_name["Newsletter"]["checked"] is True
                 assert by_name["Terms"]["checked"] is False
                 assert by_name["Red"]["checked"] is True and by_name["Blue"]["checked"] is False
                 assert by_name["Red"].get("field_name") == "colour"  # the label, not the form-group name, is the name
                 assert by_name["Dark mode"]["checked"] is True
                 assert by_name["Select all"]["checked"] == "mixed"
+                assert by_name["Locked"]["disabled"] is True
+                assert by_name["Small"]["selected"] is True and by_name["Large"]["selected"] is False
                 assert any(c.get("name") == "Email" and c.get("role") == "textbox" for c in before)
+                # an unlabelled checkbox is named after its form field, never after its value ("on")
+                assert "on" not in {c.get("name") for c in before if c.get("role") == "checkbox"}
+                assert any(c.get("name") == "remember" and c.get("role") == "checkbox" for c in before)
+                # a <label for=...> pointing at a button must not replace the button's own text
+                assert any(c.get("name") == "Go" and c.get("tag") == "button" for c in before)
 
                 await page.click("#c2")
                 await page.click("#r2")
@@ -122,4 +137,4 @@ async def _check_real_tree(tmp_path: Path) -> None:
                 await browser.close()
     finally:
         if previous_root is not None:
-            set_global_conf({"PROJECT_SOURCE_ROOT": previous_root}, override=True)
+            set_global_conf_keys({"PROJECT_SOURCE_ROOT": previous_root})

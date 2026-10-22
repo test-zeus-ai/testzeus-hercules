@@ -4,9 +4,10 @@ name: Publish Docker image
 # The published image used to be arm64-only (Intel/AMD hosts could not run it) and was last
 # pushed in May 2025; this replaces the commented-out publish step in release.yml.
 #
-# Needs the DOCKERHUB_USERNAME repository variable and the DOCKERHUB_TOKEN secret. Without them
-# the image is still built (both architectures) but not pushed, so the workflow also works as a
-# build check on manual runs.
+# Pushing happens only for release tags (and for a manual run from the default branch with
+# "push" ticked). Every other run builds both architectures without pushing, so a manual run from
+# a feature branch is a safe build check. Needs the DOCKERHUB_USERNAME repository variable and the
+# DOCKERHUB_TOKEN secret; without them the image is built but not pushed.
 
 on:
   push:
@@ -14,16 +15,22 @@ on:
       - '*'
   workflow_dispatch:
     inputs:
+      push:
+        description: "Push the image (only honoured when run from the default branch)"
+        required: false
+        default: false
+        type: boolean
       tag:
-        description: "Image tag to publish (defaults to the ref name; 'latest' is also pushed for release tags)"
+        description: "Image tag for a manual run (defaults to the ref name; 'latest' is not allowed)"
         required: false
         type: string
 
 permissions:
   contents: read
 
+# One publish at a time, so an older tag finishing late cannot overwrite a newer image.
 concurrency:
-  group: docker-publish-${{ github.ref }}
+  group: docker-publish
   cancel-in-progress: false
 
 env:
@@ -37,6 +44,8 @@ jobs:
       DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
       INPUT_TAG: ${{ inputs.tag }}
+      INPUT_PUSH: ${{ inputs.push }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
     steps:
       - uses: actions/checkout@v7
 
@@ -52,18 +61,32 @@ jobs:
           tag="${INPUT_TAG:-${GITHUB_REF_NAME}}"
           # Image tags may not contain '/' (branch names on manual runs).
           tag="${tag//\//-}"
+          if ! printf '%s' "${tag}" | grep -Eq '^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$'; then
+            echo "::error::'${tag}' is not a valid image tag"; exit 1
+          fi
+          if [ "${tag}" = "latest" ]; then
+            echo "::error::'latest' is only published automatically for plain release tags"; exit 1
+          fi
           tags="${IMAGE_NAME}:${tag}"
-          if [ "${GITHUB_REF_TYPE}" = "tag" ] && [ -z "${INPUT_TAG}" ]; then
+          # 'latest' only for a release tag pushed to the repository, and only plain X.Y.Z (no pre-release suffix).
+          if [ "${GITHUB_REF_TYPE}" = "tag" ] && [ -z "${INPUT_TAG}" ] && printf '%s' "${tag}" | grep -Eq '^v?[0-9]+\.[0-9]+\.[0-9]+$'; then
             tags="${tags},${IMAGE_NAME}:latest"
           fi
           echo "tags=${tags}" >> "$GITHUB_OUTPUT"
           echo "Will tag: ${tags}"
-          if [ -n "${DOCKERHUB_USERNAME}" ] && [ -n "${DOCKERHUB_TOKEN}" ]; then
-            echo "push=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "push=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::DOCKERHUB_USERNAME / DOCKERHUB_TOKEN not set; building both architectures without pushing."
+
+          want_push=false
+          if [ "${GITHUB_REF_TYPE}" = "tag" ] && [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            want_push=true
+          elif [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && [ "${INPUT_PUSH}" = "true" ] && [ "${GITHUB_REF_NAME}" = "${DEFAULT_BRANCH}" ]; then
+            want_push=true
           fi
+          if [ "${want_push}" = "true" ] && { [ -z "${DOCKERHUB_USERNAME}" ] || [ -z "${DOCKERHUB_TOKEN}" ]; }; then
+            echo "::warning::DOCKERHUB_USERNAME / DOCKERHUB_TOKEN not set; building both architectures without pushing."
+            want_push=false
+          fi
+          echo "push=${want_push}" >> "$GITHUB_OUTPUT"
+          echo "Push: ${want_push}"
 
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
@@ -75,6 +98,8 @@ jobs:
           username: ${{ env.DOCKERHUB_USERNAME }}
           password: ${{ env.DOCKERHUB_TOKEN }}
 
+      # No build cache: a tag run cannot read another tag's cache, and exporting the multi-GB torch/CUDA
+      # layers for two architectures would eat the repository's 10 GB cache quota used by CI.
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
@@ -82,5 +107,3 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: ${{ steps.tags.outputs.push == 'true' }}
           tags: ${{ steps.tags.outputs.tags }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max

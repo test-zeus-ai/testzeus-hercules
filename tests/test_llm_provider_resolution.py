@@ -7,12 +7,13 @@ model is called through an OpenAI-style client, so the settings select the endpo
 import pytest
 from langchain_openai import AzureChatOpenAI, ChatOpenAI
 from testzeus_hercules.core.agents import high_level_planner_agent
-from testzeus_hercules.utils.llm_helper import create_chat_model, resolve_provider_settings
+from testzeus_hercules.core.agents_llm_config import AgentsLLMConfig
+from testzeus_hercules.utils.llm_helper import convert_model_config_to_langchain_format, create_chat_model, resolve_provider_settings
 
 
 @pytest.fixture(autouse=True)
 def _no_ambient_openai_endpoint(monkeypatch) -> None:
-    for name in ("OPENAI_BASE_URL", "OPENAI_API_BASE", "MODEL_API_KEY", "AZURE_OPENAI_ENDPOINT"):
+    for name in ("OPENAI_BASE_URL", "OPENAI_API_BASE", "OPENAI_API_KEY", "MODEL_API_KEY", "AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_API_KEY"):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -56,7 +57,7 @@ def test_azure_with_api_version_uses_the_azure_client() -> None:
     model = create_chat_model({"model_name": "gpt-4o", "model_api_key": "k", "model_api_type": "azure", "model_api_version": "2024-05-01-preview", "model_base_url": "https://res.openai.azure.com/"})
 
     assert isinstance(model, AzureChatOpenAI)
-    assert model.azure_endpoint == "https://res.openai.azure.com/"
+    assert model.azure_endpoint == "https://res.openai.azure.com"  # reduced to scheme + host; the client adds /openai/deployments/...
     assert model.openai_api_version == "2024-05-01-preview"
     assert model.deployment_name == "gpt-4o"
 
@@ -110,3 +111,140 @@ def test_planner_agent_honours_the_same_provider_settings(monkeypatch, model_con
     agent = high_level_planner_agent.PlannerAgent(model_config, {})
 
     assert type(agent.llm) is expected_class and getattr(agent.llm, expected_attr)
+
+
+# ── the real runtime path: config file -> AgentsLLMConfig -> converter -> client ──────────────────────────
+
+
+def _through_runtime_config(raw: dict) -> dict:
+    """What the agents actually receive: normalize_agent_config, then the langchain converter."""
+    normalized = AgentsLLMConfig().normalize_agent_config(raw)
+    return convert_model_config_to_langchain_format(normalized["model_config_params"])
+
+
+def test_azure_settings_survive_the_runtime_config_path() -> None:
+    raw = {"model_name": "gpt-4o", "model_api_key": "k", "model_api_type": "azure", "model_api_version": "2024-05-01-preview", "model_base_url": "https://res.openai.azure.com/"}
+
+    model = create_chat_model(_through_runtime_config(raw), {})
+
+    assert isinstance(model, AzureChatOpenAI)
+    assert model.openai_api_version == "2024-05-01-preview" and model.deployment_name == "gpt-4o"
+
+
+def test_ollama_client_host_survives_the_runtime_config_path() -> None:
+    raw = {"model_name": "llama3", "model_api_type": "ollama", "model_client_host": "http://gpu-box:11434"}
+
+    assert create_chat_model(_through_runtime_config(raw), {}).openai_api_base == "http://gpu-box:11434/v1"
+
+
+@pytest.mark.parametrize("raw_type", ["azure", "azure_openai", "azure-openai", "Azure-OpenAI"])
+def test_azure_api_type_spellings_are_equivalent(raw_type) -> None:
+    raw = {"model_name": "gpt-4o", "model_api_key": "k", "model_api_type": raw_type, "model_api_version": "2024-05-01-preview", "model_base_url": "https://res.openai.azure.com/"}
+
+    assert isinstance(create_chat_model(_through_runtime_config(raw), {}), AzureChatOpenAI)
+
+
+def test_planner_agent_gets_azure_from_the_runtime_config_path(monkeypatch) -> None:
+    monkeypatch.setattr(high_level_planner_agent, "get_user_ltm", lambda: None)
+    raw = {"model_name": "gpt-4o", "model_api_key": "k", "model_api_type": "azure", "model_api_version": "2024-05-01-preview", "model_base_url": "https://res.openai.azure.com/"}
+
+    agent = high_level_planner_agent.PlannerAgent(_through_runtime_config(raw), {})
+
+    assert isinstance(agent.llm, AzureChatOpenAI)
+
+
+# ── Azure endpoint handling ───────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "configured",
+    [
+        "https://res.openai.azure.com",
+        "https://res.openai.azure.com/",
+        "https://res.openai.azure.com/openai/deployments/gpt-4o",
+        "https://res.openai.azure.com/openai/deployments/gpt-4o/chat/completions",
+    ],
+)
+def test_azure_endpoint_is_reduced_to_scheme_and_host(configured) -> None:
+    model = create_chat_model({"model_name": "gpt-4o", "model_api_key": "k", "model_api_type": "azure", "model_api_version": "2024-05-01-preview", "model_base_url": configured})
+
+    assert model.azure_endpoint == "https://res.openai.azure.com"
+
+
+def test_azure_v1_endpoint_with_an_api_version_uses_the_plain_client() -> None:
+    model = create_chat_model(
+        {"model_name": "gpt-4o", "model_api_key": "k", "model_api_type": "azure", "model_api_version": "2024-05-01-preview", "model_base_url": "https://res.openai.azure.com/openai/v1/"}
+    )
+
+    assert type(model) is ChatOpenAI and model.openai_api_base == "https://res.openai.azure.com/openai/v1/"
+
+
+def test_azure_without_an_endpoint_fails_with_a_clear_message() -> None:
+    with pytest.raises(ValueError, match="needs the resource endpoint"):
+        create_chat_model({"model_name": "gpt-4o", "model_api_key": "k", "model_api_type": "azure", "model_api_version": "2024-05-01-preview"})
+
+
+def test_azure_endpoint_and_key_can_come_from_the_azure_environment(monkeypatch) -> None:
+    monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", "https://env.openai.azure.com")
+    monkeypatch.setenv("AZURE_OPENAI_API_KEY", "env-key")
+
+    model = create_chat_model({"model_name": "gpt-4o", "model_api_type": "azure", "model_api_version": "2024-05-01-preview"})
+
+    assert isinstance(model, AzureChatOpenAI)
+    assert str(model.client._client.base_url) == "https://env.openai.azure.com/openai/deployments/gpt-4o/"
+
+
+def test_timeout_and_retries_reach_the_azure_client() -> None:
+    model = create_chat_model({"model_name": "gpt-4o", "model_api_key": "k", "model_api_type": "azure", "model_api_version": "2024-05-01-preview", "model_base_url": "https://r.openai.azure.com"}, {})
+
+    assert model.request_timeout == 60.0 and model.max_retries == 1
+
+
+# ── precedence ──────────────────────────────────────────────────────────────────────────────────────────
+
+
+def test_openai_endpoint_from_the_environment_is_not_replaced_by_an_api_type_default(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://gateway.corp/v1")
+
+    settings = resolve_provider_settings({"model": "claude-sonnet-4", "api_key": "k", "api_type": "anthropic"}, "claude-sonnet-4")
+
+    assert settings["base_url"] is None  # the client then reads OPENAI_BASE_URL itself
+
+
+def test_ollama_explicit_base_url_wins_over_client_host() -> None:
+    model = create_chat_model({"model_name": "llama3", "model_api_type": "ollama", "model_base_url": "http://proxy:4000/v1", "model_client_host": "http://gpu-box:11434"})
+
+    assert model.openai_api_base == "http://proxy:4000/v1"
+
+
+def test_ollama_client_host_without_a_scheme_gets_one() -> None:
+    model = create_chat_model({"model_name": "llama3", "model_api_type": "ollama", "model_client_host": "gpu-box:11434"})
+
+    assert model.openai_api_base == "http://gpu-box:11434/v1"
+
+
+# ── keyless local endpoints ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_local_endpoint_uses_the_environment_api_key_when_there_is_one(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "proxy-key")
+    model = create_chat_model({"model_name": "qwen", "model_base_url": "http://localhost:4000/v1"})
+
+    assert model.openai_api_key.get_secret_value() == "proxy-key"
+
+
+def test_planner_keeps_the_environment_api_key_for_a_local_proxy(monkeypatch) -> None:
+    monkeypatch.setattr(high_level_planner_agent, "get_user_ltm", lambda: None)
+    monkeypatch.setenv("OPENAI_API_KEY", "proxy-key")
+
+    agent = high_level_planner_agent.PlannerAgent({"model_name": "qwen", "base_url": "http://localhost:4000/v1"}, {})
+
+    assert agent.llm.openai_api_key.get_secret_value() == "proxy-key"
+
+
+def test_planner_uses_a_placeholder_key_only_when_no_key_exists(monkeypatch) -> None:
+    monkeypatch.setattr(high_level_planner_agent, "get_user_ltm", lambda: None)
+
+    agent = high_level_planner_agent.PlannerAgent({"model_name": "llama3", "model_api_type": "ollama"}, {})
+
+    assert agent.llm.openai_api_key.get_secret_value() == "not-needed"

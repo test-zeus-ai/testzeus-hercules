@@ -277,16 +277,39 @@ def test_summary_bare_terminate_marker_does_not_override_nonterminal_planner() -
     assert summary["next_step"] == "verify the order total"
 
 
-def test_summary_helper_success_section_still_overrides_nonterminal_planner() -> None:
-    helper = "### Success:\nOrder total matches 42.00\n##TERMINATE TASK##"
+def test_summary_helper_success_step_does_not_end_a_cut_short_run() -> None:
+    # The browser helper's standard step reply is "### Success: ... ##TERMINATE TASK##".
+    helper = "### Success:\nClicked the Login button\n##TERMINATE TASK##"
     result = GraphChatResult(messages=[_nonterminal_planner_message()], terminate="no", last_helper_response=helper)
 
     summary = json.loads(result.summary)
-    assert summary["terminate"] == "yes" and summary["is_assert"] is True and summary["is_passed"] is True
+    assert summary.get("terminate") != "yes" and summary.get("is_passed") is not True
 
 
-def test_summary_helper_pass_prefix_still_overrides_nonterminal_planner() -> None:
+def test_summary_helper_pass_prefix_does_not_end_a_cut_short_run() -> None:
     result = GraphChatResult(messages=[_nonterminal_planner_message()], terminate="no", last_helper_response="PASS: order total is 42.00")
 
+    assert json.loads(result.summary).get("terminate") != "yes"
+
+
+def test_summary_helper_failure_still_overrides_a_cut_short_run() -> None:
+    helper = "### Error or Uncertainty:\nThe order total does not match\n##TERMINATE TASK##"
+    result = GraphChatResult(messages=[_nonterminal_planner_message()], terminate="no", last_helper_response=helper)
+
     summary = json.loads(result.summary)
-    assert summary["terminate"] == "yes" and summary["is_assert"] is True and summary["is_passed"] is True
+    assert summary["terminate"] == "yes" and summary["is_assert"] is True and summary["is_passed"] is False
+
+
+def test_summary_helper_fail_prefix_still_overrides_a_cut_short_run() -> None:
+    result = GraphChatResult(messages=[_nonterminal_planner_message()], terminate="no", last_helper_response="FAIL: order total is 41.00")
+
+    summary = json.loads(result.summary)
+    assert summary["terminate"] == "yes" and summary["is_passed"] is False
+
+
+def test_summary_helper_success_is_kept_when_the_graph_ended_normally() -> None:
+    helper = "### Success:\nOrder total matches 42.00\n##TERMINATE TASK##"
+    result = GraphChatResult(messages=[_nonterminal_planner_message()], terminate="yes", last_helper_response=helper)
+
+    summary = json.loads(result.summary)
+    assert summary["terminate"] == "yes" and summary["is_passed"] is True

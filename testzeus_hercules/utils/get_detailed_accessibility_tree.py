@@ -1079,7 +1079,11 @@ async def do_get_accessibility_info(page: Page, only_input_fields: bool = False)
                         // Form controls: the text of their associated <label> is the accessible name.
                         // Without this a labelled checkbox/radio/input is named after its value ("on")
                         // or its name attribute instead of the text the user sees.
-                        if (element.labels && element.labels.length) {
+                        const tagLower = element.tagName.toLowerCase();
+                        const typeLower = tagLower === 'input' ? (element.type || '').toLowerCase() : '';
+                        const isButtonLike = tagLower === 'button' || ['button', 'submit', 'reset', 'image'].includes(typeLower);
+                        const isCheckable = typeLower === 'checkbox' || typeLower === 'radio';
+                        if (!isButtonLike && element.labels && element.labels.length) {
                             const labelText = Array.from(element.labels)
                                 .map((label) => (label.innerText || label.textContent || '').trim())
                                 .filter(Boolean)
@@ -1091,8 +1095,11 @@ async def do_get_accessibility_info(page: Page, only_input_fields: bool = False)
                         if (element.title) return cleanName(element.title);
                         if (element.placeholder) return cleanName(element.placeholder);
 
+                        // A checkbox/radio's value ("on" by default) is not a name; without a label the
+                        // form-field name from the DOM attributes is used downstream instead.
                         if (
                             element.value &&
+                            !isCheckable &&
                             (element.tagName.toLowerCase() === 'input' || element.tagName.toLowerCase() === 'textarea')
                         ) {
                             return cleanName(element.value);
