@@ -6,7 +6,8 @@ The validator is selected by the version the spec declares:
 Swagger 2.0 -> jsonschema's Draft4Validator; OpenAPI 3.0.x / 3.1.x ->
 OAS30Validator / OAS31Validator from openapi_schema_validator. The validator
 is built on the WHOLE spec and then re-targeted with ``.evolve(schema=...)``
-so local ``$ref``s resolve against the full document.
+so local ``$ref``s resolve against the full document. Every validator gets a
+local-only registry: remote (http/file) ``$ref``s are refused, never fetched.
 
 Every verdict — pass included — is appended to the assertion audit ledger,
 tagged with a fingerprint of the examined payload.
@@ -17,7 +18,11 @@ import os
 from typing import Annotated, Any, Dict, List, Optional
 
 from testzeus_hercules.config import get_global_conf
-from testzeus_hercules.core.tools.api_calls import parse_json_payload
+from testzeus_hercules.core.tools.api_calls import (
+    local_only_schema_registry,
+    parse_json_payload,
+    remote_ref_error,
+)
 from testzeus_hercules.core.tools.tool_registry import (
     assertion_logger,
     assertion_subject,
@@ -227,11 +232,13 @@ def _evaluate(response_json: Any, spec_path: str, path: str, method: str, status
     # re-target it at the extracted response schema.
     subject_payload = document if isinstance(document, str) else json.dumps(document, separators=(",", ":"), default=str)
     try:
-        base_validator = validator_cls(spec)
+        base_validator = validator_cls(spec, registry=local_only_schema_registry())
         validator = base_validator.evolve(schema=schema)
         errors = sorted(validator.iter_errors(document), key=lambda error: list(error.absolute_path))
     except Exception as e:
-        return {"assertion": "ERROR", "reason": f"Schema validation could not run: {type(e).__name__}: {e}", "subject_payload": subject_payload}
+        refused = remote_ref_error(e)
+        reason = f"Schema validation could not run: {refused}" if refused else f"Schema validation could not run: {type(e).__name__}: {e}"
+        return {"assertion": "ERROR", "reason": reason, "subject_payload": subject_payload}
 
     violations: List[Dict[str, str]] = []
     for error in errors:
