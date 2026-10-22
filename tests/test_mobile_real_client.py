@@ -83,5 +83,5 @@ def test_built_capabilities_load_into_real_appium_options(platform) -> None:
     caps = capabilities_module.build_capabilities(platform, device_name="d", app="/tmp/app", platform_version="17", udid="u")
     options = AppiumOptions()
     for name, value in caps.items():
-        options.set_capability(name, value if isinstance(value, (bool, int, float)) else str(value))
+        options.set_capability(name, value)
     assert options.to_capabilities()["platformName"] == caps["platformName"]

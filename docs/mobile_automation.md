@@ -54,7 +54,6 @@ no mobile agent is created, and behavior is unchanged.
 | `DEVICE_OS`              | Target platform: `android` or `ios`                   | `android`                                      |
 | `APPIUM_SERVER_URL`      | Appium server base URL (a running server is required) | `http://127.0.0.1:<APPIUM_SERVER_PORT>`        |
 | `APPIUM_SERVER_PORT`     | Server port used for the default URL                  | `4723`                                         |
-| `PLATFORM_NAME`          | `platformName` capability                             | `Android` / `iOS` (from `DEVICE_OS`)           |
 | `DEVICE_NAME`            | `deviceName` capability                               | `emulator-5554` / `iPhone Simulator`           |
 | `AUTOMATION_NAME`        | `automationName` capability                           | `UiAutomator2` / `XCUITest`                    |
 | `APP_PATH`               | Path or URL of the app under test                     | unset                                          |
@@ -62,6 +61,10 @@ no mobile agent is created, and behavior is unchanged.
 | `APPIUM_DEVICE_UUID`     | `udid` capability (specific device/simulator)         | unset                                          |
 | `APPIUM_PLATFORM_VERSION`| `platformVersion` capability                          | unset                                          |
 | `APPIUM_CAPABILITIES`    | JSON object merged over the built-in capabilities     | `{}`                                           |
+
+The `platformName` capability is always derived from `DEVICE_OS`. The former
+`PLATFORM_NAME` setting is deprecated and ignored: when it is set, a warning is
+logged at session start.
 
 Settings are resolved **at use time** (not frozen at import) through the global
 configuration, with the process environment as fallback. A key therefore works
@@ -77,9 +80,10 @@ The manager builds a W3C capabilities dict automatically:
   `noReset: false`, `newCommandTimeout: 300`, `settings[waitForIdleTimeout]: 0`
   (keeps UiAutomator2 from waiting on idle).
 - **iOS base**: `platformName: iOS`, `automationName: XCUITest`, `noReset: false`
-  (same as Android, which is also the Appium default), plus stable defaults for
-  the WebDriverAgent lifecycle (`useNewWDA`, WDA timeouts,
-  `preventWDAAttachments`, `clearSystemFiles`, etc.).
+  (same as Android, which is also the Appium default), `newCommandTimeout: 300`,
+  plus WDA launch/connection timeouts. Heavier WebDriverAgent lifecycle options
+  are not defaulted; opt in when you need them, e.g.
+  `APPIUM_CAPABILITIES='{"useNewWDA": true, "clearSystemFiles": true}'`.
 
 Permissions are **not** granted automatically and `startIWDP` is not enabled;
 opt in per run when your app needs them, e.g.
@@ -92,13 +96,17 @@ environment variables are set.
 ### Capability overrides
 
 Any key can be overridden or added with `APPIUM_CAPABILITIES` (JSON object),
-which is applied **last** and therefore wins over everything else:
+which is applied **last** and therefore wins over everything else. Values keep
+their JSON types, so object and array capabilities (`processArguments`,
+`otherApps`, `permissions`, ...) reach the server as structures, and a `null`
+value removes a capability:
 
 ```bash
 export APPIUM_CAPABILITIES='{"appium:noReset": true, "appActivity": ".MainActivity"}'
 ```
 
-A malformed JSON payload is ignored gracefully (logged, treated as `{}`) so a
+In a `--config` YAML/JSON file `appium_capabilities` may be written as a
+mapping instead of a JSON string. A malformed payload is ignored gracefully (logged, treated as `{}`) so a
 bad value can never block session creation.
 
 ## Available tools
@@ -107,7 +115,15 @@ When enabled, the `mobile_nav_agent` helper exposes these tools:
 
 - **Session**: `start_mobile_session`, `close_mobile_session`
 - **Gestures**: `tap`, `swipe`, `scroll_up`, `scroll_down`, `long_press_element`
-- **Elements** (by accessibility id): `click_element`, `enter_text`, `clear_text`
+  (`scroll_down` reveals content below: the finger drags from the lower to the
+  upper part of the screen; `scroll_up` is the opposite)
+- **Elements**: `click_element`, `enter_text`, `clear_text` (and
+  `long_press_element`) take one identifier from the screen legend and try, in
+  order: on Android the accessibility id (content-desc), the resource-id (bare
+  or package-qualified), then the exact visible text (UiAutomator
+  `UiSelector().text(...)`); on iOS the accessibility id (the element `name`,
+  shown as `id=`), then the exact visible label (predicate `label == "..."`).
+  Quotes and backslashes in the identifier are escaped.
 - **Keys**: `press_key`, `press_hardware_key`, `press_key_sequence`,
   `press_back_button`, `press_home_button`
 - **Reading**: `read_mobile_screen` (accessibility-tree legend; the reading is
@@ -127,13 +143,16 @@ Key names supported by `press_key`: `enter`, `tab`, `space`, `backspace`,
 `end_call`, `menu`, `back`, `home`, `app_switch` (iOS supports only
 `volume_up`, `volume_down` and `home`, sent as `mobile: pressButton` with the
 XCUITest names `volumeUp`/`volumeDown`/`home`). iOS has no hardware back button:
-`press_back_button` taps the navigation-bar back button and falls back to a
-swipe from the left screen edge. `press_key_sequence` accepts
+`press_back_button` taps a navigation-bar button identified as a back button
+(`name`/`label` `Back`, or a `name` containing `Back`/`back` such as
+`BackButton`; never an Edit/Cancel/Close button) and otherwise swipes from the
+left screen edge. `press_key_sequence` accepts
 comma-separated segments with `+`-joined modifiers, e.g. `Control+A,Enter`
 (Android uses modifier keycodes; unknown names are rejected). On iOS only keys
 with a unicode keyboard mapping can be used in sequences; unmapped keys are
 reported as errors naming the unsupported key instead of being silently
-skipped.
+skipped, and modifier combinations (e.g. `Control+A`) are rejected with an
+error instead of pressing the bare key.
 
 ### UI assertions (opt-in)
 
@@ -183,7 +202,7 @@ scenario cannot leak the device session.
   Appium server (`curl http://127.0.0.1:4723/status`) and that the matching
   driver is installed (`appium driver list --installed`).
 - **Element not found** — re-read the screen with `read_mobile_screen`;
-  accessibility ids change between screens, and the tree is re-fetched after
+  identifiers change between screens, and the tree is re-fetched after
   every mutating action.
 - **Android session hangs** — some apps keep the UI thread busy; the Android
   base capabilities already disable the idle wait (`waitForIdleTimeout: 0`).

@@ -43,13 +43,15 @@ def test_ios_base_capabilities() -> None:
     assert caps["platformName"] == "iOS"
     assert caps["deviceName"] == "iPhone Simulator"
     assert caps["automationName"] == "XCUITest"
-    assert caps["useNewWDA"] is True
+    assert caps["newCommandTimeout"] == 300  # same as Android
     assert caps["wdaLaunchTimeout"] == 120000
     assert caps["wdaConnectionTimeout"] == 120000
     assert caps["noReset"] is False  # consistent with Android
     assert caps["fullReset"] is False
-    assert caps["preventWDAAttachments"] is True
-    assert caps["clearSystemFiles"] is True
+    # Heavyweight / obsolete WDA options are opt-in only (APPIUM_CAPABILITIES).
+    assert "useNewWDA" not in caps
+    assert "preventWDAAttachments" not in caps
+    assert "clearSystemFiles" not in caps
     assert "platformVersion" not in caps  # no probing: only set when provided
 
 

@@ -135,8 +135,12 @@ def test_scroll_up_and_down_use_swipe(fake_manager) -> None:
     assert down.startswith("Successfully scrolled down")
     assert len(driver.swipes) == 2
     up_swipe, down_swipe = driver.swipes
-    assert up_swipe[1] > up_swipe[3]  # finger moves upward
-    assert down_swipe[1] < down_swipe[3]  # finger moves downward
+    # scroll_up reveals content above: the finger drags downward (0.3h -> 0.7h);
+    # scroll_down reveals content below: the finger drags upward (0.7h -> 0.3h).
+    assert up_swipe[1] < up_swipe[3]
+    assert down_swipe[1] > down_swipe[3]
+    assert (up_swipe[1], up_swipe[3]) == (576, 1344)  # 1920 * 0.3 -> + 1920 * 0.4
+    assert (down_swipe[1], down_swipe[3]) == (1344, 576)
     assert up_swipe[0] == down_swipe[0] == 540  # horizontal center of 1080
 
 

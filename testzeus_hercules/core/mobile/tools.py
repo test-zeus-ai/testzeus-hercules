@@ -210,11 +210,11 @@ async def scroll_down() -> Annotated[str, "Scroll action result"]:
 
 @tool(
     agent_names=["mobile_nav_agent"],
-    description="""Long presses the element identified by its accessibility id.""",
+    description="""Long presses the element identified by its accessibility id, or (fallback) its Android resource-id / visible text or iOS visible label, exactly as shown in the screen legend.""",
     name="long_press_element",
 )
 async def long_press_element(
-    accessibility_id: Annotated[str, "Accessibility id of the target element from the screen legend"],
+    accessibility_id: Annotated[str, "Element identifier from the screen legend: accessibility id, or Android resource-id / visible text, or iOS label"],
     duration_ms: Annotated[int, "Press-and-hold duration in milliseconds"] = 1000,
 ) -> Annotated[str, "Long press action result"]:
     add_event(EventType.INTERACTION, EventData(detail="long_press_element"))
@@ -225,17 +225,19 @@ async def long_press_element(
             return ready_error
         await manager.long_press_element(accessibility_id, duration_ms)
         await asyncio.sleep(get_global_conf().get_delay_time())
-        return f"Successfully long pressed element with accessibility id '{accessibility_id}' for {duration_ms} ms."
+        return f"Successfully long pressed element with identifier '{accessibility_id}' for {duration_ms} ms."
     except Exception as e:
         return _format_error("long_press_element", e)
 
 
 @tool(
     agent_names=["mobile_nav_agent"],
-    description="""Clicks the element identified by its accessibility id.""",
+    description="""Clicks the element identified by its accessibility id, or (fallback) its Android resource-id / visible text or iOS visible label, exactly as shown in the screen legend.""",
     name="click_element",
 )
-async def click_element(accessibility_id: Annotated[str, "Accessibility id of the target element from the screen legend"]) -> Annotated[str, "Click action result"]:
+async def click_element(
+    accessibility_id: Annotated[str, "Element identifier from the screen legend: accessibility id, or Android resource-id / visible text, or iOS label"],
+) -> Annotated[str, "Click action result"]:
     add_event(EventType.INTERACTION, EventData(detail="click_element"))
     try:
         manager = _current_manager()
@@ -244,18 +246,18 @@ async def click_element(accessibility_id: Annotated[str, "Accessibility id of th
             return ready_error
         await manager.click_element(accessibility_id)
         await asyncio.sleep(get_global_conf().get_delay_time())
-        return f"Successfully clicked element with accessibility id '{accessibility_id}'."
+        return f"Successfully clicked element with identifier '{accessibility_id}'."
     except Exception as e:
         return _format_error("click_element", e)
 
 
 @tool(
     agent_names=["mobile_nav_agent"],
-    description="""Enters text into the element identified by its accessibility id.""",
+    description="""Enters text into the element identified by its accessibility id, or (fallback) its Android resource-id / visible text or iOS visible label, exactly as shown in the screen legend.""",
     name="enter_text",
 )
 async def enter_text(
-    accessibility_id: Annotated[str, "Accessibility id of the target input field from the screen legend"],
+    accessibility_id: Annotated[str, "Input field identifier from the screen legend: accessibility id, or Android resource-id / visible text, or iOS label"],
     text: Annotated[str, "Text to enter into the field"],
 ) -> Annotated[str, "Text entry result"]:
     add_event(EventType.INTERACTION, EventData(detail="enter_text"))
@@ -266,17 +268,19 @@ async def enter_text(
             return ready_error
         await manager.enter_text(accessibility_id, text)
         await asyncio.sleep(get_global_conf().get_delay_time())
-        return f"Successfully entered text into element with accessibility id '{accessibility_id}'."
+        return f"Successfully entered text into element with identifier '{accessibility_id}'."
     except Exception as e:
         return _format_error("enter_text", e)
 
 
 @tool(
     agent_names=["mobile_nav_agent"],
-    description="""Clears the text of the element identified by its accessibility id.""",
+    description="""Clears the text of the element identified by its accessibility id, or (fallback) its Android resource-id / visible text or iOS visible label, exactly as shown in the screen legend.""",
     name="clear_text",
 )
-async def clear_text(accessibility_id: Annotated[str, "Accessibility id of the target input field from the screen legend"]) -> Annotated[str, "Text clearing result"]:
+async def clear_text(
+    accessibility_id: Annotated[str, "Input field identifier from the screen legend: accessibility id, or Android resource-id / visible text, or iOS label"],
+) -> Annotated[str, "Text clearing result"]:
     add_event(EventType.INTERACTION, EventData(detail="clear_text"))
     try:
         manager = _current_manager()
@@ -285,7 +289,7 @@ async def clear_text(accessibility_id: Annotated[str, "Accessibility id of the t
             return ready_error
         await manager.clear_text(accessibility_id)
         await asyncio.sleep(get_global_conf().get_delay_time())
-        return f"Successfully cleared text of element with accessibility id '{accessibility_id}'."
+        return f"Successfully cleared text of element with identifier '{accessibility_id}'."
     except Exception as e:
         return _format_error("clear_text", e)
 

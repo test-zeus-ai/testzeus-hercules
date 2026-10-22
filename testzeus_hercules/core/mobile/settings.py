@@ -18,7 +18,6 @@ DEVICE_MANAGER               ``appium`` enables mobile automation          ``pla
 DEVICE_OS                    Target OS: ``android`` or ``ios``             ``android``
 APPIUM_SERVER_URL            Appium server base URL (remote server)        derived from port
 APPIUM_SERVER_PORT           Appium server port                            ``4723``
-PLATFORM_NAME                Capability ``platformName``                   ``Android`` / ``iOS``
 DEVICE_NAME                  Capability ``deviceName``                     ``emulator-5554`` /
                                                                            ``iPhone Simulator``
 AUTOMATION_NAME              Capability ``automationName``                 ``UiAutomator2`` /
@@ -27,13 +26,18 @@ APP_PATH                     Path/URL of the app under test                None
 APPIUM_APK_PATH              Android app package path (alias of APP_PATH)  None
 APPIUM_DEVICE_UUID           Capability ``udid``                           None
 APPIUM_PLATFORM_VERSION      Capability ``platformVersion``                None
-APPIUM_CAPABILITIES          JSON object merged over the base capabilities ``{}`` (on parse
-                                                                           error)
+APPIUM_CAPABILITIES          JSON object (or a mapping in a ``--config``   ``{}`` (on parse
+                             file) merged over the base capabilities       error)
 ENABLE_UI_ASSERTIONS         ``true`` adds ``assert_ui`` / ``capture_ui_value``  ``false``
                              guidance to the mobile agent prompt
 ===========================  ============================================  ======================
+
+The ``platformName`` capability is always derived from ``DEVICE_OS``. The former
+``PLATFORM_NAME`` knob is deprecated and ignored (a warning is logged when it is
+set).
 """
 
+import ast
 import json
 import os
 from typing import Optional
@@ -44,6 +48,18 @@ from testzeus_hercules.utils.logger import logger
 DEFAULT_APPIUM_SERVER_PORT = 4723
 
 
+def _raw_setting(key: str) -> object:
+    """Return the raw value for ``key`` (config first, then environment), or None."""
+    value = None
+    try:
+        value = get_global_conf().get_config().get(key)
+    except Exception:  # pragma: no cover - defensive: config must never break mobile settings
+        value = None
+    if value is None or (isinstance(value, str) and not value.strip()):
+        value = os.environ.get(key)
+    return value
+
+
 def _setting(key: str) -> str:
     """Return the stripped value for ``key`` ("" when unset).
 
@@ -51,13 +67,7 @@ def _setting(key: str) -> str:
     then the live process environment. Both are read on every call, so the
     result never depends on import order or on when ``.env`` was loaded.
     """
-    value = None
-    try:
-        value = get_global_conf().get_config().get(key)
-    except Exception:  # pragma: no cover - defensive: config must never break mobile settings
-        value = None
-    if value is None or not str(value).strip():
-        value = os.environ.get(key)
+    value = _raw_setting(key)
     return str(value).strip() if value is not None else ""
 
 
@@ -89,11 +99,20 @@ def get_appium_server_url() -> str:
 
 
 def get_platform_name() -> str:
-    """Return the ``platformName`` capability (``Android``/``iOS``)."""
+    """Return the ``platformName`` capability (``Android``/``iOS``), derived from ``DEVICE_OS``.
+
+    ``PLATFORM_NAME`` used to be documented as this capability but never
+    reached the session (``DEVICE_OS`` decides the platform). It is now
+    deprecated and ignored (see :func:`warn_if_platform_name_set`).
+    """
+    return "iOS" if get_device_os() == "ios" else "Android"
+
+
+def warn_if_platform_name_set() -> None:
+    """Log a deprecation warning when the ignored ``PLATFORM_NAME`` setting is present."""
     value = _setting("PLATFORM_NAME")
     if value:
-        return value
-    return "iOS" if get_device_os() == "ios" else "Android"
+        logger.warning("PLATFORM_NAME=%r is deprecated and ignored; the platform is taken from DEVICE_OS (%s).", value, get_device_os())
 
 
 def get_device_name() -> str:
@@ -133,19 +152,29 @@ def get_platform_version() -> Optional[str]:
 
 
 def get_appium_capabilities() -> dict:
-    """Return extra user capabilities parsed from ``APPIUM_CAPABILITIES`` JSON.
+    """Return extra user capabilities from ``APPIUM_CAPABILITIES``.
 
-    A malformed payload degrades gracefully to ``{}`` (logged) so a bad env
-    var can never break session creation entirely.
+    Accepts a mapping (programmatic config) as-is, and a string as a JSON
+    object or, failing that, a Python literal mapping: a mapping written in a
+    ``--config`` YAML/JSON file reaches the global config as ``str(dict)``
+    (``True``/``None``/single quotes), which ``ast.literal_eval`` parses safely.
+    A malformed payload degrades gracefully to ``{}`` (logged) so a bad value
+    can never break session creation entirely.
     """
-    raw = _setting("APPIUM_CAPABILITIES")
+    raw = _raw_setting("APPIUM_CAPABILITIES")
+    if isinstance(raw, dict):
+        return dict(raw)
+    raw = str(raw).strip() if raw is not None else ""
     if not raw:
         return {}
     try:
         parsed = json.loads(raw)
-    except json.JSONDecodeError as e:
-        logger.error("Failed to parse APPIUM_CAPABILITIES as JSON: %s", e)
-        return {}
+    except json.JSONDecodeError as json_error:
+        try:
+            parsed = ast.literal_eval(raw)
+        except (ValueError, SyntaxError, TypeError, MemoryError, RecursionError):
+            logger.error("Failed to parse APPIUM_CAPABILITIES as a JSON object or mapping literal: %s", json_error)
+            return {}
     if not isinstance(parsed, dict):
         logger.error("APPIUM_CAPABILITIES must be a JSON object; got %s. Ignoring.", type(parsed).__name__)
         return {}

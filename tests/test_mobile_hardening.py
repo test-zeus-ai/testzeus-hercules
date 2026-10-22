@@ -61,7 +61,7 @@ def test_ios_back_taps_navigation_bar_button_and_never_sends_press_button_back(m
     manager = _ios_manager(monkeypatch, "ios-back", driver)
     try:
         asyncio.run(manager.press_back())
-        assert driver.finds == [("-ios class chain", "**/XCUIElementTypeNavigationBar[1]/XCUIElementTypeButton[1]")]
+        assert driver.finds == [("-ios class chain", cm.appium_manager_module.IOS_BACK_BUTTON_CLASS_CHAIN)]
         assert driver.element.clicked == 1
         assert driver.scripts == []  # "back" is not a valid pressButton name on iOS
     finally:

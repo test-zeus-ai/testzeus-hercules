@@ -48,6 +48,7 @@ from testzeus_hercules.core.mobile.settings import (
     get_device_os,
     get_device_uuid,
     get_platform_version,
+    warn_if_platform_name_set,
 )
 from testzeus_hercules.utils.logger import logger
 
@@ -62,12 +63,15 @@ ANDROID_ATTRIBUTE_MAP = {
     "bounds": "bounds",
     "class": "type",
 }
+# XCUITest page sources carry ``name`` (the accessibility identifier, which
+# WDA falls back to the label when no identifier is set), ``label`` (the
+# visible text) and the geometry as separate ``x``/``y``/``width``/``height``
+# attributes (no ``frame``/``bounds``). Bounds are rebuilt from the geometry
+# by :func:`_ios_bounds` in the Android ``[x1,y1][x2,y2]`` format.
 IOS_ATTRIBUTE_MAP = {
     "label": "label",
-    "name": "label",
     "value": "value",
-    "frame": "bounds",
-    "bounds": "bounds",
+    "name": "id",
     "type": "type",
 }
 
@@ -92,7 +96,14 @@ IOS_HARDWARE_BUTTONS = {
     "volume_down": "volumeDown",
     "home": "home",
 }
-IOS_BACK_BUTTON_CLASS_CHAIN = "**/XCUIElementTypeNavigationBar[1]/XCUIElementTypeButton[1]"
+# Only a navigation-bar button that looks like a back button is tapped: the
+# UIKit back button is exposed as ``BackButton`` / ``Back`` (or a name that
+# contains it). The first nav-bar button can just as well be Edit / Cancel /
+# Close, which must never be tapped as "back"; those screens fall through to
+# the left-edge swipe instead.
+IOS_BACK_BUTTON_CLASS_CHAIN = (
+    "**/XCUIElementTypeNavigationBar/XCUIElementTypeButton" '[`(name == "Back" OR label == "Back" OR name CONTAINS "Back" OR name CONTAINS "back")' ' AND NOT (label IN {"Edit", "Cancel", "Close"})`]'
+)
 _IOS_CLASS_CHAIN_LOCATOR = "-ios class chain"
 
 # Accessibility dumps are a few hundred KB at most; refuse absurd payloads.
@@ -100,6 +111,38 @@ MAX_PAGE_SOURCE_CHARS = 10_000_000
 _XML_DTD_MARKERS = ("<!doctype", "<!entity")
 
 _ACCESSIBILITY_ID_LOCATOR = "accessibility id"
+_ID_LOCATOR = "id"
+_ANDROID_UIAUTOMATOR_LOCATOR = "-android uiautomator"
+_IOS_PREDICATE_LOCATOR = "-ios predicate string"
+
+
+def _escape_quoted(value: str) -> str:
+    """Escape backslashes and double quotes for a double-quoted selector literal.
+
+    Both UiAutomator's ``UiSelector`` string arguments and NSPredicate string
+    literals use backslash escaping inside double quotes.
+    """
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def element_locators(identifier: str, platform: str) -> "list[tuple[str, str]]":
+    """Return the ordered ``(strategy, selector)`` lookups tried for an identifier.
+
+    Android: accessibility id (content-desc), resource-id (``By.ID``; the
+    UiAutomator2 server accepts both bare and package-qualified ids), then the
+    visible text. iOS: accessibility id (``name``), then the visible ``label``.
+    """
+    escaped = _escape_quoted(identifier)
+    if platform == "ios":
+        return [
+            (_ACCESSIBILITY_ID_LOCATOR, identifier),
+            (_IOS_PREDICATE_LOCATOR, f'label == "{escaped}"'),
+        ]
+    return [
+        (_ACCESSIBILITY_ID_LOCATOR, identifier),
+        (_ID_LOCATOR, identifier),
+        (_ANDROID_UIAUTOMATOR_LOCATOR, f'new UiSelector().text("{escaped}")'),
+    ]
 
 
 class MobileEnvironmentError(RuntimeError):
@@ -168,6 +211,8 @@ def parse_accessibility_tree(page_source: str, platform: str) -> Dict[str, Any]:
             raw_value = attrs.get(attr_name, "")
             if legend_key in node and raw_value and not node[legend_key]:
                 node[legend_key] = raw_value
+        if platform == "ios":
+            node["bounds"] = _ios_bounds(attrs)
         node["input"] = is_input
         node["clickable"] = clickable
 
@@ -175,6 +220,16 @@ def parse_accessibility_tree(page_source: str, platform: str) -> Dict[str, Any]:
             nodes.append(node)
 
     return {"platform": platform, "node_count": len(nodes), "nodes": nodes}
+
+
+def _ios_bounds(attrs: Dict[str, str]) -> str:
+    """Build ``[x1,y1][x2,y2]`` bounds from XCUITest ``x``/``y``/``width``/``height``."""
+    try:
+        x, y = int(float(attrs["x"])), int(float(attrs["y"]))
+        width, height = int(float(attrs["width"])), int(float(attrs["height"]))
+    except (KeyError, ValueError):
+        return ""
+    return f"[{x},{y}][{x + width},{y + height}]"
 
 
 def render_screen_legend(tree: Dict[str, Any]) -> str:
@@ -366,6 +421,7 @@ class AppiumManager:
         """Build capabilities from the environment-driven settings."""
         from testzeus_hercules.core.mobile.capabilities import build_capabilities
 
+        warn_if_platform_name_set()
         return build_capabilities(
             get_device_os(),
             device_name=get_device_name(),
@@ -410,10 +466,10 @@ class AppiumManager:
 
                 options = AppiumOptions()
                 for cap_name, cap_value in caps.items():
-                    if isinstance(cap_value, bool) or isinstance(cap_value, (int, float)):
-                        options.set_capability(cap_name, cap_value)
-                    else:
-                        options.set_capability(cap_name, str(cap_value))
+                    # Values pass through unchanged: dict/list capabilities
+                    # (processArguments, otherApps, ...) must stay JSON
+                    # structures. A None value unsets the capability.
+                    options.set_capability(cap_name, cap_value)
                 return webdriver.Remote(command_executor=get_appium_server_url(), options=options)
 
             driver = await self._run_in_ui_thread(_connect, "create_session")
@@ -585,19 +641,30 @@ class AppiumManager:
             logger.debug("Skipping %s screenshot: %s", label, e)
 
     # ------------------------------------------------------------------
-    # Element interaction (by accessibility id)
+    # Element interaction (accessibility id, then platform fallbacks)
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _locate(driver: Any, identifier: str) -> Any:
+        """Find an element by identifier, trying each :func:`element_locators` strategy in order."""
+        last_error: Optional[Exception] = None
+        for strategy, selector in element_locators(identifier, get_device_os()):
+            try:
+                return driver.find_element(strategy, selector)
+            except Exception as e:
+                last_error = e
+        raise MobileEnvironmentError(f"No element found for identifier {identifier!r} (tried accessibility id and platform fallbacks): {last_error}")
 
     async def find_element(self, accessibility_id: str) -> Any:
         driver = self._require_driver()
-        return await self._run_in_ui_thread(lambda: driver.find_element(_ACCESSIBILITY_ID_LOCATOR, accessibility_id), f"find_element({accessibility_id})")
+        return await self._run_in_ui_thread(lambda: self._locate(driver, accessibility_id), f"find_element({accessibility_id})")
 
     async def click_element(self, accessibility_id: str) -> None:
         driver = self._require_driver()
         await self._maybe_screenshot("click_element_start")
 
         def _do() -> None:
-            element = driver.find_element(_ACCESSIBILITY_ID_LOCATOR, accessibility_id)
+            element = self._locate(driver, accessibility_id)
             element.click()
 
         try:
@@ -611,7 +678,7 @@ class AppiumManager:
         await self._maybe_screenshot("enter_text_start")
 
         def _do() -> None:
-            element = driver.find_element(_ACCESSIBILITY_ID_LOCATOR, accessibility_id)
+            element = self._locate(driver, accessibility_id)
             element.send_keys(text)
 
         try:
@@ -625,7 +692,7 @@ class AppiumManager:
         await self._maybe_screenshot("clear_text_start")
 
         def _do() -> None:
-            element = driver.find_element(_ACCESSIBILITY_ID_LOCATOR, accessibility_id)
+            element = self._locate(driver, accessibility_id)
             element.clear()
 
         try:
@@ -639,7 +706,7 @@ class AppiumManager:
         await self._maybe_screenshot("long_press_start")
 
         def _do() -> None:
-            element = driver.find_element(_ACCESSIBILITY_ID_LOCATOR, accessibility_id)
+            element = self._locate(driver, accessibility_id)
             center_x, center_y = _element_center(element)
             self._touch_press(center_x, center_y, hold_ms=duration_ms)
 
@@ -680,15 +747,20 @@ class AppiumManager:
         await self._maybe_screenshot("swipe_end")
 
     async def scroll(self, direction: str, percent: float = 0.4, duration_ms: int = 800) -> None:
-        """Scroll the viewport. ``direction`` is ``up`` or ``down``."""
+        """Scroll the viewport. ``direction`` is ``up`` or ``down``.
+
+        ``down`` reveals content below: the finger drags from the lower part
+        of the screen to the upper part. ``up`` reveals content above: the
+        finger drags downward.
+        """
         viewport = await self.get_viewport_size()
         width, height = viewport["width"], viewport["height"]
         center_x = width // 2
         span = max(1, int(height * percent))
         if direction == "up":
-            start_y, end_y = int(height * 0.7), max(0, int(height * 0.7) - span)
-        else:
             start_y, end_y = int(height * 0.3), min(height - 1, int(height * 0.3) + span)
+        else:
+            start_y, end_y = int(height * 0.7), max(0, int(height * 0.7) - span)
         await self.perform_swipe(center_x, start_y, center_x, end_y, duration_ms)
 
     async def scroll_up(self) -> None:
@@ -747,8 +819,11 @@ class AppiumManager:
             unmapped = sorted({_keycode_display_name(main_code) for _modifier_codes, main_code in segments if not _keycode_to_unicode_char(main_code)})
             if unmapped:
                 raise ValueError(f"Keys not supported in key sequences on iOS: {', '.join(unmapped)}. " "Use press_key with a supported key or an in-app alternative.")
+            # Modifier combinations cannot be sent through the iOS keyboard
+            # path; refuse them instead of silently pressing the bare key.
+            if any(modifier_codes for modifier_codes, _main_code in segments):
+                raise ValueError(f"Modifier key combinations (e.g. Control+A) are not supported in key sequences on iOS: {sequence!r}. " "Use an in-app alternative.")
 
-            # Modifiers are Phase 2: send the main key characters.
             def _do_ios() -> None:
                 from selenium.webdriver.common.action_chains import ActionChains
 
@@ -780,7 +855,12 @@ class AppiumManager:
         self._clear_accessibility_cache()
 
     def _ios_navigate_back(self, driver: Any) -> None:
-        """iOS has no back button: tap the nav-bar back button, else swipe from the left edge."""
+        """iOS has no back button: tap a nav-bar *back* button, else swipe from the left edge.
+
+        Only a button identified as a back button (see
+        ``IOS_BACK_BUTTON_CLASS_CHAIN``) is tapped, never a leading Edit /
+        Cancel / Close button.
+        """
         try:
             driver.find_element(_IOS_CLASS_CHAIN_LOCATOR, IOS_BACK_BUTTON_CLASS_CHAIN).click()
             return
