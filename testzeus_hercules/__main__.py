@@ -5,7 +5,11 @@ import os
 import uuid
 
 from junit2htmlreport.runner import run as prepare_html
-from testzeus_hercules.config import get_global_conf, set_global_conf
+from testzeus_hercules.config import (
+    explicit_config_overrides,
+    get_global_conf,
+    set_global_conf,
+)
 from testzeus_hercules.core.runner import SingleCommandInputRunner
 from testzeus_hercules.reporting.bundle import (
     UNCLASSIFIED_TEXT,
@@ -431,12 +435,15 @@ def _apply_explicit_overrides(keys: dict) -> None:
     Guided mode and bulk mode pass the generated feature file / per-folder project
     root. With the legacy Env > Dict precedence an env value such as
     ``INPUT_GHERKIN_FILE_PATH`` would silently make every bulk folder run the same
-    file, so the rebuild is done with Dict > Env scoped to this call only.
+    file, so the rebuild is done with Dict > Env scoped to this call only. The
+    rebuild re-parses the CLI, so the keys are also kept above CLI flags (e.g.
+    ``--project-base X --bulk`` must not reset every folder's root to X).
     """
     previous = os.environ.get("CONFIG_DICT_OVERRIDES_ENV")
     os.environ["CONFIG_DICT_OVERRIDES_ENV"] = "true"
     try:
-        set_global_conf(keys, override=True)
+        with explicit_config_overrides(keys):
+            set_global_conf(keys, override=True)
     finally:
         if previous is None:
             os.environ.pop("CONFIG_DICT_OVERRIDES_ENV", None)
