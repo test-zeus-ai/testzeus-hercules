@@ -5,12 +5,13 @@ from __future__ import annotations
 import base64
 import json
 import os
+from urllib.parse import urlparse
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Union
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
+from langchain_openai import AzureChatOpenAI, ChatOpenAI
 from testzeus_hercules.core.agents_llm_config_manager import AgentsLLMConfigManager
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.model_utils import adapt_llm_params_for_model
@@ -73,6 +74,84 @@ def convert_model_config_to_langchain_format(
     }
 
 
+# OpenAI-compatible endpoints of the providers listed in agents_llm_config-example.json. Every model
+# is called through an OpenAI-style client, so `model_api_type` selects the endpoint when no explicit
+# base_url is configured.
+_PROVIDER_DEFAULT_BASE_URLS = {
+    "google": "https://generativelanguage.googleapis.com/v1beta/openai/",
+    "gemini": "https://generativelanguage.googleapis.com/v1beta/openai/",
+    "groq": "https://api.groq.com/openai/v1",
+    "mistral": "https://api.mistral.ai/v1",
+    "deepseek": "https://api.deepseek.com",
+    "anthropic": "https://api.anthropic.com/v1/",
+}
+DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434/v1"
+# With no api_type and no base_url, these model-name prefixes can only mean one provider.
+_MODEL_PREFIX_PROVIDERS = (("gemini", "google"), ("claude", "anthropic"))
+_LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
+_KEYLESS_PLACEHOLDER_API_KEY = "not-needed"
+
+
+def _first_config_value(model_config: Dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        value = model_config.get(key)
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def _is_local_url(url: Optional[str]) -> bool:
+    try:
+        return bool(url) and (urlparse(str(url)).hostname or "").lower() in _LOCAL_HOSTS
+    except ValueError:
+        return False
+
+
+def resolve_provider_settings(model_config: Dict[str, Any], model_name: str) -> Dict[str, Any]:
+    """Work out how to reach the model from ``model_api_type`` / ``base_url`` / ``api_version`` / ``client_host``.
+
+    Returns ``{"api_type", "base_url", "api_version", "azure", "keyless"}``: ``azure`` selects the Azure OpenAI
+    client (needs ``api_version``), ``keyless`` means the endpoint is local so a missing API key is fine.
+    """
+    api_type = str(_first_config_value(model_config, "api_type", "model_api_type") or "").strip().lower()
+    base_url = _first_config_value(model_config, "base_url", "model_base_url")
+    api_version = _first_config_value(model_config, "api_version", "model_api_version")
+    client_host = _first_config_value(model_config, "client_host", "model_client_host")
+
+    if not api_type and not base_url and not os.getenv("OPENAI_BASE_URL") and not os.getenv("OPENAI_API_BASE"):
+        for prefix, provider in _MODEL_PREFIX_PROVIDERS:
+            if model_name.lower().startswith(prefix):
+                api_type = provider
+                break
+
+    azure = api_type == "azure" and bool(api_version)
+    if api_type == "ollama" and not base_url:
+        host = str(client_host).rstrip("/") if client_host else ""
+        base_url = (host if host.endswith("/v1") else f"{host}/v1") if host else DEFAULT_OLLAMA_BASE_URL
+    elif not azure and not base_url:
+        base_url = _PROVIDER_DEFAULT_BASE_URLS.get(api_type)
+
+    return {
+        "api_type": api_type,
+        "base_url": str(base_url) if base_url else None,
+        "api_version": str(api_version) if api_version else None,
+        "azure": azure,
+        "keyless": api_type == "ollama" or _is_local_url(base_url),
+    }
+
+
+def build_chat_client(kwargs: Dict[str, Any], settings: Dict[str, Any]) -> BaseChatModel:
+    """Instantiate the chat client for ``kwargs`` (model, api_key, timeout, ... ) and resolved ``settings``."""
+    kwargs = dict(kwargs)
+    if settings["azure"]:
+        kwargs.pop("base_url", None)
+        # azure_endpoint=None lets the client fall back to AZURE_OPENAI_ENDPOINT.
+        return AzureChatOpenAI(azure_endpoint=settings["base_url"], api_version=settings["api_version"], azure_deployment=kwargs.get("model"), **kwargs)
+    if settings["base_url"]:
+        kwargs["base_url"] = settings["base_url"]
+    return ChatOpenAI(**kwargs)
+
+
 def create_chat_model(
     model_config: dict[str, Any],
     llm_config_params: dict[str, Any] | None = None,
@@ -82,7 +161,10 @@ def create_chat_model(
     model_name = model_config.get("model") or model_config.get("model_name") or DEFAULT_MODEL
     adapted = adapt_llm_params_for_model(model_name, dict(llm_config_params))
 
+    settings = resolve_provider_settings(model_config, model_name)
     api_key = model_config.get("api_key") or model_config.get("model_api_key") or os.getenv("MODEL_API_KEY")
+    if not api_key and settings["keyless"]:
+        api_key = _KEYLESS_PLACEHOLDER_API_KEY  # local servers (Ollama, llama.cpp, ...) do not check the key
     if not api_key:
         raise ValueError("LLM API key is missing. Set MODEL_API_KEY or model_api_key in config.")
 
@@ -95,11 +177,8 @@ def create_chat_model(
         kwargs["timeout"] = get_llm_request_timeout_seconds()
     if kwargs.get("max_retries") is None:
         kwargs["max_retries"] = get_llm_max_retries()
-    base_url = model_config.get("base_url") or model_config.get("model_base_url")
-    if base_url:
-        kwargs["base_url"] = base_url
 
-    return ChatOpenAI(**kwargs)
+    return build_chat_client(kwargs, settings)
 
 
 def _encode_image_path(path: str) -> dict[str, Any]:

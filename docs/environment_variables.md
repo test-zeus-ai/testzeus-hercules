@@ -151,6 +151,22 @@ Model Configuration:
 - `model_native_tool_calls`: Enable native tool calls
 - `model_hide_tools`: Tool hiding behavior
 
+How `model_api_type` is used. Every model is called through an OpenAI-style client, so the type
+chooses the endpoint and (for Azure) the client class. An explicit `model_base_url` always wins.
+
+| `model_api_type` | What Hercules does |
+|---|---|
+| `openai` / unset | Plain OpenAI client; `model_base_url` points it at any OpenAI-compatible server (vLLM, llama.cpp, LiteLLM, an enterprise gateway...). |
+| `azure` | With `model_api_version` set: Azure OpenAI client (`model_base_url` is the resource endpoint, `model_name` the deployment name). Without it: plain client, so use the Azure v1 endpoint (`https://<resource>.openai.azure.com/openai/v1/`) as `model_base_url`. |
+| `ollama` | `model_client_host` (default `http://localhost:11434`) + `/v1`. No API key needed. |
+| `google` / `gemini`, `groq`, `mistral`, `deepseek`, `anthropic` | The provider's OpenAI-compatible endpoint (Gemini `.../v1beta/openai/`, Groq `.../openai/v1`, Mistral `.../v1`, DeepSeek `https://api.deepseek.com`, Anthropic `https://api.anthropic.com/v1/`). |
+
+With neither a type nor a base URL, `gemini-*` and `claude-*` model names are routed to Google and Anthropic
+(skipped when `OPENAI_BASE_URL` / `OPENAI_API_BASE` is set). A missing API key is accepted only for Ollama and
+for loopback `model_base_url`s. The `anthropic_bedrock` and `anthropicvert` entries in
+`agents_llm_config-example.json` need AWS/Google SDK clients that this runtime does not use: put an
+OpenAI-compatible gateway (for example LiteLLM) in front and point `model_base_url` at it.
+
 LLM Parameters:
 - `temperature`: Controls randomness in responses (0.0 to 1.0)
 - `seed`: Random seed for reproducibility
