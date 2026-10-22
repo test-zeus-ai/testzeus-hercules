@@ -20,7 +20,7 @@ classifiers = [
 ]
 dependencies = [
     "nest-asyncio>=1.6.0,<2",
-    "pillow>=12.2.0,<13",
+    "pillow>=13.0.0,<14",
     "playwright<=1.49.0",
     "pydantic>=2.6.2,<3",
     "python-dotenv>=1.0.0,<2",
@@ -187,4 +187,5 @@ override-dependencies = [
     "multidict>=6.9.1",
     "soupsieve>=2.9.0",
     "accelerate>=1.15.0",
+    "certifi>=2026.10.19",
 ]
