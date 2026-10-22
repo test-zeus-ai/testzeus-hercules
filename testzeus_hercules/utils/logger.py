@@ -2,7 +2,7 @@ import logging
 import os
 from logging.handlers import RotatingFileHandler
 
-from pythonjsonlogger import jsonlogger
+from pythonjsonlogger import json as jsonlogger
 
 logger = logging.getLogger(__name__)
 

@@ -49,7 +49,7 @@ jobs:
     name: Hercules frontend tests (blocking)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Hercules never pushes: do not leave the GITHUB_TOKEN in .git/config for later steps.
           persist-credentials: false
@@ -97,7 +97,7 @@ jobs:
     name: Hercules API tests (advisory)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Hercules never pushes: do not leave the GITHUB_TOKEN in .git/config for later steps.
           persist-credentials: false

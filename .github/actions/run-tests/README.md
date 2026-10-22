@@ -6,7 +6,7 @@ suite, or parallel scenarios — with report artifacts and an optional PR result
 comment.
 
 ```yaml
-- uses: actions/checkout@v4
+- uses: actions/checkout@v7
   with:
     persist-credentials: false   # Hercules never pushes; keep the token out of .git/config
 # Pin to a full commit SHA of test-zeus-ai/testzeus-hercules (see Security notes).
@@ -132,6 +132,6 @@ for a full example with one blocking job and one advisory (`blocking: false`,
 - Always check out with `persist-credentials: false` (see the snippet at the top and the example
   workflow) so the workflow token is not left in `.git/config` for later steps.
 - The action uses third-party actions pinned by **tag** (`astral-sh/setup-uv@v5`,
-  `actions/upload-artifact@v4`), as do the examples (`actions/checkout@v4`). Tags are mutable;
+  `actions/upload-artifact@v4`), as do the examples (`actions/checkout@v7`). Tags are mutable;
   for supply-chain safety pin them (and this action itself) to full commit SHAs and let
   Dependabot propose updates.
