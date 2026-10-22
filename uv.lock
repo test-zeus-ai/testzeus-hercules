@@ -1595,6 +1595,15 @@ wheels = [
 ]
 
 [[package]]
+name = "jsonpath-ng"
+version = "1.12.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/be/0f/3c18dfaad07f4a6fd6d38a1905a019aad5b835e2453ccec903e037b37970/jsonpath_ng-1.12.0.tar.gz", hash = "sha256:3a00d5ec335559d63f683b7b5295fef2a8afe61717f2fef8128c418790124579", size = 103683, upload-time = "2026-10-20T22:16:25.212Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/88/ff/7b4345bd4a737e29a820f6c5a4a5139c43af5cda68d497fdc00c8489b195/jsonpath_ng-1.12.0-py3-none-any.whl", hash = "sha256:6fc33404ab2a9b77895e9acde23f80998c61567c8e9c182301e73a78f158e585", size = 80563, upload-time = "2026-10-20T22:16:23.391Z" },
+]
+
+[[package]]
 name = "jsonpointer"
 version = "3.1.1"
 source = { registry = "https://pypi.org/simple" }
@@ -2827,6 +2836,23 @@ dependencies = [
     { name = "triton", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or sys_platform == 'linux2'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/35/8e/d36f8880bcf18ec026a55807d02fe4c7357da9f25aebd92f85178000c0dc/openai_whisper-20250625.tar.gz", hash = "sha256:37a91a3921809d9f44748ffc73c0a55c9f366c85a3ef5c2ae0cc09540432eb96", size = 803191, upload-time = "2025-06-26T01:06:13.34Z" }
+
+[[package]]
+name = "openapi-schema-validator"
+version = "0.9.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "jsonschema" },
+    { name = "jsonschema-specifications" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "referencing" },
+    { name = "rfc3339-validator" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/98/e8/ab3f27dbca54ec645f7fab714b640907d5d36c2ebb07e87eebd30bd5c81b/openapi_schema_validator-0.9.0.tar.gz", hash = "sha256:b72db64315b89d21834cd3ffef37e3e6893bc876327be2d366e8424b1029afd3", size = 24686, upload-time = "2026-04-27T17:31:27.606Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/90/c0/5467967d95378b2cfce312e09cbd0c9ab64354a0922379b734f793edd04f/openapi_schema_validator-0.9.0-py3-none-any.whl", hash = "sha256:faa3bbe7c3aa8ca2087ad83f709dc3b7d920283153a570c03e24ea182558aa25", size = 19980, upload-time = "2026-04-27T17:31:25.965Z" },
+]
 
 [[package]]
 name = "opencv-python"
@@ -4140,6 +4166,18 @@ wheels = [
 ]
 
 [[package]]
+name = "rfc3339-validator"
+version = "0.1.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "six" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/28/ea/a9387748e2d111c3c2b275ba970b735e04e15cdb1eb30693b6b5708c4dbd/rfc3339_validator-0.1.4.tar.gz", hash = "sha256:138a2abdf93304ad60530167e51d2dfb9549521a836871b88d7f4695d0022f6b", size = 5513, upload-time = "2021-05-12T16:37:54.178Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7b/44/4e421b96b67b2daff264473f7465db72fbdf36a07e05494f50300cc7b0c6/rfc3339_validator-0.1.4-py2.py3-none-any.whl", hash = "sha256:24f6ec1eda14ef823da9e36ec7113124b39c04d50a4d3d3a3c2859577e7791fa", size = 3490, upload-time = "2021-05-12T16:37:52.536Z" },
+]
+
+[[package]]
 name = "rfc3986"
 version = "2.0.0"
 source = { registry = "https://pypi.org/simple" }
@@ -4695,6 +4733,7 @@ dependencies = [
     { name = "fonttools" },
     { name = "httpx" },
     { name = "inflection" },
+    { name = "jsonschema" },
     { name = "junit2html" },
     { name = "junitparser" },
     { name = "langchain-core" },
@@ -4725,6 +4764,13 @@ dependencies = [
     { name = "transformers" },
     { name = "unstructured", extra = ["all-docs"] },
     { name = "urllib3" },
+    { name = "uvicorn" },
+]
+
+[package.optional-dependencies]
+api = [
+    { name = "jsonpath-ng" },
+    { name = "openapi-schema-validator" },
 ]
 
 [package.dev-dependencies]
@@ -4753,6 +4799,8 @@ requires-dist = [
     { name = "fonttools", specifier = ">=4.61.0,<5" },
     { name = "httpx", specifier = ">=0.28.1,<0.29" },
     { name = "inflection", specifier = ">=0.5.1,<0.6" },
+    { name = "jsonpath-ng", marker = "extra == 'api'", specifier = ">=1.6,<2" },
+    { name = "jsonschema", specifier = ">=4.18,<5" },
     { name = "junit2html", specifier = ">=31.0.2,<32" },
     { name = "junitparser", specifier = ">=3.2.0,<4" },
     { name = "langchain-core", specifier = ">=1.2.22,<2" },
@@ -4761,6 +4809,7 @@ requires-dist = [
     { name = "mcp", specifier = ">=1.30.0,<2" },
     { name = "nest-asyncio", specifier = ">=1.6.0,<2" },
     { name = "numba", specifier = ">=0.64.0,<0.65" },
+    { name = "openapi-schema-validator", marker = "extra == 'api'", specifier = ">=0.6,<1" },
     { name = "opentelemetry-proto", specifier = ">=1.27.0" },
     { name = "pillow", specifier = ">=13.0.0,<14" },
     { name = "playwright", specifier = "<=1.49.0" },
@@ -4783,7 +4832,9 @@ requires-dist = [
     { name = "transformers", specifier = ">=5.0.0rc3,<6" },
     { name = "unstructured", extras = ["all-docs"], specifier = ">=0.24.1,<0.25" },
     { name = "urllib3", specifier = ">=2.8.0,<3" },
+    { name = "uvicorn", specifier = ">=0.30.0,<1" },
 ]
+provides-extras = ["api"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -5344,8 +5395,8 @@ name = "uvicorn"
 version = "0.51.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "click", marker = "sys_platform != 'emscripten'" },
-    { name = "h11", marker = "sys_platform != 'emscripten'" },
+    { name = "click" },
+    { name = "h11" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/a2/65/b7c6c443ccc58678c91e1e973bbe2a878591538655d6e1d47f24ba1c51f3/uvicorn-0.51.0.tar.gz", hash = "sha256:f6f4b69b657c312f516dd2d268ab9ae6f254b11e4bac504f37b2ab58b24dd0b0", size = 94412, upload-time = "2026-07-08T10:59:05.962Z" }
 wheels = [
