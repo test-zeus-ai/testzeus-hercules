@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "testzeus-hercules": {
+      "transport": "streamable-http",
+      "url": "http://localhost:8000/mcp",
+      "env": {
+        "AGENTS_LLM_CONFIG_FILE": "agents_llm_config.json",
+        "AGENTS_LLM_CONFIG_FILE_REF_KEY": "litellm"
+      }
+    }
+  }
+}

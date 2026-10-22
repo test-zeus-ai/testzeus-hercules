@@ -3,12 +3,13 @@
 import asyncio
 
 from testzeus_hercules.core.agents.base_nav_agent import BaseNavAgent
-from testzeus_hercules.utils.mcp_helper import MCPHelper, set_mcp_agents
 from testzeus_hercules.utils.logger import logger
+from testzeus_hercules.utils.mcp_help import MCPHelper
+
 
 class McpNavAgent(BaseNavAgent):
     """MCP Navigation Agent for executing MCP server tools and managing resources."""
-    
+
     agent_name: str = "mcp_nav_agent"
     prompt = """### MCP Navigation Agent
 
@@ -58,7 +59,12 @@ You are an MCP (Model Context Protocol) Navigation Agent that assists the Testin
    - If a call fails due to validation or parameter mismatch, correct and retry at most once.
    - Provide precise errors; do not retry blindly or loop.
 
-8. **Data Usage**
+8. **Unknown Outcomes**
+   - A tool error means the operation's effect is UNKNOWN: it may have partially or fully taken effect.
+   - Before repeating a failed operation, verify whether the original one actually took effect; never blindly repeat a potentially completed operation.
+   - Report the task as INCOMPLETE or FAILED when an operation failed — never present a failed helper task as success.
+
+9. **Data Usage**
    - Use provided test data and prior results to build inputs.
    - Use `data_only` vs `all_fields` appropriately when extracting structured content.
 
@@ -80,7 +86,6 @@ previous_step: [MANDATORY: Explicit review of previous step outcome and its impa
 previous_step_status: [MANDATORY: COMPLETED_SUCCESSFULLY or FAILED or INCOMPLETE]
 current_output: [DETAILED EXPANDED COMPLETE LOSS LESS output with server, tool, arguments, and results]
 Task_Completion_Validation: [MANDATORY before terminating: Explicit confirmation that ALL task requirements have been met]
-##FLAG::SAVE_IN_MEM##
 ##TERMINATE TASK##
 
 - **Information Request:**
@@ -101,14 +106,23 @@ Available Test Data: $basic_test_information
 """
 
     def register_tools(self) -> None:
-        """Register MCP-specific tools and MCP server toolkits for the agent."""
         self.load_tools()
+        self._mcp_tools_ready = False
+        self._mcp_init_error: BaseException | None = None
+
+    async def ensure_tools_ready(self) -> bool:
+        """Attach external MCP tools before the agent is used."""
+        if getattr(self, "_mcp_tools_ready", False):
+            return True
         try:
-            self._mcp_init_task = asyncio.create_task(set_mcp_agents(self, self.nav_executor))
-        except Exception as e:
-            logger.error("Failed to schedule MCP initialization: %s", e)
+            await MCPHelper.instance().register_agent_tools(self)
+            self._mcp_tools_ready = True
+            return True
+        except (Exception, asyncio.CancelledError) as e:
+            self._mcp_init_error = e
+            logger.error("Failed to initialize MCP tools: %s", e)
+            return False
 
     async def shutdown(self) -> None:
-        """Shutdown the agent."""
-        await MCPHelper.instance().destroy()
+        await MCPHelper.destroy()
         await super().shutdown()

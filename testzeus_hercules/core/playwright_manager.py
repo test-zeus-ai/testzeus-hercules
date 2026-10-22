@@ -7,15 +7,16 @@ import shutil
 import tempfile
 import time
 import traceback
+import weakref
 import zipfile
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Set, Tuple, Union
 
 import httpx
 from PIL import Image, ImageDraw, ImageFont
-from playwright.async_api import BrowserContext, BrowserType, ElementHandle
+from playwright.async_api import Browser, BrowserContext, BrowserType, ElementHandle
 from playwright.async_api import Error as PlaywrightError  # for exception handling
 from playwright.async_api import Page, Playwright
 from playwright.async_api import async_playwright as playwright
@@ -28,6 +29,13 @@ from testzeus_hercules.utils.dom_mutation_observer import (
 )
 from testzeus_hercules.utils.js_helper import get_js_with_element_finder
 from testzeus_hercules.utils.logger import logger
+
+# Redaction helpers live in testzeus_hercules.utils.redact (shared with the
+# API-call logger); re-exported here so existing imports keep working.
+from testzeus_hercules.utils.redact import REDACTED_PLACEHOLDER  # noqa: F401
+from testzeus_hercules.utils.redact import _redact_post_data  # noqa: F401
+from testzeus_hercules.utils.redact import _redact_sensitive_headers  # noqa: F401
+from testzeus_hercules.utils.redact import redact_url
 
 # Ensures that playwright does not wait for font loading when taking screenshots.
 # Reference: https://github.com/microsoft/playwright/issues/28995
@@ -85,6 +93,29 @@ class PlaywrightManager:
     _default_instance: Optional["PlaywrightManager"] = None
     _homepage = "about:blank"
 
+    # Strong references to fire-and-forget tasks scheduled onto a running loop:
+    # asyncio only keeps weak references to pending tasks, so an unreferenced
+    # task can be garbage-collected mid-run and its exception would never be
+    # retrieved. Same pattern as __main__._background_tasks.
+    _background_tasks: Set["asyncio.Task[Any]"] = set()
+
+    @classmethod
+    def _spawn_tracked_task(cls, coro: Any) -> "asyncio.Task[Any]":
+        """Schedule a fire-and-forget task while keeping a strong reference to it."""
+        task = asyncio.ensure_future(coro)
+        cls._background_tasks.add(task)
+        task.add_done_callback(cls._on_background_task_done)
+        return task
+
+    @staticmethod
+    def _on_background_task_done(task: "asyncio.Task[Any]") -> None:
+        PlaywrightManager._background_tasks.discard(task)
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            logger.error(f"Background task failed: {exc}")
+
     def __new__(cls, *args, stake_id: Optional[str] = None, **kwargs) -> "PlaywrightManager":
         # If no stake_id provided and we have a default instance, return it
         if stake_id is None:
@@ -127,7 +158,7 @@ class PlaywrightManager:
         target_id = stake_id if stake_id is not None else "0"
         if target_id in cls._instances:
             instance = cls._instances[target_id]
-            asyncio.create_task(instance.stop_playwright())
+            cls._spawn_tracked_task(instance.stop_playwright())
             del cls._instances[target_id]
             if instance == cls._default_instance:
                 cls._default_instance = None
@@ -157,7 +188,7 @@ class PlaywrightManager:
         take_screenshots: Optional[bool] = None,
         cdp_config: Optional[Dict] = None,
         cdp_reuse_tabs: Optional[bool] = False,  # New parameter to control tab reuse
-        cdp_navigate_on_connect: Optional[bool] = True,  # New parameter to control navigation
+        cdp_navigate_on_connect: Optional[bool] = None,  # New parameter to control navigation
         record_video: Optional[bool] = None,
         video_dir: Optional[str] = None,
         log_requests_responses: Optional[bool] = None,
@@ -183,6 +214,8 @@ class PlaywrightManager:
         If `device_name` is provided, the built-in descriptor overrides user-agent,
         viewport, etc., *unless* you explicitly override them via other parameters.
         """
+        self.current_page = None
+        self.current_page: Optional[Page] = None
         self.allow_all_permissions = allow_all_permissions
         if hasattr(self, "_PlaywrightManager__initialized") and self.__initialized:
             return  # Already inited, no-op
@@ -250,6 +283,16 @@ class PlaywrightManager:
         self._playwright: Optional[Playwright] = None
         self._browser_context: Optional[BrowserContext] = None
         self.__async_initialize_done = False
+        # Serializes async_initialize so concurrent callers cannot start a
+        # second playwright driver / browser context (which would leak the first).
+        self._init_lock = asyncio.Lock()
+        # Pages that already received the full instrumentation (mutation-observer
+        # plumbing + request/console logging); guards against double registration.
+        self._instrumented_pages: "weakref.WeakSet[Page]" = weakref.WeakSet()
+        # Browser process handle and its temporary user-data dir (video launch
+        # path only); kept so close_browser_context can tear them down.
+        self._browser: Optional[Browser] = None
+        self._user_data_dir: Optional[str] = None
         self._latest_screenshot_bytes: Optional[bytes] = None
 
         # Extension caching directory
@@ -296,22 +339,28 @@ class PlaywrightManager:
         if self.__async_initialize_done:
             return
 
-        # Create required directories
-        os.makedirs(self._screenshots_dir, exist_ok=True)
-        os.makedirs(self._video_dir, exist_ok=True)
-        if self._enable_tracing:
-            os.makedirs(self._trace_dir, exist_ok=True)
-        os.makedirs(os.path.dirname(self.request_response_log_file), exist_ok=True)
-        os.makedirs(os.path.dirname(self.console_log_file), exist_ok=True)
+        async with self._init_lock:
+            # Re-check after acquiring: a concurrent caller may have completed
+            # initialization while we waited for the lock.
+            if self.__async_initialize_done:
+                return
 
-        await self.start_playwright()
-        await self.ensure_browser_context()
+            # Create required directories
+            os.makedirs(self._screenshots_dir, exist_ok=True)
+            os.makedirs(self._video_dir, exist_ok=True)
+            if self._enable_tracing:
+                os.makedirs(self._trace_dir, exist_ok=True)
+            os.makedirs(os.path.dirname(self.request_response_log_file), exist_ok=True)
+            os.makedirs(os.path.dirname(self.console_log_file), exist_ok=True)
 
-        # Additional setup
-        await self.setup_handlers()
-        await self.go_to_homepage()
+            await self.start_playwright()
+            await self.ensure_browser_context()
 
-        self.__async_initialize_done = True
+            # Additional setup
+            await self.setup_handlers()
+            await self.go_to_homepage()
+
+            self.__async_initialize_done = True
 
     async def ensure_browser_context(self) -> None:
         if self._browser_context is None:
@@ -325,10 +374,81 @@ class PlaywrightManager:
             self._playwright = await playwright().start()
 
     async def stop_playwright(self) -> None:
-        await self.close_browser_context()
+        """Tear down the browser context and the playwright driver.
+
+        Both teardown steps run even when the first one fails; all failures are
+        aggregated into a single ``BaseExceptionGroup`` so a broken context
+        close can no longer skip (or hide) the driver stop.
+        """
+        errors: list[BaseException] = []
+        try:
+            await self.close_browser_context()
+        except Exception as exc:
+            errors.append(exc)
         if self._playwright is not None:
-            await self._playwright.stop()
-            self._playwright = None
+            try:
+                await self._playwright.stop()
+            except Exception as exc:
+                errors.append(exc)
+            else:
+                self._playwright = None
+        if errors:
+            raise BaseExceptionGroup("Playwright teardown failures", errors)
+
+    @classmethod
+    def _unregister_instance(cls, instance: "PlaywrightManager", stake_id: Optional[str] = None) -> None:
+        """Drop an instance from the registry (same bookkeeping as close_instance)."""
+        target_id = stake_id if stake_id is not None else getattr(instance, "stake_id", None) or "0"
+        if cls._instances.get(target_id) is instance:
+            del cls._instances[target_id]
+        if instance is cls._default_instance:
+            cls._default_instance = None
+            # If there are other instances, make the first one the default
+            if cls._instances:
+                cls._default_instance = next(iter(cls._instances.values()))
+
+    @classmethod
+    async def close_instance_async(cls, stake_id: Optional[str] = None) -> None:
+        """Close and remove a specific instance, awaiting its teardown.
+
+        Unlike :meth:`close_instance` (fire-and-forget), the teardown is awaited
+        so callers can observe cleanup failures: they are raised as a
+        ``BaseExceptionGroup`` after the instance has been unregistered.
+        """
+        target_id = stake_id if stake_id is not None else "0"
+        instance = cls._instances.get(target_id)
+        if instance is None:
+            return
+        errors: list[BaseException] = []
+        try:
+            await instance.stop_playwright()
+        except Exception as exc:
+            errors.append(exc)
+        cls._unregister_instance(instance, target_id)
+        if errors:
+            raise BaseExceptionGroup(f"Browser cleanup failures for stake '{target_id}'", errors)
+
+    @classmethod
+    async def close_all_instances_async(cls) -> None:
+        """Close and remove all registered instances, awaiting their teardown.
+
+        Every instance is torn down and unregistered even when an earlier one
+        fails; the per-instance errors are aggregated into a single
+        ``BaseExceptionGroup`` raised at the end (an empty error list returns
+        quietly), so one broken teardown can no longer leak the rest.
+        """
+        errors: list[BaseException] = []
+        for target_id in list(cls._instances.keys()):
+            instance = cls._instances.get(target_id)
+            if instance is None:
+                continue
+            try:
+                await instance.stop_playwright()
+            except Exception as exc:
+                errors.append(exc)
+            cls._unregister_instance(instance, target_id)
+        if errors:
+            raise BaseExceptionGroup("Browser cleanup failures", errors)
 
     async def prepare_extension(self) -> None:
         """
@@ -403,8 +523,7 @@ class PlaywrightManager:
             logger.info(f"Tracing started for {context_type} context")
         except Exception as e:
 
-            traceback.print_exc()
-            logger.error(f"Failed to start tracing for {context_type} context: {e}")
+            logger.error(f"Failed to start tracing for {context_type} context: {e}", exc_info=True)
 
     async def create_browser_context(self) -> None:
         """
@@ -412,8 +531,13 @@ class PlaywrightManager:
         plus locale, timezone, geolocation, color scheme, etc.
         """
         user_dir: str = os.environ.get("BROWSER_STORAGE_DIR", "")
+        crash_dir = os.path.join(get_global_conf().get_project_temp_path(), "crashpad")
+        os.makedirs(crash_dir, exist_ok=True)
 
         disable_args = [
+            "--disable-breakpad",
+            "--disable-crash-reporter",
+            "--disable-crashpad",
             "--disable-session-crashed-bubble",
             "--disable-notifications",
             "--no-sandbox",
@@ -430,6 +554,7 @@ class PlaywrightManager:
             "--window-position=0,0",
             "--disable-web-security",
             "--disable-features=IsolateOrigins,site-per-process",
+            f"--crash-dumps-dir={crash_dir}",
         ]
 
         if get_global_conf().should_ignore_certificate_errors():
@@ -514,8 +639,7 @@ class PlaywrightManager:
                     except Exception as e:
                         # Don't let bring_to_front failures block us
 
-                        traceback.print_exc()
-                        logger.warning(f"Failed to bring page to front, but continuing: {e}")
+                        logger.warning(f"Failed to bring page to front, but continuing: {e}", exc_info=True)
                 else:
                     logger.info("No usable existing pages found. Creating new page.")
                     page = await self._browser_context.new_page()
@@ -525,8 +649,8 @@ class PlaywrightManager:
 
             # Only navigate if explicitly configured to do so
             if self.cdp_navigate_on_connect:
-                logger.info("Navigating to Google as specified in configuration.")
-                await page.goto("https://www.google.com", timeout=120000)
+                logger.info("Navigating to configured homepage on CDP connection.")
+                await page.goto(self._homepage, timeout=120000)
             else:
                 logger.info("Skipping navigation on CDP connection as configured.")
 
@@ -539,8 +663,7 @@ class PlaywrightManager:
                         logger.info(f"Tab content set, current URL: {await page.evaluate('window.location.href')}")
                 except Exception as e:
 
-                    traceback.print_exc()
-                    logger.warning(f"Failed to set content for empty tab: {e}")
+                    logger.warning(f"Failed to set content for empty tab: {e}", exc_info=True)
                     # Don't block on this failure
 
             # Add cookies if provided
@@ -567,6 +690,12 @@ class PlaywrightManager:
 
         # Start tracing only once after browser context is created
         await self._start_tracing()
+
+        # Instrument pages opened within this context that we did not create
+        # ourselves (popups via window.open / target=_blank).
+        context = self._browser_context
+        if context is not None:
+            context.on("page", self._on_context_page)
 
     def _build_emulation_context_options(self) -> Dict[str, Any]:
         """
@@ -619,6 +748,9 @@ class PlaywrightManager:
 
         logger.info(f"Launching {self.browser_type}{channel_info}{version_info}{path_info} " f"with video recording enabled.")
         temp_user_dir = tempfile.mkdtemp(prefix="playwright-user-data-")
+        # Track the temp dir so close_browser_context can remove it (it is only
+        # a copy of user_dir, never a user-provided location).
+        self._user_data_dir = temp_user_dir
         # copy user_dir to temp in a separate thread
         if user_dir and os.path.exists(user_dir):
             await asyncio.to_thread(shutil.copytree, user_dir, temp_user_dir, True)
@@ -679,6 +811,9 @@ class PlaywrightManager:
                 launch_options["executable_path"] = self.browser_path
 
             browser = await browser_type.launch(**launch_options)
+            # Keep the handle so close_browser_context can close the browser
+            # process itself (otherwise it is only reclaimed via _playwright.stop()).
+            self._browser = browser
 
             context_options = {"record_video_dir": self._video_dir}
             context_options.update(self._build_emulation_context_options())
@@ -690,8 +825,14 @@ class PlaywrightManager:
 
         except Exception as e:
 
-            traceback.print_exc()
-            logger.error(f"Failed to launch browser with video recording: {e}")
+            logger.error(f"Failed to launch browser with video recording: {e}", exc_info=True)
+            # Do not leak the freshly launched browser when context creation failed.
+            browser, self._browser = self._browser, None
+            if browser is not None:
+                try:
+                    await browser.close()
+                except Exception as close_error:
+                    logger.warning(f"Failed to close browser after launch failure: {close_error}")
             raise e
 
     async def _launch_persistent_browser(
@@ -786,8 +927,7 @@ class PlaywrightManager:
                         logger.error(f"Failed to install browser version: {stderr.decode()}")
                 except Exception as e:
 
-                    traceback.print_exc()
-                    logger.error(f"Error installing browser version: {e}")
+                    logger.error(f"Error installing browser version: {e}", exc_info=True)
                     raise e
 
             # Update browser_context_kwargs with emulation options (includes cookies if set)
@@ -905,27 +1045,29 @@ class PlaywrightManager:
             logger.warning(f"Failed to decode post data for browser API request: {e} for request {request}")
             decoded_post_data = None
 
+        redacted_headers = _redact_sensitive_headers(request.headers)
+        content_type = redacted_headers.get("content-type", "") if isinstance(redacted_headers, dict) else ""
         log_entry = {
             "type": "request",
             "timestamp": time.time(),
             "method": request.method,
-            "url": request.url,
-            "headers": request.headers,
-            "post_data": decoded_post_data,
+            "url": redact_url(request.url),
+            "headers": redacted_headers,
+            "post_data": _redact_post_data(decoded_post_data, str(content_type or "")),
         }
         # Instead of writing directly, do it via asyncio
-        asyncio.ensure_future(self._write_log_entry_to_file(log_entry, self.request_response_log_file))
+        self._spawn_tracked_task(self._write_log_entry_to_file(log_entry, self.request_response_log_file))
 
     def log_response(self, response: Any) -> None:
         log_entry = {
             "type": "response",
             "timestamp": time.time(),
             "status": response.status,
-            "url": response.url,
-            "headers": response.headers,
+            "url": redact_url(response.url),
+            "headers": _redact_sensitive_headers(response.headers),
             "body": None,
         }
-        asyncio.ensure_future(self._write_log_entry_to_file(log_entry, self.request_response_log_file))
+        self._spawn_tracked_task(self._write_log_entry_to_file(log_entry, self.request_response_log_file))
 
     async def _write_log_entry_to_file(self, log_entry: Dict, log_file: str) -> None:
         """Write a single log entry asynchronously."""
@@ -941,8 +1083,7 @@ class PlaywrightManager:
             await asyncio.to_thread(append_line, log_file, line)
         except Exception as e:
 
-            traceback.print_exc()
-            logger.error(f"Failed to write request/response log to file: {e}")
+            logger.error(f"Failed to write request/response log to file: {e}", exc_info=True)
 
     async def get_current_url(self) -> Optional[str]:
         try:
@@ -950,33 +1091,69 @@ class PlaywrightManager:
             return current_page.url
         except Exception as e:
 
-            traceback.print_exc()
-            logger.warning(f"Failed to get current URL: {e}")
+            logger.warning(f"Failed to get current URL: {e}", exc_info=True)
         return None
 
     async def get_current_page(self) -> Page:
-        """
-        Get the current active page, or reuse an existing one if available.
-        Only creates a new page if no pages exist or all existing pages are closed.
-
-        This is a high-level method used throughout the codebase. To ensure
-        consistency, it now uses reuse_or_create_tab internally.
-        """
         try:
-            browser_context = await self.get_browser_context()
+            context = await self.get_browser_context()
 
-            # Instead of duplicating logic, use our tab reuse method with force_new_tab=False
-            # This ensures the same tab reuse logic is used everywhere
-            return await self.reuse_or_create_tab(force_new_tab=False)
+            pages = [p for p in context.pages if not p.is_closed()]
+
+            # 1. Prefer tracked page, but refresh it if a different tab is active.
+            if self.current_page and not self.current_page.is_closed():
+                if len(pages) > 1:
+                    active_page = await self.detect_active_tab_page()
+                    if active_page and active_page != self.current_page:
+                        self.current_page = active_page
+                return self.current_page
+
+            # 2. Fallback to the active tab if one can be detected.
+            if pages:
+                active_page = await self.detect_active_tab_page()
+                if active_page and not active_page.is_closed():
+                    self.current_page = active_page
+                    return self.current_page
+
+                self.current_page = pages[-1]
+                return self.current_page
+
+            # 3. Create new page if nothing exists
+            page = await context.new_page()
+            self.current_page = page
+            await self._instrument_page(page)
+
+            self.current_page = page
+            return page
+
         except Exception as e:
-
-            traceback.print_exc()
-            logger.warning(f"Error getting current page: {e}. Creating new context.")
+            logger.warning(f"Error getting current page: {e}", exc_info=True)
+            old_context = self._browser_context
             self._browser_context = None
+            if old_context is not None:
+                # Best-effort cleanup so the orphaned context neither leaks its
+                # browser process nor a trace that was started on it.
+                try:
+                    if self._enable_tracing:
+                        os.makedirs(self._trace_dir, exist_ok=True)
+                        trace_file = os.path.join(self._trace_dir, f"trace_{int(time.time())}_orphan.zip")
+                        await old_context.tracing.stop(path=trace_file)
+                except Exception as trace_error:
+                    logger.warning(f"Failed to stop tracing on stale browser context: {trace_error}")
+                try:
+                    await old_context.close()
+                except Exception as close_error:
+                    logger.warning(f"Failed to close stale browser context: {close_error}")
             await self.ensure_browser_context()
 
-            # Try again with the new context
-            return await self.reuse_or_create_tab(force_new_tab=False)
+            context = await self.get_browser_context()
+            page = await context.new_page()
+            self.current_page = page
+
+            await self._instrument_page(page)
+
+            self.current_page = page
+            return page
 
     async def close_all_tabs(self, keep_first_tab: bool = True) -> None:
         browser_context = await self.get_browser_context()
@@ -1000,21 +1177,59 @@ class PlaywrightManager:
 
     async def set_navigation_handler(self) -> None:
         page: Page = await self.get_current_page()
-        await page.wait_for_load_state("domcontentloaded")
-        page.on("domcontentloaded", handle_navigation_for_mutation_observer)
+        await self._instrument_page(page)
 
-        async def set_iframe_navigation_handlers() -> None:
-            for frame in page.frames:
-                if frame != page.main_frame:
-                    frame.on("domcontentloaded", handle_navigation_for_mutation_observer)
+    async def _instrument_page(self, page: Page) -> None:
+        """Apply the full page instrumentation: DOM-mutation observer plumbing
+        (exposed callback + domcontentloaded handlers) plus request/response and
+        console logging.
 
-        await set_iframe_navigation_handlers()
+        Applied to every page this manager creates so tabs and popups opened
+        after async_initialize get the same observer as the initial page.
 
-        await page.expose_function("dom_mutation_change_detected", dom_mutation_change_detected)
-        page.on(
-            "frameattached",
-            lambda frame: frame.on("domcontentloaded", handle_navigation_for_mutation_observer),
-        )
+        The page is marked in ``self._instrumented_pages`` BEFORE the first
+        await: instrumentation spans several awaits, so a concurrent popup +
+        inline call would otherwise both pass a check-then-add and stack
+        duplicate handlers. A failed attempt removes the marker again so a
+        later call can retry; failures are logged and never propagate.
+        """
+        if page in self._instrumented_pages:
+            return
+        # In-progress marker (removed on failure below) so concurrent callers
+        # observe the page as already being instrumented.
+        self._instrumented_pages.add(page)
+        try:
+            await page.wait_for_load_state("domcontentloaded")
+            page.on("domcontentloaded", handle_navigation_for_mutation_observer)
+
+            async def set_iframe_navigation_handlers() -> None:
+                for frame in page.frames:
+                    if frame != page.main_frame:
+                        frame.on("domcontentloaded", handle_navigation_for_mutation_observer)
+
+            await set_iframe_navigation_handlers()
+
+            await page.expose_function("dom_mutation_change_detected", dom_mutation_change_detected)
+            page.on(
+                "frameattached",
+                lambda frame: frame.on("domcontentloaded", handle_navigation_for_mutation_observer),
+            )
+
+            await self.setup_request_response_logging(page)
+            await self.setup_console_logging(page)
+        except Exception as e:
+            # Give up the in-progress marker so a later call can retry the page.
+            self._instrumented_pages.discard(page)
+            logger.warning(f"Failed to instrument page ({getattr(page, 'url', '')}): {e}")
+
+    def _on_context_page(self, page: Page) -> None:
+        """Handler for context "page" events: instrument popup pages (opened via
+        window.open / target=_blank) asynchronously.
+
+        Scheduled as a tracked task rather than awaited inline so the event
+        dispatch is never blocked; failures are logged by the task done-callback
+        (and by _instrument_page itself)."""
+        self._spawn_tracked_task(self._instrument_page(page))
 
     async def highlight_element(self, selector: str) -> None:
         pass
@@ -1080,8 +1295,7 @@ class PlaywrightManager:
             logger.debug(f"Screenshot saved: {screenshot_path}")
         except Exception as e:
 
-            traceback.print_exc()
-            logger.error(f"Failed to take screenshot at {screenshot_path}: {e}")
+            logger.error(f"Failed to take screenshot at {screenshot_path}: {e}", exc_info=True)
 
     async def get_latest_screenshot_stream(self) -> Optional[BytesIO]:
         if not self._latest_screenshot_bytes:
@@ -1122,9 +1336,7 @@ class PlaywrightManager:
                             new_video_path = os.path.join(video_dir, f"{safe_url}_{video_name}")
                             video_renames.append((video_path, new_video_path))
                     except Exception as e:
-                        traceback.print_exc()
-                        logger.error(f"Could not prepare video rename: {e}")
-
+                        logger.error(f"Could not prepare video rename: {e}", exc_info=True)
             # Stop and save tracing before closing context
             if self._enable_tracing:
                 try:
@@ -1140,11 +1352,25 @@ class PlaywrightManager:
                         logger.error(f"Trace file was not created at: {trace_file}")
                 except Exception as e:
 
-                    traceback.print_exc()
-                    logger.error(f"Error stopping trace: {e}")
+                    logger.error(f"Error stopping trace: {e}", exc_info=True)
 
             await self._browser_context.close()
             self._browser_context = None
+
+            # Close the browser process itself (video launch path keeps a handle)
+            # so chromium is reclaimed even when stop_playwright is skipped; the
+            # refs are nulled so double-close stays safe.
+            browser, self._browser = self._browser, None
+            if browser is not None:
+                try:
+                    await browser.close()
+                except Exception as e:
+                    logger.warning(f"Failed to close browser: {e}", exc_info=True)
+            # Remove the temporary user-data dir created for the browser launch
+            # (never a user-provided location; see _launch_browser_with_video).
+            user_data_dir, self._user_data_dir = self._user_data_dir, None
+            if user_data_dir:
+                shutil.rmtree(user_data_dir, ignore_errors=True)
 
             # Rename videos after context is closed so Chromium has released the file
             # lock (fixes WinError 32 on Windows)
@@ -1154,8 +1380,7 @@ class PlaywrightManager:
                     self._latest_video_path = new_video_path
                     logger.info(f"Video recorded at {new_video_path}")
                 except Exception as e:
-                    traceback.print_exc()
-                    logger.error(f"Could not finalize video: {e}")
+                    logger.error(f"Could not finalize video: {e}", exc_info=True)
 
     async def update_processing_state(self, processing_state: str) -> None:
         pass
@@ -1166,10 +1391,23 @@ class PlaywrightManager:
     # -------------------------------------------------------------------------
     # Additional helpers for stable network wait
     # -------------------------------------------------------------------------
-    async def _wait_for_stable_network(self) -> None:
+    async def _wait_for_stable_network(self, timeout: Optional[float] = None) -> None:
+        """Wait until the network has been idle for WAIT_FOR_NETWORK_IDLE seconds.
+
+        Args:
+            timeout: Overall cap in seconds for the wait. Defaults to
+                ``max(MAX_WAIT_PAGE_LOAD_TIME, WAIT_FOR_NETWORK_IDLE + margin)`` —
+                the cap must exceed the idle threshold, otherwise the required
+                quiet period can never be observed and the wait always gives up.
+        """
         page = await self.get_current_page()
         pending_requests = set()
         last_activity = asyncio.get_event_loop().time()
+
+        # The default cap must be strictly larger than the idle threshold.
+        cap = max(MAX_WAIT_PAGE_LOAD_TIME, WAIT_FOR_NETWORK_IDLE + 0.5)
+        if timeout is not None:
+            cap = float(timeout)
 
         RELEVANT_RESOURCE_TYPES = {
             "document",
@@ -1282,8 +1520,8 @@ class PlaywrightManager:
                 now = asyncio.get_event_loop().time()
                 if (len(pending_requests) == 0) and ((now - last_activity) >= WAIT_FOR_NETWORK_IDLE):
                     break
-                if now - start_time > MAX_WAIT_PAGE_LOAD_TIME:
-                    logger.debug(f"Network timeout after {MAX_WAIT_PAGE_LOAD_TIME}s with {len(pending_requests)} pending requests")
+                if now - start_time > cap:
+                    logger.debug(f"Network timeout after {cap}s with {len(pending_requests)} pending requests")
                     break
         finally:
             page.remove_listener("request", on_request)
@@ -1292,15 +1530,19 @@ class PlaywrightManager:
         logger.debug(f"Network stabilized for {WAIT_FOR_NETWORK_IDLE} ms")
 
     async def wait_for_page_and_frames_load(self, timeout_overwrite: Optional[float] = None) -> None:
-        """Wait for the page and all frames to load."""
+        """Wait for the page and all frames to load.
+
+        Args:
+            timeout_overwrite: Cap in seconds (matching the module-level
+                constants) for the stable-network wait; ignored when None.
+        """
         page = await self.get_current_page()
 
         try:
-            await self._wait_for_stable_network()
+            await self._wait_for_stable_network(timeout=timeout_overwrite)
         except Exception as e:
 
-            traceback.print_exc()
-            logger.warning("Page load stable-network check failed, continuing...")
+            logger.warning("Page load stable-network check failed, continuing...", exc_info=True)
 
     async def wait_for_load_state_if_enabled(
         self,
@@ -1540,9 +1782,7 @@ class PlaywrightManager:
             return result
         except Exception as e:
 
-            traceback.print_exc()
-            logger.error(f"Error executing JavaScript '{type_of_click}' on element with selector: {selector}. Error: {e}")
-            traceback.print_exc()
+            logger.error(f"Error executing JavaScript '{type_of_click}' on element with selector: {selector}. Error: {e}", exc_info=True)
             return f"Error executing JavaScript '{type_of_click}' on element with selector: {selector}"
 
     async def is_element_present(self, selector: str, page: Optional[Page] = None) -> bool:
@@ -1618,16 +1858,14 @@ class PlaywrightManager:
                 return
 
             # Get element's accessibility info
-            accessibility_info = await element.evaluate(
-                """element => {
+            accessibility_info = await element.evaluate("""element => {
                 return {
                     ariaLabel: element.getAttribute('aria-label'),
                     role: element.getAttribute('role'),
                     name: element.getAttribute('name'),
                     title: element.getAttribute('title')
                 }
-            }"""
-            )
+            }""")
 
             # Use the first non-empty value from accessibility info
             element_identifier = next(
@@ -1808,8 +2046,7 @@ class PlaywrightManager:
             )
 
         except Exception as e:
-            logger.error(f"Failed to capture element with bounding box: {e}")
-            traceback.print_exc()
+            logger.error(f"Failed to capture element with bounding box: {e}", exc_info=True)
 
             # Log failure in browser logger
             browser_logger = get_browser_logger(self.get_screenshots_dir())
@@ -1844,7 +2081,7 @@ class PlaywrightManager:
             "location": msg.location,  # has 'url', 'lineNumber', 'columnNumber'
         }
         # Write asynchronously to console_log_file
-        asyncio.ensure_future(self._write_log_entry_to_file(log_entry, self.console_log_file))
+        self._spawn_tracked_task(self._write_log_entry_to_file(log_entry, self.console_log_file))
 
     async def _add_cookies_if_provided(self) -> None:
         """
@@ -1858,88 +2095,120 @@ class PlaywrightManager:
                 logger.info("Cookies added successfully")
             except Exception as e:
 
-                traceback.print_exc()
-                logger.error(f"Failed to add cookies to browser context: {e}")
+                logger.error(f"Failed to add cookies to browser context: {e}", exc_info=True)
 
-    async def reuse_or_create_tab(self, force_new_tab: bool = False) -> Page:
+    async def detect_active_tab_page(self) -> Optional[Page]:
         """
-        Reuse an existing tab or create a new one if needed.
+        Detect which page is the active/focused tab in the browser.
 
-        Args:
-            force_new_tab: If True, always create a new tab regardless of existing tabs
+        This is crucial for supporting keyboard tab switching (Control+2, Control+Tab, etc.)
+        After the user presses a tab-switching key combination, the browser switches tabs
+        at the UI level, but Playwright needs to know which Page object corresponds to the
+        now-active browser tab.
 
         Returns:
-            A Page object (either existing or newly created)
+            The Page object corresponding to the active browser tab, or None if detection fails
         """
         context = await self.get_browser_context()
+        pages = [p for p in context.pages if not p.is_closed()]
 
-        # Get all non-closed pages
+        if not pages:
+            return None
+
+        # Try to find the active page by checking document.hidden
+        # In a browser, document.hidden is false for the active tab and true for background tabs
+        active_page = None
+        for page in pages:
+            try:
+                is_hidden = await page.evaluate("document.hidden")
+                logger.debug(f"Page {page.url} - document.hidden: {is_hidden}")
+                if not is_hidden:
+                    active_page = page
+                    break
+            except Exception as e:
+                logger.warning(f"Failed to check document.hidden for {page.url}: {e}")
+                continue
+
+        if active_page:
+            logger.info(f"Detected active page (via document.hidden): {active_page.url}")
+            return active_page
+
+        # Fallback: Try each page with bring_to_front() and see which one is already responsive
+        for page in pages:
+            try:
+                await page.bring_to_front()
+                await page.wait_for_load_state("domcontentloaded", timeout=2000)
+                await page.evaluate("1")
+                logger.info(f"Active page detected via bring_to_front: {page.url}")
+                return page
+            except Exception as e:
+                logger.debug(f"Page {page.url} not responsive: {e}")
+                continue
+
+        logger.warning("Could not detect active page, returning None")
+        return None
+
+    async def reuse_or_create_tab(self, force_new_tab: bool = False) -> Page:
+        context = await self.get_browser_context()
+
         pages = [p for p in context.pages if not p.is_closed()]
         logger.debug(f"Found {len(pages)} existing tabs")
 
-        # If we need to create a new tab or there are no existing tabs
+        # 1. Force new tab
         if force_new_tab or not pages:
-            logger.info("Creating a new tab (forced or no existing tabs)")
+            logger.info("Creating a new tab")
             page = await context.new_page()
-            await self.setup_request_response_logging(page)
-            await self.setup_console_logging(page)
+            self.current_page = page
+
+            await self._instrument_page(page)
+
+            self.current_page = page
             return page
 
-        # Try to reuse existing tab (use the most recent one)
-        page = pages[-1]  # The most recently used page
+        # 2. SAFE fallback: use tracked page
+        if self.current_page and not self.current_page.is_closed():
+            if len(pages) > 1:
+                active_page = await self.detect_active_tab_page()
+                if active_page and not active_page.is_closed():
+                    self.current_page = active_page
+                    logger.info(f"Using active page: {self.current_page.url}")
+                    return self.current_page
+            logger.info(f"Using tracked page: {self.current_page.url}")
+            return self.current_page
+
+        # 3. fallback: deterministic selection with active-tab preference
+        page = pages[0]
+        if len(pages) > 1:
+            active_page = await self.detect_active_tab_page()
+            if active_page and not active_page.is_closed():
+                page = active_page
 
         try:
-            await page.wait_for_load_state("networkidle", timeout=5000)
-        except Exception as e:
-            logger.warning(f"Failed to wait for networkidle: {e}")
-        finally:
             await page.wait_for_load_state("domcontentloaded")
-
-        # Check if the page is responsive, with a shorter timeout to avoid hanging
-        try:
-            # Simple check (the timeout is applied at a higher level)
             await page.evaluate("1")
-            logger.info(f"Reusing existing tab with URL: {page.url}")
-            # try:
-            #     # Bring the tab to the front
-            #     await page.bring_to_front()
-            # except Exception as e:
 
-            #     traceback.print_exc()
-            #     # Don't let bring_to_front failures prevent tab reuse
-            #     logger.warning(f"Failed to bring tab to front, but continuing: {e}")
-
+            self.current_page = page
+            logger.info(f"Reusing tab: {page.url}")
             return page
+
         except Exception as e:
-
-            traceback.print_exc()
-            # If the page isn't responsive, try the next one
-            logger.warning(f"First tab not responsive: {e}")
-
-            # Try other tabs if available, from most to least recent
-            for i in range(len(pages) - 2, -1, -1):
+            logger.warning(f"Tab not responsive: {e}", exc_info=True)
+            # try others deterministically
+            for p in pages:
                 try:
-                    page = pages[i]
-                    await page.wait_for_load_state("domcontentloaded")
-                    await page.evaluate("1")
-                    logger.info(f"Reusing alternative tab with URL: {page.url}")
+                    await p.wait_for_load_state("domcontentloaded")
+                    await p.evaluate("1")
 
-                    try:
-                        await page.bring_to_front()
-                    except Exception as bring_err:
+                    self.current_page = p
+                    return p
+                except:
+                    continue
 
-                        traceback.print_exc()
-                        logger.warning(f"Failed to bring tab to front, but continuing: {bring_err}")
-
-                    return page
-                except Exception as tab_err:
-
-                    traceback.print_exc()
-                    logger.warning(f"Alternative tab {i} not responsive: {tab_err}")
-
-        # If all tabs are unresponsive, create a new one
-        logger.info("All existing tabs unresponsive, creating a new tab")
+        # 4. last resort
         page = await context.new_page()
-        await self.setup_request_response_logging(page)
-        await self.setup_console_logging(page)
+        self.current_page = page
+
+        await self._instrument_page(page)
+
+        self.current_page = page
         return page

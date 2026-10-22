@@ -11,15 +11,16 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        python-version: [3.11]
+        python-version: [3.13]
         os: [ubuntu-latest]
     runs-on: ${{ matrix.os }}
     env:
-      # LLM_MODEL_NAME: ${{ secrets.LLM_MODEL_NAME }}
-      # LLM_MODEL_API_KEY: ${{ secrets.LLM_MODEL_API_KEY }}
-      AGENTS_LLM_CONFIG_JSON: ${{ secrets.AGENTS_LLM_CONFIG_JSON }}
-      AGENTS_LLM_CONFIG_FILE_REF_KEY: ${{ vars.AGENTS_LLM_CONFIG_FILE_REF_KEY }}
-      AGENTS_LLM_CONFIG_FILE: ${{ vars.AGENTS_LLM_CONFIG_FILE }}
+      AGENTS_LLM_CONFIG_FILE_REF_KEY: litellm
+      AGENTS_LLM_CONFIG_FILE: agents_llm_config.json
+      HERCULES_CI_LITELLM_API_KEY: ${{ secrets.HERCULES_CI_LITELLM_API_KEY }}
+      HERCULES_CI_LITELLM_BASE_URL: ${{ secrets.HERCULES_CI_LITELLM_BASE_URL }}
+      HERCULES_CI_LITELLM_MODEL_NAME: ${{ vars.HERCULES_CI_LITELLM_MODEL_NAME }}
+      HERCULES_CI_LITELLM_MAX_TOKENS: ${{ vars.HERCULES_CI_LITELLM_MAX_TOKENS }}
       GEO_API_KEY: ${{ secrets.GEO_API_KEY }}
       PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION: python 
       ENABLE_TELEMETRY: 0
@@ -49,9 +50,9 @@ jobs:
         run: make install-extra
       - name: Run linter
         run: make lint
-      - name: Write AGENTS_LLM_CONFIG_JSON to file
+      - name: Write LiteLLM agents config
         run: |
-          ./helper_scripts/write_var_to_json.sh ${{ vars.AGENTS_LLM_CONFIG_FILE }}
+          ./helper_scripts/write_litellm_config.py "$AGENTS_LLM_CONFIG_FILE"
       - name: Run tests
         run: |
           set -e  # Exit immediately if a command exits with a non-zero status

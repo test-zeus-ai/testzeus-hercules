@@ -73,7 +73,7 @@ uuid                # UUID generation
 export SANDBOX_TENANT_ID="executor_agent"
 
 # CLI argument
-hercules --sandbox-tenant-id executor_agent --input-file test.feature
+testzeus-hercules --sandbox-tenant-id executor_agent --input-file test.feature
 
 # .env file
 SANDBOX_TENANT_ID=executor_agent
@@ -309,7 +309,7 @@ And execute the login function from script at "scripts/auth.py" with username as
 
 For complete documentation, examples, and advanced usage:
 - [Full Documentation](python_sandbox_execution.md)
-- [Example Scripts](sandbox_examples/)
+- Example scripts can live under `opt/scripts/` in your project.
 
 ---
 
@@ -320,10 +320,10 @@ For complete documentation, examples, and advanced usage:
 export SANDBOX_TENANT_ID="executor_agent"
 
 # Run test
-hercules --input-file test.feature
+testzeus-hercules --input-file test.feature
 
 # Full command
-hercules --sandbox-tenant-id executor_agent \
+testzeus-hercules --sandbox-tenant-id executor_agent \
          --input-file test.feature \
          --output-path output/
 ```

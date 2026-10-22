@@ -1,7 +1,7 @@
+import importlib.util
 import json
 import os
 import time
-import traceback
 from typing import Any, Dict, List, Optional, Union
 
 from testzeus_hercules.config import get_global_conf
@@ -125,8 +125,7 @@ class BrowserLogger:
 
         except Exception as e:
 
-            traceback.print_exc()
-            logger.error(f"Failed to write interaction log: {e}")
+            logger.error(f"Failed to write interaction log: {e}", exc_info=True)
 
     async def log_browser_interaction(
         self,
@@ -322,15 +321,33 @@ class BrowserLogger:
             if aria:
                 selectors["aria"] = aria
 
+            if selectors and self._selector_store_available():
+                # Best-effort: remember the working selectors in the persistent
+                # selector store, keyed by a canonical element name derived from
+                # the element attributes (so later runs can heal lookup failures).
+                # Skipped before any extra CDP round-trip when the optional
+                # healing package is not installed.
+                try:
+                    attributes = await self.get_element_attributes(element, quiet=True)
+                    canonical_name = self._canonical_name_from_attributes(attributes)
+                    if canonical_name:
+                        self._record_selectors(canonical_name, selectors)
+                except Exception as e:
+
+                    logger.debug(f"Could not record alternative selectors into the selector store: {e}")
+
             return selectors
         except Exception as e:
 
-            traceback.print_exc()
-            logger.error(f"Failed to generate alternative selectors: {e}")
+            logger.error(f"Failed to generate alternative selectors: {e}", exc_info=True)
             return {}
 
-    async def get_element_attributes(self, element: Any) -> Dict[str, str]:
-        """Get relevant attributes from an element."""
+    async def get_element_attributes(self, element: Any, quiet: bool = False) -> Dict[str, str]:
+        """Get relevant attributes from an element.
+
+        ``quiet`` logs a failure (e.g. a detached element) at debug level, for
+        best-effort callers such as the selector-recording hook.
+        """
         try:
             attributes = {}
 
@@ -348,9 +365,54 @@ class BrowserLogger:
             return attributes
         except Exception as e:
 
-            traceback.print_exc()
-            logger.error(f"Failed to get element attributes: {e}")
+            if quiet:
+                logger.debug(f"Could not read element attributes: {e}")
+            else:
+                logger.error(f"Failed to get element attributes: {e}", exc_info=True)
             return {}
+
+    @staticmethod
+    def _selector_store_available() -> bool:
+        """Return True when the optional healing selector store can be imported."""
+        try:
+            return importlib.util.find_spec("testzeus_hercules.healing.selector_store") is not None
+        except (ImportError, ValueError):
+            return False
+
+    @staticmethod
+    def _canonical_name_from_attributes(attributes: Optional[Dict[str, str]]) -> Optional[str]:
+        """Derive a canonical element name (``role=<role>|name=<label>``) from element attributes.
+
+        The name part prefers the aria-label, then the name attribute, then the id.
+        Returns None when neither a role nor any usable name is present.
+        """
+        attrs = attributes or {}
+        role = attrs.get("role", "")
+        name = attrs.get("aria-label") or attrs.get("name") or attrs.get("id") or ""
+        if not role and not name:
+            return None
+        parts = []
+        if role:
+            parts.append(f"role={role}")
+        if name:
+            parts.append(f"name={name}")
+        return "|".join(parts)
+
+    def _record_selectors(self, canonical_name: str, selectors: Dict[str, str]) -> None:
+        """Record observed alternative selectors into the shared selector store (best effort, silent)."""
+        if not canonical_name or not selectors:
+            return
+        from testzeus_hercules.utils.env_flags import selector_recording_enabled
+
+        if not selector_recording_enabled():
+            return
+        try:
+            from testzeus_hercules.healing.selector_store import get_default_store
+
+            get_default_store().record(canonical_name, selectors)
+        except Exception as e:
+
+            logger.debug(f"Selector store recording skipped for {canonical_name}: {e}")
 
 
 # Don't create instance at module level

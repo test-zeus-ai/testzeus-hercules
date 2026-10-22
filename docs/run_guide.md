@@ -16,8 +16,7 @@ opt/
 ├── log_files/              # Execution logs
 │   └── <scenario_name>/
 │       └── run_<timestamp>/
-│           ├── agent_inner_thoughts.json
-│           └── log_between_sender*.json
+│           └── agent_inner_thoughts.json
 ├── proofs/                 # Execution artifacts
 │   └── <scenario_name>/
 │       └── run_<timestamp>/
@@ -82,6 +81,8 @@ mkdir -p opt/tests/test1 opt/tests/test2
 - Other directories created automatically
 
 Hercules will process each test directory sequentially, maintaining separate logs and artifacts for each test suite.
+In bulk mode, each folder's feature file name must match the folder name:
+`opt/tests/test1/input/test1.feature`, `opt/tests/test2/input/test2.feature`, and so on.
 
 ## Running Hercules
 
@@ -95,30 +96,33 @@ playwright install --with-deps
 
 2. Run a test with basic options:
 ```bash
-testzeus-hercules --project-base=opt
+testzeus-hercules \
+  --project-base=opt \
+  --agents-llm-config-file ./agents_llm_config.json \
+  --agents-llm-config-file-ref-key <provider-key>
 ```
 
 Or with individual parameters:
 ```bash
-testzeus-hercules --input-file opt/input/test.feature --output-path opt/output --test-data-path opt/test_data
+testzeus-hercules \
+  --input-file opt/input/test.feature \
+  --output-path opt/output \
+  --test-data-path opt/test_data \
+  --agents-llm-config-file ./agents_llm_config.json \
+  --agents-llm-config-file-ref-key <provider-key>
 ```
 
 3. LLM Configuration Options:
 
 ```bash
-# Basic LLM configuration
+# Per-agent LLM configuration file
+testzeus-hercules \
+  --project-base=opt \
+  --agents-llm-config-file ./agents_llm_config.json \
+  --agents-llm-config-file-ref-key <provider-key>
+
+# Direct single-model LLM configuration.
 testzeus-hercules --llm-model gpt-4o --llm-model-api-key your-api-key
-
-# Advanced LLM configuration
-testzeus-hercules --llm-model claude-3-opus-20240229 \
-                  --llm-model-api-key your-api-key \
-                  --llm-model-api-type anthropic \
-                  --llm-model-base-url https://api.anthropic.com \
-                  --llm-temperature 0.0
-
-# LLM configuration file
-testzeus-hercules --agents-llm-config-file ./agents_llm_config.json \
-                  --agents-llm-config-file-ref-key openai
 
 # Portkey integration
 testzeus-hercules --enable-portkey \
@@ -134,8 +138,9 @@ testzeus-hercules --browser-channel chrome-beta \
                   --browser-version 115.0.1 \
                   --browser-path /path/to/chrome
 
-# Browser extensions
-testzeus-hercules --enable-ublock
+# Browser extensions. uBlock and screen-sharing auto-accept are enabled by default.
+testzeus-hercules --disable-ublock
+testzeus-hercules --disable-auto-accept-screen-sharing
 ```
 
 5. Other Options:
@@ -143,9 +148,6 @@ testzeus-hercules --enable-ublock
 ```bash
 # Bulk execution
 testzeus-hercules --bulk
-
-# Vector DB reuse
-testzeus-hercules --reuse-vector-db
 
 # Screen sharing
 testzeus-hercules --auto-accept-screen-sharing
@@ -165,7 +167,10 @@ cp your-test-data.json opt/test_data/
 
 2. Run a single test:
 ```bash
-testzeus-hercules --project-base=opt
+testzeus-hercules \
+  --project-base=opt \
+  --agents-llm-config-file ./agents_llm_config.json \
+  --agents-llm-config-file-ref-key <provider-key>
 ```
 
 Expected outcome:
@@ -183,13 +188,16 @@ export EXECUTE_BULK=true
 ```bash
 mkdir -p opt/tests/test1/input opt/tests/test1/test_data
 mkdir -p opt/tests/test2/input opt/tests/test2/test_data
-cp test1.feature opt/tests/test1/input/
-cp test2.feature opt/tests/test2/input/
+cp test1.feature opt/tests/test1/input/test1.feature
+cp test2.feature opt/tests/test2/input/test2.feature
 ```
 
 3. Run all tests:
 ```bash
-testzeus-hercules --project-base=opt
+testzeus-hercules \
+  --project-base=opt \
+  --agents-llm-config-file ./agents_llm_config.json \
+  --agents-llm-config-file-ref-key <provider-key>
 ```
 
 Expected outcome:
@@ -199,68 +207,19 @@ Expected outcome:
 
 ## LLM Configuration
 
-Hercules requires LLM configuration to function properly. There are two main approaches to configure LLMs:
+Hercules requires LLM configuration to function properly. Use
+`agents_llm_config.json` plus an active provider/profile key when you want
+separate planner, navigation, and helper model settings. Direct `LLM_MODEL_*`
+configuration remains available for simpler single-model runs.
 
-### 1. Direct Environment Variables
+### 1. Configuration File
 
-The simplest approach is to set the required environment variables:
-
-```bash
-# Basic LLM configuration (required)
-export LLM_MODEL_NAME=gpt-4o
-export LLM_MODEL_API_KEY=your-api-key
-
-# Optional LLM configuration
-export LLM_MODEL_BASE_URL=https://api.openai.com/v1
-export LLM_MODEL_API_TYPE=openai  # openai, anthropic, azure, mistral, groq, etc.
-export LLM_MODEL_TEMPERATURE=0.0
-```
-
-All supported LLM environment variables:
-```bash
-# Model Configuration
-export LLM_MODEL_NAME=gpt-4o                  # Name of the model
-export LLM_MODEL_API_KEY=your-api-key         # API key
-export LLM_MODEL_BASE_URL=https://api.openai.com/v1  # Base URL for API
-export LLM_MODEL_API_TYPE=openai              # API type (openai, anthropic, etc)
-export LLM_MODEL_API_VERSION=2023-05-15       # API version (if applicable)
-export LLM_MODEL_PROJECT_ID=my-project        # Project ID (for GCP-based models)
-export LLM_MODEL_REGION=us-central1           # Region (for region-specific models)
-export LLM_MODEL_CLIENT_HOST=localhost:8000   # Client host (for local models)
-export LLM_MODEL_NATIVE_TOOL_CALLS=true       # Enable native tool calls
-export LLM_MODEL_HIDE_TOOLS=false             # Hide tools from the model
-
-# AWS Bedrock-specific Configuration
-export LLM_MODEL_AWS_REGION=us-east-1         # AWS region
-export LLM_MODEL_AWS_ACCESS_KEY=your-key      # AWS access key
-export LLM_MODEL_AWS_SECRET_KEY=your-secret   # AWS secret key
-export LLM_MODEL_AWS_PROFILE_NAME=default     # AWS profile name
-export LLM_MODEL_AWS_SESSION_TOKEN=token      # AWS session token
-
-# Other Model Settings
-export LLM_MODEL_PRICING=0.01                 # Model pricing for tracking
-
-# LLM Parameter Configuration
-export LLM_MODEL_TEMPERATURE=0.0              # Temperature (0.0-1.0) 
-export LLM_MODEL_CACHE_SEED=12345             # Seed for response caching
-export LLM_MODEL_SEED=67890                   # Random seed for reproducibility
-export LLM_MODEL_MAX_TOKENS=4096              # Maximum tokens in response (for GPT-3, GPT-4, Claude)
-export LLM_MODEL_MAX_COMPLETION_TOKENS=4096   # Maximum tokens in response (for GPT-5 models)
-export LLM_MODEL_PRESENCE_PENALTY=0.0         # Presence penalty
-export LLM_MODEL_FREQUENCY_PENALTY=0.0        # Frequency penalty
-export LLM_MODEL_STOP='END'                   # Stop sequence
-
-# Note: For GPT-5 models (gpt-5, gpt-5-mini, gpt-5-nano), use LLM_MODEL_MAX_COMPLETION_TOKENS
-# instead of LLM_MODEL_MAX_TOKENS. The system will automatically handle the conversion.
-```
-
-### 2. Configuration File
-
-For more advanced setups, especially when using multiple models or providers, use a JSON configuration file:
+Use a JSON configuration file for per-agent setup:
 
 ```bash
 export AGENTS_LLM_CONFIG_FILE=./agents_llm_config.json
-export AGENTS_LLM_CONFIG_FILE_REF_KEY=openai  # The provider to use
+export AGENTS_LLM_CONFIG_FILE_REF_KEY=<provider-key>  # Must match a top-level profile
+testzeus-hercules --project-base=opt
 ```
 
 Example `agents_llm_config.json`:
@@ -277,15 +236,6 @@ Example `agents_llm_config.json`:
       }
     },
     "nav_agent": {
-      "model_name": "gpt-4o",
-      "model_api_key": "your-api-key",
-      "model_api_type": "openai",
-      "llm_config_params": {
-        "temperature": 0.0,
-        "top_p": 0.001
-      }
-    },
-    "mem_agent": {
       "model_name": "gpt-4o",
       "model_api_key": "your-api-key",
       "model_api_type": "openai",
@@ -323,15 +273,6 @@ Example `agents_llm_config.json`:
         "top_p": 0.001
       }
     },
-    "mem_agent": {
-      "model_name": "claude-3-haiku-20240307",
-      "model_api_key": "your-anthropic-api-key",
-      "model_api_type": "anthropic",
-      "llm_config_params": {
-        "temperature": 0.0,
-        "top_p": 0.001
-      }
-    },
     "helper_agent": {
       "model_name": "claude-3-haiku-20240307",
       "model_api_key": "your-anthropic-api-key",
@@ -361,15 +302,6 @@ Example `agents_llm_config.json`:
         "max_completion_tokens": 2048
       }
     },
-    "mem_agent": {
-      "model_name": "gpt-5-nano",
-      "model_api_key": "your-openai-api-key",
-      "model_api_type": "openai",
-      "llm_config_params": {
-        "temperature": 0.0,
-        "max_completion_tokens": 1024
-      }
-    },
     "helper_agent": {
       "model_name": "gpt-5",
       "model_api_key": "your-openai-api-key",
@@ -382,6 +314,24 @@ Example `agents_llm_config.json`:
   }
 }
 ```
+
+### 2. Direct Environment Variables
+
+Direct environment variables are still supported. They are simplest when one
+model configuration is enough for all agents.
+
+```bash
+export LLM_MODEL_NAME=gpt-4o
+export LLM_MODEL_API_KEY=your-api-key
+export LLM_MODEL_BASE_URL=https://api.openai.com/v1
+export LLM_MODEL_API_TYPE=openai
+export LLM_MODEL_TEMPERATURE=0.0
+```
+
+Additional direct variables include provider-specific settings such as
+`LLM_MODEL_API_VERSION`, `LLM_MODEL_REGION`, `LLM_MODEL_AWS_REGION`, and token
+settings such as `LLM_MODEL_MAX_TOKENS` or
+`LLM_MODEL_MAX_COMPLETION_TOKENS`.
 
 ### Using Portkey for LLM Routing
 
@@ -561,6 +511,133 @@ AnchorBrowser supports connect_over_cdp, so video recording will work on the tes
 - Each platform may have different capabilities and configurations available through their respective helper scripts
 - Remote browser testing is particularly useful when running tests in Docker containers or CI/CD pipelines
 
+## Orchestration: Parallel Runs, Suites, and Monitoring
+
+### Parallel Scenario Execution
+
+Run one feature file as parallel per-scenario subprocesses (each scenario gets
+an isolated process state) and merge the results into a single JUnit XML:
+
+```bash
+python -m testzeus_hercules.orchestrator.run_manager \
+  opt/input/test.feature --max-parallel 4
+```
+
+Options: `--max-parallel` (default 4), `--out-dir` (merged JUnit directory,
+default `<workroot>/merged`), and `--timeout` (per-scenario seconds, default
+1800). Each scenario subprocess runs with `STRICT_EXIT_CODE=true` (an
+inherited `EXIT_CODE_COMPAT` is dropped from its env) and only counts as passed
+when it exits 0 *and* its JUnit XML reports no failures/errors. The run manager
+itself exits 1 when any scenario failed or errored (`EXIT_CODE_COMPAT=1` forces
+0), and 2 when the feature file contains no scenarios.
+
+### Named Suites
+
+Group features into named suites in `.hercules/suites.yaml` (copy
+`.hercules/suites.example.yaml` as a starting point):
+
+```bash
+hercules-suite smoke --config .hercules/suites.yaml
+```
+
+Per-suite options: `tests` (feature files or directories), `plan` (compile a
+`test_plan.json` into a temporary feature instead), `retry` (per-scenario
+retries), `depends_on` (suites that run first), `env` (extra environment
+variables for every scenario subprocess), `shared_state` (exports
+`HERCULES_SUITE_STATE_FILE=<workroot>/suite_state.json` so features can chain
+suite-level state), and `max_parallel` (scenario subprocesses; default 1 runs
+features sequentially). `--max-parallel` on the CLI overrides the suite
+value. `hercules-suite` exits 1 when any scenario failed or errored
+(`EXIT_CODE_COMPAT=1` forces 0) and 2 with a one-line error for configuration
+problems (missing or invalid suites file, unknown suite, dependency cycle).
+
+`env` entries may override the reserved workspace-injected variables
+(`HERCULES_HISTORY_DB`, `PROJECT_SOURCE_ROOT`, `INPUT_GHERKIN_FILE_PATH`,
+`TEST_DATA_PATH`); the override wins, and a warning is logged when it replaces
+an injected variable. Watch out for a relative `HERCULES_HISTORY_DB` here: it
+resolves inside the throwaway scenario workspace and silently vanishes when
+that workspace is cleaned up after a successful run.
+
+### Scheduled Monitoring
+
+`hercules-monitor` reruns suites on a schedule, detects regressions against
+the previous cycle (a scenario that passed last cycle and fails now), and
+posts a webhook summary. Config lives in `.hercules/monitor.yaml` (see
+`.hercules/monitor.example.yaml`):
+
+```bash
+hercules-monitor --config .hercules/monitor.yaml   # daemon loop
+hercules-monitor --once                            # single cycle, exit 1 on failures
+hercules-monitor --interval-hours 1                # override the configured interval
+```
+
+Key settings: `suites` (required), `interval_hours` (default 24, fractional
+OK), `webhook_url` (receives `{"text": "<summary>"}`), `notify_on`
+(`always`, `failure`, or `regression` — default `regression`), `baseline`
+(`last_run` or a pinned run id), and `state_file` (default
+`.hercules/monitor_state.json`). The first cycle has no baseline, so nothing
+counts as a regression yet; use `notify_on: failure` to also alert on plain
+failures.
+
+### Workspace Hygiene
+
+Parallel and suite runs manage their scratch space automatically:
+
+- **Scenario workspaces** (one throwaway `PROJECT_SOURCE_ROOT` per scenario)
+  are deleted after a successful run; workspaces of **failed** scenarios are
+  always kept so you can inspect videos, screenshots, and logs. Set
+  `HERCULES_KEEP_WORKSPACES=1` to keep everything (including the
+  compiled-plan tempdirs of plan-only suites) for debugging.
+- **Run retention:** before every monitoring cycle, `hercules-monitor` sweeps
+  `.hercules/suite_runs/` trees and `.hercules/parallel_*` run-manager
+  workroots older than `HERCULES_RUN_RETENTION_HOURS` hours (default `72`);
+  the run manager sweeps old `.hercules/parallel_*` workroots at the start of
+  every run too.
+- Run history (opt-in, `ENABLE_RUN_HISTORY=true`) lives in one shared SQLite
+  DB (`opt/hercules_history.db`, override with `HERCULES_HISTORY_DB`), so
+  workspace cleanup never deletes recorded runs.
+
+## Run History Dashboard
+
+With `ENABLE_RUN_HISTORY=true`, every run is recorded in a SQLite database (default
+`opt/hercules_history.db`, override with `HERCULES_HISTORY_DB`): runs, cases,
+steps, artifact paths, and healing events (failure classifications, selector-store
+hits, heal proposals). Healing events are **observability only**: Hercules records
+them and logs proposals, but never rewrites a step or selector automatically (there is
+no auto-healing). A local web UI reads from it:
+
+```bash
+hercules-dashboard                      # serves http://127.0.0.1:8001 (loopback only)
+hercules-dashboard --port 8001 --db opt/hercules_history.db --project-root opt
+```
+
+The dashboard serves run history, artifacts and failure evidence, so it binds
+loopback by default and rejects requests whose `Host` header is not a loopback
+name (DNS-rebinding defence). To expose it on another interface you must set a
+token, and the command refuses to start without one:
+
+```bash
+export DASHBOARD_AUTH_TOKEN="$(openssl rand -hex 24)"   # >= 16 chars
+hercules-dashboard --host 0.0.0.0 --port 8001            # clients: Authorization: Bearer <token> (or Basic, any user, token as password)
+```
+
+Put TLS in front of it (reverse proxy) when it leaves your machine. Add public
+names with `DASHBOARD_ALLOWED_HOSTS=dash.example.com`.
+
+- `/` — runs list with pass/fail counts and an "Import from output folders"
+  button that scans `output/*/` for `*_result.xml` and back-fills the DB.
+- `/run/<run_id>` — run metadata plus its case table.
+- `/case/<run_id>/<case>` — per-case detail: embedded video player,
+  screenshots, network log, and the failure classification.
+- `/trend` — pass-rate history chart (SVG) and flakiest cases.
+- `/live` — polling page that picks up new runs as they finish.
+
+`--project-root` defaults to the configured `PROJECT_SOURCE_ROOT` (`opt`). It
+must be the directory that *contains* `output/` (i.e. `opt`, not the repository
+root): the import button scans `<project-root>/output/*/`, and artifact URLs are
+restricted to files under it, so pointing it at `.` both breaks the import and
+widens what `/artifact` may serve.
+
 ## Viewing Results
 
 After test execution, results can be found in several locations:
@@ -568,12 +645,64 @@ After test execution, results can be found in several locations:
 1. **Test Reports**
    - HTML Report: `opt/output/run_<timestamp>/test.feature_result.html`
    - XML Report: `opt/output/run_<timestamp>/test.feature_result.xml`
+   - Markdown Report: `opt/output/run_<timestamp>/Hercules_Test_Report.md` (opt-in, `ENABLE_RUN_REPORTING=true`)
 
 2. **Execution Logs**
    - Agent Thoughts: `opt/log_files/<scenario_name>/run_<timestamp>/agent_inner_thoughts.json`
-   - Communication Logs: `opt/log_files/<scenario_name>/run_<timestamp>/log_between_sender*.json`
 
 3. **Execution Artifacts**
    - Screenshots: `opt/proofs/<scenario_name>/run_<timestamp>/screenshots/`
    - Videos: `opt/proofs/<scenario_name>/run_<timestamp>/videos/`
    - Network Logs: `opt/proofs/<scenario_name>/run_<timestamp>/network_logs.json`
+
+4. **Failure Bundles** (per failed scenario; opt-in, `ENABLE_FAILURE_BUNDLES=true`)
+   - `opt/output/run_<timestamp>/bundles/<sanitized-case-name>/bundle.md` —
+     failure summary plus a `## Classification` section (filled in when
+     `ENABLE_FAILURE_CLASSIFICATION=true`). The
+     case name is sanitized for the filesystem (spaces and similar characters
+     become `_`); when two failing cases sanitize to the same directory name,
+     a short hash suffix is appended to keep them apart.
+   - Sibling `videos/`, `screenshots/`, and network log files referenced by
+     the bundle
+
+5. **Run History** (opt-in, `ENABLE_RUN_HISTORY=true`)
+   - SQLite database: `opt/hercules_history.db` (override with
+     `HERCULES_HISTORY_DB`) — runs, cases, steps, artifact paths, and healing
+     events; browsable via `hercules-dashboard`
+
+## CI Exit Codes & Reports
+
+These are all **opt-in** (off by default, so plain runs behave like before);
+enable them with environment variables. The GitHub Action
+(`.github/actions/run-tests`) sets `STRICT_EXIT_CODE` via `blocking: true` and the
+reporting flags via `reports: true` (both defaults).
+
+- **Non-zero exit on failure (`STRICT_EXIT_CODE=true`):** Hercules exits with status `1` when any scenario fails or errors, so CI pipelines can gate on it. Without the flag the legacy exit code is kept; `EXIT_CODE_COMPAT=1` forces the legacy always-exit-0 behavior even when the flag is set. (`hercules-run-manager` and `hercules-suite` exit `1` on failures by default.)
+- **Markdown report (`ENABLE_RUN_REPORTING=true`):** writes `output/run_<timestamp>/Hercules_Test_Report.md`.
+- **Failure bundles (`ENABLE_FAILURE_BUNDLES=true`):** failed scenarios get a self-contained folder under `output/run_<timestamp>/bundles/` with a `bundle.md` summary plus video, screenshots, and logs for debugging.
+- **Run history (`ENABLE_RUN_HISTORY=true`):** records the run in the history DB (`opt/hercules_history.db` or `HERCULES_HISTORY_DB`).
+- **Failure classification (`ENABLE_FAILURE_CLASSIFICATION=true`):** every failed case is classified into `product_bug`, `test_fragility`, `environment`, or `contract_violation` (or `unclassified` when no signal matches). The classification replaces the placeholder in the case's `bundle.md` and is recorded as a healing event in the run history DB.
+- **`LOG_FILE_PATH`:** optional env var; when set, Hercules also streams its runtime logs to that file (rotating: 10 MB per file, 5 backups) for post-run inspection in CI.
+- **`LLM_MODEL_PRICING`:** optional pricing used to estimate run cost in reports when the provider does not report cost data. Set it per agent role as `model_pricing` in `agents_llm_config.json` (a float blended USD per 1M tokens, or `{"input": x, "output": y}`), or as an env var. Estimated values are marked `cost_source: estimated_from_model_pricing`; provider-reported cost always wins.
+
+Typical CI usage:
+
+```bash
+export LOG_FILE_PATH=$CI_JOB_DIR/hercules.log
+export STRICT_EXIT_CODE=true
+export ENABLE_RUN_REPORTING=true ENABLE_FAILURE_BUNDLES=true ENABLE_RUN_HISTORY=true ENABLE_FAILURE_CLASSIFICATION=true
+export HERCULES_HISTORY_DB=$CI_PROJECT_DIR/hercules_history.db
+testzeus-hercules --project-base=opt || test_status=$?
+# Non-zero exit means failed/errored scenarios; check
+# opt/output/run_<timestamp>/Hercules_Test_Report.md and bundles/ for details.
+```
+
+## Troubleshooting
+
+- **Scenario fails with `[PLANNER_STALL]`** — the planner produced no
+  executable progress 3 turns in a row (empty or already-completed steps) and
+  was terminated early to avoid a planner loop. This usually means the planner
+  model is too weak to emit strict planner JSON reliably, or a step is
+  unparseable/unsatisfiable for the target app. Try a stronger
+  `planner_agent` model in `agents_llm_config.json` and check the failing
+  feature's steps against what the app actually supports.

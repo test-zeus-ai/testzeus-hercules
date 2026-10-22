@@ -1,6 +1,13 @@
-import pytest
 import os
 import shutil
+
+import pytest
+
+os.environ.setdefault("IS_TEST_ENV", "true")
+# The test suite must never emit telemetry (Sentry events): set before any
+# testzeus_hercules import, since telemetry reads the flag at import time.
+os.environ["ENABLE_TELEMETRY"] = "0"
+os.environ["SENTRY_DSN"] = ""
 
 # Global constants
 RUN_DATA_PATH = os.path.join(os.getcwd(), "run_data")

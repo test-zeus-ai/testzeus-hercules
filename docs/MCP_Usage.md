@@ -9,9 +9,10 @@ This guide explains how to connect Hercules to an MCP server and execute tools, 
 
 ## Pre-requisites
 - Hercules installed and running (PyPI, Docker, or source).
-- A valid MCP server URL. For Composio, use the generated server URL which embeds user scoping.
-  - Pattern: `https://mcp.composio.dev/composio/server/<SERVER_UUID>/mcp?user_id=<USER_EMAIL>`
-  - Composio docs: https://docs.composio.dev/docs/mcp-developers
+- A valid MCP server URL. For Composio v3, create a session for your user and
+  use `session.mcp.url` plus any `session.mcp.headers` your session returns.
+  Do not hardcode user emails, tokens, or server UUIDs into committed config.
+  - Composio docs: https://docs.composio.dev/docs/quickstart
 
 ## Configure Hercules
 
@@ -22,7 +23,10 @@ This guide explains how to connect Hercules to an MCP server and execute tools, 
   "mcpServers": {
     "server_name": {
       "transport": "streamable-http",
-      "url": "https://mcp.composio.dev/composio/server/<SERVER_UUID>/mcp?user_id=<USER_EMAIL>"
+      "url": "<session.mcp.url>",
+      "headers": {
+        "Authorization": "Bearer <token-if-required>"
+      }
     }
   }
 }
@@ -30,7 +34,9 @@ This guide explains how to connect Hercules to an MCP server and execute tools, 
 
 - `server_name`: Logical name used to reference this server in tools.
 - `transport`: Use `streamable-http` for Composio’s HTTP streaming transport. `stdio` and `sse` are also supported if your server provides them.
-- `url`: Your server URL; replace placeholders with your actual values.
+- `url`: Your MCP endpoint URL.
+- `headers`: Optional request headers. Include them only when your MCP provider
+  requires them.
 
 2) Enable MCP in your environment (e.g., `.env`):
 
@@ -44,6 +50,7 @@ MCP_TIMEOUT=30
 
 
 Hercules manages client contexts and sessions, and registers MCP tools for the agent to call.
+The canonical checked-in example filename is `mcp_servers.example.json`.
 
 ## Transport Notes
 - `streamable-http`: Recommended for Composio; avoids websocket restrictions and supports streaming.
@@ -55,16 +62,68 @@ Hercules manages client contexts and sessions, and registers MCP tools for the a
   - Cause: Server doesn’t implement resource endpoints.
   - Resolution: Hercules initializes the MCP toolkit with resources disabled by default and tools enabled. Ensure you are on a version with this behavior.
 - `Server not found in connected toolkits`
-  - Ensure `MCP_ENABLED=true`, `MCP_SERVERS` points to `mcp_servers.json`, and `initialize_mcp_connections` has been called.
+  - Ensure `MCP_ENABLED=true` and `MCP_SERVERS` points to the config file before the run starts. Hercules initializes MCP connections during helper readiness.
 - `Connection failed`
-  - Verify the URL (UUID, user email) and that the server is reachable over HTTPS.
+  - Verify the endpoint URL, required headers, and network reachability.
 
 ## Security Notes
 - Do not commit user emails or tokens. Keep server URLs and environment in private configuration.
-- Composio server URLs handle authentication and tool access based on your server configuration.
+- Composio sessions handle user scoping and tool access. Store session IDs,
+  URLs, and headers as private runtime configuration.
 
 ## References
-- Composio MCP: https://docs.composio.dev/docs/mcp-developers
+- Composio quickstart and MCP session guidance: https://docs.composio.dev/docs/quickstart
+
+## Running Hercules as an MCP Server
+
+Hercules can also expose its own tools to other MCP clients:
+
+```bash
+testzeus-hercules-mcp
+```
+
+By default this starts a streamable HTTP server at `http://127.0.0.1:8000/mcp`
+(loopback only). The primary interface is the nine session-based `hercules_*`
+tools (`hercules_configure_session`, `hercules_generate_code_summary`,
+`hercules_generate_standardized_prd`, `hercules_generate_test_plan`,
+`hercules_generate_and_execute`, `hercules_get_run_results`,
+`hercules_open_dashboard`, `hercules_check_config`, `hercules_rerun`) — see
+`docs/mcp_server.md` for the full tool reference. The legacy trio
+(`generate_gherkin`, `run_test`, `get_test_results`) is still registered as a
+deprecated alias layer.
+
+> **Security note:** the default loopback bind keeps the server local to your
+> machine; tools drive test execution (browsers, API calls, LLM usage) with the
+> privileges of the server process. A non-loopback `MCP_HOST` is refused unless
+> `MCP_AUTH_TOKEN` (bearer token, >= 16 chars) is set; `Host` headers are checked
+> against an allowlist (`MCP_ALLOWED_HOSTS` adds names), `project_path`/`prd_path`
+> are confined to allowed roots (`HERCULES_MCP_ALLOWED_ROOTS` adds some), and
+> PRD-derived test plans need explicit approval before they run
+> (`HERCULES_MCP_AUTO_APPROVE_PLAN=true` skips it). Tokens travel in cleartext
+> over HTTP, so put TLS in front of any non-loopback bind. See the
+> **Security notes / known limitations** section of `docs/mcp_server.md` for
+> the full picture.
+
+Server environment variables (`docs/mcp_server.md` has the complete table):
+
+- `TESTZEUS_ROOT`: repo/project root for generated features and test output
+- `MCP_HOST`: bind host, default `127.0.0.1` (non-loopback requires `MCP_AUTH_TOKEN`)
+- `MCP_PORT`: bind port, default `8000`
+- `MCP_PATH`: HTTP path, default `/mcp`
+- `MCP_AUTH_TOKEN`: bearer token required on every request when set (mandatory
+  for non-loopback binds); with a token, every tool call must pass `session_id`
+- `MCP_ALLOWED_HOSTS`: extra comma-separated `Host` header names to accept
+- `HERCULES_MCP_ALLOWED_ROOTS`: extra `os.pathsep`-separated directories that
+  `project_path`/`prd_path` may point into
+- `HERCULES_MCP_AUTO_APPROVE_PLAN`: skip the `approve_plan` confirmation for
+  PRD-derived test plans (default `false`)
+- `HERCULES_MCP_EXEC_TIMEOUT`: per-run execution deadline in seconds (default `1800`)
+- `TESTZEUS_PYTHON`: reserved helper variable; the in-process server does not
+  shell out, so it is currently unused (kept for compatibility with external
+  tooling)
+
+For a client configuration example (streamable-http), see
+`mcp_hercules.example.json`.
 
 ## Example Testcase (Simple)
 

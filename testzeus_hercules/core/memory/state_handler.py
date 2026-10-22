@@ -1,9 +1,7 @@
-import traceback
 from collections import defaultdict, deque
 from typing import Annotated, Any, Dict, Union
 
 from testzeus_hercules.config import get_global_conf
-from testzeus_hercules.core.memory.dynamic_ltm import DynamicLTM
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
 
@@ -30,16 +28,12 @@ def store_data(
     global _state_string
     try:
 
-        DynamicLTM().save_content(text)
         _state_string[get_global_conf().get_default_test_id()] += text
-        logger.info(
-            f"Appended text to state. New state length: {len(_state_string[get_global_conf().get_default_test_id()])}"
-        )
+        logger.info(f"Appended text to state. New state length: {len(_state_string[get_global_conf().get_default_test_id()])}")
         return {"message": "Text appended successfully."}
     except Exception as e:
 
-        traceback.print_exc()
-        logger.error(f"An error occurred while appending to state: {e}")
+        logger.error(f"An error occurred while appending to state: {e}", exc_info=True)
         return {"error": str(e)}
 
 
@@ -63,8 +57,7 @@ def store_run_data(
         return {"message": "Context Added successfully."}
     except Exception as e:
 
-        traceback.print_exc()
-        logger.error(f"An error occurred while adding adding context: {e}")
+        logger.error(f"An error occurred while adding adding context: {e}", exc_info=True)
         return {"error": str(e)}
 
 
@@ -78,14 +71,11 @@ def get_stored_data() -> Annotated[
     "The stored value.",
 ]:
     try:
-        logger.info(
-            f"Retrieving current state. State length: {len(_state_string[get_global_conf().get_default_test_id()])}"
-        )
+        logger.info(f"Retrieving current state. State length: {len(_state_string[get_global_conf().get_default_test_id()])}")
         return _state_string[get_global_conf().get_default_test_id()]
     except Exception as e:
 
-        traceback.print_exc()
-        logger.error(f"An error occurred while retrieving state: {e}")
+        logger.error(f"An error occurred while retrieving state: {e}", exc_info=True)
         return {"error": str(e)}
 
 
@@ -100,6 +90,19 @@ def get_run_data() -> Annotated[
         return processed_text
     except Exception as e:
 
-        traceback.print_exc()
-        logger.error(f"An error occurred while retrieving context: {e}")
+        logger.error(f"An error occurred while retrieving context: {e}", exc_info=True)
         return {"error": str(e)}
+
+
+def clear_runtime_state() -> None:
+    """
+    Drop the process-global stored/run state.
+
+    The stores are keyed by the (per-scenario) default test id, and bulk mode
+    repoints TEST_DATA_PATH per suite inside one process: state accumulated
+    under one suite must be dropped when the test-data path changes, or suite
+    B's LTM would fold in suite A's stored secrets. Within a suite the state is
+    kept — cross-scenario sharing is intended.
+    """
+    _state_string.clear()
+    _state_dict.clear()

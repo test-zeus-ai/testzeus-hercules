@@ -33,7 +33,7 @@ class SecNavAgent(BaseNavAgent):
    2. Response Protocol:
    - For all responses, start with previous_step: [previous step assigned summary]
    - Terminate unclear tests with + ##TERMINATE TASK##
-   - For successful tests: ##FLAG::SAVE_IN_MEM## + ##TERMINATE TASK##
+   - For successful tests: ##TERMINATE TASK##
    - Explain termination reason
    - Summarize findings (endpoint, risk, payloads, responses)
    - No test retries

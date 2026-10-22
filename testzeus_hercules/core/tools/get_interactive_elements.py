@@ -85,8 +85,48 @@ async def get_interactive_elements() -> Annotated[str, "DOM type dict giving all
         ):
             new_node = node.copy()
             new_node.pop("children", None)
-            elements.append(new_node)
+            elements.append(compact_interactive_node(new_node))
         return elements
+
+    def compact_value(value: Any) -> Any:
+        if isinstance(value, str):
+            cleaned = " ".join(value.split())
+            if len(cleaned) > 300:
+                return f"{cleaned[:300]}...[truncated]"
+            return cleaned
+        if isinstance(value, list):
+            return [compact_value(item) for item in value[:30]]
+        if isinstance(value, dict):
+            return {str(key): compact_value(item_value) for key, item_value in value.items() if item_value not in ("", None, [], {})}
+        return value
+
+    def compact_interactive_node(node: dict) -> dict:
+        allowed_keys = (
+            "md",
+            "tag",
+            "role",
+            "r",
+            "name",
+            "title",
+            "description",
+            "text",
+            "aria-label",
+            "value",
+            "tag_type",
+            "type",
+            "placeholder",
+            "tooltip",
+            "clickable",
+            "focusable",
+            "checked",
+            "selected",
+            "disabled",
+            "expanded",
+            "level",
+            "options",
+            "additional_info",
+        )
+        return {key: compact_value(node[key]) for key in allowed_keys if key in node and node[key] not in ("", None, [], {})}
 
     flattened_data = flatten_elements(extracted_data) if isinstance(extracted_data, dict) else []
 
@@ -95,8 +135,8 @@ async def get_interactive_elements() -> Annotated[str, "DOM type dict giving all
 
     # Count elements
     rr = 0
-    if isinstance(extracted_data, (dict, list)):
-        rr = len(extracted_data)
+    if isinstance(flattened_data, list):
+        rr = len(flattened_data)
     add_event(
         EventType.DETECTION,
         EventData(detail=f"DETECTED {rr} components"),
@@ -115,5 +155,5 @@ async def get_interactive_elements() -> Annotated[str, "DOM type dict giving all
     # Dict >>
     # """
     #     extracted_data = extracted_data_legend + extracted_data
-    extracted_data = json.dumps(extracted_data, separators=(",", ":"))
+    extracted_data = json.dumps(flattened_data, separators=(",", ":"))
     return extracted_data or "Its Empty, try something else"  # type: ignore

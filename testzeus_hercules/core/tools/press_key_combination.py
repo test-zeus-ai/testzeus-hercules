@@ -1,6 +1,5 @@
 import asyncio
 import inspect
-import traceback
 from typing import Annotated
 
 from playwright.async_api import Page  # type: ignore
@@ -53,6 +52,12 @@ async def press_key_combination(
 
     await browser_manager.wait_for_load_state_if_enabled(page=page)
 
+    if keys[-1].lower() == "tab" and any(key.lower() in {"control", "alt", "meta"} for key in keys[:-1]):
+        active_page = await browser_manager.detect_active_tab_page()
+        if active_page and not active_page.is_closed():
+            browser_manager.current_page = active_page
+            page = active_page
+
     await browser_manager.take_screenshots("press_key_combination_end", page)
     if dom_changes_detected:
         return f"Key {key_combination} executed successfully.\n As a consequence of this action, new elements have appeared in view:{dom_changes_detected}. This means that the action is not yet executed and needs further interaction. Get all_fields DOM to complete the interaction."
@@ -97,8 +102,7 @@ async def do_press_key_combination(browser_manager: PlaywrightManager, page: Pag
 
     except Exception as e:
 
-        traceback.print_exc()
-        logger.error(f'Error executing press_key_combination "{key_combination}": {e}')
+        logger.error(f'Error executing press_key_combination "{key_combination}": {e}', exc_info=True)
         return False
 
     await browser_manager.take_screenshots(f"{function_name}_end", page)

@@ -35,7 +35,9 @@ class AgentsLLMConfig:
             json.JSONDecodeError: If the file contains invalid JSON
         """
         logger.info(f"Loading configurations from file: {file_path}")
-        with open(file_path, "r") as f:
+        # utf-8-sig tolerates a leading BOM (common in Windows-edited configs)
+        # that would otherwise crash json.load with "Unexpected UTF-8 BOM".
+        with open(file_path, "r", encoding="utf-8-sig") as f:
             config_data = json.load(f)
 
         # Register all providers from the file

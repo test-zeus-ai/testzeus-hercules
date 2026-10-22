@@ -4,9 +4,6 @@ from typing import Callable  # noqa: UP035
 
 from playwright.async_api import Page
 
-# Create an event loop
-loop = asyncio.get_event_loop()
-
 DOM_change_callback: list[Callable[[str], None]] = []
 
 
@@ -28,8 +25,7 @@ async def add_mutation_observer(page: Page) -> None:
     However, in many cases, the change could be a change in the style or class of an existing node (e.g. toggle visibility of a hidden node).
     """
 
-    await page.evaluate(
-        """
+    await page.evaluate("""
             console.log('Adding a mutation observer for DOM changes');
 
             const observeMutations = (root) => {
@@ -110,8 +106,7 @@ async def add_mutation_observer(page: Page) -> None:
                 }
             });
 
-        """
-    )
+        """)
 
 
 async def handle_navigation_for_mutation_observer(page: Page) -> None:

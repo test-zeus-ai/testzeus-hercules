@@ -1,0 +1,8 @@
+{
+    "mcpServers": {
+        "server_name":{
+            "transport": "streamable-http",
+            "url": "https://mcp.composio.dev/composio/server/<UUID>/mcp?user_id=user123@example.com"
+        }
+    }
+}
