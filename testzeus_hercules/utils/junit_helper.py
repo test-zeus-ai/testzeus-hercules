@@ -12,6 +12,7 @@ from junitparser import Failure, JUnitXml, Property, TestCase, TestSuite
 from junitparser.junitparser import Properties, SystemOut
 from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.telemetry import EventData, EventType, add_event
+from testzeus_hercules.utils.env_flags import strict_verdict_enabled
 from testzeus_hercules.utils.gherkin_helper import _sanitize_scenario_filename
 
 logger = logging.getLogger(__name__)
@@ -368,22 +369,29 @@ class JUnitXMLGenerator:
                 parts.append(_format_failure_record("Cleanup failure", cleanup_failure))
             test_case.result = Failure(message=_strip_xml_incompatible_chars("\n".join(parts)))
         else:
-            # Honest-reporting verdict policy: green requires the scenario to
-            # have terminated cleanly AND recorded a pass. An aborted or
+            # Verdict policy. Default (legacy): an asserting scenario passes when
+            # is_passed is truthy; a scenario without an explicit assertion passes
+            # unless it did not terminate. With STRICT_VERDICT=true (honest
+            # reporting) green requires the scenario to have terminated cleanly AND
+            # recorded an explicit pass (is_passed is True) — an aborted or
             # unproven scenario must not come out green.
+            strict_verdict = strict_verdict_enabled()
             failure_detail = str(assert_summary or final_response or _MISSING_FAILURE_DETAIL_MESSAGE)
             if is_assert:
                 add_event(
                     EventType.ASSERT,
                     EventData(detail=f"Assertion with result: {is_passed}"),
                 )
-                if is_passed is not True or terminate != "yes":
+                assertion_failed = (is_passed is not True or terminate != "yes") if strict_verdict else not is_passed
+                if assertion_failed:
                     test_case.result = Failure(message=_strip_xml_incompatible_chars(failure_detail))
                 elif assert_summary:
                     test_case.system_out = _strip_xml_incompatible_chars(assert_summary)
             else:
-                # A scenario that asserted nothing is not a pass by default.
-                if terminate != "yes" or is_passed is not True:
+                # No explicit assertion: legacy only fails when the task did not
+                # terminate; strict mode also requires an explicit pass.
+                unproven = (terminate != "yes" or is_passed is not True) if strict_verdict else terminate == "no"
+                if unproven:
                     test_case.result = Failure(message=_strip_xml_incompatible_chars(failure_detail))
 
         # Assertion audit ledger: report the recorded assertion counts and,
