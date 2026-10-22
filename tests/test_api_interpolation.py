@@ -86,6 +86,28 @@ def test_variables_are_scoped_per_test_id(var_env) -> None:
         get_global_conf().set_default_test_id("interpolation-tests")
 
 
+def test_reset_variables_clears_stale_captures_for_a_rerun(var_env) -> None:
+    from testzeus_hercules.core.tools.api_calls import reset_variables
+
+    set_variable_value("order_id", "A-1")
+    assert interpolate_value("${order_id}") == "A-1"
+    # A new scenario run with the same test id starts with an empty scope.
+    reset_variables()
+    assert interpolate_value("${order_id}") == "${order_id}"
+    # An explicit id only clears that scope.
+    set_variable_value("keep", 1)
+    reset_variables("some-other-test")
+    assert interpolate_value("${keep}") == 1
+
+
+def test_runner_resets_the_variable_scope_when_a_scenario_starts(var_env) -> None:
+    from testzeus_hercules.core.runner import BaseRunner
+
+    set_variable_value("leftover", "from-previous-run")
+    BaseRunner(stake_id="interpolation-tests")._reset_scenario_variables()
+    assert interpolate_value("${leftover}") == "${leftover}"
+
+
 # ── extraction tool ──────────────────────────────────────────────────────────
 
 
@@ -138,8 +160,8 @@ def timeout_conf(monkeypatch):
         conf.get_config()["API_REQUEST_TIMEOUT"] = original
 
 
-def test_timeout_default_is_30(timeout_conf) -> None:
-    assert get_global_conf().get_api_request_timeout() == 30.0
+def test_timeout_default_is_legacy_5(timeout_conf) -> None:
+    assert get_global_conf().get_api_request_timeout() == 5.0
 
 
 def test_timeout_reads_env_value(timeout_conf) -> None:
@@ -149,11 +171,11 @@ def test_timeout_reads_env_value(timeout_conf) -> None:
 
 def test_timeout_invalid_value_warns_and_falls_back(timeout_conf, caplog) -> None:
     timeout_conf["API_REQUEST_TIMEOUT"] = "soon"
-    assert get_global_conf().get_api_request_timeout() == 30.0
+    assert get_global_conf().get_api_request_timeout() == 5.0
 
 
 def test_timeout_non_positive_value_falls_back(timeout_conf) -> None:
     timeout_conf["API_REQUEST_TIMEOUT"] = "-2"
-    assert get_global_conf().get_api_request_timeout() == 30.0
+    assert get_global_conf().get_api_request_timeout() == 5.0
     timeout_conf["API_REQUEST_TIMEOUT"] = "0"
-    assert get_global_conf().get_api_request_timeout() == 30.0
+    assert get_global_conf().get_api_request_timeout() == 5.0

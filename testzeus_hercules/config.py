@@ -625,6 +625,8 @@ class BaseConfigManager:
             "MCP_TIMEOUT",
             # API tooling
             "API_REQUEST_TIMEOUT",
+            "API_ALLOWED_PATHS",
+            "ENABLE_UI_ASSERTIONS",
             # Python Sandbox configuration
             "SANDBOX_TENANT_ID",
             "SANDBOX_PACKAGES",
@@ -775,7 +777,9 @@ class BaseConfigManager:
         self._config.setdefault("MCP_SERVERS", "{}")
 
         # API tooling defaults
-        self._config.setdefault("API_REQUEST_TIMEOUT", "30")
+        self._config.setdefault("API_REQUEST_TIMEOUT", "5")
+        self._config.setdefault("API_ALLOWED_PATHS", "")
+        self._config.setdefault("ENABLE_UI_ASSERTIONS", "false")
 
         # Python Sandbox defaults
         self._config.setdefault("SANDBOX_TENANT_ID", "")  # No default tenant
@@ -1195,19 +1199,24 @@ class BaseConfigManager:
     def get_api_request_timeout(self) -> float:
         """Get the HTTP request timeout in seconds used by the API tools.
 
-        Reads the ``API_REQUEST_TIMEOUT`` environment/config value. Invalid or
-        non-positive values warn and fall back to the 30-second default.
+        Reads the ``API_REQUEST_TIMEOUT`` environment/config value (default 5,
+        the long-standing behaviour). Invalid or non-positive values warn and
+        fall back to the 5-second default.
         """
-        raw_value = self._config.get("API_REQUEST_TIMEOUT", "30")
+        raw_value = self._config.get("API_REQUEST_TIMEOUT", "5")
         try:
             timeout = float(raw_value)
         except (TypeError, ValueError):
-            logger.warning(f"Invalid API_REQUEST_TIMEOUT {raw_value!r}; falling back to 30 seconds.")
-            return 30.0
+            logger.warning(f"Invalid API_REQUEST_TIMEOUT {raw_value!r}; falling back to 5 seconds.")
+            return 5.0
         if timeout <= 0:
-            logger.warning(f"API_REQUEST_TIMEOUT must be positive, got {raw_value!r}; falling back to 30 seconds.")
-            return 30.0
+            logger.warning(f"API_REQUEST_TIMEOUT must be positive, got {raw_value!r}; falling back to 5 seconds.")
+            return 5.0
         return timeout
+
+    def get_enable_ui_assertions(self) -> bool:
+        """Whether the opt-in ``assert_ui`` / ``capture_ui_value`` tools are registered (default off)."""
+        return str(self._config.get("ENABLE_UI_ASSERTIONS", "false")).strip().lower() in ("1", "true", "yes")
 
     def get_mcp_servers(self) -> dict:
         """Get MCP servers configuration."""

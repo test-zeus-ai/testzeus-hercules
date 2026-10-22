@@ -13,6 +13,7 @@ from testzeus_hercules.core.tools.tool_registry import api_logger as file_logger
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.jsonpath_helper import closest_parent_keys, find_json_path
 from testzeus_hercules.utils.logger import logger
+from testzeus_hercules.utils.path_guard import resolve_in_roots
 from testzeus_hercules.utils.redact import (
     _redact_post_data,
     _redact_sensitive_headers,
@@ -26,8 +27,9 @@ from testzeus_hercules.utils.redact import (
 # turn out bigger are sliced before storage.
 MAX_CAPTURE_BYTES = 1_000_000
 
-# Maximum characters of a response payload returned as the tool result; the
-# payload is truncated (with a marker) before it reaches the agent's context.
+# Maximum characters of a response payload returned as the tool result; an
+# oversized body is truncated (with a marker, the result stays valid JSON)
+# before it reaches the agent's context.
 MAX_RESULT_CHARS = 100_000
 
 # Maximum characters of a request body written to the api log. Response bodies
@@ -40,7 +42,9 @@ MAX_LOG_BODY_CHARS = 64 * 1024
 # ------------------------------------------------------------------------------
 
 # Captured values are scoped per test id, exactly like
-# core/memory/state_handler.py scopes its per-test state.
+# core/memory/state_handler.py scopes its per-test state. The runner resets the
+# scope when a scenario starts (reset_variables) so a re-run, or another
+# scenario with the same title, never sees stale captures.
 _VARIABLES: Dict[str, Dict[str, Any]] = defaultdict(dict)
 
 # ${name} placeholders (the same syntax the agent writes in assertions,
@@ -51,6 +55,11 @@ _PLACEHOLDER_RE = re.compile(r"\$\{([^{}]+)\}")
 def _var_store() -> Dict[str, Any]:
     """Return the variable store of the current test id."""
     return _VARIABLES[get_global_conf().get_default_test_id()]
+
+
+def reset_variables(test_id: Optional[str] = None) -> None:
+    """Drop the captured variables of `test_id` (default: the current test); call at scenario start."""
+    _VARIABLES.pop(test_id if test_id is not None else get_global_conf().get_default_test_id(), None)
 
 
 def set_variable_value(as_name: str, value: Any) -> None:
@@ -250,7 +259,9 @@ def build_multipart_fields(body: Any) -> Dict[str, Any]:
     Text parts pass through `files` with a None filename so httpx selects
     multipart encoding for the whole request (passing them via `data=` would
     silently url-encode it). A value of the form {"file_path": ...} becomes a
-    real file part; bytes become a file part named after the field.
+    real file part (the path must resolve inside the test data / project roots,
+    else PathConfinementError, a ValueError, is raised); bytes become a file
+    part named after the field.
     """
     if not isinstance(body, dict):
         raise TypeError("multipart body must be a mapping of field names to values")
@@ -258,7 +269,9 @@ def build_multipart_fields(body: Any) -> Dict[str, Any]:
     for key, value in body.items():
         field_name = str(key)
         if isinstance(value, dict) and "file_path" in value:
-            file_path = str(value["file_path"])
+            # Model-supplied path: confined to the test data / project roots
+            # (realpath), so an upload cannot be steered at arbitrary files.
+            file_path = resolve_in_roots(str(value["file_path"]))
             filename = str(value.get("filename") or os.path.basename(file_path) or field_name)
             with open(file_path, "rb") as file_handle:
                 content = file_handle.read()
@@ -278,14 +291,43 @@ def build_multipart_fields(body: Any) -> Dict[str, Any]:
 
 def _bounded_payload(result: Dict[str, Any], duration: float) -> str:
     """
-    Serialize a result payload for the tool result: JSON as-is (no quote
-    mangling — replacing '"' with "'" corrupts string values), truncated to
-    MAX_RESULT_CHARS characters, with the call duration folded into the text.
+    Serialize a result payload for the tool result: always one valid JSON
+    document (no quote mangling — replacing '"' with "'" corrupts string
+    values), with the call duration as the `duration_seconds` field.
+
+    A document longer than MAX_RESULT_CHARS is shortened by truncating its
+    largest text field (`body`, else `error_detail`) and flagging
+    `body_truncated`/`error_detail_truncated`, so the result still parses.
     """
+    result = {**result, "duration_seconds": round(duration, 2)}
     payload = json.dumps(result, separators=(",", ":"))
-    if len(payload) > MAX_RESULT_CHARS:
-        payload = payload[:MAX_RESULT_CHARS] + f"...[truncated: response exceeded {MAX_RESULT_CHARS} characters]"
-    return f"{payload} [duration: {duration:.2f}s]"
+    if len(payload) <= MAX_RESULT_CHARS:
+        return payload
+    for key in ("body", "error_detail"):
+        if key not in result:
+            continue
+        value = result[key]
+        text = value if isinstance(value, str) else json.dumps(value, separators=(",", ":"))
+        marker = f"...[truncated: response exceeded {MAX_RESULT_CHARS} characters]"
+        keep = max(MAX_RESULT_CHARS - len(json.dumps({**result, key: marker, f"{key}_truncated": True}, separators=(",", ":"))), 0)
+        while True:
+            shortened = {**result, key: text[:keep] + marker, f"{key}_truncated": True}
+            payload = json.dumps(shortened, separators=(",", ":"))
+            if len(payload) <= MAX_RESULT_CHARS or keep == 0:
+                break
+            keep = max(keep - (len(payload) - MAX_RESULT_CHARS) - 1, 0)
+        if len(payload) <= MAX_RESULT_CHARS:
+            return payload
+    # Nothing to shorten (or still too large): hard fallback that stays valid JSON.
+    return json.dumps(
+        {
+            "status_code": result.get("status_code"),
+            "status_type": result.get("status_type"),
+            "error": f"Result exceeded {MAX_RESULT_CHARS} characters and was dropped.",
+            "duration_seconds": result["duration_seconds"],
+        },
+        separators=(",", ":"),
+    )
 
 
 async def _send_request(
@@ -309,10 +351,10 @@ async def _send_request(
       - "json": Encodes the body as JSON.
       - None: No body is sent.
 
-    Returns the JSON-encoded result payload as a single string, with the call
-    duration folded in as a trailing "[duration: N.NNs]" marker (the executor
+    Returns the JSON-encoded result payload as a single string (the executor
     str()s tool results, so returning a tuple would double-encode it). The
-    payload is capped at MAX_RESULT_CHARS characters.
+    call duration is the `duration_seconds` field of that JSON document, and
+    the document is capped at MAX_RESULT_CHARS characters (see _bounded_payload).
     """
     headers = headers.copy() if headers else {}
     # httpx replaces the URL's own query string with `params`, so the inline
@@ -330,7 +372,7 @@ async def _send_request(
     if body_mode == "multipart" and body is not None:
         try:
             req_kwargs["files"] = build_multipart_fields(body)
-        except (TypeError, OSError) as e:
+        except (TypeError, ValueError, OSError) as e:
             return _bounded_payload({"error": f"Invalid multipart body: {e}", "status_code": None, "status_type": "failure"}, 0.0)
         # The multipart boundary must be the one httpx generates; a
         # caller-supplied Content-Type would carry no boundary and corrupt
@@ -389,7 +431,7 @@ async def _send_request(
         duration = time.perf_counter() - start_time
         logger.error(f"Request timed out after {timeout_seconds:g}s: {type(e).__name__}")
         error_data = {
-            "error": (f"Request timed out after {timeout_seconds:g}s ({type(e).__name__}). " "Raise API_REQUEST_TIMEOUT if this endpoint legitimately needs longer."),
+            "error": (f"Request timed out after {timeout_seconds:g}s ({type(e).__name__}). " "Raise API_REQUEST_TIMEOUT (seconds, default 5) if this endpoint legitimately needs longer."),
             "timeout_seconds": timeout_seconds,
             "status_code": None,
             "status_type": "timeout",
@@ -447,7 +489,7 @@ async def generic_http_api(
         "Body mode: multipart, urlencoded, raw, binary, or json. (Optional)",
     ] = None,
     headers: Annotated[Optional[Dict[str, str]], "Additional HTTP headers."] = None,
-) -> Annotated[str, "Minified JSON response with the call duration folded in as a trailing [duration: N.NNs] marker."]:
+) -> Annotated[str, "Minified JSON response ({status_code, status_type, body, duration_seconds}); the call duration is the duration_seconds field."]:
     # ${name} placeholders captured earlier (extract_from_response) are
     # resolved everywhere; an unknown name is left as-is so the typo shows up
     # in the request instead of raising.
