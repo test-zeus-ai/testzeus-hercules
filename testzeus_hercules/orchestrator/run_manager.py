@@ -17,7 +17,13 @@ Disk hygiene: workspaces of *successful* scenario runs are removed by the
 orchestration entry points once their junit XML has been staged into the merged
 report (see :func:`cleanup_successful_workspaces`); failed runs always keep
 their workspace (opt/output, videos, logs) for debugging. Set
-``HERCULES_KEEP_WORKSPACES=1`` to keep everything.
+``HERCULES_KEEP_WORKSPACES=1`` to keep everything. Whole ``.hercules/parallel_*``
+workroots older than ``HERCULES_RUN_RETENTION_HOURS`` (default 72, never younger
+than 1h) are swept at the start of every run and every monitor cycle.
+
+Verdict: children run with ``STRICT_EXIT_CODE=true`` (``EXIT_CODE_COMPAT`` is
+removed from their env), and a scenario is only ``ok`` when the child exited 0
+*and* its junit XML (when present) reports no failed/errored testcases.
 """
 
 from __future__ import annotations
@@ -159,6 +165,18 @@ def _history_db_for_subprocess() -> str | None:
     return url
 
 
+def _sweep_old_workroots() -> None:
+    """Retention sweep of old ``.hercules/parallel_*`` workroots (failed runs keep theirs)."""
+    try:
+        from testzeus_hercules.orchestrator.scheduler import (  # lazy: scheduler imports this module
+            sweep_old_parallel_workroots,
+        )
+
+        sweep_old_parallel_workroots()
+    except Exception as exc:  # noqa: BLE001 - cleanup must never break a run
+        logger.warning("Retention sweep of old parallel workroots failed: %s", exc)
+
+
 def _default_workroot() -> str:
     """Unique-per-invocation default workroot (same-second runs must not collide)."""
     stamp = time.strftime("%Y%m%d_%H%M%S")
@@ -172,6 +190,17 @@ def _find_junit_xml(workspace: str) -> str | None:
     if not candidates:
         return None
     return max(candidates, key=os.path.getmtime)
+
+
+def _junit_failure_count(junit_xml: str | None) -> int:
+    """Number of failed/errored testcases in a child's junit XML (0 when absent/unparsable)."""
+    if not junit_xml or not os.path.isfile(junit_xml):
+        return 0
+    try:
+        return sum(1 for case in parse_junit_testcases(junit_xml) if case["status"] in ("failed", "error"))
+    except Exception as exc:  # noqa: BLE001 - a corrupt report falls back to the exit code
+        logger.warning("Could not parse junit xml %s: %s", junit_xml, exc)
+        return 0
 
 
 def _stdout_tail(stdout: bytes | str, stderr: bytes | str = b"") -> str:
@@ -227,6 +256,11 @@ async def run_feature_isolated(feature_path: str, workroot: str, env_extra: dict
     history_db = _history_db_for_subprocess()
     if history_db is not None:
         env["HERCULES_HISTORY_DB"] = history_db
+    # The child's exit status is part of the verdict: Hercules exits 0 on test
+    # failures unless STRICT_EXIT_CODE is on, and an inherited EXIT_CODE_COMPAT=1
+    # would force 0 even then. (The junit verdict below is the second line.)
+    env["STRICT_EXIT_CODE"] = "true"
+    env.pop("EXIT_CODE_COMPAT", None)
     for key, value in (env_extra or {}).items():
         key = str(key)
         if key in RESERVED_INJECTED_ENV_VARS:
@@ -278,16 +312,25 @@ async def run_feature_isolated(feature_path: str, workroot: str, env_extra: dict
         error = f"Timed out after {timeout_s:g}s; process killed."
 
     duration = time.monotonic() - start
+    junit_xml = _find_junit_xml(workspace)
+    if error is None and exit_code != 0:
+        error = f"Subprocess exited with code {exit_code}."
+    if error is None:
+        # Exit 0 is not proof of success (e.g. an operator env override
+        # re-enabling EXIT_CODE_COMPAT): trust the child's junit verdict.
+        junit_failures = _junit_failure_count(junit_xml)
+        if junit_failures:
+            error = f"{junit_failures} testcase(s) failed or errored per junit report (subprocess exited 0)."
     result = FeatureResult(
         scenario=scenario,
         feature_path=feature_path,
         workspace=workspace,
-        ok=error is None and exit_code == 0,
+        ok=error is None,
         exit_code=exit_code,
         duration_s=duration,
-        junit_xml=_find_junit_xml(workspace),
+        junit_xml=junit_xml,
         stdout_tail=_stdout_tail(stdout, stderr),
-        error=error if error is not None else (None if exit_code == 0 else f"Subprocess exited with code {exit_code}."),
+        error=error,
     )
     logger.info("Isolated run for %s finished: ok=%s exit_code=%s (%.1fs)", scenario, result.ok, result.exit_code, duration)
     return result
@@ -436,7 +479,7 @@ def _fold_missing_results_into_totals(results: list[FeatureResult], merged: dict
     return totals
 
 
-async def run_feature_file_parallel(feature_file: str, max_parallel: int = 4, out_dir: str | None = None) -> dict:
+async def run_feature_file_parallel(feature_file: str, max_parallel: int = 4, out_dir: str | None = None, timeout_s: float = DEFAULT_TIMEOUT_S) -> dict:
     """Main entry: split a feature file and run its scenarios in parallel.
 
     Splits ``feature_file`` into per-scenario files, runs them through
@@ -447,6 +490,7 @@ async def run_feature_file_parallel(feature_file: str, max_parallel: int = 4, ou
     if not os.path.isfile(feature_file):
         raise FileNotFoundError(f"Feature file not found: {feature_file}")
 
+    _sweep_old_workroots()
     workroot = _default_workroot()
     out_dir = out_dir or os.path.join(workroot, "merged")
     split_dir = os.path.join(workroot, "split")
@@ -466,7 +510,7 @@ async def run_feature_file_parallel(feature_file: str, max_parallel: int = 4, ou
             "error": f"No scenarios found in feature file: {feature_file}",
         }
 
-    results = await run_scenarios_parallel(scenario_items, max_parallel=max_parallel, workroot=workroot)
+    results = await run_scenarios_parallel(scenario_items, max_parallel=max_parallel, workroot=workroot, timeout_s=timeout_s)
 
     os.makedirs(out_dir, exist_ok=True)
     totals = await merge_results_async(results, out_dir)
@@ -516,7 +560,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT_S, help="Per-scenario timeout in seconds (default: 1800).")
     args = parser.parse_args(argv)
 
-    summary = asyncio.run(run_feature_file_parallel(args.feature_file, max_parallel=args.max_parallel, out_dir=args.out_dir))
+    summary = asyncio.run(run_feature_file_parallel(args.feature_file, max_parallel=args.max_parallel, out_dir=args.out_dir, timeout_s=args.timeout))
+    if summary.get("error") and not summary.get("results"):
+        # Nothing ran (e.g. a feature file without scenarios): that is not a
+        # green run, whatever EXIT_CODE_COMPAT says.
+        print(f"Error: {summary['error']}", file=sys.stderr)
+        return 2
 
     for result in summary.get("results", []):
         status = "ok" if result["ok"] else ("error" if result["error"] and result["exit_code"] is None else "FAILED")

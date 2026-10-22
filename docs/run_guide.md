@@ -525,8 +525,11 @@ python -m testzeus_hercules.orchestrator.run_manager \
 
 Options: `--max-parallel` (default 4), `--out-dir` (merged JUnit directory,
 default `<workroot>/merged`), and `--timeout` (per-scenario seconds, default
-1800). The exit code follows the same CI gating as `testzeus-hercules`
-(respect `EXIT_CODE_COMPAT`).
+1800). Each scenario subprocess runs with `STRICT_EXIT_CODE=true` (an
+inherited `EXIT_CODE_COMPAT` is dropped from its env) and only counts as passed
+when it exits 0 *and* its JUnit XML reports no failures/errors. The run manager
+itself exits 1 when any scenario failed or errored (`EXIT_CODE_COMPAT=1` forces
+0), and 2 when the feature file contains no scenarios.
 
 ### Named Suites
 
@@ -584,8 +587,10 @@ Parallel and suite runs manage their scratch space automatically:
   `HERCULES_KEEP_WORKSPACES=1` to keep everything (including the
   compiled-plan tempdirs of plan-only suites) for debugging.
 - **Run retention:** before every monitoring cycle, `hercules-monitor` sweeps
-  `.hercules/suite_runs/` trees older than `HERCULES_RUN_RETENTION_HOURS`
-  hours (default `72`).
+  `.hercules/suite_runs/` trees and `.hercules/parallel_*` run-manager
+  workroots older than `HERCULES_RUN_RETENTION_HOURS` hours (default `72`);
+  the run manager sweeps old `.hercules/parallel_*` workroots at the start of
+  every run too.
 - Run history lives in one shared SQLite DB (`opt/hercules_history.db`,
   override with `HERCULES_HISTORY_DB`), so workspace cleanup never deletes
   recorded runs.

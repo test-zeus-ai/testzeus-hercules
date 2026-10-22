@@ -350,7 +350,7 @@ def _cli_summary(ok: bool, failed: int, errors: int) -> dict:
 
 
 def test_main_cli_exit_codes(workspace, monkeypatch, capsys) -> None:
-    async def _fake(feature_file, max_parallel=4, out_dir=None):
+    async def _fake(feature_file, max_parallel=4, out_dir=None, timeout_s=None):
         return _cli_summary(ok=False, failed=1, errors=0)
 
     monkeypatch.setattr(run_manager_module, "run_feature_file_parallel", _fake)
@@ -363,7 +363,7 @@ def test_main_cli_exit_codes(workspace, monkeypatch, capsys) -> None:
 
 
 def test_main_cli_success_exits_zero(workspace, monkeypatch) -> None:
-    async def _fake(feature_file, max_parallel=4, out_dir=None):
+    async def _fake(feature_file, max_parallel=4, out_dir=None, timeout_s=None):
         return _cli_summary(ok=True, failed=0, errors=0)
 
     monkeypatch.setattr(run_manager_module, "run_feature_file_parallel", _fake)
@@ -373,8 +373,8 @@ def test_main_cli_success_exits_zero(workspace, monkeypatch) -> None:
 def test_main_cli_parses_args(workspace, monkeypatch) -> None:
     captured: dict = {}
 
-    async def _fake(feature_file, max_parallel=4, out_dir=None):
-        captured.update(feature_file=feature_file, max_parallel=max_parallel, out_dir=out_dir)
+    async def _fake(feature_file, max_parallel=4, out_dir=None, timeout_s=None):
+        captured.update(feature_file=feature_file, max_parallel=max_parallel, out_dir=out_dir, timeout_s=timeout_s)
         return _cli_summary(ok=True, failed=0, errors=0)
 
     monkeypatch.setattr(run_manager_module, "run_feature_file_parallel", _fake)
@@ -382,6 +382,61 @@ def test_main_cli_parses_args(workspace, monkeypatch) -> None:
     assert captured["max_parallel"] == 7
     assert captured["out_dir"] == "od"
     assert captured["feature_file"].endswith("some.feature")
+    assert captured["timeout_s"] == 12.0  # --timeout reaches the per-scenario runs
+
+
+def test_run_feature_file_parallel_threads_timeout(workspace, monkeypatch) -> None:
+    seen: list = []
+    real = run_manager_module.run_scenarios_parallel
+
+    async def _spy(items, **kwargs):
+        seen.append(kwargs.get("timeout_s"))
+        return await real(items, **kwargs)
+
+    monkeypatch.setattr(run_manager_module, "run_scenarios_parallel", _spy)
+    monkeypatch.setattr(run_manager_module, "_subprocess_command", lambda ws: _junit_writer_command())
+    asyncio.run(run_feature_file_parallel(_make_feature(workspace), timeout_s=42.0))
+    assert seen == [42.0]
+
+
+def test_main_cli_zero_scenarios_exits_nonzero(workspace, monkeypatch, capsys) -> None:
+    feature = workspace / "empty.feature"
+    feature.write_text("Feature: nothing here\n", encoding="utf-8")
+    monkeypatch.setenv("EXIT_CODE_COMPAT", "1")  # not a test verdict: still an error
+    assert main([str(feature)]) == 2
+    assert "No scenarios found" in capsys.readouterr().err
+
+
+# ── verdict: children exit 0 on failures unless STRICT_EXIT_CODE is on ───────
+
+
+def test_child_env_forces_strict_exit_code_and_drops_compat(workspace, monkeypatch) -> None:
+    monkeypatch.setenv("EXIT_CODE_COMPAT", "1")
+    monkeypatch.delenv("STRICT_EXIT_CODE", raising=False)
+    code = "import os; print('STRICT=' + os.environ.get('STRICT_EXIT_CODE', '-')); print('COMPAT=' + os.environ.get('EXIT_CODE_COMPAT', '-'))"
+    monkeypatch.setattr(run_manager_module, "_subprocess_command", lambda ws: _command(code))
+    result = asyncio.run(run_feature_isolated(_make_feature(workspace), str(workspace / "runs")))
+    assert "STRICT=true" in result.stdout_tail
+    assert "COMPAT=-" in result.stdout_tail
+
+
+def test_failing_junit_with_exit_zero_is_not_ok(workspace, monkeypatch) -> None:
+    # A child that records a failed scenario but exits 0 (legacy exit code).
+    monkeypatch.setattr(run_manager_module, "_subprocess_command", lambda ws: _junit_writer_command(FAILED_JUNIT))
+    result = asyncio.run(run_feature_isolated(_make_feature(workspace), str(workspace / "runs")))
+    assert result.exit_code == 0
+    assert result.ok is False
+    assert "failed or errored per junit" in result.error
+    assert os.path.isdir(result.workspace)
+
+
+def test_failing_junit_with_exit_zero_fails_the_parallel_run(workspace, monkeypatch) -> None:
+    monkeypatch.setattr(run_manager_module, "_subprocess_command", lambda ws: _junit_writer_command(FAILED_JUNIT))
+    summary = asyncio.run(run_feature_file_parallel(_make_feature(workspace, scenarios=2), max_parallel=2))
+    assert summary["failed"] == 2
+    assert all(entry["ok"] is False for entry in summary["results"])
+    # failed workspaces are retained for debugging
+    assert all(entry["junit_xml"] and os.path.isfile(entry["junit_xml"]) for entry in summary["results"])
 
 
 # ── hardening: gather robustness, kill race, cleanup, env injection ──────────

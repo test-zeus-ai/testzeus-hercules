@@ -456,8 +456,8 @@ The server entrypoint uses these variables:
 - `HERCULES_RUN_RETENTION_HOURS`: Retention window for scheduled suite runs
   - Values: Integer number of hours
   - Default: `72`
-  - Usage: `hercules-monitor` sweeps `.hercules/suite_runs/` trees older than this many hours before every cycle; trees younger than 1 hour are never swept regardless of the setting
-  - Implementation: Used in `orchestrator/scheduler.py`
+  - Usage: `hercules-monitor` sweeps `.hercules/suite_runs/` trees and `.hercules/parallel_*` run-manager workroots older than this many hours before every cycle (the run manager also sweeps old `.hercules/parallel_*` workroots before each run); trees younger than 1 hour are never swept regardless of the setting
+  - Implementation: Used in `orchestrator/scheduler.py` and `orchestrator/run_manager.py`
 
 ### Telemetry and Monitoring
 - `ENABLE_TELEMETRY`: Enable usage telemetry
