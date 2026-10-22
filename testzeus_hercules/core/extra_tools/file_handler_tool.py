@@ -47,8 +47,13 @@ def _within(resolved: str, root: str) -> bool:
 def _resolve_in_workspace(file_path: str) -> tuple[str, str]:
     """Resolve ``file_path`` against the allowed roots and enforce the boundary.
 
-    Accepts absolute or relative paths. Relative paths are rooted at the workspace;
-    for reads of an existing file they may also resolve under the test-data directory.
+    Accepts absolute or relative paths. Relative paths keep origin/main's meaning
+    first — relative to the current working directory (so ``opt/output/x.json``
+    is ``./opt/output/x.json``, not ``<root>/opt/output/x.json``) — and fall back
+    to being rooted at the workspace root, then the test-data directory. Like the
+    sandbox resolver (execute_python_sandbox._resolve_file_path) the candidates are
+    tried against the same allowed roots: an existing file wins; otherwise the
+    first candidate that lies inside an allowed root is used for the write.
     Returns ``(candidate, resolved)``: ``candidate`` is the path to open as requested
     (absolute, still containing any final symlink component so O_NOFOLLOW can refuse it
     on write) and ``resolved`` is the fully symlink-resolved path used for the boundary
@@ -56,20 +61,34 @@ def _resolve_in_workspace(file_path: str) -> tuple[str, str]:
     traversal and symlinks that point outside).
     """
     roots = _allowed_roots()
+
+    def _confined(path: str) -> bool:
+        return any(_within(os.path.realpath(path), root) for root in roots)
+
     if os.path.isabs(file_path):
-        candidate = file_path
+        candidates = [file_path]
     else:
-        candidate = os.path.join(roots[0], file_path)
-        if not os.path.exists(candidate):
-            for root in roots[1:]:
-                alternative = os.path.join(root, file_path)
-                if os.path.exists(alternative):
-                    candidate = alternative
-                    break
-    resolved = os.path.realpath(candidate)
-    if not any(_within(resolved, root) for root in roots):
-        raise ValueError(_FILE_TOOLS_BOUNDARY_ERROR.format(path=file_path, resolved=resolved, roots=", ".join(f"'{root}'" for root in roots)))
-    return candidate, resolved
+        # cwd-relative (origin/main behaviour), then rooted at the workspace root.
+        candidates = [os.path.abspath(file_path), os.path.join(roots[0], file_path)]
+        # The test-data directory only serves reads of files that already exist
+        # there; it never becomes a silent write target for an escaping path.
+        candidates += [os.path.join(root, file_path) for root in roots[1:] if os.path.exists(os.path.join(root, file_path))]
+
+    confined = [(c, os.path.realpath(c)) for c in candidates if _confined(c)]
+    for candidate, resolved in confined:
+        if os.path.lexists(candidate):
+            return candidate, resolved
+    if confined:
+        return confined[0]
+    resolved = os.path.realpath(candidates[1] if len(candidates) > 1 else candidates[0])
+    raise ValueError(_FILE_TOOLS_BOUNDARY_ERROR.format(path=file_path, resolved=resolved, roots=", ".join(f"'{root}'" for root in roots)))
+
+
+def _display_path(candidate: str) -> str:
+    """Path to report back: relative to the cwd when it lives under it, else absolute."""
+    cwd = os.getcwd()
+    absolute = os.path.abspath(candidate)
+    return os.path.relpath(absolute, cwd) if _within(absolute, cwd) else absolute
 
 
 def _safe_write(file_path: str, mode: str, writer: Callable) -> None:
@@ -123,8 +142,10 @@ def persist_findings(
 ) -> Annotated[str, "A success message or an error message if the operation fails."]:
     """Write ``data`` to ``file_path`` inside the workspace root.
 
-    The path is resolved against the workspace root (PROJECT_SOURCE_ROOT) and
-    rejected if it escapes it. Symlinked write targets are refused on POSIX.
+    Relative paths resolve against the cwd first, then the workspace root
+    (PROJECT_SOURCE_ROOT); the result must stay inside the workspace root or the
+    test-data directory. Symlinked write targets are refused on POSIX. The
+    success message names the resolved path.
     """
     ext = os.path.splitext(file_path)[1].lower()
     try:
@@ -156,7 +177,7 @@ def persist_findings(
             _safe_write(candidate, "w", lambda f: f.write(data))
         else:
             raise ValueError(f"Unsupported file extension: {ext}")
-        return f"Successfully wrote data to {file_path}"
+        return f"Successfully wrote data to {_display_path(candidate)}"
     except Exception as e:
 
         traceback.print_exc()
@@ -185,8 +206,9 @@ def recall_findings(
 ]:
     """Read ``file_path`` inside the workspace root.
 
-    The path is resolved against the workspace root (PROJECT_SOURCE_ROOT) and
-    rejected if it escapes it (including symlinks that point outside).
+    Relative paths resolve against the cwd first, then the workspace root
+    (PROJECT_SOURCE_ROOT), then the test-data directory; the result must stay
+    inside those roots (including symlinks that point outside).
     """
     ext = os.path.splitext(file_path)[1].lower()
     try:
@@ -233,15 +255,17 @@ def augment_findings(
 ) -> Annotated[str, "A success message or an error message if the operation fails."]:
     """Append ``data`` to ``file_path`` inside the workspace root.
 
-    The path is resolved against the workspace root (PROJECT_SOURCE_ROOT) and
-    rejected if it escapes it. Symlinked write targets are refused on POSIX.
+    Relative paths resolve against the cwd first, then the workspace root
+    (PROJECT_SOURCE_ROOT); the result must stay inside the workspace root or the
+    test-data directory. Symlinked write targets are refused on POSIX. The
+    success message names the resolved path.
     """
     ext = os.path.splitext(file_path)[1].lower()
     try:
         candidate, target = _resolve_in_workspace(file_path)
         if not os.path.exists(target):
             # File does not exist; simply write the file.
-            return persist_findings(file_path, data)
+            return persist_findings(candidate, data)
 
         if ext == ".json":
             with open(target, "r", encoding="utf-8") as f:
@@ -312,7 +336,7 @@ def augment_findings(
         else:
             raise ValueError(f"Unsupported file extension: {ext}")
 
-        return f"Successfully appended data to {file_path}"
+        return f"Successfully appended data to {_display_path(candidate)}"
     except Exception as e:
 
         traceback.print_exc()

@@ -44,7 +44,8 @@ def workspace(tmp_path):
 
 def test_relative_path_write_read_roundtrip(workspace) -> None:
     result = persist_findings("findings/results.json", '{"answer": 42}')
-    assert result == "Successfully wrote data to findings/results.json"
+    # cwd is outside the workspace here, so the path falls back to being root-relative
+    assert result == f"Successfully wrote data to {workspace / 'findings' / 'results.json'}"
     assert json.loads((workspace / "findings" / "results.json").read_text(encoding="utf-8")) == {"answer": 42}
     assert recall_findings("findings/results.json") == {"answer": 42}
 
@@ -57,12 +58,12 @@ def test_absolute_path_inside_workspace_write_read_roundtrip(workspace) -> None:
 
 def test_augment_inside_workspace_appends_and_merges(workspace) -> None:
     # first augment on a missing file delegates to persist (create)
-    assert augment_findings("notes.log", "one") == "Successfully wrote data to notes.log"
-    assert augment_findings("notes.log", "two") == "Successfully appended data to notes.log"
+    assert augment_findings("notes.log", "one") == f"Successfully wrote data to {workspace / 'notes.log'}"
+    assert augment_findings("notes.log", "two") == f"Successfully appended data to {workspace / 'notes.log'}"
     assert (workspace / "notes.log").read_text(encoding="utf-8") == "onetwo"
 
-    assert augment_findings("data.json", '{"a": 1}') == "Successfully wrote data to data.json"
-    assert augment_findings("data.json", '{"b": 2}') == "Successfully appended data to data.json"
+    assert augment_findings("data.json", '{"a": 1}') == f"Successfully wrote data to {workspace / 'data.json'}"
+    assert augment_findings("data.json", '{"b": 2}') == f"Successfully appended data to {workspace / 'data.json'}"
     assert json.loads((workspace / "data.json").read_text(encoding="utf-8")) == {"a": 1, "b": 2}
 
 
@@ -203,3 +204,46 @@ def test_external_test_data_does_not_open_other_directories(workspace_with_exter
     result = persist_findings(str(other / "x.txt"), "no")
     assert result.startswith("Error writing file:") and "outside the workspace root" in result
     assert not (other / "x.txt").exists()
+
+
+# ── relative paths keep origin/main's cwd-relative meaning ────────────────────
+
+
+@pytest.fixture()
+def default_layout(tmp_path, monkeypatch):
+    """The default layout: cwd is the project, PROJECT_SOURCE_ROOT is ./opt."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "opt" / "test_data").mkdir(parents=True)
+    os.environ["IS_TEST_ENV"] = "true"
+    SingletonConfigManager.reset_instance()
+    try:
+        set_global_conf(
+            {"PROJECT_SOURCE_ROOT": "opt", "TEST_DATA_PATH": "opt/test_data", "LLM_MODEL_NAME": "test-model", "LLM_MODEL_API_KEY": "test-key"},
+            ignore_env=True,
+        )
+        yield tmp_path
+    finally:
+        SingletonConfigManager.reset_instance()
+
+
+def test_cwd_relative_path_is_not_doubled_under_the_root(default_layout) -> None:
+    result = persist_findings("opt/output/x.json", '{"a": 1}')
+    assert result == f"Successfully wrote data to {os.path.join('opt', 'output', 'x.json')}"
+    assert (default_layout / "opt" / "output" / "x.json").exists()
+    assert not (default_layout / "opt" / "opt").exists()
+    assert recall_findings("opt/output/x.json") == {"a": 1}
+
+
+def test_cwd_relative_recall_of_test_data(default_layout) -> None:
+    (default_layout / "opt" / "test_data" / "x.json").write_text('{"td": 1}', encoding="utf-8")
+    assert recall_findings("opt/test_data/x.json") == {"td": 1}
+    # root-relative spelling still works as a fallback
+    assert recall_findings("test_data/x.json") == {"td": 1}
+
+
+def test_cwd_relative_outside_roots_falls_back_to_root(default_layout) -> None:
+    # ./notes.txt is outside ./opt, so it is rooted at the workspace instead of escaping it
+    result = persist_findings("notes.txt", "hi")
+    assert result == f"Successfully wrote data to {os.path.join('opt', 'notes.txt')}"
+    assert (default_layout / "opt" / "notes.txt").read_text(encoding="utf-8") == "hi"
+    assert not (default_layout / "notes.txt").exists()
