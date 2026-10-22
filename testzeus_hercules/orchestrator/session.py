@@ -61,6 +61,9 @@ class SessionState:
     standard_prd_path: str = ""
     test_plan_path: str = ""
     plan_approved: bool = False  # LLM/PRD-derived plans must be explicitly approved before execution
+    # SHA-256 of the plan file at approval time. Approval only counts while the plan still hashes to this
+    # value; sessions persisted without it (older versions) are therefore treated as not approved.
+    plan_approved_sha256: str = ""
     last_run_summaries: list = field(default_factory=list)
     app_url_reachable: bool | None = None
 
@@ -98,6 +101,7 @@ class SessionState:
             "standard_prd_path": self.standard_prd_path,
             "test_plan_path": self.test_plan_path,
             "plan_approved": self.plan_approved,
+            "plan_approved_sha256": self.plan_approved_sha256,
             "last_run_summaries": list(self.last_run_summaries)[-MAX_RUN_SUMMARIES:],
             "app_url_reachable": self.app_url_reachable,
         }

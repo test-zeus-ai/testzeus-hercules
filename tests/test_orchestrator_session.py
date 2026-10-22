@@ -474,3 +474,13 @@ def test_prd_and_plan_models_serialize() -> None:
     )
     assert prd.requirements[0].id == "REQ-001"
     assert make_plan().test_cases[0].id == "TC001"
+
+
+def test_plan_approval_hash_roundtrips_and_defaults_empty(workspace) -> None:
+    from testzeus_hercules.orchestrator.session import SessionState
+
+    state = SessionState(session_id="s1", app_url="https://app.example.com", plan_approved=True, plan_approved_sha256="ab" * 32)
+    assert SessionState.from_dict(state.to_dict()).plan_approved_sha256 == "ab" * 32
+    legacy = state.to_dict()
+    del legacy["plan_approved_sha256"]
+    assert SessionState.from_dict(legacy).plan_approved_sha256 == ""

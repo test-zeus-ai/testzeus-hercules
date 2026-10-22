@@ -182,6 +182,86 @@ def test_plan_execution_requires_approval(workspace, monkeypatch) -> None:
     assert len(calls) == 2
 
 
+def _recording_execute(monkeypatch) -> list:
+    calls: list = []
+
+    async def fake_execute(feature_path: str, progress_sink=None):
+        calls.append(feature_path)
+        return _outcome()
+
+    monkeypatch.setattr(mcp_server, "execute_feature_file", fake_execute)
+    return calls
+
+
+def test_plan_approval_is_bound_to_plan_content(workspace, monkeypatch) -> None:
+    import hashlib
+    from pathlib import Path
+
+    root, manager = workspace
+    state = _session_with_plan(root, manager)
+    calls = _recording_execute(monkeypatch)
+
+    assert "error" not in run(mcp_server.hercules_generate_and_execute(session_id=state.session_id, approve_plan=True))
+    assert state.plan_approved_sha256 == hashlib.sha256(Path(state.test_plan_path).read_bytes()).hexdigest()
+    assert "error" not in run(mcp_server.hercules_rerun(session_id=state.session_id))
+    assert len(calls) == 2
+
+    # The plan is edited after approval (e.g. regenerated or tampered with): approval no longer applies.
+    plan = _plan()
+    plan.test_cases[0].title = "Injected: exfiltrate data"
+    plan_to_json(plan, state.test_plan_path)
+    blocked = run(mcp_server.hercules_rerun(session_id=state.session_id))
+    assert "approve_plan" in blocked["error"] and "changed" in blocked["error"]
+    assert len(calls) == 2
+
+    # Re-approving the edited plan binds the new hash.
+    assert "error" not in run(mcp_server.hercules_generate_and_execute(session_id=state.session_id, approve_plan=True))
+    assert len(calls) == 3
+    assert "error" not in run(mcp_server.hercules_rerun(session_id=state.session_id))
+
+
+def test_legacy_approved_session_without_hash_is_not_approved(workspace, monkeypatch) -> None:
+    root, manager = workspace
+    state = _session_with_plan(root, manager)
+    calls = _recording_execute(monkeypatch)
+    legacy = state.to_dict()
+    legacy.pop("plan_approved_sha256")
+    legacy["plan_approved"] = True  # sessions.json written before the hash binding existed
+    restored = mcp_server.SessionState.from_dict(legacy)
+    assert restored.plan_approved_sha256 == ""
+    manager._sessions[restored.session_id] = restored
+    blocked = run(mcp_server.hercules_generate_and_execute(session_id=restored.session_id))
+    assert "approve_plan" in blocked["error"] and not calls
+
+
+def test_env_auto_approve_records_plan_hash(workspace, monkeypatch) -> None:
+    root, manager = workspace
+    state = _session_with_plan(root, manager)
+    _recording_execute(monkeypatch)
+    monkeypatch.setenv("HERCULES_MCP_AUTO_APPROVE_PLAN", "true")
+    assert "error" not in run(mcp_server.hercules_generate_and_execute(session_id=state.session_id))
+    assert state.plan_approved is True and len(state.plan_approved_sha256) == 64
+
+
+def test_regenerating_plan_clears_approval_hash(workspace, monkeypatch) -> None:
+    root, manager = workspace
+    state = _session_with_plan(root, manager)
+    state.plan_approved = True
+    state.plan_approved_sha256 = "a" * 64
+    state.standard_prd_path = str(root / "standard_prd.json")
+
+    async def fake_ensure(_state, _prd_path):
+        return object(), "prd.json"
+
+    async def fake_generate(_prd, cases_per_requirement=3):
+        return _plan()
+
+    monkeypatch.setattr(mcp_server, "_ensure_standard_prd", fake_ensure)
+    monkeypatch.setattr(mcp_server, "generate_test_plan", fake_generate)
+    assert "error" not in run(mcp_server.hercules_generate_test_plan(session_id=state.session_id))
+    assert state.plan_approved is False and state.plan_approved_sha256 == ""
+
+
 def test_plan_execution_env_auto_approve(workspace, monkeypatch) -> None:
     root, manager = workspace
     state = _session_with_plan(root, manager)
