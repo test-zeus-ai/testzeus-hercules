@@ -1247,6 +1247,7 @@ class BaseConfigManager:
         """Get MCP connection timeout in seconds."""
         return int(self._config.get("MCP_TIMEOUT", "30"))
 
+    # No caller in this layer yet: the API verification layer consumes it.
     def get_api_request_timeout(self) -> float:
         """Get the HTTP request timeout in seconds used by the API tools.
 

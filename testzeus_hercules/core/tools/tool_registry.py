@@ -127,6 +127,7 @@ def sec_logger(logging_string: str) -> None:
         file.write(logging_string + "\n")
 
 
+# Used by the observer invariants here; the tool-side producers arrive in the API verification layer.
 def assertion_logger(logging_string: str) -> None:
     """
     Append one line to the assertion audit ledger (proofs/assertion_logs.log).
