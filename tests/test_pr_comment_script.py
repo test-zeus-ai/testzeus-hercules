@@ -150,3 +150,10 @@ def test_example_workflow_and_readme_harden_checkout_and_mention_pinning() -> No
     readme = (root / "actions" / "run-tests" / "README.md").read_text(encoding="utf-8")
     assert "persist-credentials: false" in readme
     assert "commit SHAs" in readme and "github-actions[bot]" in readme
+
+
+def test_failure_note_matches_failure_details_setting(tmp_path) -> None:
+    assert "they are not posted here" in _run(tmp_path)
+    detailed = _run(tmp_path, INCLUDE_FAILURE_DETAILS="true")
+    assert "they are not posted here" not in detailed
+    assert "redacted and truncated" in detailed
