@@ -102,7 +102,9 @@ IOS_HARDWARE_BUTTONS = {
 # Close, which must never be tapped as "back"; those screens fall through to
 # the left-edge swipe instead.
 IOS_BACK_BUTTON_CLASS_CHAIN = (
-    "**/XCUIElementTypeNavigationBar/XCUIElementTypeButton" '[`(name == "Back" OR label == "Back" OR name CONTAINS "Back" OR name CONTAINS "back")' ' AND NOT (label IN {"Edit", "Cancel", "Close"})`]'
+    "**/XCUIElementTypeNavigationBar/XCUIElementTypeButton"
+    '[`(name ==[c] "back" OR label ==[c] "back" OR name BEGINSWITH[c] "back" OR name ENDSWITH[c] "backbutton" OR name ENDSWITH[c] "back_button")'
+    ' AND NOT (label IN {"Edit", "Cancel", "Close"})`]'
 )
 _IOS_CLASS_CHAIN_LOCATOR = "-ios class chain"
 

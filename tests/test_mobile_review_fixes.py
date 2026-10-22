@@ -306,8 +306,10 @@ def test_appium_capabilities_unparseable_literal_degrades_to_empty(monkeypatch) 
 def test_ios_back_class_chain_targets_back_buttons_only() -> None:
     chain = am.IOS_BACK_BUTTON_CLASS_CHAIN
     assert "XCUIElementTypeButton[1]" not in chain  # never "whatever the first button is"
-    assert 'name == "Back"' in chain and 'label == "Back"' in chain
-    assert 'name CONTAINS "Back"' in chain and 'name CONTAINS "back"' in chain
+    assert 'name ==[c] "back"' in chain and 'label ==[c] "back"' in chain
+    assert 'name BEGINSWITH[c] "back"' in chain and 'name ENDSWITH[c] "backbutton"' in chain
+    # no substring match: a nav-bar button such as "Feedback" must not count as a back button
+    assert "CONTAINS" not in chain
     assert 'NOT (label IN {"Edit", "Cancel", "Close"})' in chain
 
 
