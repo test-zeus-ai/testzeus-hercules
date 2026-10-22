@@ -42,6 +42,7 @@ import time
 import weakref
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 import httpx
@@ -326,11 +327,25 @@ mcp = FastMCP(
 
 
 async def _check_app_url(url: str, timeout: float = 5.0) -> bool | None:
-    """Best-effort reachability probe; True/False, or None when not checkable."""
-    if not url or not str(url).startswith(("http://", "https://")):
+    """Best-effort reachability probe; True/False, or None when not checkable.
+
+    The app under test is normally on localhost/a private network, so the SSRF guard
+    (public hosts only) cannot be applied here. Instead the probe is kept inert: only
+    http/https URLs with a host are probed, redirects are NOT followed (a redirect answer
+    < 500 already means "up", and following it would let a hostile app URL steer the probe
+    to arbitrary internal hosts), and only a boolean is returned, never any response data.
+    """
+    if not url:
         return None
     try:
-        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+        parts = urlsplit(str(url))
+        hostname = parts.hostname
+    except ValueError:
+        return None
+    if parts.scheme not in ("http", "https") or not hostname:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
             for method in (client.head, client.get):
                 try:
                     response = await method(url)

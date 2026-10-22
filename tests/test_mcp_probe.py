@@ -5,7 +5,8 @@ probe against a local threading HTTPServer (no patching):
   - 200 and 404 answers count as "up" (status_code < 500 logic);
   - a server rejecting HEAD but answering GET still counts as up (fallback);
   - non-http(s) schemes return None per the current contract;
-  - a refused connection returns False.
+  - a refused connection returns False;
+  - redirects are never followed (the probe stays inert).
 
 Deliberately asserts only public truthiness — not TLS/timeout internals.
 """
@@ -94,3 +95,65 @@ def test_probe_connection_refused_is_false() -> None:
         sock.bind(("127.0.0.1", 0))
         refused_port = sock.getsockname()[1]
     assert _probe(f"http://127.0.0.1:{refused_port}/") is False
+
+
+def test_probe_does_not_follow_redirects() -> None:
+    hits: list[str] = []
+
+    class _Target(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_GET(self) -> None:
+            hits.append("get")
+            self.send_response(200)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+        do_HEAD = do_GET
+
+    with _http_server(_Target) as target_url:
+
+        class _Redirector(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def do_GET(self) -> None:
+                self.send_response(302)
+                self.send_header("Location", target_url)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+
+            do_HEAD = do_GET
+
+        with _http_server(_Redirector) as redirect_url:
+            assert _probe(redirect_url) is True  # the 302 itself means "up"
+    assert hits == []  # ...and the redirect target was never contacted
+
+
+def test_probe_redirect_to_failing_target_is_not_followed_into_false() -> None:
+    # A 302 pointing at a dead port still reports the app (the redirector) as up.
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        dead_port = sock.getsockname()[1]
+
+    class _Redirector(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_GET(self) -> None:
+            self.send_response(302)
+            self.send_header("Location", f"http://127.0.0.1:{dead_port}/")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+        do_HEAD = do_GET
+
+    with _http_server(_Redirector) as url:
+        assert _probe(url) is True
+
+
+def test_probe_hostless_or_malformed_url_returns_none() -> None:
+    assert _probe("http:///no-host") is None
+    assert _probe("http://[::1") is None
+    assert _probe("file:///etc/passwd") is None
