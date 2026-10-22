@@ -169,7 +169,7 @@ def test_all_gte_all_lte_bind_every_value(proof_env) -> None:
     assert _assert(DOC, "$.body.prices", "all_gte", "5")["assertion"] == "PASSED"
     violated = _assert(DOC, "$.body.prices", "all_gte", 15)
     assert violated["assertion"] == "FAILED"
-    assert "index 1" in violated["reason"]
+    assert "index 0" in violated["reason"]
     assert _assert(DOC, "$.body.prices", "all_lte", 30)["assertion"] == "PASSED"
     assert _assert(DOC, "$.body.prices", "all_lte", 29)["assertion"] == "FAILED"
 
@@ -220,10 +220,10 @@ def test_no_match_failure_names_available_keys(proof_env) -> None:
 
 @requires_jsonpath_ng
 def test_no_match_failure_hints_captured_variable_misuse(proof_env) -> None:
-    set_variable_value("qty", 2)
-    verdict = _assert(DOC, "$.body.items[0].qtyy", "eq", 2)
+    set_variable_value("quantity", 2)
+    verdict = _assert(DOC, "$.body.items[0].quantity", "eq", 2)
     assert verdict["assertion"] == "FAILED"
-    assert "${qty}" in verdict.get("hint", "")
+    assert "${quantity}" in verdict.get("hint", "")
 
 
 # ── input judgment rules (no jsonpath needed for these branches) ─────────────

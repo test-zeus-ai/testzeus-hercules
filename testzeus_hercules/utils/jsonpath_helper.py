@@ -57,12 +57,18 @@ def closest_parent_keys(doc: Any, path: str) -> Optional[dict]:
     while getattr(node, "left", None) is not None:
         node = node.left
         candidates.append(node)
-    for candidate in candidates:
+    for position, candidate in enumerate(candidates):
+        # The bare root is only a meaningful "closest parent" when it is the
+        # immediate parent; if even the first segment fails to resolve, nothing
+        # of the path resolves (documented None).
+        if position > 0 and position == len(candidates) - 1 and str(candidate) == "$":
+            continue
         matches = candidate.find(doc)
         if not matches:
             continue
         value = matches[0].value
-        location = str(candidate)
+        # jsonpath_ng renders an index segment as ".[0]"; normalize to "[0]".
+        location = str(candidate).replace(".[", "[")
         if not location.startswith("$"):
             location = f"$.{location}" if location else "$"
         if isinstance(value, dict):
