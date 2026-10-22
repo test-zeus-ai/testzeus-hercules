@@ -301,6 +301,7 @@ def test_runner_start_terminates_even_when_exit_path_fails(monkeypatch) -> None:
 
 
 def test_scenario_loop_isolates_crashing_scenario(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("ENABLE_RUN_REPORTING", "true")
     calls = {"clean_up": 0}
 
     class _ExplodingRunner:
@@ -346,6 +347,7 @@ def test_scenario_loop_isolates_crashing_scenario(monkeypatch, tmp_path) -> None
 
 
 def test_scenario_loop_completes_all_scenarios_when_planner_llm_crashes(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("ENABLE_RUN_REPORTING", "true")
     created: list[SingleCommandInputRunner] = []
 
     class _CrashingPlannerRunner(SingleCommandInputRunner):

@@ -209,23 +209,47 @@ def test_llm_temperature_cli_does_not_clear_agents_config(monkeypatch: pytest.Mo
     assert cfg["LLM_MODEL_TEMPERATURE"] == "0.2"
 
 
-# --- _should_parse_cli_args allowlist regression (config.py:23-31) -----------
-# Subcommand CLIs (dashboard etc.) own their argparse flags; the shared base
-# config must not eagerly parse sys.argv there. argv0 "hercules-dashboard" with
-# ["--port", "8000"] must not reach _parse_arguments: "--port" is ambiguous
-# with "--portkey-*" in the base parser, so an eager parse would SystemExit(2).
+# --- _should_parse_cli_args: parse unless explicitly disabled -----------------
+# Subcommand CLIs (dashboard etc.) own their argparse flags and are skipped by
+# name; every other entrypoint parses the shared flags. ``--port`` from another
+# CLI must never trip over the ambiguous ``--portkey-*`` prefix.
 
 
 def test_dashboard_argv0_with_port_arg_does_not_parse_cli_args(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("EXECUTE_BULK", raising=False)
 
-    # Module-level set_global_conf() runs during _load_config_module under the
-    # test argv; if the allowlist regressed, this call would raise SystemExit on
-    # the ambiguous --port before returning.
-    module = _load_config_module(["hercules-dashboard", "--port", "8000"])
+    module = _load_config_module(["hercules-dashboard", "--port", "8000", "--bulk"])
 
     cfg = module.get_global_conf().get_config()
     assert cfg["EXECUTE_BULK"] == "false"  # base config did not swallow subcommand flags
+
+
+def test_unknown_entrypoint_still_parses_cli_args(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("EXECUTE_BULK", raising=False)
+
+    # A custom wrapper script / other entrypoint used to be silently ignored.
+    module = _load_config_module(["/usr/local/bin/my-wrapper", "--bulk"])
+
+    assert module.get_global_conf().get_config()["EXECUTE_BULK"] == "true"
+
+
+def test_unknown_entrypoint_ignores_ambiguous_foreign_port_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("EXECUTE_BULK", raising=False)
+
+    # "--port" is an ambiguous prefix of the --portkey-* flags; for non-legacy
+    # entrypoints abbreviations are off so it is ignored instead of SystemExit(2).
+    module = _load_config_module(["my-wrapper", "--port", "8000", "--bulk"])
+
+    assert module.get_global_conf().get_config()["EXECUTE_BULK"] == "true"
+
+
+def test_cli_parse_can_be_explicitly_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("EXECUTE_BULK", raising=False)
+    monkeypatch.setenv("HERCULES_DISABLE_CLI_PARSE", "true")
+
+    module = _load_config_module(["testzeus-hercules", "--bulk"])
+
+    assert module.get_global_conf().get_config()["EXECUTE_BULK"] == "false"
 
 
 def test_main_py_argv0_parses_cli_args(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -246,7 +270,8 @@ def test_console_script_argv0_parses_cli_args(monkeypatch: pytest.MonkeyPatch) -
     assert module.get_global_conf().get_config()["EXECUTE_BULK"] == "true"
 
 
-def test_should_parse_cli_args_matches_basename_case_insensitively(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_should_parse_cli_args_decision_by_basename(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("HERCULES_DISABLE_CLI_PARSE", raising=False)
     module = _load_config_module(["testzeus-hercules"])
 
     monkeypatch.setattr(sys, "argv", ["/opt/venv/bin/hercules-dashboard", "--port", "8000"])
@@ -258,18 +283,27 @@ def test_should_parse_cli_args_matches_basename_case_insensitively(monkeypatch: 
     monkeypatch.setattr(sys, "argv", ["__MAIN__.PY"])
     assert module._should_parse_cli_args() is True
 
-    monkeypatch.setattr(sys, "argv", ["/opt/venv/bin/hercules-suite"])
-    assert module._should_parse_cli_args() is False
+    monkeypatch.setattr(sys, "argv", ["/opt/venv/bin/something-else"])
+    assert module._should_parse_cli_args() is True
 
 
-# --- Dict > Env priority regression (BaseConfigManager.__init__) -------------
-# Environment values form the base layer; keys explicitly passed in config_dict
-# must win (documented priority: Dict > Env). Previously _merge_from_env()
-# overwrote caller-provided keys, silently discarding e.g. per-folder
-# INPUT_GHERKIN_FILE_PATH overrides in bulk mode.
+# --- Env vs Dict priority (BaseConfigManager.__init__) ------------------------
+# Legacy default: the environment wins over an explicitly passed config dict.
+# CONFIG_DICT_OVERRIDES_ENV=true opts into Dict > Env.
 
 
-def test_config_dict_beats_env_for_same_key(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_env_beats_config_dict_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("CONFIG_DICT_OVERRIDES_ENV", raising=False)
+    monkeypatch.setenv("INPUT_GHERKIN_FILE_PATH", "/from/env.feature")
+    module = _load_config_module(["testzeus-hercules"])
+
+    cfg = module.NonSingletonConfigManager({"INPUT_GHERKIN_FILE_PATH": "/from/dict.feature"}).get_config()
+
+    assert cfg["INPUT_GHERKIN_FILE_PATH"] == "/from/env.feature"
+
+
+def test_config_dict_beats_env_when_opted_in(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CONFIG_DICT_OVERRIDES_ENV", "true")
     monkeypatch.setenv("INPUT_GHERKIN_FILE_PATH", "/from/env.feature")
     module = _load_config_module(["testzeus-hercules"])
 
@@ -296,7 +330,8 @@ def test_default_used_when_env_and_dict_absent(monkeypatch: pytest.MonkeyPatch) 
     assert cfg["INPUT_GHERKIN_FILE_PATH"] == os.path.join("./opt", "input", "test.feature")
 
 
-def test_set_global_conf_override_dict_beats_env(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_set_global_conf_override_dict_beats_env_when_opted_in(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CONFIG_DICT_OVERRIDES_ENV", "true")
     monkeypatch.setenv("INPUT_GHERKIN_FILE_PATH", "/from/env.feature")
     module = _load_config_module(["testzeus-hercules"])
 
@@ -354,3 +389,26 @@ def test_get_config_version_returns_current_value_after_bump() -> None:
 
     assert bumped == before + 1
     assert module.get_config_version() == bumped
+
+
+# --- per-run explicit overrides (guided / bulk) must beat the environment -----
+
+
+def test_apply_explicit_overrides_scopes_dict_over_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    import testzeus_hercules.__main__ as main_module
+
+    monkeypatch.delenv("CONFIG_DICT_OVERRIDES_ENV", raising=False)
+    seen: dict[str, Any] = {}
+
+    def fake_set_global_conf(keys: dict, override: bool = False, **_kw: Any) -> None:
+        seen["keys"] = keys
+        seen["override"] = override
+        seen["flag_during_call"] = os.environ.get("CONFIG_DICT_OVERRIDES_ENV")
+
+    monkeypatch.setattr(main_module, "set_global_conf", fake_set_global_conf)
+
+    main_module._apply_explicit_overrides({"INPUT_GHERKIN_FILE_PATH": "/x.feature"})
+
+    assert seen == {"keys": {"INPUT_GHERKIN_FILE_PATH": "/x.feature"}, "override": True, "flag_during_call": "true"}
+    # The global opt-in is restored afterwards: legacy precedence stays the default.
+    assert "CONFIG_DICT_OVERRIDES_ENV" not in os.environ
