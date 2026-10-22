@@ -1,3 +1,4 @@
+import importlib.util
 import json
 import os
 import time
@@ -320,12 +321,14 @@ class BrowserLogger:
             if aria:
                 selectors["aria"] = aria
 
-            if selectors:
+            if selectors and self._selector_store_available():
                 # Best-effort: remember the working selectors in the persistent
                 # selector store, keyed by a canonical element name derived from
                 # the element attributes (so later runs can heal lookup failures).
+                # Skipped before any extra CDP round-trip when the optional
+                # healing package is not installed.
                 try:
-                    attributes = await self.get_element_attributes(element)
+                    attributes = await self.get_element_attributes(element, quiet=True)
                     canonical_name = self._canonical_name_from_attributes(attributes)
                     if canonical_name:
                         self._record_selectors(canonical_name, selectors)
@@ -339,8 +342,12 @@ class BrowserLogger:
             logger.error(f"Failed to generate alternative selectors: {e}", exc_info=True)
             return {}
 
-    async def get_element_attributes(self, element: Any) -> Dict[str, str]:
-        """Get relevant attributes from an element."""
+    async def get_element_attributes(self, element: Any, quiet: bool = False) -> Dict[str, str]:
+        """Get relevant attributes from an element.
+
+        ``quiet`` logs a failure (e.g. a detached element) at debug level, for
+        best-effort callers such as the selector-recording hook.
+        """
         try:
             attributes = {}
 
@@ -358,8 +365,19 @@ class BrowserLogger:
             return attributes
         except Exception as e:
 
-            logger.error(f"Failed to get element attributes: {e}", exc_info=True)
+            if quiet:
+                logger.debug(f"Could not read element attributes: {e}")
+            else:
+                logger.error(f"Failed to get element attributes: {e}", exc_info=True)
             return {}
+
+    @staticmethod
+    def _selector_store_available() -> bool:
+        """Return True when the optional healing selector store can be imported."""
+        try:
+            return importlib.util.find_spec("testzeus_hercules.healing.selector_store") is not None
+        except (ImportError, ValueError):
+            return False
 
     @staticmethod
     def _canonical_name_from_attributes(attributes: Optional[Dict[str, str]]) -> Optional[str]:

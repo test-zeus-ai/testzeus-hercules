@@ -67,3 +67,51 @@ def test_validation_and_prompt_paths_do_not_import_mobile_modules() -> None:
     SimpleHercules._validate_planner_decision({"terminate": "no", "next_step": "click", "target_helper": "browser"})
     after = {name for name in sys.modules if name.startswith("appium")}
     assert after == before, "the optional Appium client must not be imported by default"
+
+
+def test_selector_recording_hook_makes_no_cdp_calls_without_healing_package(monkeypatch: pytest.MonkeyPatch) -> None:
+    import asyncio
+
+    # Simulate an install without the optional healing package.
+    monkeypatch.setattr(BrowserLogger, "_selector_store_available", staticmethod(lambda: False))
+
+    class _Page:
+        async def evaluate(self, script: str, element: object) -> str:
+            return "//button[1]"
+
+    class _Element:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def get_attribute(self, name: str) -> None:
+            self.calls += 1
+            raise RuntimeError("Element is not attached to the DOM")
+
+        async def evaluate(self, script: str) -> str:
+            self.calls += 1
+            return "button"
+
+    element = _Element()
+    browser_logger = BrowserLogger.__new__(BrowserLogger)
+    selectors = asyncio.run(BrowserLogger.get_alternative_selectors(browser_logger, element, _Page()))
+
+    assert selectors
+    assert element.calls == 0, "no attribute round-trips may be made when the selector store is unavailable"
+
+
+def test_get_element_attributes_quiet_logs_detached_element_at_debug(monkeypatch: pytest.MonkeyPatch) -> None:
+    import asyncio
+
+    import testzeus_hercules.core.browser_logger as browser_logger_module
+
+    calls: dict[str, int] = {"error": 0, "debug": 0}
+    monkeypatch.setattr(browser_logger_module.logger, "error", lambda *a, **k: calls.__setitem__("error", calls["error"] + 1))
+    monkeypatch.setattr(browser_logger_module.logger, "debug", lambda *a, **k: calls.__setitem__("debug", calls["debug"] + 1))
+
+    class _Detached:
+        async def get_attribute(self, name: str) -> None:
+            raise RuntimeError("Element is not attached to the DOM")
+
+    browser_logger = BrowserLogger.__new__(BrowserLogger)
+    assert asyncio.run(BrowserLogger.get_element_attributes(browser_logger, _Detached(), quiet=True)) == {}
+    assert calls == {"error": 0, "debug": 1}
