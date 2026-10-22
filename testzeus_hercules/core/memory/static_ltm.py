@@ -10,13 +10,37 @@ from testzeus_hercules.utils.logger import logger
 
 
 class StaticLTM:
-    _instance = None
+    """Cache of the long term memory built from the active test data folder.
+
+    The cache is keyed by the test data path it was built from. Bulk runs walk
+    several project bases in one process and repoint TEST_DATA_PATH at each one
+    (see ``__main__.sequential_process``); keying on the path means the reload
+    happens on its own, instead of every such caller having to remember to
+    invalidate first.
+
+    Only the test data path is tracked. ``stored_data`` and ``run_data`` are also
+    snapshotted at construction (keyed by test id), so they are not refreshed
+    between scenarios that share one test data path; call ``reset()`` for that.
+    """
+
+    _instance: Optional["StaticLTM"] = None
+    _loaded_for: Optional[str] = None
 
     def __new__(cls) -> "StaticLTM":
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._initialize()
+        test_data_path = get_global_conf().get_test_data_path()
+        if cls._instance is None or cls._loaded_for != test_data_path:
+            # Build fully before publishing so a failed load cannot leave a half-initialised instance cached.
+            instance = super().__new__(cls)
+            instance._initialize()
+            cls._instance = instance
+            cls._loaded_for = test_data_path
         return cls._instance
+
+    @classmethod
+    def reset(cls) -> None:
+        """Drop the cached memory so the next read reloads from disk."""
+        cls._instance = None
+        cls._loaded_for = None
 
     def _initialize(self) -> None:
         """Initialize the StaticLTM instance by loading data."""
