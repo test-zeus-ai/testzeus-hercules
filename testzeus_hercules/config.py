@@ -850,11 +850,7 @@ class BaseConfigManager:
             }.items()
             if v is not None
         }
-        return adapt_llm_params_for_model(
-            model_name,
-            raw_params,
-            transport="openai_compatible",
-        )
+        return adapt_llm_params_for_model(model_name, raw_params)
 
     def get_mode(self) -> str:
         return self._config["MODE"]

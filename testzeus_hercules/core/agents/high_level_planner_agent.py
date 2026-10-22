@@ -38,20 +38,13 @@ class PlannerAgent:
         valid_keys = {"model", "api_key", "base_url", "timeout", "max_retries"}
         filtered = {k: v for k, v in normalized.items() if k in valid_keys and v is not None}
 
-        # Merge sampling options and normalize them for ChatOpenAI's transport.
-        unsupported_keys = {"cache_seed", "reasoning_effort", "seed"}
+        # Merge sampling options and normalize them for ChatOpenAI.
+        unsupported_keys = {"cache_seed", "reasoning_effort", "seed", "model"}
         params = {k: v for k, v in normalized.items() if k in {"temperature", "max_tokens"}}
         params.update(llm_config_params)
-        safe_llm_params = adapt_llm_params_for_model(
-            filtered.get("model", "gpt-4o"),
-            params,
-            transport="openai_compatible",
-        )
-        safe_llm_params = {k: v for k, v in safe_llm_params.items() if k not in unsupported_keys | {"model"}}
-        if "timeout" in filtered:
-            safe_llm_params.pop("timeout", None)
-        if "max_retries" in filtered:
-            safe_llm_params.pop("max_retries", None)
+        adapted = adapt_llm_params_for_model(filtered.get("model", "gpt-4o"), params)
+        # Explicit model_config values (timeout, max_retries) win over llm_config_params.
+        safe_llm_params = {k: v for k, v in adapted.items() if k not in unsupported_keys and k not in filtered}
         if "timeout" not in filtered and safe_llm_params.get("timeout") is None:
             safe_llm_params["timeout"] = get_llm_request_timeout_seconds()
         if "max_retries" not in filtered and safe_llm_params.get("max_retries") is None:

@@ -156,11 +156,11 @@ class SimpleHercules:
             nav_agent_config,
             helper_agent_config,
         ]:
-            model = cfg["model_config_params"].get("model") or cfg["model_config_params"].get("model_name")
+            model = cfg["model_config_params"].get("model") or cfg[
+                "model_config_params"
+            ].get("model_name")
             cfg["llm_config_params"] = adapt_llm_params_for_model(
-                model,
-                cfg["llm_config_params"],
-                transport="openai_compatible",
+                model, cfg["llm_config_params"]
             )
 
         self.agents_map = await self._initialize_agents()

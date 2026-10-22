@@ -1,7 +1,7 @@
 from testzeus_hercules.config import NonSingletonConfigManager
-from testzeus_hercules.core.agents import high_level_planner_agent
 from testzeus_hercules.utils.llm_helper import create_chat_model
 from testzeus_hercules.utils.model_utils import adapt_llm_params_for_model
+from testzeus_hercules.core.agents import high_level_planner_agent
 
 
 def test_create_chat_model_sets_default_timeout_and_retry() -> None:
@@ -45,40 +45,24 @@ def test_create_chat_model_uses_openai_compatible_claude_params() -> None:
     assert "top_p" not in model.model_kwargs
 
 
-def test_adapt_openai_compatible_params_supports_configurable_omissions() -> None:
-    params = adapt_llm_params_for_model(
-        "claude-sonnet-4",
-        {"max_tokens": 512, "temperature": 0.4, "top_p": 0.8},
-        transport="openai_compatible",
-        unsupported_params=("temperature", "top_p"),
-    )
+def test_claude_legacy_token_name_normalizes_to_max_tokens() -> None:
+    params = adapt_llm_params_for_model("claude-haiku-5-5", {"max_tokens_to_sample": 768})
+
+    assert params["max_tokens"] == 768
+    assert "max_tokens_to_sample" not in params
+
+
+def test_claude_max_tokens_is_kept_and_wins_over_legacy_key() -> None:
+    params = adapt_llm_params_for_model("claude-sonnet-4", {"max_tokens": 512, "max_tokens_to_sample": 999})
 
     assert params["max_tokens"] == 512
     assert "max_tokens_to_sample" not in params
-    assert "temperature" not in params
-    assert "top_p" not in params
 
 
-def test_claude_legacy_token_name_normalizes_for_both_transports() -> None:
-    for transport in ("native", "openai_compatible"):
-        params = adapt_llm_params_for_model(
-            "claude-haiku-5-5",
-            {"max_tokens_to_sample": 768},
-            transport=transport,
-        )
+def test_claude_defaults_max_tokens_when_unset() -> None:
+    params = adapt_llm_params_for_model("claude-sonnet-4", {})
 
-        assert params["max_tokens"] == 768
-        assert "max_tokens_to_sample" not in params
-
-
-def test_claude_native_transport_uses_current_token_name() -> None:
-    params = adapt_llm_params_for_model(
-        "claude-sonnet-4",
-        {"max_tokens": 512},
-        transport="native",
-    )
-
-    assert params["max_tokens"] == 512
+    assert params["max_tokens"] == 4096
     assert "max_tokens_to_sample" not in params
 
 
@@ -86,7 +70,6 @@ def test_gpt5_parameter_behavior_is_preserved() -> None:
     params = adapt_llm_params_for_model(
         "gpt-5-mini",
         {"max_tokens": 1024, "temperature": 0, "top_p": None},
-        transport="openai_compatible",
     )
 
     assert params["max_completion_tokens"] == 1024
