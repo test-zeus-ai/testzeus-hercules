@@ -179,6 +179,23 @@ def test_resolve_allows_paths_inside_workspace_root(sandbox_dir):
     assert Path(resolved) == inside.resolve()
 
 
+@pytest.mark.parametrize("name", ["findings.txt", "run.log", "data.json", "conf.yaml", "noext", "evil.py.txt"])
+def test_resolve_rejects_non_python_extensions(sandbox_dir, name):
+    payload = sandbox_dir / name
+    payload.write_text("print('pwned')\n", encoding="utf-8")
+    with pytest.raises(PermissionError, match="only '.py' scripts"):
+        _resolve_file_path(str(payload))
+
+
+def test_resolve_rejects_symlink_to_non_python_target(sandbox_dir):
+    target = sandbox_dir / "payload.txt"
+    target.write_text("print('pwned')\n", encoding="utf-8")
+    link = sandbox_dir / "innocent.py"
+    link.symlink_to(target)
+    with pytest.raises(PermissionError, match="only '.py' scripts"):
+        _resolve_file_path(str(link))
+
+
 # ── SANDBOX_MODE: legacy in-process default keeps live Playwright objects ────
 
 
