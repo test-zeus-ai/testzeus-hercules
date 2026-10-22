@@ -84,7 +84,9 @@ For GPT-5 response limits, prefer `max_completion_tokens` inside
 The framework automatically converts parameters based on the model family:
 
 - **GPT-5 models**: `max_tokens` → `max_completion_tokens`
-- **Claude models**: `max_tokens` → `max_tokens_to_sample`
+- **Claude models**: `max_tokens_to_sample` is accepted as a legacy input and
+  normalized to `max_tokens`, because every model is called through
+  `ChatOpenAI` (OpenAI-compatible API), which rejects `max_tokens_to_sample`.
 - **Other models**: `max_completion_tokens` → `max_tokens` (if needed)
 
 ### Example Conversions
