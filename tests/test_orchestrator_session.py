@@ -51,7 +51,7 @@ def test_create_and_get_session(workspace) -> None:
         test_type="backend",
         credentials={"username": "admin", "password": "s3cret"},
     )
-    assert state.session_id.startswith("sess_") and len(state.session_id) == len("sess_") + 8
+    assert state.session_id.startswith("sess_") and len(state.session_id) == len("sess_") + 16
     assert state.test_type == "backend"
     assert state.credentials["password"] == "s3cret"  # in-memory keeps the real value
     assert manager.get_session(state.session_id) is state
@@ -474,3 +474,44 @@ def test_prd_and_plan_models_serialize() -> None:
     )
     assert prd.requirements[0].id == "REQ-001"
     assert make_plan().test_cases[0].id == "TC001"
+
+
+def test_plan_approval_hash_roundtrips_and_defaults_empty(workspace) -> None:
+    from testzeus_hercules.orchestrator.session import SessionState
+
+    state = SessionState(session_id="s1", app_url="https://app.example.com", plan_approved=True, plan_approved_sha256="ab" * 32)
+    assert SessionState.from_dict(state.to_dict()).plan_approved_sha256 == "ab" * 32
+    legacy = state.to_dict()
+    del legacy["plan_approved_sha256"]
+    assert SessionState.from_dict(legacy).plan_approved_sha256 == ""
+
+
+def test_session_ids_have_at_least_64_bits_and_stay_directory_safe(workspace) -> None:
+    import re
+
+    manager = SessionManager()
+    ids = {manager.create_session("https://app.example.com").session_id for _ in range(20)}
+    assert len(ids) == 20
+    for sid in ids:
+        assert re.fullmatch(r"sess_[0-9a-f]{16}", sid), sid
+        assert re.fullmatch(r"[A-Za-z0-9._-]+", sid)  # mcp_server._RUN_ID_RE (per-session artifact directory)
+
+
+def test_empty_session_id_requires_explicit_id_when_auth_token_configured(workspace, monkeypatch) -> None:
+    manager = SessionManager()
+    first = manager.create_session("https://first.example.com")
+    monkeypatch.setenv("MCP_AUTH_TOKEN", "s" * 40)
+    with pytest.raises(ValueError, match="session_id is required"):
+        manager.resolve_session()
+    with pytest.raises(ValueError, match="session_id is required"):
+        manager.resolve_session("")
+    assert manager.resolve_session(first.session_id) is first  # explicit ids keep working
+
+
+def test_empty_session_id_keeps_loopback_convenience_without_token(workspace, monkeypatch) -> None:
+    monkeypatch.delenv("MCP_AUTH_TOKEN", raising=False)
+    manager = SessionManager()
+    first = manager.create_session("https://first.example.com")
+    assert manager.resolve_session() is first
+    monkeypatch.setenv("MCP_AUTH_TOKEN", "   ")  # whitespace-only counts as "no token"
+    assert manager.resolve_session() is first

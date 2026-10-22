@@ -141,6 +141,58 @@ def test_extract_text_docx_falls_back_to_zipfile(tmp_path, monkeypatch) -> None:
     assert metadata["file_type"] == "docx"
 
 
+def _docx_with_document_xml(tmp_path, document_xml: bytes | str):
+    source = tmp_path / "evil.docx"
+    with zipfile.ZipFile(source, "w") as archive:
+        archive.writestr("word/document.xml", document_xml)
+    return source
+
+
+def _no_unstructured(monkeypatch) -> None:
+    def _unavailable(path: str) -> str:
+        raise ImportError("unstructured is not available")
+
+    monkeypatch.setattr(prd_parser, "_docx_text_unstructured", _unavailable)
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        '<!DOCTYPE foo [<!ENTITY x "boom">]>',
+        "<!doctype w:document>",
+        '<!ENTITY lol "lol">',
+    ],
+)
+def test_docx_fallback_rejects_doctype_and_entity(tmp_path, monkeypatch, declaration) -> None:
+    _no_unstructured(monkeypatch)
+    xml = f'<?xml version="1.0"?>{declaration}<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>&x;</w:t></w:r></w:p></w:body></w:document>'
+    with pytest.raises(ValueError, match="DOCTYPE/ENTITY"):
+        extract_text(str(_docx_with_document_xml(tmp_path, xml)))
+
+
+def test_docx_fallback_rejects_utf16_doctype(tmp_path, monkeypatch) -> None:
+    _no_unstructured(monkeypatch)
+    xml = '<?xml version="1.0" encoding="UTF-16"?><!DOCTYPE d [<!ENTITY x "y">]><d/>'.encode("utf-16")
+    with pytest.raises(ValueError, match="DOCTYPE/ENTITY"):
+        extract_text(str(_docx_with_document_xml(tmp_path, xml)))
+
+
+def test_docx_fallback_caps_member_size(tmp_path, monkeypatch) -> None:
+    _no_unstructured(monkeypatch)
+    monkeypatch.setattr(prd_parser, "_MAX_DOCX_XML_BYTES", 1024)
+    xml = '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>' + "<w:p><w:r><w:t>a</w:t></w:r></w:p>" * 100 + "</w:body></w:document>"
+    with pytest.raises(ValueError, match="too large"):
+        extract_text(str(_docx_with_document_xml(tmp_path, xml)))
+
+
+@pytest.mark.parametrize("name", ["prd.html", "prd.json", "noext", ".hidden.md", "agents_llm_config.json", "prod.env", "key.pem"])
+def test_extract_text_rejects_unsupported_or_sensitive_local_files(tmp_path, name) -> None:
+    source = tmp_path / name
+    source.write_text("secret", encoding="utf-8")
+    with pytest.raises(ValueError, match="PRD source"):
+        extract_text(str(source))
+
+
 def test_extract_text_corrupt_pdf_raises_value_error(tmp_path) -> None:
     source = tmp_path / "broken.pdf"
     source.write_bytes(b"this is definitely not a pdf document")
