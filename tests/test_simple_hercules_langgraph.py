@@ -737,6 +737,99 @@ def _install_stub_appium_module(monkeypatch) -> None:
     monkeypatch.setenv("DEVICE_MANAGER", "appium")
 
 
+def test_mobile_agent_not_created_when_appium_client_missing(monkeypatch, caplog) -> None:
+    async def run() -> None:
+        _force_appium_unavailable(monkeypatch)
+        hercules = _hercules()
+
+        with caplog.at_level(logging.WARNING, logger="testzeus_hercules.utils.logger"):
+            agent = hercules._create_mobile_nav_agent({"model": "gpt-4o", "api_key": "test-key"}, {}, None)
+
+        assert agent is None, "a closed Appium gate must not create a half-constructed mobile agent"
+        assert any("mobile agent not created" in record.getMessage() for record in caplog.records)
+
+    asyncio.run(run())
+
+
+def test_mobile_agent_created_and_mobile_helper_accepted_when_gate_open(monkeypatch) -> None:
+    async def run() -> None:
+        # Import the mobile package while the gate is closed so the gated tools
+        # registration is not part of this test's behavior.
+        importlib.import_module("testzeus_hercules.core.mobile")
+        _install_stub_appium_module(monkeypatch)
+        hercules = _hercules()
+
+        agent = hercules._create_mobile_nav_agent({"model": "gpt-4o", "api_key": "test-key"}, {}, None)
+
+        assert agent is not None
+        assert getattr(agent, "agent_name", "") == "mobile_nav_agent"
+        # The planner may route to "mobile" once the gate is open.
+        SimpleHercules._validate_planner_decision({"terminate": "no", "next_step": "tap the button", "target_helper": "mobile"})
+
+    asyncio.run(run())
+
+
+def test_mobile_target_helper_is_contained_planner_failure_when_gate_closed(monkeypatch) -> None:
+    async def run() -> None:
+        _force_appium_unavailable(monkeypatch)
+        # The planner's "mobile" decision must be rejected up front so no rounds
+        # are spun against a missing agent.
+        with pytest.raises(ValueError, match="mobile"):
+            SimpleHercules._validate_planner_decision({"terminate": "no", "next_step": "tap the button", "target_helper": "mobile"})
+
+        payload = json.dumps({"next_step": "tap the button", "target_helper": "mobile", "terminate": "no"})
+        planner_llm = FakeLLM([AIMessage(content=payload), AIMessage(content=payload)])  # the corrective re-prompt gets the same invalid answer
+        hercules = SimpleHercules(stake_id="mobile-gate", planner_max_chat_round=3)
+        hercules.agents_map = {
+            "planner_agent": SimpleNamespace(
+                system_message="planner system",
+                llm=planner_llm,
+                on_planner_message=lambda _content: None,
+            ),
+            "browser_nav_agent": FakeAgent("browser_nav_agent", [AIMessage(content="unused ##TERMINATE TASK##")]),
+        }
+        hercules._graph = hercules._build_graph()
+
+        result = await hercules.process_command("tap the mobile button")
+
+        assert result is not None
+        assert result.terminate == "yes"
+        assert len(planner_llm.calls) == 2, "the invalid mobile decision gets one corrective re-prompt, then ends the graph"
+        parsed = parse_agent_response(result.summary)
+        assert parsed["is_passed"] is False
+        assert "Invalid planner decision" in (parsed["final_response"] or "")
+
+    asyncio.run(run())
+
+
+def test_executor_warns_when_rerouting_missing_mobile_agent_to_browser(caplog) -> None:
+    async def run() -> None:
+        hercules = _hercules()
+        hercules.agents_map = {
+            "browser_nav_agent": FakeAgent("browser_nav_agent", [AIMessage(content="current_output: done\n##TERMINATE TASK##")]),
+        }
+        state = {
+            "messages": [HumanMessage(content="root task")],
+            "next_step": "tap the start button",
+            "target_helper": "mobile",
+            "step_token_log": [],
+            "step_timings": [],
+            "completed_step_signatures": [],
+            "current_url": "",
+        }
+
+        with caplog.at_level(logging.WARNING, logger="testzeus_hercules.utils.logger"):
+            result = await hercules._executor_node(state)
+
+        assert "[browser_nav_agent]" in result["messages"][-1].content
+        assert any("rerouting" in record.getMessage().lower() and "mobile" in record.getMessage().lower() for record in caplog.records)
+
+    asyncio.run(run())
+
+
+# ── terminal planner verdicts survive the summary extraction (junit e2e) ──────
+
+
 class _JUnitFakeConf:
     """Minimal config stand-in for build_junit_xml (mirrors test_assertion_ledger_junit)."""
 

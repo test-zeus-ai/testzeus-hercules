@@ -14,6 +14,9 @@ class MultimodalBaseNavAgent(BaseNavAgent):
 
     agent_name: str = "multimodal_base_nav_agent"
     prompt = "Base Multimodal Agent"
+    # Subclasses whose prompt carries its own UI-assertion guidance (the mobile
+    # agent) opt out of the generic, browser-oriented addendum.
+    include_generic_ui_assertion_addendum: bool = True
 
     def __init__(
         self,
@@ -34,7 +37,8 @@ class MultimodalBaseNavAgent(BaseNavAgent):
                 system_message,
             )
 
-        system_message = system_message + ui_assertion_prompt_addendum(self.agent_name)
+        if self.include_generic_ui_assertion_addendum:
+            system_message = system_message + ui_assertion_prompt_addendum(self.agent_name)
         system_message = system_message + "\n" + f"Current timestamp is {datetime.now().strftime('%Y/%m/%d %H:%M:%S')}"
         logger.warning(
             "[SYSTEM_PROMPT_DEBUG] agent=%s user_ltm=%r system_message_tail=%r",

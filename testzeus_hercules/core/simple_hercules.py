@@ -240,6 +240,16 @@ class SimpleHercules:
         except Exception:
             return False
 
+    @staticmethod
+    def _mobile_requested() -> bool:
+        """True when ``DEVICE_MANAGER=appium`` is set via the global config or the environment."""
+        try:
+            from testzeus_hercules.core.mobile.settings import get_device_manager
+
+            return get_device_manager() == "appium"
+        except Exception:
+            return os.environ.get("DEVICE_MANAGER", "").strip().lower() == "appium"
+
     def _create_mobile_nav_agent(self, nav_model: dict[str, Any], nav_llm: dict[str, Any], nav_prompt: Any) -> Any | None:
         """Return a mobile nav agent when the Appium gate is open, else None.
 
@@ -248,7 +258,7 @@ class SimpleHercules:
         alone would never fire and a half-constructed agent bound only to the
         shared UI-assertion tools would silently misroute mobile steps.
         """
-        if os.environ.get("DEVICE_MANAGER", "").strip().lower() != "appium":
+        if not self._mobile_requested():
             return None
         if not self._mobile_gate_open():
             logger.warning("Mobile automation requested but the Appium client is not installed; mobile agent not created.")

@@ -1272,7 +1272,7 @@ class BaseConfigManager:
 
     def get_enable_ui_assertions(self) -> bool:
         """Whether the opt-in ``assert_ui`` / ``capture_ui_value`` tools are registered (default off)."""
-        return str(self._config.get("ENABLE_UI_ASSERTIONS", "false")).strip().lower() in ("1", "true", "yes")
+        return str(self._config.get("ENABLE_UI_ASSERTIONS", "false")).strip().lower() in ("1", "true", "yes", "on")
 
     def get_mcp_servers(self) -> dict:
         """Get MCP servers configuration."""

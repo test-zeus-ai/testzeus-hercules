@@ -48,7 +48,7 @@ dependencies = [
     "starlette>=1.3.1,<2",
     "uvicorn>=0.30.0,<1",
     "urllib3>=2.8.0,<3",
-    "pypdf>=6.19.0,<7",
+    "pypdf>=6.21.1,<7",
     "fonttools>=4.61.0,<5",
     "transformers>=5.0.0rc3,<6",
     "requests>=2.32.5,<3",
@@ -92,6 +92,7 @@ dev = [
 
 [project.optional-dependencies]
 api = ["jsonpath-ng>=1.6,<1.8", "openapi-schema-validator>=0.6,<1"]
+mobile = ["appium-python-client>=4.5.0,<6"]
 
 [tool.setuptools]
 packages = ["testzeus_hercules"]
@@ -196,7 +197,7 @@ allow-magic-value-types = ["int", "str", "float", "bytes"]
 override-dependencies = [
     "pyasn1>=0.6.3",
     "PyJWT>=2.15.0",
-    "pypdf>=6.19.0",
+    "pypdf>=6.21.1",
     "langgraph-sdk>=0.4.4",
     "multidict>=6.9.1",
     "soupsieve>=2.9.0",
