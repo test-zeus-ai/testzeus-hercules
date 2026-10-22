@@ -26,11 +26,6 @@ MAX_STATEMENT_SECONDS = 30
 # false positive — such a query is rejected, never allowed through.
 _DESTRUCTIVE_KEYWORD_RE = re.compile(r"\b(INSERT|UPDATE|DELETE|MERGE|TRUNCATE|ALTER|DROP|CREATE|GRANT|REVOKE)\b", re.IGNORECASE)
 
-# Identifiers interpolated into SET search_path / USE must be plain words; a
-# quoted or delimited identifier like 'public; DROP TABLE x' must never reach
-# the f-string.
-_SAFE_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_]+$")
-
 # URL-shaped tokens in driver error text (DSNs usually appear embedded in the
 # message, not as the whole message) get redact_url applied; password-like
 # key=value / key: value assignments are stripped as well.
@@ -221,12 +216,13 @@ async def execute_select_cte_query_sql(
             await _apply_safety_settings(connection, engine.dialect.name)
 
             if schema_name:
-                if not _SAFE_IDENTIFIER_RE.match(schema_name):
-                    raise ValueError("schema_name must contain only letters, digits and underscores.")
+                # Quote as an identifier via the dialect's preparer instead of interpolating
+                # the raw string into SQL, so schema_name can't inject additional SQL.
+                quoted_schema_name = engine.dialect.identifier_preparer.quote(schema_name)
                 if engine.dialect.name == "postgresql":
-                    await connection.execute(text(f"SET search_path TO {schema_name}"))
+                    await connection.execute(text(f"SET search_path TO {quoted_schema_name}"))
                 elif engine.dialect.name in ["mysql", "mariadb"]:
-                    await connection.execute(text(f"USE {schema_name}"))
+                    await connection.execute(text(f"USE {quoted_schema_name}"))
                 # For SQLite, schema_name setting is not applicable
 
             safe_params = params if isinstance(params, dict) else {}

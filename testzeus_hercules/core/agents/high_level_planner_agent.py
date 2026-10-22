@@ -8,6 +8,7 @@ from testzeus_hercules.utils.llm_helper import (
     get_llm_request_timeout_seconds,
 )
 from testzeus_hercules.utils.logger import logger
+from testzeus_hercules.utils.model_utils import adapt_llm_params_for_model
 
 
 class PlannerAgent:
@@ -28,28 +29,22 @@ class PlannerAgent:
         self.system_message = Template(base_prompt).safe_substitute(basic_test_information=user_ltm if user_ltm else "No test data provided")
         self.system_message = self._json_instruction + self.system_message
 
-        # Normalize model key: ChatOpenAI expects 'model', not 'model_name'
+        # Normalize model key: ChatOpenAI expects 'model', not 'model_name'.
         normalized = dict(model_config)
         if "model_name" in normalized and "model" not in normalized:
             normalized["model"] = normalized.pop("model_name")
         elif "model_name" in normalized:
             normalized.pop("model_name")
-        valid_keys = {
-            "model",
-            "api_key",
-            "base_url",
-            "temperature",
-            "max_tokens",
-            "timeout",
-            "max_retries",
-        }
-        filtered = {k: v for k, v in normalized.items() if k in valid_keys}
+        valid_keys = {"model", "api_key", "base_url", "timeout", "max_retries"}
+        filtered = {k: v for k, v in normalized.items() if k in valid_keys and v is not None}
 
-        # llm_config_params: drop keys unsupported by non-OpenAI models
-        unsupported_keys = {"cache_seed", "reasoning_effort", "seed"}
-        safe_llm_params = {k: v for k, v in llm_config_params.items() if k not in unsupported_keys}
-
-        safe_llm_params.pop("model", None)  # avoid duplicate with filtered
+        # Merge sampling options and normalize them for ChatOpenAI.
+        unsupported_keys = {"cache_seed", "reasoning_effort", "seed", "model"}
+        params = {k: v for k, v in normalized.items() if k in {"temperature", "max_tokens"}}
+        params.update(llm_config_params)
+        adapted = adapt_llm_params_for_model(filtered.get("model", "gpt-4o"), params)
+        # Explicit model_config values (timeout, max_retries) win over llm_config_params.
+        safe_llm_params = {k: v for k, v in adapted.items() if k not in unsupported_keys and k not in filtered}
         if "timeout" not in filtered and safe_llm_params.get("timeout") is None:
             safe_llm_params["timeout"] = get_llm_request_timeout_seconds()
         if "max_retries" not in filtered and safe_llm_params.get("max_retries") is None:
