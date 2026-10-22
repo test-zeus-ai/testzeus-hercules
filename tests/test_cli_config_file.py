@@ -412,3 +412,22 @@ def test_apply_explicit_overrides_scopes_dict_over_env(monkeypatch: pytest.Monke
     assert seen == {"keys": {"INPUT_GHERKIN_FILE_PATH": "/x.feature"}, "override": True, "flag_during_call": "true"}
     # The global opt-in is restored afterwards: legacy precedence stays the default.
     assert "CONFIG_DICT_OVERRIDES_ENV" not in os.environ
+
+
+def test_explicit_overrides_beat_cli_project_base_during_bulk_rebuild(monkeypatch: pytest.MonkeyPatch) -> None:
+    # ``--project-base X --bulk`` re-parses the CLI on every per-folder rebuild;
+    # the per-folder keys must still win (and drive the derived paths).
+    monkeypatch.delenv("PROJECT_SOURCE_ROOT", raising=False)
+    monkeypatch.delenv("JUNIT_XML_BASE_PATH", raising=False)
+    module = _load_config_module(["testzeus-hercules"])
+    monkeypatch.setattr(sys, "argv", ["testzeus-hercules", "--project-base", "/cli/root", "--bulk"])
+
+    folder = os.path.join("/cli/root", "tests", "a")
+    with module.explicit_config_overrides({"PROJECT_SOURCE_ROOT": folder}):
+        cfg = module.NonSingletonConfigManager({"PROJECT_SOURCE_ROOT": folder}).get_config()
+
+    assert cfg["PROJECT_SOURCE_ROOT"] == folder
+    assert cfg["JUNIT_XML_BASE_PATH"] == os.path.join(folder, "output")
+    assert cfg["EXECUTE_BULK"] == "true", "other CLI flags must still apply"
+    # Outside the block the CLI keeps winning as before.
+    assert module.NonSingletonConfigManager({"PROJECT_SOURCE_ROOT": folder}).get_config()["PROJECT_SOURCE_ROOT"] == "/cli/root"

@@ -58,11 +58,47 @@ def _restore_singletons(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None
 
 
 # ---------------------------------------------------------------------------
-# Fail fast on configured-but-unusable AGENTS_LLM_CONFIG_FILE
+# Configured-but-unusable AGENTS_LLM_CONFIG_FILE: warn + env fallback by
+# default (origin/main), fail fast with STRICT_AGENTS_LLM_CONFIG=true
 # ---------------------------------------------------------------------------
 
 
-def test_missing_config_file_raises_at_initialize(tmp_path: pathlib.Path) -> None:
+def _env_model_conf(config_file: str) -> None:
+    set_global_conf(
+        {
+            "AGENTS_LLM_CONFIG_FILE": config_file,
+            "AGENTS_LLM_CONFIG_FILE_REF_KEY": "litellm",
+            "LLM_MODEL_NAME": "env-model",
+            "LLM_MODEL_API_KEY": "env-key",
+        },
+        override=True,
+    )
+
+
+def test_missing_config_file_falls_back_to_env_by_default(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("STRICT_AGENTS_LLM_CONFIG", raising=False)
+    _env_model_conf(str(tmp_path / "does_not_exist.json"))
+
+    manager = AgentsLLMConfigManager.get_instance()
+
+    assert manager.get_active_provider() == "environment"
+    assert manager.get_agent_config("planner_agent")["model_config_params"]["model"] == "env-model"
+
+
+def test_invalid_json_config_file_falls_back_to_env_by_default(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("STRICT_AGENTS_LLM_CONFIG", raising=False)
+    bad = tmp_path / "bad.json"
+    bad.write_text("{not valid json", encoding="utf-8")
+    _env_model_conf(str(bad))
+
+    manager = AgentsLLMConfigManager.get_instance()
+
+    assert manager.get_active_provider() == "environment"
+    assert manager.get_agent_config("planner_agent")["model_config_params"]["model"] == "env-model"
+
+
+def test_missing_config_file_raises_at_initialize_when_strict(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("STRICT_AGENTS_LLM_CONFIG", "true")
     missing = tmp_path / "does_not_exist.json"
     set_global_conf(
         {"AGENTS_LLM_CONFIG_FILE": str(missing), "AGENTS_LLM_CONFIG_FILE_REF_KEY": "litellm"},
@@ -73,7 +109,8 @@ def test_missing_config_file_raises_at_initialize(tmp_path: pathlib.Path) -> Non
         AgentsLLMConfigManager.get_instance()
 
 
-def test_invalid_json_config_file_raises_at_initialize(tmp_path: pathlib.Path) -> None:
+def test_invalid_json_config_file_raises_at_initialize_when_strict(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("STRICT_AGENTS_LLM_CONFIG", "true")
     bad = tmp_path / "bad.json"
     bad.write_text("{not valid json", encoding="utf-8")
     set_global_conf(

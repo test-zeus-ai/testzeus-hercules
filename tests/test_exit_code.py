@@ -336,7 +336,7 @@ def test_main_failed_run_still_exits_1_when_html_conversion_fails(fake_failed_ru
 # --- colliding run output dirs --------------------------------------------------
 
 
-def test_sequential_process_disambiguates_existing_output_dir(fake_run_env, monkeypatch) -> None:
+def test_sequential_process_keeps_merged_output_in_existing_output_dir(fake_run_env, monkeypatch) -> None:
     monkeypatch.setenv("ENABLE_RUN_REPORTING", "true")
     output_dir = fake_run_env.junit_base
     # Simulate a same-second run that already populated the shared output dir.
@@ -344,10 +344,10 @@ def test_sequential_process_disambiguates_existing_output_dir(fake_run_env, monk
 
     summary = asyncio.run(sequential_process())
 
-    used_dir = os.path.dirname(os.path.abspath(summary["junit_xml"]))
-    assert used_dir != str(output_dir)
-    assert used_dir.startswith(f"{output_dir}_")
-    # New artifacts land in the fresh dir, not on top of the stale ones.
+    # The merged results keep the origin/main location (no suffixed sibling dir)...
+    assert os.path.dirname(os.path.abspath(summary["junit_xml"])) == str(output_dir)
     assert os.path.isfile(summary["junit_xml"])
     assert os.path.isfile(summary["report_md"])
-    assert not (output_dir / "Hercules_Test_Report.md").exists()
+    assert not any(str(path).startswith(f"{output_dir}_") for path in output_dir.parent.iterdir())
+    # ...and the other run's file is left alone (per-scenario files were run-private).
+    assert (output_dir / "stale_result.xml").read_text(encoding="utf-8") == "<testsuites/>"

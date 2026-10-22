@@ -343,6 +343,60 @@ def test_scenario_loop_isolates_crashing_scenario(monkeypatch, tmp_path) -> None
     assert any("runner exploded" in (case["failure_message"] or "") for case in cases)
 
 
+# ── concurrent runs: per-scenario XMLs are run-private, merged output stays put ──
+
+
+def test_non_empty_output_dir_keeps_merged_location_and_isolates_scenario_files(monkeypatch, tmp_path) -> None:
+    import testzeus_hercules.utils.junit_helper as junit_helper
+
+    class _FailingRunner:
+        def __init__(self, stake_id: str, command: str, dont_terminate_browser_after_run: bool = False) -> None:
+            self.stake_id = stake_id
+            self.result = None
+            self.execution_time = 0.0
+            self.browser_manager = None
+
+        async def clean_up(self) -> None:
+            return None
+
+        async def start(self) -> None:
+            raise RuntimeError("boom")
+
+    conf = _install_two_scenario_run(monkeypatch, tmp_path, _FailingRunner)
+    # Another run sharing the output dir has a per-scenario file in flight with
+    # exactly the name this run would use.
+    foreign = junit_helper._results_file_path(str(conf.junit_base), "Feature: Loop Safety", "Scenario: First scenario")
+    with open(foreign, "w", encoding="utf-8") as handle:
+        handle.write("<other-run/>")
+
+    written: list[str] = []
+    real_fallback = main_module.build_fallback_junit_xml
+
+    async def spy_fallback(*args, **kwargs):
+        path = await real_fallback(*args, **kwargs)
+        written.append(path)
+        return path
+
+    async def failing_build(*args, **kwargs):
+        raise ValueError("force fallback path")
+
+    monkeypatch.setattr(main_module, "build_junit_xml", failing_build)
+    monkeypatch.setattr(main_module, "build_fallback_junit_xml", spy_fallback)
+
+    summary = asyncio.run(sequential_process())
+
+    # The merged result keeps the origin/main location...
+    assert summary["junit_xml"] == f"{conf.junit_base}/test.feature_result.xml"
+    assert summary["total"] == 2
+    # ...the per-scenario files went to a run-private subdirectory (cleaned up after the merge)...
+    assert written and all(os.path.dirname(path) != str(conf.junit_base) for path in written)
+    assert all(os.path.basename(os.path.dirname(path)).startswith(".hercules_run_") for path in written)
+    assert not any(name.startswith(".hercules_run_") for name in os.listdir(conf.junit_base))
+    # ...and the other run's in-flight file was neither overwritten nor deleted.
+    with open(foreign, encoding="utf-8") as handle:
+        assert handle.read() == "<other-run/>"
+
+
 # ── finding 1 (end to end): crashing planner LLM through the real runner + loop ──
 
 
@@ -625,6 +679,77 @@ def test_plain_terminate_yes_still_ends_immediately_without_assertion() -> None:
         payload = json.loads(ai_messages[0].content)
         assert payload["terminate"] == "yes"
         assert "target_helper" not in payload, "the planner's own JSON must be the last message"
+
+    asyncio.run(run())
+
+
+# ── non-asserting terminal decisions keep the origin/main verdict path ────────
+
+
+@pytest.mark.parametrize("target_helper", ["Not_Applicable", "browser"])
+@pytest.mark.parametrize("strict", [False, True])
+def test_non_asserting_terminal_keeps_is_assert_false(monkeypatch, target_helper: str, strict: bool) -> None:
+    if strict:
+        monkeypatch.setenv("STRICT_VERDICT", "true")
+    else:
+        monkeypatch.delenv("STRICT_VERDICT", raising=False)
+
+    async def run() -> None:
+        terminal = {
+            "plan": "p",
+            "next_step": "",
+            "terminate": "yes",
+            "final_response": "navigated ok",
+            "is_assert": False,
+            "assert_summary": "",
+            "is_passed": False,
+            "target_helper": target_helper,
+        }
+        planner_llm = _PlannerLLMStub(payloads=[json.dumps(terminal)])
+        hercules = _make_hercules(planner_llm)
+
+        result = await hercules.process_command("navigate")
+
+        assert result is not None
+        assert result.terminate == "yes"
+        parsed = parse_agent_response(result.summary)
+        # is_assert must stay False so junit takes the no-assertion path (a
+        # terminated scenario passes there unless STRICT_VERDICT is on).
+        assert parsed["is_assert"] is False
+        assert parsed["final_response"] == "navigated ok"
+        ai_messages = [m for m in result.messages if isinstance(m, AIMessage)]
+        if not strict:
+            assert len(ai_messages) == 1, "with STRICT_VERDICT off a non-asserting terminate must end immediately (origin/main)"
+            assert json.loads(ai_messages[0].content) == terminal
+
+    asyncio.run(run())
+
+
+def test_assertion_node_preserves_is_assert_from_state() -> None:
+    hercules = SimpleHercules(stake_id="assert-node")
+    out = hercules._assertion_node({"is_assert": False, "is_passed": False, "final_response": "done", "messages": []})
+    assert json.loads(out["messages"][-1].content)["is_assert"] is False
+    out = hercules._assertion_node({"is_assert": True, "is_passed": True, "final_response": "done", "messages": []})
+    assert json.loads(out["messages"][-1].content)["is_assert"] is True
+
+
+# ── a repeated step that executes is progress, not a stall ────────────────────
+
+
+def test_repeated_executed_step_does_not_trip_stall_guard() -> None:
+    async def run() -> None:
+        repeat = json.dumps({"next_step": "Click the Next page button", "target_helper": "browser", "terminate": "no"})
+        done = json.dumps({"terminate": "yes", "final_response": "reached page 5", "is_assert": True, "is_passed": True, "assert_summary": "ok"})
+        planner_llm = _PlannerLLMStub(payloads=[repeat] * 5 + [done])
+        hercules = _make_hercules(planner_llm, planner_rounds=50)
+
+        result = await hercules.process_command("page through results")
+
+        assert result is not None
+        assert planner_llm.calls == 6, "repeating an executed step must not be treated as a planner stall"
+        parsed = parse_agent_response(result.summary)
+        assert parsed["is_passed"] is True
+        assert parsed["final_response"] == "reached page 5"
 
     asyncio.run(run())
 
