@@ -66,3 +66,87 @@ def test_rejects_non_numeric_pr_number(tmp_path) -> None:
     env = {"PATH": os.environ["PATH"], "GITHUB_PR_NUMBER": "12/../../x", "JUNIT_PATH": str(junit), "HERCULES_PR_COMMENT_DRY_RUN": "1"}
     result = subprocess.run(["bash", str(SCRIPT)], env=env, capture_output=True, text=True, timeout=60)
     assert result.returncode != 0
+
+
+# ── marker-comment lookup is limited to the Actions bot ──────────────────────
+
+_FAKE_GH = """#!/usr/bin/env bash
+# Offline stand-in for `gh api`: logs every call; GET applies --jq (via jq) to $FAKE_GH_COMMENTS.
+echo "$*" >> "$FAKE_GH_LOG"
+method=GET; jq_expr=""
+args=("$@")
+for ((i = 0; i < ${#args[@]}; i++)); do
+  case "${args[$i]}" in
+    -X) method="${args[$((i + 1))]}" ;;
+    --jq) jq_expr="${args[$((i + 1))]}" ;;
+  esac
+done
+if [ "$method" = GET ]; then
+  jq -r "$jq_expr" "$FAKE_GH_COMMENTS"
+fi
+"""
+
+_MARKER = "<!-- hercules-results -->"
+
+
+def _post_with_fake_gh(tmp_path, comments: list[dict]):
+    import json
+
+    junit = tmp_path / "x_result.xml"
+    junit.write_text(JUNIT, encoding="utf-8")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    gh = bin_dir / "gh"
+    gh.write_text(_FAKE_GH, encoding="utf-8")
+    gh.chmod(0o755)
+    comments_file = tmp_path / "comments.json"
+    comments_file.write_text(json.dumps(comments), encoding="utf-8")
+    log = tmp_path / "gh.log"
+    env = {
+        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "GITHUB_PR_NUMBER": "12",
+        "GITHUB_TOKEN": "dummy-token",
+        "GITHUB_REPOSITORY": "o/r",
+        "JUNIT_PATH": str(junit),
+        "FAKE_GH_COMMENTS": str(comments_file),
+        "FAKE_GH_LOG": str(log),
+    }
+    result = subprocess.run(["bash", str(SCRIPT)], env=env, capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, result.stderr
+    return log.read_text(encoding="utf-8").splitlines()
+
+
+@pytest.mark.skipif(shutil.which("jq") is None, reason="needs jq")
+def test_marker_comment_lookup_ignores_comments_not_authored_by_actions_bot(tmp_path) -> None:
+    calls = _post_with_fake_gh(
+        tmp_path,
+        [
+            {"id": 111, "user": {"login": "mallory"}, "body": f"{_MARKER}\nplanted"},
+            {"id": 222, "user": {"login": "github-actions[bot]"}, "body": f"{_MARKER}\nreal"},
+        ],
+    )
+    writes = [call for call in calls if "-X" in call]
+    assert len(writes) == 1
+    assert "-X PATCH" in writes[0] and "/comments/222" in writes[0]
+    assert not any("/comments/111" in call for call in calls)
+
+
+@pytest.mark.skipif(shutil.which("jq") is None, reason="needs jq")
+def test_planted_marker_from_another_user_results_in_a_new_comment_not_a_patch(tmp_path) -> None:
+    calls = _post_with_fake_gh(tmp_path, [{"id": 111, "user": {"login": "mallory"}, "body": f"{_MARKER}\nplanted"}])
+    writes = [call for call in calls if "-X" in call]
+    assert len(writes) == 1 and "-X POST" in writes[0]
+    assert not any("PATCH" in call for call in calls)
+
+
+def test_example_workflow_and_readme_harden_checkout_and_mention_pinning() -> None:
+    import yaml
+
+    root = pathlib.Path(__file__).resolve().parents[1] / ".github"
+    workflow = yaml.safe_load((root / "examples" / "hercules-workflow.yml").read_text(encoding="utf-8"))
+    checkouts = [step for job in workflow["jobs"].values() for step in job["steps"] if str(step.get("uses", "")).startswith("actions/checkout")]
+    assert checkouts and all(step.get("with", {}).get("persist-credentials") is False for step in checkouts)
+
+    readme = (root / "actions" / "run-tests" / "README.md").read_text(encoding="utf-8")
+    assert "persist-credentials: false" in readme
+    assert "commit SHAs" in readme and "github-actions[bot]" in readme

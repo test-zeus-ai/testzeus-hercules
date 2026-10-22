@@ -230,7 +230,10 @@ export GITHUB_TOKEN
 
 api="repos/${GITHUB_REPOSITORY}/issues/${GITHUB_PR_NUMBER}/comments"
 
-comment_id="$(gh api "$api" --paginate --jq ".[] | select(.body | contains(\"$MARKER\")) | .id" 2>/dev/null | head -n1 || true)"
+# Only adopt (and later PATCH) a marker comment authored by the Actions bot: anyone who can comment on
+# the PR could otherwise plant the marker to make this script overwrite or hijack their comment.
+comment_author='github-actions[bot]'
+comment_id="$(gh api "$api" --paginate --jq ".[] | select(.user.login == \"$comment_author\" and (.body | contains(\"$MARKER\"))) | .id" 2>/dev/null | head -n1 || true)"
 
 if [ -n "$comment_id" ]; then
   echo "Updating existing Hercules PR comment (id=$comment_id)"
