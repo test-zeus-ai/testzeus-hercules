@@ -17,7 +17,7 @@ from testzeus_hercules.utils.timestamp_helper import get_timestamp_str
 # flags that may clash with the shared Hercules flags (e.g. ``--config``), so the
 # base config must not swallow their argv. They are skipped by name; any other
 # entrypoint (custom scripts, ``python -m``, wrappers) parses the shared flags.
-_SUBCOMMAND_CLI_ARGV0 = {"hercules-dashboard", "hercules-suite", "hercules-suites"}
+_SUBCOMMAND_CLI_ARGV0 = {"hercules-dashboard", "hercules-suite", "hercules-suites", "hercules-monitor", "hercules-run-manager"}
 
 
 # Entrypoints that historically owned the shared Hercules CLI flags.
