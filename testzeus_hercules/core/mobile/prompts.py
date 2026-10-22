@@ -88,9 +88,37 @@ current_output: [Precise description of the issue encountered]
 - If repeated navigation returns to the same screen, change strategy (use back/home or a different element) or report the issue.
 - Validate each step against the agenda outcome; stop and report when progress stalls.
 
+### STALE SCREENS
+- read_mobile_screen reuses the previous reading until an action changes the screen. If the app may have changed on its own (loading, animation, background update), call read_mobile_screen with refresh=true.
+
 ### TASK COMPLETION
 - Always complete ALL required steps before reporting success.
 - Include ALL relevant return data in your summaries.
 - Success response is ONLY when the COMPLETE task is executed correctly.
 
 Available Test Data: $basic_test_information"""
+
+
+MOBILE_UI_ASSERTION_GUIDANCE = """
+
+### UI ASSERTIONS (enabled)
+- Use assert_ui to verify on-screen text/state and capture_ui_value to capture a value from the screen text for later steps, instead of judging from memory.
+- Pass the text from the latest read_mobile_screen reading as the payload; re-read the screen first if it may be stale."""
+
+
+def get_mobile_nav_system_prompt() -> str:
+    """Return the mobile agent system prompt for the current configuration.
+
+    ``assert_ui`` / ``capture_ui_value`` are opt-in tools (``ENABLE_UI_ASSERTIONS``);
+    they are mentioned only when enabled so the prompt never advertises tools the
+    agent does not have. With the flag off the result equals ``MOBILE_NAV_SYSTEM_PROMPT``.
+    """
+    from testzeus_hercules.core.mobile.settings import ui_assertions_enabled
+
+    if not ui_assertions_enabled():
+        return MOBILE_NAV_SYSTEM_PROMPT
+    marker = "\n\nAvailable Test Data:"
+    head, sep, tail = MOBILE_NAV_SYSTEM_PROMPT.rpartition(marker)
+    if not sep:  # pragma: no cover - defensive: prompt shape changed
+        return MOBILE_NAV_SYSTEM_PROMPT + MOBILE_UI_ASSERTION_GUIDANCE
+    return head + MOBILE_UI_ASSERTION_GUIDANCE + sep + tail
