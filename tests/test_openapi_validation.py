@@ -294,3 +294,27 @@ def test_spec_outside_allowed_roots_is_error(proof_env) -> None:
         verdict = _validate(PET_20, outside)
     assert verdict["assertion"] == "ERROR"
     assert "Access denied" in verdict["reason"]
+
+
+# ── OpenAPI range status keys (2XX / 2xx) ────────────────────────────────────
+
+
+@pytest.mark.parametrize("range_key", ["2XX", "2xx"])
+def test_range_status_key_is_used_after_exact_lookup(proof_env, tmp_path, range_key) -> None:
+    spec = json.loads(json.dumps(SPEC_20))
+    responses = spec["paths"]["/pets"]["get"]["responses"]
+    responses[range_key] = responses.pop("200")
+    responses["default"] = {"description": "fallback", "schema": {"type": "string"}}
+    spec_path = tmp_path / "range.json"
+    spec_path.write_text(json.dumps(spec), encoding="utf-8")
+    assert _validate([PET_20], str(spec_path), status_code=201)["assertion"] == "PASSED"
+    assert _validate([{"name": "no id"}], str(spec_path), status_code=201)["assertion"] == "FAILED"
+
+
+def test_exact_status_key_wins_over_range_key(proof_env, tmp_path) -> None:
+    spec = json.loads(json.dumps(SPEC_20))
+    responses = spec["paths"]["/pets"]["get"]["responses"]
+    responses["2XX"] = {"description": "any", "schema": {"type": "string"}}
+    spec_path = tmp_path / "exact.json"
+    spec_path.write_text(json.dumps(spec), encoding="utf-8")
+    assert _validate([PET_20], str(spec_path), status_code=200)["assertion"] == "PASSED"

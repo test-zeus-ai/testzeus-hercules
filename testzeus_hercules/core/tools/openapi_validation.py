@@ -94,11 +94,20 @@ def _validator_for_spec(spec: Dict[str, Any]):
     raise ValueError(f"Unsupported OpenAPI version '{openapi_version}' (supported: 2.0, 3.0, 3.1).")
 
 
+def _declared_response(responses: Dict[Any, Any], status_code: int) -> Optional[Dict[str, Any]]:
+    """Pick the response object for a status: exact code, then the OpenAPI range key (2XX/2xx), then default."""
+    # YAML parses a bare `200:` response key as an int, so probe both key forms.
+    range_digit = str(status_code)[:1]
+    for key in (str(status_code), status_code, f"{range_digit}XX", f"{range_digit}xx", "default"):
+        if key in responses and responses[key] is not None:
+            return responses[key]
+    return None
+
+
 def _response_schema(spec: Dict[str, Any], path: str, method: str, status_code: int, operation: Dict[str, Any]) -> Dict[str, Any]:
     """Extract the declared response schema for one operation+status."""
     responses = operation.get("responses") or {}
-    # YAML parses a bare `200:` response key as an int, so probe both key forms.
-    response = responses.get(str(status_code)) or responses.get(status_code) or responses.get("default")
+    response = _declared_response(responses, status_code)
     if response is None:
         declared = ", ".join(sorted(map(str, responses.keys()))) or "none"
         raise KeyError(f"Status {status_code} is not declared for {method.upper()} {path} (declared: {declared}).")
