@@ -38,6 +38,23 @@ SESSION_ID_BYTES = 8
 _redact_url = redact_url
 
 
+# Set by the MCP HTTP app builder from the token it actually enforces; None =
+# not configured by a server, so fall back to the MCP_AUTH_TOKEN env var.
+_REQUIRE_EXPLICIT_SESSION_ID: bool | None = None
+
+
+def set_require_explicit_session_id(required: bool | None) -> None:
+    """Require an explicit session_id (no most-recent shortcut); None restores the env-based default."""
+    global _REQUIRE_EXPLICIT_SESSION_ID
+    _REQUIRE_EXPLICIT_SESSION_ID = required
+
+
+def _explicit_session_id_required() -> bool:
+    if _REQUIRE_EXPLICIT_SESSION_ID is not None:
+        return _REQUIRE_EXPLICIT_SESSION_ID
+    return bool((os.environ.get("MCP_AUTH_TOKEN") or "").strip())
+
+
 def _sessions_file_path() -> str:
     """Absolute path of the sessions persistence file (cwd or TESTZEUS_ROOT based)."""
     root = os.environ.get("TESTZEUS_ROOT", os.getcwd())
@@ -191,12 +208,14 @@ class SessionManager:
         """Return the named session, or the most recent one when session_id is empty.
 
         The "most recent session" convenience is for single-user loopback use only: when an
-        auth token is configured (MCP_AUTH_TOKEN, i.e. remote/shared use) an explicit session_id
-        is required, so one client cannot silently act on another client's latest session.
+        auth token is configured (remote/shared use) an explicit session_id is required, so one
+        client cannot silently act on another client's latest session. "Configured" means the
+        token the HTTP app actually enforces (see set_require_explicit_session_id); without a
+        server-provided setting the MCP_AUTH_TOKEN env var decides.
         """
         if session_id:
             return self.get_session(session_id)
-        if (os.environ.get("MCP_AUTH_TOKEN") or "").strip():
+        if _explicit_session_id_required():
             raise ValueError("session_id is required when MCP_AUTH_TOKEN is set (the most-recent-session shortcut is disabled for authenticated/remote use).")
         if not self._sessions:
             raise ValueError("No session. Call hercules_configure_session first.")

@@ -80,6 +80,7 @@ from testzeus_hercules.orchestrator.session import (
     SessionState,
     get_session_manager,
     redact_url,
+    set_require_explicit_session_id,
 )
 from testzeus_hercules.reporting.bundle import parse_junit_testcases
 from testzeus_hercules.utils.gherkin_generator import generate_gherkin_from_description
@@ -159,9 +160,9 @@ def _confine_prd_path(path: str, extra_roots: tuple[str, ...] = ()) -> str:
 
 
 def _display_path(path: str | Path) -> str:
-    """Render a filesystem path for tool error messages.
+    """Render a filesystem path for tool results and error messages.
 
-    Absolute paths in error strings leak the operator's directory layout to
+    Absolute paths in tool output leak the operator's directory layout to
     remote MCP clients, so errors show the path relative to the Hercules root
     (e.g. ``opt/output``) — or, for paths outside it, just the basename.
     """
@@ -169,6 +170,32 @@ def _display_path(path: str | Path) -> str:
         return str(Path(path).resolve().relative_to(Path(_hercules_root()).resolve()))
     except ValueError:
         return Path(path).name
+
+
+def _display_optional(path: str | Path | None) -> str | None:
+    """:func:`_display_path` for optional values (None/empty stay None)."""
+    return _display_path(path) if path else None
+
+
+_SUMMARY_PATH_KEYS = ("junit_xml", "report_md", "feature_file", "html")
+
+
+def _display_summary(summary: Any) -> Any:
+    """Copy of a run summary with its filesystem paths rendered via :func:`_display_path`.
+
+    Tool results go to (possibly remote) MCP clients and must not leak the
+    operator's directory layout; the session keeps the absolute originals
+    (hercules_rerun re-executes the recorded feature file).
+    """
+    if not isinstance(summary, dict):
+        return summary
+    shown = dict(summary)
+    for key in _SUMMARY_PATH_KEYS:
+        if shown.get(key):
+            shown[key] = _display_path(shown[key])
+    if isinstance(shown.get("bundles"), list):
+        shown["bundles"] = [_display_path(path) for path in shown["bundles"] if path]
+    return shown
 
 
 def _state_dir() -> Path:
@@ -423,14 +450,14 @@ def _execute_and_record(
     result: dict[str, Any] = {
         "success": outcome.success,
         "duration_s": round(outcome.duration_s, 3),
-        "summaries": outcome.summaries,
-        "run_report_md": described["report_md"],
+        "summaries": [_display_summary(summary) for summary in outcome.summaries],
+        "run_report_md": _display_optional(described["report_md"]),
         "bundles_count": len(described["bundles"]),
         "progress_events": outcome.progress_events[-20:],
         # Authoritative whole-run counter from the runner bridge (the event
         # buffer above is capped and would undercount long runs).
         "steps_completed": outcome.steps_completed,
-        "feature_file": feature_path,
+        "feature_file": _display_path(feature_path),
     }
     if outcome.error:
         result["error"] = outcome.error
@@ -569,7 +596,7 @@ async def hercules_generate_code_summary(session_id: str = "", project_path: str
             "routes_count": len(summary.get("routes", [])),
         },
         "total_files": summary.get("total_files", 0),
-        "code_summary_path": out_path,
+        "code_summary_path": _display_path(out_path),
         "next_action": "Call hercules_generate_standardized_prd to normalize a PRD into requirements.",
     }
     if summary.get("llm_notes"):
@@ -609,14 +636,14 @@ async def hercules_generate_standardized_prd(session_id: str = "", prd_path: str
     result = {
         "requirement_count": len(prd.requirements),
         "project_name": prd.project_name,
-        "standard_prd_path": out_path,
+        "standard_prd_path": _display_path(out_path),
         "requirements": [{"id": requirement.id, "title": requirement.title} for requirement in prd.requirements[:50]],
         "next_action": "Call hercules_generate_test_plan to turn these requirements into test cases.",
     }
     if failed_chunks > 0:
         # Partial extraction: some PRD chunks failed to parse/extract — surface it so
         # callers can re-check coverage instead of trusting a silently shrunken set.
-        result["warning"] = f"{failed_chunks} PRD chunk(s) failed extraction; the requirement set may be incomplete " f"(details in {out_path} source_metadata.failed_chunks)."
+        result["warning"] = f"{failed_chunks} PRD chunk(s) failed extraction; the requirement set may be incomplete " f"(details in {_display_path(out_path)} source_metadata.failed_chunks)."
     return result
 
 
@@ -658,7 +685,7 @@ async def hercules_generate_test_plan(session_id: str = "", prd_path: str = "", 
     get_session_manager().save_session_state(state)
 
     return {
-        "test_plan_path": out_path,
+        "test_plan_path": _display_path(out_path),
         "case_count": len(plan.test_cases),
         "coverage": coverage_matrix(plan),
         "test_cases": [{"id": case.id, "title": case.title, "category": case.category, "priority": case.priority, "tags": case.tags} for case in plan.test_cases],
@@ -688,7 +715,9 @@ async def hercules_generate_and_execute(
     Source priority: gherkin > description (LLM-generated Gherkin) > session
     test plan subset (requires hercules_generate_test_plan first; test_ids
     selects cases, all cases when omitted). Each run gets its own feature file
-    under opt/input (hercules_mcp_run_<id>.feature); runs are serialized
+    under opt/input (hercules_mcp_run_<id>.feature). These files are kept after
+    the run on purpose: hercules_rerun re-executes the recorded feature file of a
+    plan-less session (prune old ones manually if they pile up). Runs are serialized
     process-wide and bounded by HERCULES_MCP_EXEC_TIMEOUT (default 1800s).
     The description->Gherkin LLM generation is bounded separately by
     _GHERKIN_GENERATION_TIMEOUT_S (120s; a module constant rather than an env
@@ -777,7 +806,7 @@ async def hercules_generate_and_execute(
     except asyncio.TimeoutError:
         return _error(
             f"Execution timed out after {timeout_s:g}s (HERCULES_MCP_EXEC_TIMEOUT); the run was cancelled.",
-            feature_file=str(feature_path),
+            feature_file=_display_path(feature_path),
             timeout_s=timeout_s,
         )
     except SystemExit as exc:
@@ -849,14 +878,14 @@ async def hercules_get_run_results(session_id: str = "", run_id: str = "") -> di
 
     return {
         "run_id": run_dir.name,
-        "junit_xml": str(xml_files[0]) if xml_files else None,
+        "junit_xml": _display_path(xml_files[0]) if xml_files else None,
         "total": len(cases),
         "passed": statuses.count("passed"),
         "failed": statuses.count("failed"),
         "errors": statuses.count("error"),
-        "report_md": str(report_md) if report_md.exists() else None,
-        "html": str(html_files[0]) if html_files else None,
-        "bundles": sorted(str(path) for path in _list_subdirs(bundles_dir)),
+        "report_md": _display_path(report_md) if report_md.exists() else None,
+        "html": _display_path(html_files[0]) if html_files else None,
+        "bundles": sorted(_display_path(path) for path in _list_subdirs(bundles_dir)),
         "test_cases": [
             {
                 "name": case["name"],
@@ -1014,7 +1043,7 @@ async def hercules_rerun(session_id: str = "", test_ids: list[str] | None = None
     except asyncio.TimeoutError:
         return _error(
             f"Execution timed out after {timeout_s:g}s (HERCULES_MCP_EXEC_TIMEOUT); the run was cancelled.",
-            feature_file=last_feature,
+            feature_file=_display_path(last_feature),
             timeout_s=timeout_s,
         )
     except SystemExit as exc:
@@ -1136,6 +1165,10 @@ def build_http_app(host: str | None = None, port: int | None = None, path: str |
     # The session manager is created lazily by streamable_http_app(); drop any one
     # built with earlier settings so the new transport security applies.
     mcp._session_manager = None  # noqa: SLF001
+
+    # Key the explicit-session_id requirement on the token actually enforced
+    # here (it may be passed in rather than read from MCP_AUTH_TOKEN).
+    set_require_explicit_session_id(bool(token))
 
     app = mcp.streamable_http_app()
     if token:
