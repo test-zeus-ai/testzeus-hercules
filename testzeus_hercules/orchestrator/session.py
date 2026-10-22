@@ -28,6 +28,9 @@ MAX_RUN_SUMMARIES = 10
 # Upper bound on persisted sessions: each configure_session call creates one, and an
 # unauthenticated local MCP client could otherwise grow sessions.json without bound.
 MAX_SESSIONS = 100
+# Random bytes in a session id (hex-encoded: 16 chars = 64 bits). The id is a capability on a shared
+# remote server, so it must not be guessable; ids stay within [A-Za-z0-9_] so artifact-directory validation holds.
+SESSION_ID_BYTES = 8
 
 # Backwards-compatible alias: the URL-redaction implementation (and its regex
 # fallback) moved to testzeus_hercules.utils.redact so every logger shares one
@@ -148,7 +151,7 @@ class SessionManager:
             raise ValueError(f"Invalid test_scope {test_scope!r}; only 'codebase' is supported")
 
         state = SessionState(
-            session_id=f"sess_{secrets.token_hex(4)}",
+            session_id=f"sess_{secrets.token_hex(SESSION_ID_BYTES)}",
             app_url=app_url or "",
             project_path=project_path or "",
             test_type=test_type,
@@ -185,9 +188,16 @@ class SessionManager:
             raise KeyError(f"Unknown session_id {session_id!r}.") from None
 
     def resolve_session(self, session_id: str = "") -> SessionState:
-        """Return the named session, or the most recent one when session_id is empty."""
+        """Return the named session, or the most recent one when session_id is empty.
+
+        The "most recent session" convenience is for single-user loopback use only: when an
+        auth token is configured (MCP_AUTH_TOKEN, i.e. remote/shared use) an explicit session_id
+        is required, so one client cannot silently act on another client's latest session.
+        """
         if session_id:
             return self.get_session(session_id)
+        if (os.environ.get("MCP_AUTH_TOKEN") or "").strip():
+            raise ValueError("session_id is required when MCP_AUTH_TOKEN is set (the most-recent-session shortcut is disabled for authenticated/remote use).")
         if not self._sessions:
             raise ValueError("No session. Call hercules_configure_session first.")
         # dict preserves insertion order; the last entry is the most recent session.

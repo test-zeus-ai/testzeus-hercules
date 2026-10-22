@@ -302,3 +302,13 @@ def test_credentials_are_ignored_never_stored_or_echoed(workspace) -> None:
     state = manager.get_session(result["session_id"])
     assert state.credentials == {}
     assert "s3cret" not in (root / ".hercules" / "sessions.json").read_text()
+
+
+def test_tools_require_explicit_session_id_when_auth_token_configured(workspace, monkeypatch) -> None:
+    _root, manager = workspace
+    state = manager.create_session("https://app.example.com")
+    monkeypatch.setenv("MCP_AUTH_TOKEN", "s" * 40)
+    result = run(mcp_server.hercules_generate_and_execute(gherkin="Feature: x"))
+    assert "session_id is required" in result["error"]
+    assert "session_id is required" in run(mcp_server.hercules_generate_standardized_prd(prd_path="prd.md"))["error"]
+    assert state.session_id  # explicit ids are unaffected
