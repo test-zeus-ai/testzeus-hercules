@@ -17,11 +17,14 @@ def adapt_llm_params_for_model(model_name: str, llm_config: Dict[str, Any]) -> D
     Normalize token-limit params for different providers/families.
 
     For GPT-5 models, converts max_tokens to max_completion_tokens.
-    For Claude models, converts max_tokens to max_tokens_to_sample.
+    For Claude models, accepts legacy max_tokens_to_sample input and emits
+    max_tokens (every model is called through ChatOpenAI, which rejects
+    max_tokens_to_sample).
     For other models, ensures max_tokens is present.
     """
     params = dict(llm_config or {})
     params.pop("cache_seed", None)
+    params = {key: value for key, value in params.items() if value is not None}
 
     if _is_gpt5_model(model_name):
         # GPT-5 and newer models use max_completion_tokens
@@ -45,16 +48,21 @@ def adapt_llm_params_for_model(model_name: str, llm_config: Dict[str, Any]) -> D
             params["max_completion_tokens"] = 4096
 
     elif model_name.startswith(("claude", "anthropic")):
-        # Claude models use max_tokens_to_sample
-        if "max_tokens" in params and "max_tokens_to_sample" not in params:
-            params["max_tokens_to_sample"] = params.pop("max_tokens")
-            logger.warning(
-                "Deprecated param 'max_tokens' supplied for %s; auto-translating to 'max_tokens_to_sample'.",
-                model_name,
-            )
-        # Set default if neither is present
-        if "max_tokens_to_sample" not in params:
-            params["max_tokens_to_sample"] = 4096
+        if "max_tokens_to_sample" in params:
+            legacy_value = params.pop("max_tokens_to_sample")
+            if "max_tokens" in params:
+                logger.warning(
+                    "Ignoring deprecated param 'max_tokens_to_sample' for %s because 'max_tokens' is also set.",
+                    model_name,
+                )
+            else:
+                params["max_tokens"] = legacy_value
+                logger.warning(
+                    "Deprecated param 'max_tokens_to_sample' supplied for %s; translating to 'max_tokens'.",
+                    model_name,
+                )
+        if "max_tokens" not in params:
+            params["max_tokens"] = 4096
 
     else:
         # Other models use max_tokens
