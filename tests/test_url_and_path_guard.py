@@ -2,7 +2,7 @@
 
 import httpx
 import pytest
-from testzeus_hercules.utils.path_guard import PathOutsideRootsError, resolve_within
+from testzeus_hercules.utils.path_guard import ForbiddenFileError, PathOutsideRootsError, check_prd_document, is_sensitive_name, resolve_within
 from testzeus_hercules.utils.url_guard import UnsafeURLError, fetch_text, validate_url
 
 PUBLIC = "93.184.216.34"
@@ -159,3 +159,67 @@ def test_resolve_within_no_roots_or_empty_path() -> None:
         resolve_within("/tmp", [])
     with pytest.raises(PathOutsideRootsError):
         resolve_within("", ["/tmp"])
+
+
+def test_resolve_within_ignores_filesystem_root_and_home_as_roots(tmp_path, monkeypatch) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    doc = home / "notes" / "prd.md"
+    doc.parent.mkdir()
+    doc.write_text("x")
+    monkeypatch.setenv("HOME", str(home))
+    # "/" and $HOME would allow everything: both are dropped, so nothing resolves.
+    for broad in ("/", str(home), "~"):
+        with pytest.raises(PathOutsideRootsError):
+            resolve_within(str(doc), [broad])
+    # ...but a specific directory (even beneath $HOME) still works, alongside the broad ones.
+    assert resolve_within(str(doc), ["/", str(home), str(doc.parent)]) == str(doc.resolve())
+
+
+@pytest.mark.parametrize("name", ["prd.md", "spec.markdown", "notes.txt", "design.rst", "req.pdf", "brief.DOCX"])
+def test_check_prd_document_allows_documents(tmp_path, name) -> None:
+    doc = tmp_path / name
+    doc.write_text("x")
+    check_prd_document(str(doc))
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "prd.html",
+        "config.json",
+        "script.py",
+        "noext",
+        ".hidden.md",
+        ".env",
+        "agents_llm_config.json",
+        "agents_llm_config-example.json.txt",
+        "prod.env",
+        "tls.pem",
+        "server.key",
+        "sessions.json",
+        "hercules_history.db",
+        "hercules_history.db-wal",
+    ],
+)
+def test_check_prd_document_rejects_other_types_and_sensitive_names(tmp_path, name) -> None:
+    doc = tmp_path / name
+    doc.write_text("x")
+    with pytest.raises(ForbiddenFileError):
+        check_prd_document(str(doc))
+
+
+def test_check_prd_document_rejects_symlink_to_sensitive_target(tmp_path) -> None:
+    target = tmp_path / ".env"
+    target.write_text("SECRET=1")
+    link = tmp_path / "prd.md"
+    link.symlink_to(target)
+    with pytest.raises(ForbiddenFileError):
+        check_prd_document(str(link))
+
+
+def test_is_sensitive_name_matches_dashboard_artifacts() -> None:
+    for name in ("hercules_history.db", "hercules_history.db-shm", "selector_store.json", "sessions.json", ".env.local", "x.sqlite3", "a.db", "/tmp/dir/.secret"):
+        assert is_sensitive_name(name), name
+    for name in ("report.html", "results.json", "run.md", "shot.png", ""):
+        assert not is_sensitive_name(name), name

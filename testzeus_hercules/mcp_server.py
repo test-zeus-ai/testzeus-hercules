@@ -34,6 +34,7 @@ Environment variables (all optional):
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 import re
@@ -41,6 +42,7 @@ import time
 import weakref
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 import httpx
@@ -60,8 +62,8 @@ from testzeus_hercules.intelligence.normalized_prd import (
 )
 from testzeus_hercules.intelligence.prd_parser import build_normalized_prd
 from testzeus_hercules.intelligence.test_plan import (
+    TestPlan,
     generate_test_plan,
-    plan_from_json,
     plan_to_json,
 )
 from testzeus_hercules.orchestrator.code_scan.code_summary import (
@@ -90,7 +92,7 @@ from testzeus_hercules.utils.http_security import (
     parse_csv,
 )
 from testzeus_hercules.utils.litellm_helper import get_litellm_chat_model
-from testzeus_hercules.utils.path_guard import PathOutsideRootsError, resolve_within
+from testzeus_hercules.utils.path_guard import ForbiddenFileError, PathOutsideRootsError, check_prd_document, resolve_within
 
 # ── configuration ─────────────────────────────────────────────────────────────
 
@@ -142,6 +144,18 @@ def _allowed_roots() -> list[str]:
 def _confine_path(path: str, label: str, extra_roots: tuple[str, ...] = ()) -> str:
     """Resolve a client-supplied local path inside the allowed roots (realpath + prefix check)."""
     return resolve_within(path, [*_allowed_roots(), *extra_roots], label=label)
+
+
+def _confine_prd_path(path: str, extra_roots: tuple[str, ...] = ()) -> str:
+    """Confine a local PRD path to the allowed roots AND to plain document types.
+
+    Only .md/.markdown/.txt/.rst/.pdf/.docx are accepted, and dotfiles, config/secret
+    files (agents_llm_config*, *.env, *.pem, *.key, sessions.json, history DBs) are
+    refused even inside an allowed root: the file content is sent to the LLM.
+    """
+    resolved = _confine_path(path, "prd_path", extra_roots)
+    check_prd_document(resolved, "prd_path")
+    return resolved
 
 
 def _display_path(path: str | Path) -> str:
@@ -313,11 +327,25 @@ mcp = FastMCP(
 
 
 async def _check_app_url(url: str, timeout: float = 5.0) -> bool | None:
-    """Best-effort reachability probe; True/False, or None when not checkable."""
-    if not url or not str(url).startswith(("http://", "https://")):
+    """Best-effort reachability probe; True/False, or None when not checkable.
+
+    The app under test is normally on localhost/a private network, so the SSRF guard
+    (public hosts only) cannot be applied here. Instead the probe is kept inert: only
+    http/https URLs with a host are probed, redirects are NOT followed (a redirect answer
+    < 500 already means "up", and following it would let a hostile app URL steer the probe
+    to arbitrary internal hosts), and only a boolean is returned, never any response data.
+    """
+    if not url:
         return None
     try:
-        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+        parts = urlsplit(str(url))
+        hostname = parts.hostname
+    except ValueError:
+        return None
+    if parts.scheme not in ("http", "https") or not hostname:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
             for method in (client.head, client.get):
                 try:
                     response = await method(url)
@@ -355,7 +383,7 @@ async def _build_standard_prd(state: SessionState, prd_path: str) -> tuple[Norma
     if not source.startswith(("http://", "https://")):
         # Local PRD sources are read and sent to the LLM: confine them (realpath) to the
         # allowed roots plus this session's project_path. URLs go through the SSRF guard in prd_parser.
-        source = _confine_path(source, "prd_path", (state.project_path,) if state.project_path else ())
+        source = _confine_prd_path(source, (state.project_path,) if state.project_path else ())
     prd = await build_normalized_prd(source)
     out_path = os.path.join(str(_session_state_dir(state)), "standard_prd.json")
     prd_to_json(prd, out_path)
@@ -455,8 +483,8 @@ async def hercules_configure_session(
         resolved_project = _confine_path(project_path, "project_path") if project_path else ""
         resolved_prd = prd_path
         if prd_path and not prd_path.startswith(("http://", "https://")):
-            resolved_prd = _confine_path(prd_path, "prd_path", (resolved_project,) if resolved_project else ())
-    except PathOutsideRootsError as exc:
+            resolved_prd = _confine_prd_path(prd_path, (resolved_project,) if resolved_project else ())
+    except (PathOutsideRootsError, ForbiddenFileError) as exc:
         return _error(str(exc))
 
     reachable = await _check_app_url(app_url)
@@ -626,6 +654,7 @@ async def hercules_generate_test_plan(session_id: str = "", prd_path: str = "", 
 
     state.test_plan_path = out_path
     state.plan_approved = False  # a freshly generated (LLM/PRD-derived) plan must be re-approved
+    state.plan_approved_sha256 = ""
     get_session_manager().save_session_state(state)
 
     return {
@@ -672,7 +701,7 @@ async def hercules_generate_and_execute(
         gherkin: Raw Gherkin feature content to run directly (highest priority).
         description: Plain-English description; Gherkin is generated from it via LLM.
         additional_instructions: Extra hints for the agent, appended as Gherkin comments in the feature file.
-        approve_plan: Confirm you reviewed the PRD-derived test plan and want it executed (only needed for plan-based runs; remembered for hercules_rerun until the plan is regenerated).
+        approve_plan: Confirm you reviewed the PRD-derived test plan and want it executed (only needed for plan-based runs; bound to the plan file's SHA-256, so it is remembered for hercules_rerun only until the plan is regenerated or edited).
 
     Returns:
         {"success", "duration_s", "summaries", "run_report_md", "bundles_count",
@@ -707,15 +736,29 @@ async def hercules_generate_and_execute(
                 feature_path.write_text(content, encoding="utf-8")
             elif state.test_plan_path and os.path.isfile(state.test_plan_path):
                 source_kind = "test_plan"
-                if not (approve_plan or state.plan_approved or _env_flag("HERCULES_MCP_AUTO_APPROVE_PLAN")):
-                    return _error(
-                        "The test plan was generated by an LLM from a PRD and has not been approved. Review it at "
-                        f"{_display_path(state.test_plan_path)} and call again with approve_plan=true (or pass gherkin explicitly)."
-                    )
-                if approve_plan and not state.plan_approved:
+                # Approval is bound to the exact plan bytes (SHA-256): a plan that was regenerated or
+                # edited after approval needs a fresh approval. The same bytes are parsed below, so the
+                # approved content is what runs (no check/use gap).
+                try:
+                    plan_bytes = Path(state.test_plan_path).read_bytes()
+                except OSError as exc:
+                    return _error(f"Could not read the test plan: {exc}")
+                plan_digest = hashlib.sha256(plan_bytes).hexdigest()
+                approved_for_this_plan = state.plan_approved and bool(state.plan_approved_sha256) and state.plan_approved_sha256 == plan_digest
+                if not approved_for_this_plan:
+                    if not (approve_plan or _env_flag("HERCULES_MCP_AUTO_APPROVE_PLAN")):
+                        changed = " It changed since it was last approved." if state.plan_approved else ""
+                        return _error(
+                            "The test plan was generated by an LLM from a PRD and has not been approved." + changed + " Review it at "
+                            f"{_display_path(state.test_plan_path)} and call again with approve_plan=true (or pass gherkin explicitly)."
+                        )
                     state.plan_approved = True
+                    state.plan_approved_sha256 = plan_digest
                     get_session_manager().save_session_state(state)
-                plan = plan_from_json(state.test_plan_path)
+                try:
+                    plan = TestPlan.model_validate_json(plan_bytes)
+                except ValueError as exc:
+                    return _error(f"The test plan is not valid: {exc}")
                 if test_ids:
                     valid_ids = {case.id for case in plan.test_cases}
                     unknown = [str(test_id) for test_id in test_ids if str(test_id) not in valid_ids]

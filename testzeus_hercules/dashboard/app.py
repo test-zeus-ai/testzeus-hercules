@@ -18,6 +18,7 @@ import math
 import mimetypes
 import os
 import re
+import secrets
 import urllib.parse
 from urllib.parse import urlparse
 
@@ -43,6 +44,7 @@ from testzeus_hercules.utils.http_security import (
     normalize_token,
     parse_csv,
 )
+from testzeus_hercules.utils.path_guard import is_sensitive_name
 from testzeus_hercules.reporting.run_db import (
     RunHistory,
     get_default_history,
@@ -195,15 +197,40 @@ def _case_href(run_id: str, case_key: str) -> str:
     return f"/case/{urllib.parse.quote(run_id, safe='')}/{urllib.parse.quote(case_key, safe='')}"
 
 
-def _page(title: str, body: str) -> HTMLResponse:
-    """Wrap a body fragment in the shared page shell (inline CSS, no assets)."""
+def _content_security_policy(script_nonce: str | None = None) -> str:
+    """Restrictive CSP for dashboard pages: same-origin only, no framing, inline scripts only via a nonce.
+
+    Pages use one inline ``<style>`` block plus a few ``style=`` attributes (hence style 'unsafe-inline')
+    and a single inline script on /live (allowed through ``script_nonce``); everything else is blocked.
+    """
+    directives = [
+        "default-src 'none'",
+        f"script-src 'nonce-{script_nonce}'" if script_nonce else "script-src 'none'",
+        "style-src 'unsafe-inline'",
+        "img-src 'self' data:",
+        "media-src 'self'",
+        "connect-src 'self'",
+        "form-action 'self'",
+        "base-uri 'none'",
+        "frame-ancestors 'none'",
+    ]
+    return "; ".join(directives)
+
+
+def _page(title: str, body: str, script_nonce: str | None = None) -> HTMLResponse:
+    """Wrap a body fragment in the shared page shell (inline CSS, no assets) with anti-framing/CSP headers."""
     document = (
         "<!DOCTYPE html><html><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width, initial-scale=1'>"
         f"<title>{_esc(title)} · Hercules Dashboard</title>"
         f"<style>{_CSS}</style></head><body>{_NAV}<main>{body}</main></body></html>"
     )
-    return HTMLResponse(document)
+    headers = {
+        "X-Frame-Options": "DENY",
+        "Content-Security-Policy": _content_security_policy(script_nonce),
+        "X-Content-Type-Options": "nosniff",
+    }
+    return HTMLResponse(document, headers=headers)
 
 
 def _resolve_artifact_file(path_value: str | None, child_names: tuple[str, ...] = ()) -> str | None:
@@ -555,15 +582,20 @@ def import_endpoint(request):
     Cross-site form posts are rejected (Origin/Sec-Fetch-Site check) so a
     drive-by web page cannot mutate the operator's history DB.
     """
-    origin = request.headers.get("origin", "")
     fetch_site = request.headers.get("sec-fetch-site", "")
     host = request.headers.get("host", "")
     if fetch_site and fetch_site not in ("same-origin", "same-site", "none"):
         return PlainTextResponse("cross-site import rejected", status_code=403)
-    if origin:
-        origin_host = urlparse(origin).netloc
-        if origin_host and origin_host != host:
+    if "origin" in request.headers:
+        # A present Origin must name this host: "null" (sandboxed/redirected contexts), empty or
+        # opaque origins have no netloc and are rejected rather than waved through.
+        origin_host = urlparse(request.headers["origin"]).netloc
+        if not origin_host or origin_host != host:
             return PlainTextResponse("cross-site import rejected", status_code=403)
+    elif not fetch_site and not getattr(request.app.state, "auth_token", None):
+        # Neither Origin nor Sec-Fetch-Site: not a browser form post we can vouch for. With a token
+        # configured the auth middleware already authenticated the caller; without one, refuse.
+        return PlainTextResponse("import rejected: send an Origin/Sec-Fetch-Site header or configure DASHBOARD_AUTH_TOKEN", status_code=403)
     history = _history(request)
     root = _project_root(request)
     existing = {entry["run_id"]: entry for entry in history.list_runs(limit=10000)}
@@ -717,6 +749,18 @@ def _safe_download_filename(path: str) -> str:
     return cleaned.replace('"', "_")
 
 
+def _is_sensitive_artifact(raw_path: str, candidate: str, root: str) -> bool:
+    """True for DBs, session/selector stores, env/key files and dotfiles (also behind symlinks or dot-directories).
+
+    The project root usually holds hercules_history.db, selector_store.json and .hercules/sessions.json next to
+    the evidence this route is meant to serve; none of that may be downloadable.
+    """
+    if is_sensitive_name(raw_path) or is_sensitive_name(candidate):
+        return True
+    relative = os.path.relpath(candidate, root)
+    return any(part.startswith(".") and part not in (".", "..") for part in relative.split(os.sep))
+
+
 def artifact_endpoint(request):
     """GET /artifact?path= — the only file-serving route; realpath-contained in the project root."""
     raw_path = request.query_params.get("path") or ""
@@ -726,6 +770,8 @@ def artifact_endpoint(request):
     candidate = os.path.realpath(raw_path)
     if candidate != root and not candidate.startswith(root + os.sep):
         return PlainTextResponse("Path is outside the project root", status_code=403)
+    if _is_sensitive_artifact(raw_path, candidate, root):
+        return PlainTextResponse("Path is not a servable artifact", status_code=403)
     if not os.path.isfile(candidate):
         return PlainTextResponse("File not found", status_code=404)
     extension = os.path.splitext(candidate)[1].lower()
@@ -777,10 +823,11 @@ def api_runs_latest(request):
 
 def live_page(request):
     """GET /live — minimal auto-refreshing status page (vanilla JS, 2s polling)."""
+    nonce = secrets.token_urlsafe(16)
     body = (
         "<h1>Live status</h1>"
         "<div class='card'><div id='status' class='muted'>Loading…</div></div>"
-        "<script>"
+        f"<script nonce='{nonce}'>"
         "async function refreshStatus() {"
         "  try {"
         "    const res = await fetch('/api/runs/latest');"
@@ -800,7 +847,7 @@ def live_page(request):
         "refreshStatus();"
         "</script>"
     )
-    return _page("Live", body)
+    return _page("Live", body, script_nonce=nonce)
 
 
 # ---------------------------------------------------------------------------
@@ -873,6 +920,7 @@ def create_app(
         app.add_middleware(HostAllowlistMiddleware, allowed_hosts=allowed_hosts)
     app.state.history = history
     app.state.project_root = project_root
+    app.state.auth_token = auth_token
     return app
 
 

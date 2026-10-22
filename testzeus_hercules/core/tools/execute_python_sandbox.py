@@ -418,6 +418,9 @@ def _build_sandbox_injections(
     return injections
 
 
+_ALLOWED_SCRIPT_SUFFIX = ".py"
+
+
 def _allowed_script_roots() -> List[Path]:
     """Roots a sandbox script may live under: the workspace (PROJECT_SOURCE_ROOT) and the test-data directory."""
     config = get_global_conf()
@@ -447,7 +450,7 @@ def _resolve_file_path(file_path: str) -> str:
 
     Raises:
         FileNotFoundError: If file doesn't exist
-        PermissionError: If the resolved path is outside the allowed roots
+        PermissionError: If the resolved path is outside the allowed roots or is not a ``.py`` file
     """
     roots = _allowed_script_roots()
     workspace_root = roots[0]
@@ -456,6 +459,10 @@ def _resolve_file_path(file_path: str) -> str:
         resolved = candidate.resolve()
         if not any(resolved == root or root in resolved.parents for root in roots):
             raise PermissionError(f"access denied: '{file_path}' resolves to '{resolved}', which is outside the workspace root ({workspace_root})")
+        # Only real Python sources may run: other tools (e.g. persist_findings) can write
+        # .txt/.log/.json/.yaml files into the workspace, which must not become executable.
+        if resolved.suffix.lower() != _ALLOWED_SCRIPT_SUFFIX:
+            raise PermissionError(f"access denied: only '{_ALLOWED_SCRIPT_SUFFIX}' scripts can be executed (got '{resolved.name}')")
         return resolved
 
     path = Path(file_path)

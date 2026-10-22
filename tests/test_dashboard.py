@@ -73,6 +73,10 @@ def _junit_xml(project_root) -> str:
 """
 
 
+# Browsers always send Sec-Fetch-Site on form posts; /import refuses POSTs that carry neither it nor Origin.
+SAME_ORIGIN = {"Sec-Fetch-Site": "same-origin"}
+
+
 @pytest.fixture()
 def project_root(tmp_path):
     """Temp project root with output/<run>/final_result.xml plus proofs/ evidence files."""
@@ -104,7 +108,7 @@ def project_root(tmp_path):
 def client(project_root):
     """TestClient over a dashboard app bound to a temp sqlite history DB."""
     app = create_app(db_url=f"sqlite:///{project_root / 'history.db'}", project_root=str(project_root))
-    with TestClient(app) as test_client:
+    with TestClient(app, headers=SAME_ORIGIN) as test_client:
         yield test_client
 
 
@@ -114,7 +118,7 @@ def _client_for(tmp_path, junit_text: str, run_id: str = RUN_ID):
     run_dir.mkdir(parents=True)
     (run_dir / "final_result.xml").write_text(junit_text, encoding="utf-8")
     app = create_app(db_url=f"sqlite:///{tmp_path / 'history.db'}", project_root=str(tmp_path))
-    return TestClient(app)
+    return TestClient(app, headers=SAME_ORIGIN)
 
 
 def test_home_empty_then_import_lists_run(client) -> None:
@@ -555,3 +559,114 @@ def test_module_entrypoint_help_smoke() -> None:
     output = result.stdout + result.stderr
     assert "--help" in output
     assert "--port" in output  # the dashboard-specific flag the subcommand parser owns
+
+
+# ── /import CSRF hardening ────────────────────────────────────────────────────
+
+
+def _bare_client(project_root, auth_token=None) -> TestClient:
+    """TestClient without the SAME_ORIGIN default header."""
+    app = create_app(db_url=f"sqlite:///{project_root / 'history.db'}", project_root=str(project_root), auth_token=auth_token)
+    return TestClient(app, follow_redirects=False)
+
+
+@pytest.mark.parametrize("origin", ["null", "", "http://evil.example"])
+def test_import_rejects_null_empty_and_foreign_origin(project_root, origin) -> None:
+    client = _bare_client(project_root)
+    response = client.post("/import", headers={"Origin": origin})
+    assert response.status_code == 403
+    assert "rejected" in response.text
+
+
+def test_import_rejects_cross_site_fetch_metadata(project_root) -> None:
+    assert _bare_client(project_root).post("/import", headers={"Sec-Fetch-Site": "cross-site"}).status_code == 403
+
+
+def test_import_accepts_matching_origin_and_same_origin_fetch_metadata(project_root) -> None:
+    client = _bare_client(project_root)
+    assert client.post("/import", headers={"Origin": "http://testserver"}).status_code == 303
+    assert client.post("/import", headers={"Sec-Fetch-Site": "same-origin"}).status_code == 303
+
+
+def test_import_without_origin_or_fetch_metadata_requires_auth_token(project_root) -> None:
+    anonymous = _bare_client(project_root)
+    rejected = anonymous.post("/import")
+    assert rejected.status_code == 403 and "Origin" in rejected.text
+
+    # With a configured token the middleware authenticates the caller, so header-less API clients work.
+    token = "t" * 40
+    authed = _bare_client(project_root, auth_token=token)
+    assert authed.post("/import").status_code == 401
+    assert authed.post("/import", headers={"Authorization": f"Bearer {token}"}).status_code == 303
+    # ...but an explicit hostile Origin is still refused even with a valid token.
+    assert authed.post("/import", headers={"Authorization": f"Bearer {token}", "Origin": "null"}).status_code == 403
+
+
+# ── /artifact refuses sensitive files ─────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "relative",
+    [
+        "hercules_history.db",
+        "hercules_history.db-wal",
+        "selector_store.json",
+        "sessions.json",
+        ".hercules/sessions.json",
+        ".env",
+        ".env.local",
+        "prod.env",
+        "data.db",
+        "data.sqlite",
+        "data.sqlite3",
+        ".hidden.txt",
+        ".git/config",
+    ],
+)
+def test_artifact_refuses_sensitive_files(client, project_root, relative) -> None:
+    target = project_root / relative
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("SECRET")
+    response = client.get("/artifact", params={"path": str(target)})
+    assert response.status_code == 403
+    assert "SECRET" not in response.text
+
+
+def test_artifact_refuses_symlink_to_sensitive_file(client, project_root) -> None:
+    secret = project_root / "hercules_history.db"
+    secret.write_text("SECRET")
+    link = project_root / "proofs" / "innocent.png"
+    link.symlink_to(secret)
+    assert client.get("/artifact", params={"path": str(link)}).status_code == 403
+
+
+def test_artifact_still_serves_normal_evidence(client, project_root) -> None:
+    assert client.get("/artifact", params={"path": str(project_root / "proofs" / "network_logs.json")}).status_code == 200
+
+
+# ── security headers ──────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("path", ["/", "/trend", "/live", f"/run/{RUN_ID}"])
+def test_html_pages_send_frame_and_csp_headers(client, path) -> None:
+    client.post("/import")
+    response = client.get(path)
+    assert response.status_code == 200
+    assert response.headers["x-frame-options"] == "DENY"
+    csp = response.headers["content-security-policy"]
+    assert "frame-ancestors 'none'" in csp and "default-src 'none'" in csp
+    assert "unsafe-inline'" not in csp.split("style-src")[0]  # inline scripts are never blanket-allowed
+
+
+def test_live_page_inline_script_is_nonce_allowed_and_other_pages_have_no_scripts(client) -> None:
+    import re
+
+    live = client.get("/live")
+    nonce = re.search(r"<script nonce='([^']+)'>", live.text).group(1)
+    assert f"script-src 'nonce-{nonce}'" in live.headers["content-security-policy"]
+    nonce_again = re.search(r"<script nonce='([^']+)'>", client.get("/live").text).group(1)
+    assert nonce != nonce_again  # fresh per response
+
+    runs = client.get("/")
+    assert "<script" not in runs.text
+    assert "script-src 'none'" in runs.headers["content-security-policy"]

@@ -13,6 +13,8 @@ from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.tools.tool_registry import sec_logger as file_logger
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
+from testzeus_hercules.utils.path_guard import resolve_in_roots
+from testzeus_hercules.utils.redact import REDACTED_PLACEHOLDER, redact_url
 
 # Define cache and binary paths
 CACHE_DIR = Path(get_global_conf().get_hf_home()) / "nuclei_tool"
@@ -120,6 +122,29 @@ async def ensure_nuclei_installed() -> None:
     file_logger("Nuclei binary downloaded and installed.")
 
 
+def redact_command_for_log(command: List[str]) -> str:
+    """Render a nuclei command line for logs: header values and URL credentials are redacted.
+
+    Only the logged string is affected; the executed argv is never modified.
+    """
+    parts: List[str] = []
+    redact_next_header = False
+    redact_next_url = False
+    for arg in command:
+        if redact_next_header:
+            name, sep, _ = arg.partition(":")
+            parts.append(f"{name}{sep} {REDACTED_PLACEHOLDER}" if sep else REDACTED_PLACEHOLDER)
+            redact_next_header = False
+        elif redact_next_url:
+            parts.append(redact_url(arg))
+            redact_next_url = False
+        else:
+            parts.append(arg)
+            redact_next_header = arg in ("-H", "-header")
+            redact_next_url = arg in ("-u", "-target")
+    return " ".join(parts)
+
+
 async def run_nuclei_command(
     is_open_api_spec: bool,
     open_api_spec_path: Optional[str],
@@ -130,6 +155,11 @@ async def run_nuclei_command(
     extra_args: Optional[list] = None,
 ) -> Tuple[str, str, int]:
     """Run a Nuclei command and return stdout, stderr, and return code."""
+    if is_open_api_spec and open_api_spec_path:
+        # Model-supplied path: confined to the test data / project roots
+        # (PathConfinementError is a ValueError), checked before any download.
+        open_api_spec_path = resolve_in_roots(open_api_spec_path)
+
     await ensure_nuclei_installed()
 
     command = [
@@ -167,8 +197,9 @@ async def run_nuclei_command(
     if extra_args:
         command.extend(extra_args)
 
-    logger.info(f"Running Nuclei command: {' '.join(command)}")
-    file_logger(f"Running Nuclei command: {' '.join(command)}")
+    loggable_command = redact_command_for_log(command)
+    logger.info(f"Running Nuclei command: {loggable_command}")
+    file_logger(f"Running Nuclei command: {loggable_command}")
 
     process = await asyncio.create_subprocess_exec(
         *command,

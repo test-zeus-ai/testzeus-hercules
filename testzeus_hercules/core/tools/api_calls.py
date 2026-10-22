@@ -126,6 +126,40 @@ def parse_json_payload(response_json: Any) -> Any:
     return response_json
 
 
+class RemoteSchemaRefError(ValueError):
+    """A JSON Schema ``$ref`` pointed outside the document being validated."""
+
+
+def _refuse_remote_ref(uri: str) -> Any:
+    """``referencing`` retrieve hook: only in-document refs may resolve, never http(s)/file/relative URIs."""
+    raise RemoteSchemaRefError(f"Remote or external $ref '{uri}' is not allowed; only local '#/...' references within the same document can be resolved.")
+
+
+def local_only_schema_registry() -> Any:
+    """Registry that knows the bundled metaschemas but refuses to retrieve any other URI.
+
+    jsonschema's default registry fetches unknown ``$ref`` URIs with urllib, which
+    allows SSRF (http://) and local file reads (file://). Pass this as ``registry=``
+    to every validator that handles model- or spec-supplied schemas.
+    """
+    from jsonschema_specifications import REGISTRY
+    from referencing import Registry
+
+    return REGISTRY.combine(Registry(retrieve=_refuse_remote_ref))
+
+
+def remote_ref_error(exc: BaseException) -> Optional[RemoteSchemaRefError]:
+    """Return the RemoteSchemaRefError buried in a jsonschema/referencing exception chain, if any."""
+    seen = set()
+    current: Optional[BaseException] = exc
+    while current is not None and id(current) not in seen:
+        if isinstance(current, RemoteSchemaRefError):
+            return current
+        seen.add(id(current))
+        current = current.__cause__ or current.__context__
+    return None
+
+
 # ------------------------------------------------------------------------------
 # Logging and Utility Functions
 # ------------------------------------------------------------------------------
@@ -639,12 +673,13 @@ async def validate_response_schema(
         # validator, so an invalid schema silently fell through and produced
         # nonsense per-instance violations; check it explicitly.
         validator_class.check_schema(schema)
-        validator = validator_class(schema)
+        validator = validator_class(schema, registry=local_only_schema_registry())
         errors = sorted(validator.iter_errors(document), key=lambda e: list(e.absolute_path))
     except jsonschema.SchemaError as e:
         return json.dumps({"assertion": "ERROR", "reason": f"Invalid JSON Schema: {e.message}"}, separators=(",", ":"))
     except Exception as e:
-        return json.dumps({"assertion": "ERROR", "reason": f"Schema validation could not run: {e}"}, separators=(",", ":"))
+        refused = remote_ref_error(e)
+        return json.dumps({"assertion": "ERROR", "reason": f"Schema validation could not run: {refused or e}"}, separators=(",", ":"))
 
     violations = [
         {

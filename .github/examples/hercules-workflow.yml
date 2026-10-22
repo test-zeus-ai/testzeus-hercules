@@ -11,7 +11,10 @@
 #      `llm-config-ref-key`.
 #   2. A repository secret holding your LLM API key (LLM_API_KEY below), passed
 #      through to Hercules via the `env-vars` input.
-#   3. The action's `runner: docker` mode pulls testzeus/hercules:latest;
+#   3. Third-party actions below (actions/*, astral-sh/setup-uv inside the composite action) are
+#      pinned by tag for readability; for supply-chain safety pin them to full commit SHAs
+#      (e.g. `actions/checkout@<40-char-sha> # v4`) and let Dependabot bump them.
+#   4. The action's `runner: docker` mode pulls testzeus/hercules:latest;
 #      either make sure that image exists for you, or use `runner: uv`
 #      (installs from source; slower but no image needed).
 # =============================================================================
@@ -46,6 +49,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Hercules never pushes: do not leave the GITHUB_TOKEN in .git/config for later steps.
+          persist-credentials: false
 
       - name: Run Hercules tests
         id: hercules
@@ -92,6 +98,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Hercules never pushes: do not leave the GITHUB_TOKEN in .git/config for later steps.
+          persist-credentials: false
 
       - name: Run Hercules tests
         uses: ./.github/actions/run-tests

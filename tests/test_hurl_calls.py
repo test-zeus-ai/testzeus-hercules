@@ -354,8 +354,8 @@ def test_timeout_kills_grandchildren_and_returns_promptly(fake_hurl, proof_env, 
     # stdout pipe: a bare kill() of the direct child would hang the drain on
     # the grandchild and orphan it.
     pid_file = tmp_path / "grandchild.pid"
-    monkeypatch.setenv("HERCULES_TEST_GRANDCHILD_PID", str(pid_file))
-    fake_hurl('sleep 10 &\necho $! > "$HERCULES_TEST_GRANDCHILD_PID"\nsleep 300\n')
+    # The path is embedded in the script: the subprocess gets a minimal environment.
+    fake_hurl(f'sleep 10 &\necho $! > "{pid_file}"\nsleep 300\n')
     started = time.monotonic()
     verdict = _run(_write_hurl(tmp_path), timeout_seconds=2)
     elapsed = time.monotonic() - started
@@ -418,3 +418,35 @@ def test_real_hurl_suite_passes(proof_env, tmp_path) -> None:
     hurl_file.write_text("GET http://127.0.0.1:1/anything\nHTTP 200\n", encoding="utf-8")
     verdict = _run(str(hurl_file))
     assert verdict["assertion"] == "PASSED"
+
+
+def test_hurl_environment_is_minimal_and_keeps_proxy_ca_and_variables(monkeypatch) -> None:
+    for key in list(os.environ):
+        if key.startswith(("LC_", "HURL_VARIABLE_")):
+            monkeypatch.delenv(key)
+    monkeypatch.setenv("PATH", "/usr/bin")
+    monkeypatch.setenv("HOME", "/home/u")
+    monkeypatch.setenv("LC_ALL", "C")
+    monkeypatch.setenv("HTTPS_PROXY", "http://proxy:3128")
+    monkeypatch.setenv("SSL_CERT_FILE", "/etc/ssl/ca.pem")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-secret")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "aws-secret")
+    monkeypatch.setenv("HURL_VARIABLE_ambient", "leak")
+    env = hurl_calls._hurl_environment({"token": "t-1"})
+    assert env["PATH"] == "/usr/bin" and env["HOME"] == "/home/u" and env["LC_ALL"] == "C"
+    assert env["HTTPS_PROXY"] == "http://proxy:3128" and env["SSL_CERT_FILE"] == "/etc/ssl/ca.pem"
+    assert env["HURL_VARIABLE_token"] == "t-1"
+    assert "OPENAI_API_KEY" not in env
+    assert "AWS_SECRET_ACCESS_KEY" not in env
+    assert "HURL_VARIABLE_ambient" not in env
+
+
+def test_parent_secrets_do_not_reach_the_hurl_subprocess(fake_hurl, proof_env, tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-parent-secret")
+    fake_hurl(WRITE_REPORT_TEMPLATE.format(report=PASSING_REPORT) + 'echo "LEAK:[${OPENAI_API_KEY}]"\necho "VAR:[$HURL_VARIABLE_env]"\n')
+    verdict = _run(_write_hurl(tmp_path), variables={"env": "stage"})
+    assert verdict["assertion"] == "PASSED"
+    excerpt = verdict["output_excerpt"]
+    assert "LEAK:[]" in excerpt
+    assert "sk-parent-secret" not in excerpt
+    assert "VAR:[stage]" in excerpt

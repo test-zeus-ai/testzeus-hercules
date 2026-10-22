@@ -36,7 +36,8 @@ Paths supplied by the model are resolved with `realpath` (so `..` and symlinks a
 
 - the `file_path` of a multipart upload in `generic_http_api`,
 - `hurl_path` of `run_hurl_suite` (including every `.hurl` file inside a directory),
-- `spec_path` of `validate_against_openapi_spec`.
+- `spec_path` of `validate_against_openapi_spec`,
+- `open_api_spec_path` of the nuclei security tools.
 
 A path outside the roots returns an `Access denied` error and nothing is read. Relative paths are looked up under the test data folder first.
 
@@ -48,3 +49,11 @@ A path outside the roots returns an `Access denied` error and nothing is read. R
 - **Operator names in `expected`.** A value that is exactly an operator name, or an operator glued to a value (`count_eq:2`, `ne_path:$.x`), is rejected as a likely parameter mix-up. Ordinary strings that start with an operator word (`exists_in_cart`) are compared normally. To assert a value that is exactly an operator name, pass `literal:<value>`.
 - **`run_hurl_suite`.** Variables are passed through `HURL_VARIABLE_<name>` environment entries, not `--variable` arguments (argv is visible to other local users). The raw output is scrubbed of secret-named variable values, `Authorization`/cookie header lines and URL credentials before it is logged or returned. The verdict is `PASSED` only when the JUnit report has no failures **and** hurl exits with code 0.
 - **`assert_ui` text normalisation.** URLs and `id=`/`class=`/`data-testid=` assignments are stripped before matching. Pass `raw=true` to keep them (for example to assert that a link target is shown).
+
+## Security notes
+
+- **Remote `$ref`s are blocked.** `validate_response_schema` and `validate_against_openapi_spec` resolve only in-document `#/...` references. An `http(s)://`, `file://` or relative-file `$ref` is refused with an error and is never fetched or read, so a schema or spec cannot be used for SSRF or local file reads.
+- **File paths are confined** to the test data and project roots (plus `API_ALLOWED_PATHS`); see "Path confinement" above.
+- **Subprocess environment.** `run_hurl_suite` starts hurl with a minimal environment (`PATH`, `HOME`, locale, temp dir, proxy and CA settings) plus the `HURL_VARIABLE_*` entries it sets itself, not with the full parent environment. Header values and URL credentials in the nuclei command line are redacted in logs; the executed command is unchanged.
+- **Known limitation: no egress allowlist.** `generic_http_api` can request any URL the model supplies, including internal or loopback addresses. Run Hercules on a network that restricts egress if that matters.
+- **Known limitation: unverified nuclei download.** The nuclei binary is downloaded from GitHub releases without checksum or signature verification (pre-existing behaviour).
