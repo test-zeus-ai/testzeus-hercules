@@ -309,13 +309,33 @@ class GraphChatResult:
     messages: list[BaseMessage] = field(default_factory=list)
     cost: dict[str, Any] = field(default_factory=dict)
     terminate: str = "no"
+    last_helper_response: str = ""
 
     @property
     def summary(self) -> str:
         planner_summary = extract_planner_summary(self.messages)
+        if (
+            planner_summary
+            and parse_response(planner_summary).get("terminate") == "yes"
+        ):
+            return planner_summary
+
+        helper_result = parse_response(self.last_helper_response)
+        if helper_result.get("terminate") == "yes":
+            return json.dumps(helper_result)
+
         if planner_summary:
             return planner_summary
+
         if self.terminate == "yes":
+            helper_response = self.last_helper_response.strip()
+            if helper_response:
+                return json.dumps(
+                    {
+                        "terminate": "yes",
+                        "final_response": helper_response,
+                    }
+                )
             return json.dumps(
                 {
                     "terminate": "yes",

@@ -782,7 +782,10 @@ class SimpleHercules:
 
         helper_task = await self._build_helper_task(next_step, target_helper, state)
         nav_token_start = len(self._nav_token_log)
-        helper_response = await self._run_nav_agent(nav_agent, helper_task, agent_name)
+        raw_helper_response = await self._run_nav_agent(
+            nav_agent, helper_task, agent_name
+        )
+        helper_response = str(raw_helper_response or "")
         nav_token_entries = self._nav_token_log[nav_token_start:]
         nav_prompt_tokens = sum(
             int(entry.get("prompt_tokens", 0) or 0) for entry in nav_token_entries
@@ -822,10 +825,16 @@ class SimpleHercules:
 
         elapsed = time.perf_counter() - start
 
+        last_helper_response = (
+            helper_response
+            if helper_response.strip()
+            else str(state.get("last_helper_response") or "")
+        )
+
         return {
             "messages": messages,
             "completed_step_signatures": completed_step_signatures,
-            "last_helper_response": helper_response,
+            "last_helper_response": last_helper_response,
             "current_url": current_url,
             "step_token_log": state.get("step_token_log", []) + [executor_entry],
             "total_prompt_tokens": int(state.get("total_prompt_tokens", 0) or 0)
@@ -1177,6 +1186,7 @@ class SimpleHercules:
                 messages=messages,
                 cost=self._build_cost_metrics(final_state),
                 terminate=terminate,
+                last_helper_response=str(final_state.get("last_helper_response") or ""),
             )
             self._last_graph_result = result
             return result
