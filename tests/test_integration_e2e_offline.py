@@ -373,10 +373,11 @@ def test_full_pipeline_mcp_path_isolated_sessions(hermetic_root, tmp_path, monke
 
     # Each session normalized its OWN PRD into its own artifact directory.
     assert prd_a["requirement_count"] == 2 and prd_b["requirement_count"] == 1
-    assert prd_a["standard_prd_path"] == str(tmp_path / ".hercules" / session_a / "standard_prd.json")
-    assert prd_b["standard_prd_path"] == str(tmp_path / ".hercules" / session_b / "standard_prd.json")
-    assert prd_from_json(prd_a["standard_prd_path"]).requirements[0].title == "User login"
-    assert prd_from_json(prd_b["standard_prd_path"]).requirements[0].title == "Export report"
+    # Tool results carry display paths relative to the Hercules root (TESTZEUS_ROOT).
+    assert prd_a["standard_prd_path"] == os.path.join(".hercules", session_a, "standard_prd.json")
+    assert prd_b["standard_prd_path"] == os.path.join(".hercules", session_b, "standard_prd.json")
+    assert prd_from_json(str(tmp_path / prd_a["standard_prd_path"])).requirements[0].title == "User login"
+    assert prd_from_json(str(tmp_path / prd_b["standard_prd_path"])).requirements[0].title == "Export report"
     assert not (tmp_path / ".hercules" / "standard_prd.json").exists(), "no global artifact file may exist"
 
     # Session A's plan references X's requirements (2 cases over REQ-001/002);
@@ -386,7 +387,7 @@ def test_full_pipeline_mcp_path_isolated_sessions(hermetic_root, tmp_path, monke
     assert [row["id"] for row in plan_b["coverage"]["requirements"]] == ["REQ-001"]
     assert [row["description"] for row in plan_a["coverage"]["requirements"]] == ["User login description", "Order checkout description"]
     assert plan_b["coverage"]["requirements"][0]["description"] == "Export report description"
-    plan_a_model = plan_from_json(plan_a["test_plan_path"])
+    plan_a_model = plan_from_json(str(tmp_path / plan_a["test_plan_path"]))
     assert {requirement_id for case in plan_a_model.test_cases for requirement_id in case.requirement_ids} == {"REQ-001", "REQ-002"}
     assert not (tmp_path / ".hercules" / "test_plan.json").exists()
 
@@ -394,7 +395,7 @@ def test_full_pipeline_mcp_path_isolated_sessions(hermetic_root, tmp_path, monke
     # plus a recorded history row.
     assert executed["success"] is True
     assert executed["source"] == "gherkin"
-    assert executed["feature_file"].startswith(str(tmp_path / "opt" / "input"))
+    assert executed["feature_file"].startswith(os.path.join("opt", "input", "hercules_mcp_run_"))
     run_summary = executed["summaries"][0]
     assert run_summary["total"] == 1 and run_summary["passed"] == 1 and run_summary["failed"] == 0
 
