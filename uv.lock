@@ -4725,6 +4725,7 @@ dependencies = [
     { name = "transformers" },
     { name = "unstructured", extra = ["all-docs"] },
     { name = "urllib3" },
+    { name = "uvicorn" },
 ]
 
 [package.dev-dependencies]
@@ -4783,6 +4784,7 @@ requires-dist = [
     { name = "transformers", specifier = ">=5.0.0rc3,<6" },
     { name = "unstructured", extras = ["all-docs"], specifier = ">=0.24.1,<0.25" },
     { name = "urllib3", specifier = ">=2.8.0,<3" },
+    { name = "uvicorn", specifier = ">=0.30.0,<1" },
 ]
 
 [package.metadata.requires-dev]
@@ -5344,8 +5346,8 @@ name = "uvicorn"
 version = "0.51.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "click", marker = "sys_platform != 'emscripten'" },
-    { name = "h11", marker = "sys_platform != 'emscripten'" },
+    { name = "click" },
+    { name = "h11" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/a2/65/b7c6c443ccc58678c91e1e973bbe2a878591538655d6e1d47f24ba1c51f3/uvicorn-0.51.0.tar.gz", hash = "sha256:f6f4b69b657c312f516dd2d268ab9ae6f254b11e4bac504f37b2ab58b24dd0b0", size = 94412, upload-time = "2026-07-08T10:59:05.962Z" }
 wheels = [
