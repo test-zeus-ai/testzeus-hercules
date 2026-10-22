@@ -312,3 +312,12 @@ def test_tools_require_explicit_session_id_when_auth_token_configured(workspace,
     assert "session_id is required" in result["error"]
     assert "session_id is required" in run(mcp_server.hercules_generate_standardized_prd(prd_path="prd.md"))["error"]
     assert state.session_id  # explicit ids are unaffected
+
+
+def test_docs_list_known_security_limitations() -> None:
+    from pathlib import Path
+
+    text = (Path(__file__).resolve().parents[1] / "docs" / "mcp_server.md").read_text(encoding="utf-8")
+    section = text.split("## Security notes / known limitations", 1)[1]
+    for needle in ("execute_python_sandbox", "sql_calls", "connection_string", "generic_http_api", "download_pdf", "open_url", "cleartext", "ENABLE_"):
+        assert needle in section, needle

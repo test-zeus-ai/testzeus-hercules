@@ -30,14 +30,22 @@ default (loopback only).
 >
 > Client-supplied filesystem paths (`project_path`, local `prd_path`) must resolve
 > inside the Hercules root (`TESTZEUS_ROOT`/cwd), `PROJECT_SOURCE_ROOT`,
-> `TEST_DATA_PATH` or a directory listed in `HERCULES_MCP_ALLOWED_ROOTS`. PRD URLs
+> `TEST_DATA_PATH` or a directory listed in `HERCULES_MCP_ALLOWED_ROOTS`. The
+> filesystem root `/` and the user's home directory are never accepted as allowed
+> roots (they are dropped with a warning), and a local `prd_path` must be a
+> `.md`, `.markdown`, `.txt`, `.rst`, `.pdf` or `.docx` file whose name is not a
+> dotfile or a config/secret file (`agents_llm_config*`, `*.env`, `.env*`, `*.pem`,
+> `*.key`, `sessions.json`, `hercules_history.db*`). PRD URLs
 > may only be public `http(s)` hosts (no loopback/private/link-local/metadata
 > addresses, every redirect re-checked, size/time bounded).
 >
 > `hercules_generate_and_execute` **executes what you give it** (`gherkin` or the
 > Gherkin generated from `description`). A test plan generated from a PRD is
 > untrusted LLM output and is **not** executed until you review it and pass
-> `approve_plan=true` (or set `HERCULES_MCP_AUTO_APPROVE_PLAN=true`).
+> `approve_plan=true` (or set `HERCULES_MCP_AUTO_APPROVE_PLAN=true`). Approval is
+> bound to the SHA-256 of the plan file: regenerating or editing the plan
+> invalidates it. When `MCP_AUTH_TOKEN` is set, every tool call must pass an
+> explicit `session_id` (the "most recent session" shortcut is loopback-only).
 
 ### Environment variables (all optional)
 
@@ -172,3 +180,42 @@ notification hub (`testzeus_hercules.core.notification_manager.notification_hub`
 The event list is capped at the newest 500 events per run; the execute/rerun
 tools return the last 20 of them as `progress_events` plus a `steps_completed`
 count (the total number of `step_completed` events observed during the run).
+
+## Security notes / known limitations
+
+The server is designed for a trusted operator driving it from a local or
+authenticated client. The following risks are pre-existing or accepted; plan
+your deployment around them rather than assuming they are mitigated.
+
+- **`execute_python_sandbox` is not a security boundary.** It runs model-written
+  Python from a `.py` file inside the workspace. In the default in-process mode
+  the code runs inside the Hercules process with the full process environment
+  (API keys, tokens, loaded config) and live Playwright objects. The opt-in
+  `SANDBOX_MODE=subprocess` mode adds a timeout and resource limits but the
+  child still inherits the environment and has normal filesystem and network
+  access. Only run it where the model, and anything it can read, is trusted.
+- **`sql_calls` accepts a model-supplied `connection_string`.** The target
+  database is chosen by the model and is not confined to an allowlist, so it can
+  reach any database the server's network position and the credentials in the
+  string allow.
+- **`generic_http_api`, `download_pdf` and `open_url` are not behind the SSRF
+  guard.** Only PRD URL fetches go through `utils/url_guard` (public hosts only).
+  Test steps can therefore reach loopback/private/link-local addresses, which is
+  required for testing local apps but means a hostile prompt or page can too.
+  Likewise the `app_url` reachability probe is only restricted to http(s), does not
+  follow redirects and returns a boolean.
+- **Tokens travel in cleartext on non-loopback HTTP binds.** `MCP_AUTH_TOKEN` (and
+  `DASHBOARD_AUTH_TOKEN`) are plain bearer tokens over HTTP. When binding anything
+  other than loopback, terminate TLS in front of the server (reverse proxy,
+  tunnel, service mesh) and keep the Hercules port itself unreachable from outside.
+- **`ENABLE_*` feature flags widen what is stored or sent.** Flags such as
+  `ENABLE_RUN_HISTORY`, `ENABLE_FAILURE_BUNDLES`, `ENABLE_RUN_REPORTING`,
+  `ENABLE_SELECTOR_RECORDING`, `ENABLE_PLAYWRIGHT_TRACING` and
+  `ENABLE_BROWSER_LOGS` persist screenshots, videos, network logs and page content
+  under the project root, which can include data typed or shown during tests.
+  `ENABLE_PORTKEY` routes LLM traffic through a third-party gateway and
+  `ENABLE_TELEMETRY` is on by default (set `ENABLE_TELEMETRY=0` to disable). Review
+  each flag before enabling it on a shared host and protect the output directory
+  (the dashboard refuses to serve history databases, selector/session stores and
+  dotfiles, but anything else under the project root is downloadable by whoever can
+  reach it).
