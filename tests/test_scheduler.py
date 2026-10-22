@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import os
+import sys
 import time
 
 import pytest
@@ -395,6 +396,28 @@ def test_sweep_retention_env_var_and_default(workspace, monkeypatch) -> None:
 
     monkeypatch.delenv("HERCULES_RUN_RETENTION_HOURS")
     assert scheduler_module.retention_hours() == scheduler_module.DEFAULT_RETENTION_HOURS
+
+
+def test_sweep_old_parallel_workroots_only_touches_stale_parallel_trees(workspace) -> None:
+    base = workspace / ".hercules"
+    stale = _make_suite_run_tree(base, "parallel_20200101_000000_abc", age_s=100 * 3600)
+    fresh = _make_suite_run_tree(base, "parallel_20990101_000000_def")
+    other = _make_suite_run_tree(base, "my_session_dir", age_s=100 * 3600)  # MCP session dirs etc. are not ours
+
+    removed = scheduler_module.sweep_old_parallel_workroots(retention_hours_override=72)
+
+    assert removed == [stale]
+    assert os.path.isdir(fresh) and os.path.isdir(other)
+
+
+def test_run_manager_sweeps_old_parallel_workroots(workspace, monkeypatch) -> None:
+
+    stale = _make_suite_run_tree(workspace / ".hercules", "parallel_old", age_s=100 * 3600)
+    monkeypatch.setattr(run_manager_module, "_subprocess_command", lambda ws: [sys.executable, "-c", "pass"])
+    feature = workspace / "f.feature"
+    feature.write_text("Feature: f\n\n  Scenario: s\n    Given a step\n", encoding="utf-8")
+    asyncio.run(run_manager_module.run_feature_file_parallel(str(feature)))
+    assert not os.path.exists(stale)
 
 
 def test_sweep_missing_base_dir_is_noop(workspace) -> None:

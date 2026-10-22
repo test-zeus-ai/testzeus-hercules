@@ -1,6 +1,6 @@
 # TestZeus Hercules GitHub Action (`run-tests`)
 
-A composite GitHub Action that runs [TestZeus Hercules](https://github.com/testzeus/hercules)
+A composite GitHub Action that runs [TestZeus Hercules](https://github.com/test-zeus-ai/testzeus-hercules)
 agentic tests in your repository's CI: single feature, bulk `tests/` layout, named
 suite, or parallel scenarios — with report artifacts and an optional PR results
 comment.
@@ -9,7 +9,8 @@ comment.
 - uses: actions/checkout@v4
   with:
     persist-credentials: false   # Hercules never pushes; keep the token out of .git/config
-- uses: ./.github/actions/run-tests   # or testzeus/hercules/.github/actions/run-tests@main
+# Pin to a full commit SHA of test-zeus-ai/testzeus-hercules (see Security notes).
+- uses: test-zeus-ai/testzeus-hercules/.github/actions/run-tests@<commit-sha>
   with:
     feature: tests/login.feature
     llm-config-ref-key: openai_gpt
@@ -26,11 +27,12 @@ comment.
 | `suite` | *(empty)* | Run a named suite via `hercules-suite <name>` (highest precedence). |
 | `suite-config` | `.hercules/suites.yaml` | Suites YAML used with `suite`. |
 | `max-parallel` | `1` | Parallel scenarios: passed to `run_manager --max-parallel` in parallel mode, or as `--max-parallel` override in suite mode. `> 1` with `feature` switches to parallel mode. |
-| `runner` | `docker` | `docker` (pull `image`) or `uv` (set up the toolchain in the job). |
+| `runner` | `docker` | `docker` (pull `image`) or `uv` (installs Hercules from the action's own checkout with `uv sync --project <action repo>` and runs it with `uv run --project` in your workspace). |
 | `image` | `testzeus/hercules:latest` | Docker image (Docker Hub) used by `runner: docker`. Must contain Hercules + Playwright browsers (see notes below). |
 | `llm-config` | `agents_llm_config.json` | Path to the LLM config file in your repo; exported as `AGENTS_LLM_CONFIG_FILE`. If the file does not exist, it is skipped (configure LLMs via `env-vars`, e.g. `LLM_MODEL_NAME` / `LLM_MODEL_API_KEY`). |
 | `llm-config-ref-key` | *(empty)* | Provider key inside the config file (e.g. `openai_gpt`, `gemini`); exported as `AGENTS_LLM_CONFIG_FILE_REF_KEY`. **Required together with `llm-config`** — Hercules validates that both are set. |
-| `base-url` | *(empty)* | Convenience only: exported as the `APP_URL` env var. Hercules itself takes the target URL from the feature steps ("When I navigate to ..."), so put the URL in the feature. |
+| `base-url` | *(empty)* | Convenience only: when non-empty, passed to the Hercules run (docker or uv) as the `APP_URL` env var. Hercules itself takes the target URL from the feature steps ("When I navigate to ..."), so put the URL in the feature. |
+| `reports` | `true` | Enables the opt-in reporting features for the run: `ENABLE_RUN_REPORTING` (`Hercules_Test_Report.md`), `ENABLE_FAILURE_BUNDLES`, `ENABLE_RUN_HISTORY` (DB at `opt/hercules_history.db` unless `HERCULES_HISTORY_DB` is set via `env-vars`) and `ENABLE_FAILURE_CLASSIFICATION`. Set `false` to control them yourself through `env-vars`. |
 | `blocking` | `true` | `true` runs Hercules with `STRICT_EXIT_CODE=true` so test failures fail the job. `false` runs it with `EXIT_CODE_COMPAT=1` so failures do **not** fail the job (legacy exit-code behaviour). |
 | `python-version` | `3.12` | Python version used by `runner: uv`. |
 | `env-vars` | *(empty)* | Multiline `KEY=VALUE` lines passed through to Hercules (secrets welcome). `#` comments and blank lines are ignored. |
@@ -48,14 +50,21 @@ Mode precedence: `suite` > `bulk` > `feature`. Exactly one should be set; with
 | Output | Description |
 | --- | --- |
 | `outcome` | `success` or `failure` of the test run. |
-| `junit-path` | Newest JUnit XML found (`opt/output/*/*_result.xml` or suite merged XML). Empty if none. |
-| `report-path` | Newest `Hercules_Test_Report.md`. Empty if none. |
+| `junit-path` | Newest JUnit XML found (`opt/output/*/*_result.xml`, which includes the suite/parallel merged XML in `opt/output/merged/`, or bulk-mode `tests/*/output/*/*_result.xml`). Empty if none. |
+| `report-path` | Newest `Hercules_Test_Report.md` (written when `reports: true` or `ENABLE_RUN_REPORTING=true`). Empty if none. |
 
 ## What the action produces
 
 - **Artifacts** (always uploaded, 14-day retention, `if-no-files-found: ignore`):
-  `opt/output/` (JUnit XML, HTML report, `Hercules_Test_Report.md`, failure
-  `bundles/`), `opt/proofs/`, and `opt/hercules_history.db` (run history SQLite).
+  `opt/output/` (JUnit XML, HTML report, and — with `reports: true` —
+  `Hercules_Test_Report.md` and failure `bundles/`; suite/parallel runs write their
+  merged JUnit XML to `opt/output/merged/`), `opt/proofs/`, `opt/hercules_history.db`
+  (run history SQLite, with `reports: true`), bulk-mode `tests/*/output` and
+  `tests/*/proofs`, and the suite/parallel scenario workspaces under
+  `.hercules/suite_runs/` and `.hercules/parallel_*/` (only failed scenarios keep
+  theirs).
+- **Bulk mode** runs every `tests/<name>/input/<name>.feature` under the repository
+  root (`PROJECT_SOURCE_ROOT` is set to the workspace unless you pass one in `env-vars`).
 - **PR comment** (with `pr-comment: true`, pull_request events): a status header
   (PASSED/FAILED), totals, a per-case table (status, duration, first 50 cases; failure
   messages only with `pr-comment-failure-details: true`, then redacted and truncated to 300 chars), and a link to the workflow run. The
@@ -71,8 +80,9 @@ so it exits non-zero when tests fail and the job fails — use this to gate PRs.
 (Plain `python -m testzeus_hercules` keeps its legacy exit code unless that flag is set.) Set `blocking: false` to run Hercules with
 `EXIT_CODE_COMPAT=1`, which restores the legacy "always exit 0" behaviour: results
 and artifacts are still produced, failures show up in the PR comment/artifacts,
-but the job stays green. Note `hercules-suite` and `run_manager` already exit
-non-zero on failures regardless.
+but the job stays green. `hercules-suite` and `run_manager` exit non-zero on
+failures by default too, but they also honour `EXIT_CODE_COMPAT=1` (so `blocking: false`
+keeps the job green in suite/parallel mode as well).
 
 ## Requirements
 
@@ -86,8 +96,13 @@ non-zero on failures regardless.
   `runner: uv`. On self-hosted runners, Docker must be available and able to mount
   `$GITHUB_WORKSPACE` at `/workspace`.
 - **`runner: uv`** installs from source in the job (needs network): `astral-sh/setup-uv@v5`,
-  `uv sync --all-extras`, `uv run playwright install --with-deps`. Slower per run;
-  no image required.
+  `uv sync --project <action checkout> --all-extras`, `uv run --project <action checkout> --
+  playwright install --with-deps`. The action's checkout (the repository root above
+  `.github/actions/run-tests`) is the Hercules project, so this works from any consumer
+  repository. Slower per run; no image required.
+- **`llm-config` with `runner: docker`**: only the workspace is mounted, so use a path
+  inside the repository (relative, or absolute under `$GITHUB_WORKSPACE`); other absolute
+  paths are rejected.
 - Optional runtime log file: pass `LOG_FILE_PATH=/workspace/hercules.log` (or any
   path inside the workspace) via `env-vars` so it lands in the artifact.
 

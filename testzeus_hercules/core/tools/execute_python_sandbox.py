@@ -77,10 +77,12 @@ async def execute_python_sandbox(
     function_args: Annotated[str, 'Optional: JSON string of arguments to pass to function (e.g., \'{"arg1": "value", "arg2": 123}\')'] = "{}",
 ) -> str:
     """
-    Execute Python code from a file in a disposable child process.
+    Execute Python code from a file, in-process (default) or in a child process (SANDBOX_MODE=subprocess).
 
     Args:
-        file_path: Path to Python file (absolute or relative, must stay inside the workspace root or the test-data directory)
+        file_path: Path to a .py file (relative to the workspace root, the test-data directory or the cwd,
+            or absolute); it must resolve inside the workspace root (PROJECT_SOURCE_ROOT) or the
+            test-data directory (TEST_DATA_PATH), otherwise it is rejected
         timeout_seconds: Maximum execution time (default 300s; hard capped at 300s in subprocess mode)
         function_name: Optional specific function to call
         function_args: Optional JSON string of function arguments
@@ -94,9 +96,10 @@ async def execute_python_sandbox(
         - SANDBOX_CUSTOM_INJECTIONS: JSON string with custom modules/objects to inject
 
         SANDBOX_MODE=inprocess (default) runs the code in the agent process with live
-        browser objects; SANDBOX_MODE=subprocess runs it in a disposable child process
-        with resource limits and a hard timeout. Neither is a security boundary against
-        hostile code — do not run untrusted code.
+        browser objects: the timeout is cooperative (asyncio.wait_for), with no process
+        kill and no resource limits. SANDBOX_MODE=subprocess runs it in a disposable child
+        process with resource limits and a hard, killing timeout. Neither is a security
+        boundary against hostile code — do not run untrusted code.
     """
     logger.info("Executing Python sandbox: file=%s, timeout=%ss", file_path, timeout_seconds)
     add_event(EventType.INTERACTION, EventData(detail="execute_python_sandbox"))

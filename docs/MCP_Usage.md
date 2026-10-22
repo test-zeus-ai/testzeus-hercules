@@ -92,24 +92,35 @@ tools (`hercules_configure_session`, `hercules_generate_code_summary`,
 (`generate_gherkin`, `run_test`, `get_test_results`) is still registered as a
 deprecated alias layer.
 
-> **Security note:** the MCP server exposes an **unauthenticated** tool
-> endpoint that can drive test execution (browsers, API calls, LLM usage) with
-> the privileges of the server process. The default loopback bind keeps it
-> local to your machine. If you set `MCP_HOST` to a non-loopback address, the
-> endpoint becomes reachable by anyone who can reach that interface — restrict
-> it with a firewall and/or put an authenticating reverse proxy in front, and
-> bind non-loopback only as an explicit, deliberate opt-in.
+> **Security note:** the default loopback bind keeps the server local to your
+> machine; tools drive test execution (browsers, API calls, LLM usage) with the
+> privileges of the server process. A non-loopback `MCP_HOST` is refused unless
+> `MCP_AUTH_TOKEN` (bearer token, >= 16 chars) is set; `Host` headers are checked
+> against an allowlist (`MCP_ALLOWED_HOSTS` adds names), `project_path`/`prd_path`
+> are confined to allowed roots (`HERCULES_MCP_ALLOWED_ROOTS` adds some), and
+> PRD-derived test plans need explicit approval before they run
+> (`HERCULES_MCP_AUTO_APPROVE_PLAN=true` skips it). Tokens travel in cleartext
+> over HTTP, so put TLS in front of any non-loopback bind. See the
+> **Security notes / known limitations** section of `docs/mcp_server.md` for
+> the full picture.
 
-Server environment variables:
+Server environment variables (`docs/mcp_server.md` has the complete table):
 
 - `TESTZEUS_ROOT`: repo/project root for generated features and test output
+- `MCP_HOST`: bind host, default `127.0.0.1` (non-loopback requires `MCP_AUTH_TOKEN`)
+- `MCP_PORT`: bind port, default `8000`
+- `MCP_PATH`: HTTP path, default `/mcp`
+- `MCP_AUTH_TOKEN`: bearer token required on every request when set (mandatory
+  for non-loopback binds); with a token, every tool call must pass `session_id`
+- `MCP_ALLOWED_HOSTS`: extra comma-separated `Host` header names to accept
+- `HERCULES_MCP_ALLOWED_ROOTS`: extra `os.pathsep`-separated directories that
+  `project_path`/`prd_path` may point into
+- `HERCULES_MCP_AUTO_APPROVE_PLAN`: skip the `approve_plan` confirmation for
+  PRD-derived test plans (default `false`)
+- `HERCULES_MCP_EXEC_TIMEOUT`: per-run execution deadline in seconds (default `1800`)
 - `TESTZEUS_PYTHON`: reserved helper variable; the in-process server does not
   shell out, so it is currently unused (kept for compatibility with external
   tooling)
-- `MCP_HOST`: bind host, default `127.0.0.1` (loopback; see the security note
-  above before changing it)
-- `MCP_PORT`: bind port, default `8000`
-- `MCP_PATH`: HTTP path, default `/mcp`
 
 For a client configuration example (streamable-http), see
 `mcp_hercules.example.json`.

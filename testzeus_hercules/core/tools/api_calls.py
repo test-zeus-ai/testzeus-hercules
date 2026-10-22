@@ -5,7 +5,7 @@ import re
 import time
 import urllib.parse
 from collections import defaultdict
-from typing import Annotated, Any, Dict, Optional
+from typing import Annotated, Any, Dict, List, Optional, Tuple
 
 import httpx
 from testzeus_hercules.config import get_global_conf
@@ -15,6 +15,7 @@ from testzeus_hercules.utils.jsonpath_helper import closest_parent_keys, find_js
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.path_guard import resolve_in_roots
 from testzeus_hercules.utils.redact import (
+    API_LOG_REDACTION_MAX_DEPTH,
     _redact_post_data,
     _redact_sensitive_headers,
     is_sensitive_name,
@@ -197,7 +198,7 @@ async def log_request(request: httpx.Request) -> None:
             # Redact the full body first, then cap it for the log: a secret
             # straddling the truncation boundary would otherwise leave a
             # fragment behind.
-            "body": truncate_for_log(_redact_post_data(request_body, str(content_type or ""))),
+            "body": truncate_for_log(_redact_post_data(request_body, str(content_type or ""), API_LOG_REDACTION_MAX_DEPTH)),
         }
     }
     file_logger(json.dumps(log_data))
@@ -240,7 +241,7 @@ async def log_response(response: httpx.Response) -> None:
     content_type = redacted_headers.get("content-type", "") if isinstance(redacted_headers, dict) else ""
     # Redact the full body first, then cap it for the log: a secret straddling
     # the truncation boundary would otherwise leave a fragment behind.
-    body = _redact_post_data(body, str(content_type or ""))
+    body = _redact_post_data(body, str(content_type or ""), API_LOG_REDACTION_MAX_DEPTH)
     if body_exceeds_capture_cap:
         body = body[:MAX_CAPTURE_BYTES] + f"...[truncated: logged only the first {MAX_CAPTURE_BYTES} bytes]"
     log_data = {
@@ -269,6 +270,14 @@ def determine_status_type(status_code: int) -> str:
     return "unknown"
 
 
+_URL_IN_TEXT_RE = re.compile(r"[a-zA-Z][a-zA-Z0-9+.\-]*://[^\s'\"<>]+")
+
+
+def _redacted_error_text(error: BaseException) -> str:
+    """str(error) with every URL in it passed through redact_url (httpx messages embed the full request URL)."""
+    return _URL_IN_TEXT_RE.sub(lambda match: redact_url(match.group(0)), str(error))
+
+
 async def handle_error_response(e: httpx.HTTPStatusError) -> dict:
     """
     Extract error details from an HTTPStatusError.
@@ -280,7 +289,7 @@ async def handle_error_response(e: httpx.HTTPStatusError) -> dict:
         logger.exception(f"Error extracting error details: {ex}")
         error_detail = e.response.text or "No details"
     return {
-        "error": str(e),
+        "error": _redacted_error_text(e),
         "error_detail": error_detail,
         "status_code": e.response.status_code,
         "status_type": determine_status_type(e.response.status_code),
@@ -400,13 +409,15 @@ async def _send_request(
     # httpx replaces the URL's own query string with `params`, so the inline
     # query (…?status=paid&x=1) must be extracted and merged with the explicit
     # query_params (explicit keys win) — otherwise it is silently dropped or
-    # overwritten. With no query at all, params=None leaves the raw URL alone.
+    # overwritten. A list of pairs keeps repeated inline keys (?tag=a&tag=b).
+    # With no query at all, params=None leaves the raw URL alone.
     try:
         inline_query = urllib.parse.parse_qsl(urllib.parse.urlsplit(url).query, keep_blank_values=True)
     except ValueError:
         inline_query = []
-    merged_query: Dict[str, Any] = dict(inline_query)
-    merged_query.update(query_params or {})
+    explicit_query = query_params or {}
+    merged_query: List[Tuple[str, Any]] = [(key, value) for key, value in inline_query if key not in explicit_query]
+    merged_query.extend(explicit_query.items())
     req_kwargs = {"params": merged_query if merged_query else None}
 
     if body_mode == "multipart" and body is not None:
@@ -461,7 +472,7 @@ async def _send_request(
 
     except httpx.HTTPStatusError as e:
         duration = time.perf_counter() - start_time
-        logger.error(f"HTTP error: {e}")
+        logger.error(f"HTTP error: {_redacted_error_text(e)}")
         error_data = await handle_error_response(e)
         return _bounded_payload(error_data, duration)
 
@@ -483,8 +494,8 @@ async def _send_request(
 
         traceback.print_exc()
         duration = time.perf_counter() - start_time
-        logger.error(f"Unexpected error: {e}")
-        error_data = {"error": str(e), "status_code": None, "status_type": "failure"}
+        logger.error(f"Unexpected error: {_redacted_error_text(e)}")
+        error_data = {"error": _redacted_error_text(e), "status_code": None, "status_type": "failure"}
         return _bounded_payload(error_data, duration)
 
 

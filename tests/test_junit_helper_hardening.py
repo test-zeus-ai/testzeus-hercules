@@ -345,20 +345,6 @@ def test_verdict_structured_execution_failure_beats_claimed_pass(junit_env) -> N
     assert "evidence=/logs/errors/agent_chain_failure_e1.log" in message
 
 
-def test_verdict_structured_cleanup_failure_renders_minimally(junit_env) -> None:
-    case = _build_and_parse(
-        junit_env,
-        {
-            "terminate": "yes",
-            "is_assert": True,
-            "is_passed": False,
-            "cleanup_failure": {"message": "browser teardown failed"},
-        },
-    )
-    assert case["status"] == "failed"
-    assert (case["failure_message"] or "") == "Cleanup failure: browser teardown failed"
-
-
 def test_format_failure_record_renders_present_fields_only() -> None:
     from testzeus_hercules.utils.junit_helper import _format_failure_record
 

@@ -42,6 +42,8 @@ def test_empty_summary_is_not_sent(monkeypatch) -> None:
 
 
 def test_summary_is_sent_once_events_were_recorded(monkeypatch) -> None:
+    # conftest disables telemetry for the suite; Sentry is faked here.
+    monkeypatch.setattr(telemetry, "ENABLE_TELEMETRY", True)
     sent = _capture_sentry(monkeypatch)
     monkeypatch.setitem(telemetry.event_collector, "buckets", {"run": {"events": [], "event_count": 1}})
 

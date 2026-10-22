@@ -68,3 +68,34 @@ def test_sibling_directory_with_a_common_prefix_is_refused(roots, tmp_path) -> N
     (sibling / "x.txt").write_text("x")
     with pytest.raises(PathConfinementError):
         resolve_in_roots(str(sibling / "x.txt"))
+
+
+@pytest.mark.parametrize("name", [".env", "prod.env", "agents_llm_config.json", "server.pem", "id.key", "hercules_history.db", "sub/../.env"])
+def test_sensitive_files_inside_a_root_are_refused(roots, name) -> None:
+    test_data = roots / "project" / "test_data"
+    (test_data / "sub").mkdir(exist_ok=True)
+    (test_data / os.path.basename(name)).write_text("SECRET=1")
+    with pytest.raises(PathConfinementError):
+        resolve_in_roots(name)
+    with pytest.raises(PathConfinementError):
+        resolve_in_roots(str(test_data / os.path.basename(name)))
+
+
+def test_harmless_link_to_a_sensitive_file_is_refused(roots) -> None:
+    test_data = roots / "project" / "test_data"
+    (test_data / ".env").write_text("SECRET=1")
+    (test_data / "upload.txt").symlink_to(test_data / ".env")
+    with pytest.raises(PathConfinementError):
+        resolve_in_roots("upload.txt")
+
+
+def test_dot_directory_reference_is_not_treated_as_a_dotfile(roots) -> None:
+    assert resolve_in_roots(".") == os.path.realpath(roots / "project" / "test_data")
+
+
+def test_overbroad_roots_are_ignored(tmp_path) -> None:
+    home_file = os.path.expanduser("~")
+    with pytest.raises(PathConfinementError):
+        resolve_in_roots("/etc/hosts", roots=["/"])
+    with pytest.raises(PathConfinementError):
+        resolve_in_roots(home_file, roots=[os.path.expanduser("~")])

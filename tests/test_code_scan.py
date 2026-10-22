@@ -277,3 +277,30 @@ def test_suggest_test_targets_with_plan_cases() -> None:
     ]
 
     assert suggest_test_targets(diff_summary, plan_cases) == ["tc-1", "tc-4"]
+
+
+@pytest.mark.parametrize(
+    "line,expected",
+    [
+        (" M src/app.py", {"path": "src/app.py", "status": "M"}),
+        ("M  src/app.py", {"path": "src/app.py", "status": "M"}),
+        ("MM src/app.py", {"path": "src/app.py", "status": "M"}),
+        ("A  new file.py", {"path": "new file.py", "status": "A"}),
+        (" D gone.py", {"path": "gone.py", "status": "D"}),
+        ("R  old.py -> renamed.py", {"path": "renamed.py", "status": "R"}),
+    ],
+)
+def test_parse_porcelain_fixed_width_columns(line, expected) -> None:
+    from testzeus_hercules.orchestrator.code_scan.git_diff import _parse_porcelain
+
+    entries, untracked = _parse_porcelain(line + "\n")
+    assert entries == [expected]
+    assert untracked == 0
+
+
+def test_parse_porcelain_untracked_counted() -> None:
+    from testzeus_hercules.orchestrator.code_scan.git_diff import _parse_porcelain
+
+    entries, untracked = _parse_porcelain("?? notes.txt\n M a.py\n")
+    assert untracked == 1
+    assert entries == [{"path": "notes.txt", "status": "A"}, {"path": "a.py", "status": "M"}]

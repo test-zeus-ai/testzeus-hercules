@@ -237,9 +237,8 @@ def parse_agent_response(content: str) -> Dict[str, Any]:
         }
         # Harness failure records ride on terminal results so the report side
         # can render category/stage/evidence alongside the failure message.
-        for failure_key in ("execution_failure", "cleanup_failure"):
-            if content_json.get(failure_key) is not None:
-                result[failure_key] = content_json[failure_key]
+        if content_json.get("execution_failure") is not None:
+            result["execution_failure"] = content_json["execution_failure"]
         return result
     except Exception:
         logger.error("Failed to parse agent response %s", content)

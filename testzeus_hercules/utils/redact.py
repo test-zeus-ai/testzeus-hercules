@@ -10,7 +10,7 @@ can be imported from anywhere, including orchestrator.session.
 import json
 import re
 import urllib.parse
-from typing import Any, Dict, Iterable
+from typing import Any, Dict, Iterable, List, Optional
 
 from testzeus_hercules.utils.logger import logger
 
@@ -54,8 +54,10 @@ def redact_url(url: str) -> str:
 
 
 # Query parameter names whose values must never reach log output. Matched
-# case-insensitively against the decoded parameter name (exact match, so a
-# non-secret like "monitor" or "keyword" is kept).
+# case-insensitively against the decoded parameter name: exactly for these
+# short names (so a non-secret like "monitor" or "keyword" is kept), and by the
+# secret-name fragments of `is_sensitive_name` ("client_secret",
+# "refresh_token", "id_token", ...).
 REDACTED_QUERY_PARAM_NAMES = frozenset(("token", "access_token", "api_key", "apikey", "key", "secret", "password", "passwd", "sig", "signature", "auth"))
 
 
@@ -68,7 +70,7 @@ def _redact_query_pair(pair: str) -> str:
         decoded_name = urllib.parse.unquote_plus(name)
     except Exception:
         decoded_name = name
-    if decoded_name.lower() in REDACTED_QUERY_PARAM_NAMES:
+    if decoded_name.lower() in REDACTED_QUERY_PARAM_NAMES or is_sensitive_name(decoded_name):
         return f"{name}={REDACTED_PLACEHOLDER}"
     return pair
 
@@ -107,14 +109,20 @@ def _redact_url_fallback(url: str) -> str:
 # Header keys whose values must never reach the network logs. Matched as
 # case-insensitive substrings so variants like "X-Api-Key", "Session-Token"
 # or "Set-Cookie" are covered too.
-REDACTED_HEADER_PATTERNS = ("authorization", "cookie", "proxy-authorization", "token", "api-key", "api_key", "apikey", "secret")
+REDACTED_HEADER_PATTERNS = ("authorization", "cookie", "proxy-authorization", "token", "api-key", "api_key", "apikey", "secret", "form-login")
 # Key patterns redacted inside request post data (case-insensitive substrings).
 # "apikey" covers the separator-free camel forms ("apiKey"); the plain
 # "secret"/"token" substrings already cover "secretKey"/"accessToken".
 REDACTED_POST_DATA_PATTERNS = ("password", "passwd", "pwd", "secret", "token", "authorization", "api-key", "api_key", "apikey")
 REDACTED_PLACEHOLDER = "[REDACTED]"
-# Bounded effort: parsed JSON bodies are only walked this many levels deep.
+# Bounded effort: parsed JSON bodies are only walked this many levels deep
+# (browser network logs, which can be large and numerous).
 POST_DATA_REDACTION_MAX_DEPTH = 1
+# The API tool logs (one request/response per call) walk deeper; the node budget
+# bounds the work on very wide bodies. Levels up to POST_DATA_REDACTION_MAX_DEPTH
+# are always walked, whatever the budget, so deep mode never redacts less.
+API_LOG_REDACTION_MAX_DEPTH = 8
+API_LOG_REDACTION_MAX_NODES = 10_000
 
 _MULTIPART_SECRET_FIELD_RE = re.compile(
     r'(name="[^"]*(?:' + "|".join(REDACTED_POST_DATA_PATTERNS) + r')[^"]*"[^>\r\n]*\r?\n\r?\n)([^\r\n]*)',
@@ -136,25 +144,42 @@ def _redact_sensitive_headers(headers: Any) -> Any:
     return redacted
 
 
-def _redact_json_secrets(value: Any, depth: int = 0) -> Any:
-    """Redact sensitive keys inside a parsed JSON body (top level + one nesting level)."""
+def _redact_json_secrets(value: Any, depth: int = 0, max_depth: int = POST_DATA_REDACTION_MAX_DEPTH, _budget: Optional[List[int]] = None) -> Any:
+    """Redact sensitive keys inside a parsed JSON object, walking nested containers up to `max_depth` levels."""
     if not isinstance(value, dict):
         return value
+    budget = _budget if _budget is not None else [API_LOG_REDACTION_MAX_NODES]
     redacted: Dict[Any, Any] = {}
     for key, item in value.items():
         key_lower = str(key).lower()
         if any(pattern in key_lower for pattern in REDACTED_POST_DATA_PATTERNS):
             redacted[key] = REDACTED_PLACEHOLDER
-        elif depth < POST_DATA_REDACTION_MAX_DEPTH:
-            if isinstance(item, dict):
-                redacted[key] = _redact_json_secrets(item, depth + 1)
-            elif isinstance(item, list):
-                redacted[key] = [_redact_json_secrets(entry, depth + 1) if isinstance(entry, dict) else entry for entry in item]
-            else:
-                redacted[key] = item
+        elif depth < max_depth:
+            redacted[key] = _redact_nested(item, depth + 1, max_depth, budget)
         else:
             redacted[key] = item
     return redacted
+
+
+def _redact_nested(item: Any, depth: int, max_depth: int, budget: List[int]) -> Any:
+    """Descend into a dict/list found at `depth` (lists do not add a level for their dict entries)."""
+    if not isinstance(item, (dict, list)):
+        return item
+    if depth > POST_DATA_REDACTION_MAX_DEPTH:
+        if budget[0] <= 0:
+            return item
+        budget[0] -= 1
+    if isinstance(item, dict):
+        return _redact_json_secrets(item, depth, max_depth, budget)
+    entries = []
+    for entry in item:
+        if isinstance(entry, dict):
+            entries.append(_redact_json_secrets(entry, depth, max_depth, budget))
+        elif isinstance(entry, list) and depth < max_depth:
+            entries.append(_redact_nested(entry, depth + 1, max_depth, budget))
+        else:
+            entries.append(entry)
+    return entries
 
 
 def _redact_form_data_secrets(post_data: str) -> str:
@@ -169,11 +194,12 @@ def _redact_form_data_secrets(post_data: str) -> str:
     return urllib.parse.urlencode(redacted_pairs)
 
 
-def _redact_post_data(post_data: Any, content_type: str = "") -> Any:
+def _redact_post_data(post_data: Any, content_type: str = "", max_depth: int = POST_DATA_REDACTION_MAX_DEPTH) -> Any:
     """Best-effort redaction of secrets inside request post data (never raises).
 
     JSON bodies (objects and top-level arrays) have sensitive keys redacted at
-    the top level and one nesting level; urlencoded form bodies have
+    the top level and `max_depth` nesting levels (default one; the API tool
+    logs pass API_LOG_REDACTION_MAX_DEPTH); urlencoded form bodies have
     password-like field values redacted; multipart bodies via a single bounded
     regex pass. Anything else (and any parse failure) is returned untouched so
     logging stays cheap.
@@ -185,14 +211,15 @@ def _redact_post_data(post_data: Any, content_type: str = "") -> Any:
         if stripped.startswith("{"):
             parsed = json.loads(post_data)
             if isinstance(parsed, dict):
-                return json.dumps(_redact_json_secrets(parsed), ensure_ascii=False)
+                return json.dumps(_redact_json_secrets(parsed, 0, max_depth), ensure_ascii=False)
             return post_data
         if stripped.startswith("["):
             parsed = json.loads(post_data)
             if isinstance(parsed, list):
                 # Top-level array (e.g. [{"password": "..."}]): redact each dict
                 # element at depth 0; non-dict elements pass through untouched.
-                return json.dumps([_redact_json_secrets(entry) if isinstance(entry, dict) else entry for entry in parsed], ensure_ascii=False)
+                budget = [API_LOG_REDACTION_MAX_NODES]
+                return json.dumps([_redact_json_secrets(entry, 0, max_depth, budget) if isinstance(entry, dict) else entry for entry in parsed], ensure_ascii=False)
             return post_data
         content_type_lower = (content_type or "").lower()
         if "x-www-form-urlencoded" in content_type_lower:

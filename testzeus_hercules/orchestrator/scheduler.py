@@ -14,7 +14,8 @@ Config lives in ``.hercules/monitor.yaml`` (see
 State (``{"last_results": ..., "runs": {run_id: summary}, ...}``) is a plain
 JSON file, written atomically: the previous cycle's per-scenario ok-set is the
 regression baseline (``last_run`` rolling baseline) and ``baseline: <run_id>``
-pins an older run. Before every cycle, ``suite_runs/`` trees older than
+pins an older run. Before every cycle, ``suite_runs/`` trees (and
+``.hercules/parallel_*`` run-manager workroots) older than
 ``HERCULES_RUN_RETENTION_HOURS`` (int hours, default 72) are swept; trees
 younger than 1 hour are never swept, so ``0`` cannot delete a concurrent
 manual ``hercules-suite`` run's workspace mid-flight.
@@ -49,7 +50,9 @@ DEFAULT_STATE_FILE = ".hercules/monitor_state.json"
 NOTIFY_ON_OPTIONS = ("always", "failure", "regression")
 MAX_KEPT_RUNS = 10
 RUN_SEQ = itertools.count(1)
-SUITE_RUNS_DIR = os.path.join(".hercules", "suite_runs")
+HERCULES_DIR = ".hercules"
+SUITE_RUNS_DIR = os.path.join(HERCULES_DIR, "suite_runs")
+PARALLEL_WORKROOT_PREFIX = "parallel_"
 DEFAULT_RETENTION_HOURS = 72
 RETENTION_HOURS_ENV = "HERCULES_RUN_RETENTION_HOURS"
 # Grace window: a tree created seconds ago may belong to a concurrent manual
@@ -153,6 +156,33 @@ def retention_hours() -> int:
     return max(0, hours)
 
 
+def _sweep_old_trees(base_dir: str, hours: int, name_prefix: str = "") -> list[str]:
+    """Remove directories in ``base_dir`` (optionally only ``name_prefix*``) older than ``hours``."""
+    if not os.path.isdir(base_dir):
+        return []
+    cutoff = time.time() - hours * 3600
+    removed: list[str] = []
+    for name in sorted(os.listdir(base_dir)):
+        if name_prefix and not name.startswith(name_prefix):
+            continue
+        path = os.path.join(base_dir, name)
+        if not os.path.isdir(path):
+            continue
+        try:
+            mtime = os.path.getmtime(path)
+        except OSError:
+            continue
+        if mtime <= cutoff:
+            shutil.rmtree(path, ignore_errors=True)
+            if not os.path.exists(path):
+                removed.append(path)
+    return removed
+
+
+def _effective_retention_hours(retention_hours_override: int | None) -> int:
+    return max(retention_hours_override if retention_hours_override is not None else retention_hours(), MIN_RETENTION_HOURS)
+
+
 def sweep_old_suite_runs(base_dir: str | None = None, retention_hours_override: int | None = None) -> list[str]:
     """Delete ``suite_runs/`` trees older than the retention window; returns removed paths.
 
@@ -165,25 +195,26 @@ def sweep_old_suite_runs(base_dir: str | None = None, retention_hours_override: 
     """
     if base_dir is None:
         base_dir = os.path.join(os.getcwd(), SUITE_RUNS_DIR)
-    hours = max(retention_hours_override if retention_hours_override is not None else retention_hours(), MIN_RETENTION_HOURS)
-    if not os.path.isdir(base_dir):
-        return []
-    cutoff = time.time() - hours * 3600
-    removed: list[str] = []
-    for name in sorted(os.listdir(base_dir)):
-        path = os.path.join(base_dir, name)
-        if not os.path.isdir(path):
-            continue
-        try:
-            mtime = os.path.getmtime(path)
-        except OSError:
-            continue
-        if mtime <= cutoff:
-            shutil.rmtree(path, ignore_errors=True)
-            if not os.path.exists(path):
-                removed.append(path)
+    hours = _effective_retention_hours(retention_hours_override)
+    removed = _sweep_old_trees(base_dir, hours)
     if removed:
         logger.info("Retention sweep removed %d old suite run tree(s) older than %dh from %s", len(removed), hours, base_dir)
+    return removed
+
+
+def sweep_old_parallel_workroots(base_dir: str | None = None, retention_hours_override: int | None = None) -> list[str]:
+    """Delete ``.hercules/parallel_*`` workroots (hercules-run-manager) older than the retention window.
+
+    Same window and 1-hour floor as :func:`sweep_old_suite_runs`; failed
+    scenarios keep their workspaces inside these trees, so they would otherwise
+    accumulate forever. Never raises.
+    """
+    if base_dir is None:
+        base_dir = os.path.join(os.getcwd(), HERCULES_DIR)
+    hours = _effective_retention_hours(retention_hours_override)
+    removed = _sweep_old_trees(base_dir, hours, name_prefix=PARALLEL_WORKROOT_PREFIX)
+    if removed:
+        logger.info("Retention sweep removed %d old parallel workroot(s) older than %dh from %s", len(removed), hours, base_dir)
     return removed
 
 
@@ -282,6 +313,7 @@ async def run_monitor_once(cfg: dict, state: dict) -> dict:
     # part of this cycle) are still executed by run_suite itself.
     cycle_feature_results: dict[str, bool] = {}
     sweep_old_suite_runs()  # every cycle would otherwise grow suite_runs/ forever
+    sweep_old_parallel_workroots()
     for name in cfg["suites"]:
         suite_results[name] = await suites.run_suite(name, path=cfg["config"], dependency_results=cycle_feature_results)
 

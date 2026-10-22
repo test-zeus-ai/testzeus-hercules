@@ -3,7 +3,8 @@
 # .github/workflows/hercules.yml (do not expect it to run in this repo).
 #
 # It runs TestZeus Hercules agentic tests on pull requests using the
-# composite action shipped in this repository (.github/actions/run-tests).
+# composite action published at test-zeus-ai/testzeus-hercules/.github/actions/run-tests
+# (replace <commit-sha> with a full commit SHA of that repository).
 #
 # Prerequisites (in the repo where you copy this):
 #   1. agents_llm_config.json at the repo root (see agents_llm_config-example.json.txt)
@@ -55,9 +56,8 @@ jobs:
 
       - name: Run Hercules tests
         id: hercules
-        uses: ./.github/actions/run-tests   # local composite action (this repo)
-        # For a fork/consumer repo with the action published, use instead:
-        # uses: testzeus/hercules/.github/actions/run-tests@main
+        # Pin to a full commit SHA of test-zeus-ai/testzeus-hercules.
+        uses: test-zeus-ai/testzeus-hercules/.github/actions/run-tests@<commit-sha>
         with:
           # Single feature file (copied to opt/input/test.feature) ...
           feature: tests/checkout_frontend/input/checkout_frontend.feature
@@ -103,7 +103,7 @@ jobs:
           persist-credentials: false
 
       - name: Run Hercules tests
-        uses: ./.github/actions/run-tests
+        uses: test-zeus-ai/testzeus-hercules/.github/actions/run-tests@<commit-sha>
         with:
           feature: tests/api_smoke/input/api_smoke.feature
           runner: docker

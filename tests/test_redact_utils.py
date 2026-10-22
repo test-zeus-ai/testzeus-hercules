@@ -290,3 +290,37 @@ def test_redact_value_redacts_by_key_hint_and_secret_values() -> None:
     assert redact_value(3, "$.body.total") == 3
     assert redact_value("see https://u:pw@h.test/p?token=zzz", "") == "see https://h.test/p?token=[REDACTED]"
     assert redact_value(None) is None
+
+
+# ── query-name substring matching, X-Form-Login, bounded deep JSON walk ─────
+
+
+def test_redact_url_matches_secret_name_fragments_not_just_exact_names() -> None:
+    from testzeus_hercules.utils.redact import redact_url
+
+    redacted = redact_url("https://h/x?client_secret=a1&refresh_token=b2&id_token=c3&keyword=shoes&monitor=1")
+    assert "a1" not in redacted and "b2" not in redacted and "c3" not in redacted
+    assert "keyword=shoes" in redacted and "monitor=1" in redacted
+
+
+def test_form_login_header_is_redacted() -> None:
+    assert _redact_sensitive_headers({"X-Form-Login": "user:pw"})["X-Form-Login"] == "[REDACTED]"
+
+
+def test_deep_mode_redacts_nested_secrets_and_default_mode_is_unchanged() -> None:
+    from testzeus_hercules.utils.redact import API_LOG_REDACTION_MAX_DEPTH
+
+    body = json.dumps({"a": {"b": {"c": {"password": "deep"}}}, "token": "top", "l": [{"secret": "one"}]})
+    deep = _redact_post_data(body, "application/json", API_LOG_REDACTION_MAX_DEPTH)
+    assert "deep" not in deep and "top" not in deep and "one" not in deep
+    shallow = json.loads(_redact_post_data(body, "application/json"))
+    assert shallow["token"] == "[REDACTED]" and shallow["l"][0]["secret"] == "[REDACTED]"
+
+
+def test_deep_mode_budget_never_skips_the_default_levels(monkeypatch) -> None:
+    from testzeus_hercules.utils import redact
+
+    monkeypatch.setattr(redact, "API_LOG_REDACTION_MAX_NODES", 0)
+    body = json.dumps({"x": {"password": "lvl1"}, "y": [{"api_key": "lvl1b"}]})
+    redacted = _redact_post_data(body, "application/json", redact.API_LOG_REDACTION_MAX_DEPTH)
+    assert "lvl1" not in redacted and "lvl1b" not in redacted

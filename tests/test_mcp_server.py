@@ -141,7 +141,8 @@ def test_generate_code_summary_compact_output(workspace) -> None:
     assert result["summary"]["routes_count"] >= 1
     assert isinstance(result["summary"]["entry_points_count"], int)
     assert set(result["summary"]) == {"frameworks", "languages", "entry_points_count", "routes_count"}
-    assert state.code_summary_path == result["code_summary_path"]
+    assert not os.path.isabs(result["code_summary_path"])  # display path, not the host layout
+    assert state.code_summary_path == os.path.abspath(result["code_summary_path"])
 
 
 def test_generate_code_summary_requires_project(workspace) -> None:
@@ -175,7 +176,7 @@ def test_generate_standardized_prd_with_fake_llm(workspace, monkeypatch) -> None
     assert result["project_name"] == "Demo App"
     assert [requirement["id"] for requirement in result["requirements"]] == ["REQ-001", "REQ-002"]
     assert os.path.isfile(result["standard_prd_path"])
-    assert state.standard_prd_path == result["standard_prd_path"]
+    assert state.standard_prd_path == os.path.abspath(result["standard_prd_path"])
 
 
 def test_generate_standardized_prd_requires_source(workspace) -> None:
@@ -245,7 +246,7 @@ def test_generate_test_plan_reuses_cached_prd(workspace, monkeypatch) -> None:
     assert [case["id"] for case in result["test_cases"]] == ["TC001", "TC002"]
     assert result["coverage"]["totals"]["coverage_percent"] == 100
     assert os.path.isfile(result["test_plan_path"])
-    assert state.test_plan_path == result["test_plan_path"]
+    assert state.test_plan_path == os.path.abspath(result["test_plan_path"])
 
 
 # ── hercules_generate_and_execute ─────────────────────────────────────────────
@@ -303,7 +304,10 @@ def test_generate_and_execute_plan_subset(workspace, monkeypatch) -> None:
     assert result["duration_s"] == 1.234
     assert result["steps_completed"] == 3
     assert result["bundles_count"] == 1
-    assert result["run_report_md"] == "/tmp/Hercules_Test_Report.md"
+    # paths outside the Hercules root are reduced to their basename
+    assert result["run_report_md"] == "Hercules_Test_Report.md"
+    assert result["summaries"][0]["junit_xml"] == "x_result.xml"
+    assert result["summaries"][0]["bundles"] == ["x"]
     assert result["source"] == "test_plan"
     assert "additional_instructions_note" in result
     assert len(state.last_run_summaries) == 1  # recorded on the session
@@ -601,9 +605,11 @@ def test_get_run_results_latest(synthetic_runs) -> None:
     assert result["passed"] == 1
     assert result["failed"] == 1
     assert result["errors"] == 0
-    assert result["report_md"] == str(new / "Hercules_Test_Report.md")
-    assert result["html"] == str(new / "demo_result.html")
-    assert result["bundles"] == [str(new / "bundles" / "failing_scenario")]
+    # paths are reported relative to the Hercules root, never absolute
+    assert result["report_md"] == os.path.join("opt", "output", "run_new", "Hercules_Test_Report.md")
+    assert result["html"] == os.path.join("opt", "output", "run_new", "demo_result.html")
+    assert result["bundles"] == [os.path.join("opt", "output", "run_new", "bundles", "failing_scenario")]
+    assert result["junit_xml"] and not os.path.isabs(result["junit_xml"])
     statuses = {case["name"]: case["status"] for case in result["test_cases"]}
     assert statuses == {"passing scenario": "passed", "failing scenario": "failed"}
     failure = result["test_cases"][1]

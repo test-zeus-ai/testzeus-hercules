@@ -217,12 +217,12 @@ def test_parse_agent_response_passes_through_failure_records() -> None:
     from testzeus_hercules.utils.llm_helper import parse_agent_response
 
     record = {"category": "agent_chain_failure", "stage": "scenario_execution", "error_type": "RuntimeError", "message": "boom", "evidence_path": "/tmp/evidence.log"}
-    content = json.dumps({"terminate": "yes", "is_assert": True, "is_passed": False, "assert_summary": "aborted", "execution_failure": record, "cleanup_failure": None})
+    content = json.dumps({"terminate": "yes", "is_assert": True, "is_passed": False, "assert_summary": "aborted", "execution_failure": record, "other_failure": None})
 
     parsed = parse_agent_response(content)
 
     assert parsed["execution_failure"] == record  # rendered by the junit failure-record path
-    assert "cleanup_failure" not in parsed  # absent/None keys stay absent
+    assert "other_failure" not in parsed  # only the known failure record is passed through
 
 
 def test_parse_agent_response_plain_result_has_no_failure_keys() -> None:
@@ -230,7 +230,7 @@ def test_parse_agent_response_plain_result_has_no_failure_keys() -> None:
 
     parsed = parse_agent_response(json.dumps({"terminate": "yes", "is_assert": True, "is_passed": True, "assert_summary": "ok"}))
 
-    assert "execution_failure" not in parsed and "cleanup_failure" not in parsed
+    assert "execution_failure" not in parsed
 
 
 def test_planner_agent_normalizes_claude_params_for_chatopenai(monkeypatch) -> None:

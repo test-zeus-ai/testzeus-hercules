@@ -9,6 +9,7 @@ from starlette.routing import Route
 from starlette.testclient import TestClient
 from testzeus_hercules import mcp_server
 from testzeus_hercules.dashboard import app as dashboard_app
+from testzeus_hercules.orchestrator import session as session_module
 from testzeus_hercules.utils import http_security as hs
 
 TOKEN = "t" * 24
@@ -133,6 +134,7 @@ def restore_mcp_settings():
     yield
     settings.host, settings.port, settings.streamable_http_path, settings.transport_security = saved
     mcp_server.mcp._session_manager = None
+    session_module.set_require_explicit_session_id(None)
 
 
 def test_mcp_build_http_app_refuses_remote_bind_without_token(restore_mcp_settings) -> None:
@@ -161,3 +163,20 @@ def test_mcp_http_app_requires_bearer_token_and_checks_host(restore_mcp_settings
 def test_mcp_wildcard_bind_with_token_disables_host_check_only(restore_mcp_settings) -> None:
     mcp_server.build_http_app(host="0.0.0.0", port=8123, path="/mcp", token=TOKEN)
     assert mcp_server.mcp.settings.transport_security.enable_dns_rebinding_protection is False
+
+
+def test_mcp_session_id_requirement_follows_the_enforced_token(restore_mcp_settings, monkeypatch) -> None:
+    # The token passed to build_http_app (not just the env var) decides whether
+    # the most-recent-session shortcut is disabled.
+    monkeypatch.delenv("MCP_AUTH_TOKEN", raising=False)
+    manager = session_module.SessionManager.__new__(session_module.SessionManager)
+    manager._sessions = {}
+    mcp_server.build_http_app(host="127.0.0.1", port=8123, path="/mcp", token=TOKEN)
+    with pytest.raises(ValueError, match="session_id is required"):
+        manager.resolve_session("")
+
+    # ...and an app built without a token keeps the loopback shortcut even if the env var is set.
+    monkeypatch.setenv("MCP_AUTH_TOKEN", TOKEN)
+    mcp_server.build_http_app(host="127.0.0.1", port=8123, path="/mcp", token="")
+    with pytest.raises(ValueError, match="No session"):
+        manager.resolve_session("")

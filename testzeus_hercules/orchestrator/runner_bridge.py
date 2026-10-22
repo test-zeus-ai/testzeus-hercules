@@ -141,7 +141,7 @@ def write_plan_scenarios_feature(plan: TestPlan, test_ids: list[str] | None, out
         The absolute path of the written feature file.
     """
     if test_ids:
-        plan = filter_plan_by_test_ids(plan, [str(test_id) for test_id in test_ids])
+        plan = filter_plan_by_test_ids(plan, test_ids)
     gherkin = compile_plan_to_gherkin(plan)
     os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as handle:

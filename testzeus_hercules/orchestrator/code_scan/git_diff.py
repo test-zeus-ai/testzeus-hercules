@@ -50,10 +50,12 @@ def _parse_porcelain(stdout: str) -> tuple[list[dict[str, str]], int]:
     for line in stdout.splitlines():
         if not line.strip():
             continue
-        xy, _, rest = line.partition(" ")
-        if len(xy) < 2:
+        # Porcelain v1 is fixed-width: two status columns, a space, the path
+        # (" M f", "M  f", "A  f", "R  old -> new"); splitting on the first
+        # space would mangle entries whose index or worktree column is blank.
+        if len(line) < 4:
             continue
-        path = rest
+        xy, path = line[:2], line[3:]
         if " -> " in path:
             path = path.split(" -> ", 1)[1]
         if xy == "??":

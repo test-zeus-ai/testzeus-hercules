@@ -216,6 +216,11 @@ LLM Parameters:
 ## Testing Configuration
 
 ### Test Execution
+- `SKIP_BROWSER`: Do not launch a browser for the run
+  - Values: `1`, `true`, `yes` (case-insensitive); anything else keeps the browser
+  - Default: unset (browser enabled)
+  - Implementation: For pure API/MCP/SQL scenarios; skips the Chromium startup per scenario and the empty screenshot/video folders
+
 - `EXECUTE_BULK`: Execute tests in bulk from tests directory
   - Values: `true`, `false`
   - Default: `false`
@@ -469,8 +474,8 @@ The server entrypoint uses these variables:
 - `HERCULES_RUN_RETENTION_HOURS`: Retention window for scheduled suite runs
   - Values: Integer number of hours
   - Default: `72`
-  - Usage: `hercules-monitor` sweeps `.hercules/suite_runs/` trees older than this many hours before every cycle; trees younger than 1 hour are never swept regardless of the setting
-  - Implementation: Used in `orchestrator/scheduler.py`
+  - Usage: `hercules-monitor` sweeps `.hercules/suite_runs/` trees and `.hercules/parallel_*` run-manager workroots older than this many hours before every cycle (the run manager also sweeps old `.hercules/parallel_*` workroots before each run); trees younger than 1 hour are never swept regardless of the setting
+  - Implementation: Used in `orchestrator/scheduler.py` and `orchestrator/run_manager.py`
 
 ### Telemetry and Monitoring
 - `ENABLE_TELEMETRY`: Enable usage telemetry
@@ -517,14 +522,24 @@ defaults to the previous behaviour**. Boolean flags accept `1`, `true`, `yes` or
 | `ENABLE_FAILURE_BUNDLES` | off | Copies per-failure evidence (screenshots, video, network log) into a `bundles/` directory next to the JUnit XML. |
 | `ENABLE_RUN_HISTORY` | off | Records every run and testcase in the `hercules_history.db` run-history database. |
 | `ENABLE_FAILURE_CLASSIFICATION` | off | Classifies failed testcases and annotates their bundle and run-history entry (best effort). |
-| `ENABLE_SELECTOR_RECORDING` | off | Records observed alternative selectors into the healing selector store (writes `selector_store.json` under `opt/`). Observability only; nothing is auto-healed. |
-| `CONFIG_DICT_OVERRIDES_ENV` | off | Values passed programmatically as a config dict win over environment variables. By default environment variables win. Guided and bulk mode always apply their per-run overrides (generated feature file, per-folder project root) this way. |
+| `ENABLE_SELECTOR_RECORDING` | off | Records observed alternative selectors into the healing selector store (writes `selector_store.json` under `opt/`) and counts failed click selectors there. When off, the store is neither read nor written. Observability only; nothing is auto-healed. |
+| `STRICT_AGENTS_LLM_CONFIG` | off | A configured `AGENTS_LLM_CONFIG_FILE` that is missing or cannot be parsed raises an error at startup. By default the problem is logged and the `LLM_MODEL_*` environment configuration is used. |
+| `CONFIG_DICT_OVERRIDES_ENV` | off | Values passed programmatically as a config dict win over environment variables. By default environment variables win. Guided and bulk mode always apply their per-run overrides (generated feature file, per-folder project root, input file and test data path) this way, and these per-run overrides also win over CLI flags such as `--project-base`. |
 | `HERCULES_DISABLE_CLI_PARSE` | off | Skip parsing the shared Hercules command-line flags. They are parsed for every entrypoint except known subcommand CLIs (`hercules-dashboard`, `hercules-suite`). |
 
 Always on (bug and safety fixes, no flag): cancellation (Ctrl-C, `asyncio.wait_for`) is never
 swallowed by the scenario loop, filename sanitisation, network-log and error redaction,
-cleanup error aggregation, tool-result size capping, planner failure containment, and one
-corrective re-prompt for an invalid planner decision before the scenario is failed.
+cleanup error aggregation, tool-result size capping and planner failure containment.
+
+Planner guards (always on):
+
+- **Corrective re-prompt.** A malformed planner decision (for example `is_assert` as the string
+  `"true"`, or an empty `next_step` while `terminate` is `"no"`) gets one corrective re-prompt that
+  names the problem. Only if the second answer is still invalid is the scenario failed.
+- **Stall guard.** When the planner returns an empty or unparseable `next_step` three turns in a row,
+  the scenario ends as failed ("no executable progress") instead of looping until the
+  planner round limit (500 turns). Repeating a step that already ran (for example clicking "Next page"
+  several times) counts as progress; it is only logged as `PLANNER_REPEAT_NOTICE`.
 
 The optional mobile (Appium) and healing hooks are inert unless `DEVICE_MANAGER=appium` is
 set and the Appium client is installed.
@@ -538,14 +553,15 @@ The mobile settings (`DEVICE_MANAGER`, `DEVICE_OS`, `APPIUM_SERVER_URL`, `APPIUM
 
 The effective configuration is assembled in this order:
 
-1. Built-in defaults
+1. Built-in defaults (only fill keys that no other source set)
 2. Values passed programmatically as a config dict
-3. `.env` values
-4. Process environment variables
+3. Process environment variables
+4. `.env` values (loaded with `override=True`, so a key in `.env` replaces the same process
+   environment variable; `.env` is not loaded when `IS_TEST_ENV=true`)
 5. `--config` YAML/JSON file values
 6. Command-line arguments
 
-Later sources override earlier sources (set `CONFIG_DICT_OVERRIDES_ENV=true` to move the config dict above the environment). If both `AGENTS_LLM_CONFIG_FILE` and
+Later sources override earlier sources (set `CONFIG_DICT_OVERRIDES_ENV=true` to move the config dict above the process environment and `.env`). If both `AGENTS_LLM_CONFIG_FILE` and
 direct `LLM_MODEL_*` settings are present, the selected runtime path depends on
 which CLI/config values are active for that run.
 

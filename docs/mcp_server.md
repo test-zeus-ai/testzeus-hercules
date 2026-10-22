@@ -44,8 +44,10 @@ default (loopback only).
 > untrusted LLM output and is **not** executed until you review it and pass
 > `approve_plan=true` (or set `HERCULES_MCP_AUTO_APPROVE_PLAN=true`). Approval is
 > bound to the SHA-256 of the plan file: regenerating or editing the plan
-> invalidates it. When `MCP_AUTH_TOKEN` is set, every tool call must pass an
-> explicit `session_id` (the "most recent session" shortcut is loopback-only).
+> invalidates it. When the HTTP server enforces a bearer token (`MCP_AUTH_TOKEN`,
+> or a token passed to `build_http_app`), every tool call must pass an explicit
+> `session_id` (the "most recent session" shortcut is for unauthenticated
+> loopback use only).
 
 ### Environment variables (all optional)
 
@@ -171,7 +173,17 @@ session's own directory `.hercules/<session_id>/`.
 Executed runs each get a unique feature file
 `opt/input/hercules_mcp_run_<8-hex>.feature` (a fresh 8-hex suffix per run, so
 concurrent runs cannot clobber each other's input file), and results land in
-`opt/output/run_<timestamp>/` like any other Hercules run.
+`opt/output/run_<timestamp>/` like any other Hercules run. These per-run
+feature files are **kept** after the run: `hercules_rerun` re-executes the
+session's last recorded feature file when the session has no test plan. Delete
+old `hercules_mcp_run_*.feature` files manually if they pile up.
+
+File paths in tool results (`code_summary_path`, `standard_prd_path`,
+`test_plan_path`, `feature_file`, `run_report_md`, `junit_xml`, `report_md`,
+`html`, `bundles`, and the paths inside `summaries`) are reported relative to
+the Hercules root (`TESTZEUS_ROOT` or the working directory), or as a bare file
+name when they lie outside it, so remote clients never see the host's directory
+layout.
 
 Step-level progress is streamed while a run executes: the runner publishes
 events of the shape `{"message": <str>, "type": <str>}` (for example

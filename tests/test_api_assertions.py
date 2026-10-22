@@ -396,10 +396,14 @@ def test_single_match_behaviour_is_unchanged(proof_env) -> None:
 
 @requires_jsonpath_ng
 def test_count_eq_rejects_non_integer_counts(proof_env) -> None:
-    for bad in (2.5, "2.5", "nan", "inf"):
+    for bad in (2.5, "2.5"):
         verdict = _assert(DOC, "$.body.items", "count_eq", bad)
         assert verdict["assertion"] == "ERROR", bad
         assert "whole number" in verdict["reason"]
+    for bad in ("nan", "inf", "1_000"):
+        verdict = _assert(DOC, "$.body.items", "count_eq", bad)
+        assert verdict["assertion"] == "ERROR", bad
+        assert "not a number" in verdict["reason"]
     assert _assert(DOC, "$.body.items", "count_eq", "2")["assertion"] == "PASSED"
     assert _assert(DOC, "$.body.items", "count_eq", 2.0)["assertion"] == "PASSED"
 
@@ -446,3 +450,83 @@ def test_ledger_redacts_secret_named_paths_and_captured_secret_values(proof_env)
     assert "[REDACTED]" in raw
     lines = _ledger_lines(proof_env)
     assert [entry["verdict"] for entry in lines] == ["PASSED", "PASSED"]  # redaction never changes the verdict
+
+
+# ── review fixes: multi-valued paths, missing expected, strict numbers, literal ──
+
+
+def _assert_without_expected(doc, path, operator):
+    return json.loads(asyncio.run(assert_json_path(doc, path, operator)))
+
+
+@requires_jsonpath_ng
+def test_count_eq_on_a_wildcard_counts_matches_not_the_elements_of_a_single_list_match(proof_env) -> None:
+    assert _assert({"m": [[1, 2, 3]]}, "$.m[*]", "count_eq", 1)["assertion"] == "PASSED"
+    assert _assert({"m": [[1, 2, 3]]}, "$.m[?(@)]", "count_eq", 1)["assertion"] == "PASSED"
+    # A singular path naming one array still counts its elements.
+    assert _assert({"m": [[1, 2, 3]]}, "$.m[0]", "count_eq", 3)["assertion"] == "PASSED"
+    assert _assert(DOC, "$.body.items", "count_eq", 2)["assertion"] == "PASSED"
+
+
+@requires_jsonpath_ng
+def test_count_eq_zero_matches_is_a_count_of_zero(proof_env) -> None:
+    verdict = _assert({"items": []}, "$.items[*]", "count_eq", 0)
+    assert verdict["assertion"] == "PASSED"
+    assert verdict["actual"] == 0
+    assert _assert({"items": []}, "$.items[*]", "count_eq", 1)["assertion"] == "FAILED"
+
+
+@requires_jsonpath_ng
+def test_all_gte_on_a_wildcard_binds_the_matches_themselves(proof_env) -> None:
+    # The single match is a list, not a number: the wildcard binds it as one value.
+    assert _assert({"m": [[1, 2, 3]]}, "$.m[*]", "all_gte", 1)["assertion"] == "ERROR"
+    assert _assert({"m": [5, 7]}, "$.m[*]", "all_gte", 5)["assertion"] == "PASSED"
+    assert _assert({"m": [5, 7]}, "$.m", "all_lte", 7)["assertion"] == "PASSED"
+
+
+@requires_jsonpath_ng
+def test_missing_expected_is_an_error_but_explicit_null_still_compares(proof_env) -> None:
+    for operator in ("eq", "ne", "contains", "gt", "lt", "count_eq", "all_gte", "eq_path"):
+        verdict = _assert_without_expected({"a": None}, "$.a", operator)
+        assert verdict["assertion"] == "ERROR", operator
+        assert "needs an 'expected' value" in verdict["reason"]
+    assert _assert({"a": None}, "$.a", "eq", None)["assertion"] == "PASSED"
+    assert _assert({"a": 1}, "$.a", "ne", None)["assertion"] == "PASSED"
+    for operator in ("exists", "not_empty"):
+        assert _assert_without_expected({"a": 1}, "$.a", operator)["assertion"] == "PASSED"
+    assert _assert_without_expected({"a": 1}, "$.b", "not_exists")["assertion"] == "PASSED"
+
+
+def test_expected_stays_optional_in_the_llm_tool_schema() -> None:
+    from testzeus_hercules.core.tools.api_assertions import EXPECTED_NOT_GIVEN
+    from testzeus_hercules.utils.langchain_tools import _build_args_schema
+
+    schema_model = _build_args_schema(assert_json_path, "assert_json_path")
+    schema = schema_model.model_json_schema()
+    assert "expected" not in schema.get("required", [])
+    assert "expected" in schema["properties"]
+    # Omitted by the model -> the sentinel reaches the tool, never None.
+    assert schema_model.model_fields["expected"].default is EXPECTED_NOT_GIVEN
+
+
+@requires_jsonpath_ng
+@pytest.mark.parametrize("text", ["1_000", "inf", "nan", "NaN", "Infinity", "0x10", " 1e999 "])
+def test_non_decimal_number_spellings_are_not_numeric(proof_env, text) -> None:
+    assert _assert({"a": text}, "$.a", "gt", 0)["assertion"] == "ERROR"
+
+
+@requires_jsonpath_ng
+def test_large_integers_compare_exactly(proof_env) -> None:
+    big = 12345678901234567
+    assert _assert({"a": big}, "$.a", "gt", 12345678901234566)["assertion"] == "PASSED"
+    assert _assert({"a": str(big)}, "$.a", "lt", "12345678901234568")["assertion"] == "PASSED"
+    assert _assert({"a": big}, "$.a", "all_gte", str(big + 1))["assertion"] == "FAILED"
+    assert _assert({"a": "10"}, "$.a", "gt", 9)["assertion"] == "PASSED"
+    assert _assert({"a": "-1.5e2"}, "$.a", "lt", -100)["assertion"] == "PASSED"
+
+
+@requires_jsonpath_ng
+def test_literal_value_bypasses_the_unresolved_placeholder_check(proof_env) -> None:
+    assert _assert({"a": "${nope}"}, "$.a", "eq", "literal:${nope}")["assertion"] == "PASSED"
+    assert _assert({"a": "x"}, "$.a", "eq", "literal:${nope}")["assertion"] == "FAILED"
+    assert _assert({"a": "x"}, "$.a", "eq", "${nope}")["assertion"] == "ERROR"

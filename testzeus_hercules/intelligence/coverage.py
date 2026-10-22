@@ -97,15 +97,17 @@ def filter_plan_by_test_ids(plan: TestPlan, test_ids: list[str]) -> TestPlan:
     """Return a subset copy of ``plan`` restricted to ``test_ids``.
 
     Keeps only the test cases whose id is listed, and only the requirements
-    whose (filtered) ``test_ids`` mapping is non-empty.
+    whose (filtered) ``test_ids`` mapping is non-empty. Ids are matched
+    case-insensitively (like :func:`coverage_matrix`); ``test_ids`` and the
+    requirements' ``test_ids`` may be a list or a whitespace-separated string.
     """
-    wanted = {str(test_id) for test_id in test_ids}
+    wanted = {test_id.casefold() for test_id in _coerce_test_ids(test_ids)}
 
-    kept_cases = [case.model_copy(deep=True) for case in plan.test_cases if case.id in wanted]
+    kept_cases = [case.model_copy(deep=True) for case in plan.test_cases if case.id.casefold() in wanted]
 
     kept_requirements: list[dict[str, Any]] = []
     for requirement in plan.requirements:
-        kept_ids = [str(test_id) for test_id in (requirement.get("test_ids") or []) if str(test_id) in wanted]
+        kept_ids = [test_id for test_id in _coerce_test_ids(requirement.get("test_ids")) if test_id.casefold() in wanted]
         if not kept_ids:
             continue
         entry = dict(requirement)

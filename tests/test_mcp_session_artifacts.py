@@ -88,8 +88,8 @@ def test_two_sessions_get_distinct_standard_prds(workspace, monkeypatch) -> None
 
     assert "error" not in result_a and "error" not in result_b
     # Each session writes (and records) its own file.
-    assert result_a["standard_prd_path"] == str(tmp_path / ".hercules" / state_a.session_id / "standard_prd.json")
-    assert result_b["standard_prd_path"] == str(tmp_path / ".hercules" / state_b.session_id / "standard_prd.json")
+    assert result_a["standard_prd_path"] == os.path.join(".hercules", state_a.session_id, "standard_prd.json")
+    assert result_b["standard_prd_path"] == os.path.join(".hercules", state_b.session_id, "standard_prd.json")
     assert result_a["standard_prd_path"] != result_b["standard_prd_path"]
     assert os.path.isfile(result_a["standard_prd_path"]) and os.path.isfile(result_b["standard_prd_path"])
     assert prd_from_json(result_a["standard_prd_path"]).project_name == "PRD A"
@@ -99,7 +99,7 @@ def test_two_sessions_get_distinct_standard_prds(workspace, monkeypatch) -> None
 
     # _ensure for session B resolves B's own PRD, never session A's.
     ensured_b = run(mcp_server._ensure_standard_prd(state_b, ""))
-    assert ensured_b[1] == result_b["standard_prd_path"]
+    assert ensured_b[1] == os.path.abspath(result_b["standard_prd_path"])
     assert ensured_b[0].project_name == "PRD B"
 
 
@@ -156,8 +156,8 @@ def test_loaded_session_with_recorded_paths_keeps_working(workspace, monkeypatch
 
     result = run(mcp_server.hercules_generate_test_plan(session_id=state.session_id))
     assert "error" not in result
-    assert result["test_plan_path"] == str(tmp_path / ".hercules" / state.session_id / "test_plan.json")
-    assert reloaded.get_session(state.session_id).test_plan_path == result["test_plan_path"]
+    assert result["test_plan_path"] == os.path.join(".hercules", state.session_id, "test_plan.json")
+    assert reloaded.get_session(state.session_id).test_plan_path == os.path.abspath(result["test_plan_path"])
 
 
 def test_code_summary_is_per_session(workspace, monkeypatch) -> None:
@@ -181,8 +181,8 @@ def test_code_summary_is_per_session(workspace, monkeypatch) -> None:
 
     assert "error" not in result_a and "error" not in result_b
     assert result_a["code_summary_path"] != result_b["code_summary_path"]
-    assert result_a["code_summary_path"] == str(tmp_path / ".hercules" / state_a.session_id / "code_summary.json")
-    assert result_b["code_summary_path"] == str(tmp_path / ".hercules" / state_b.session_id / "code_summary.json")
+    assert result_a["code_summary_path"] == os.path.join(".hercules", state_a.session_id, "code_summary.json")
+    assert result_b["code_summary_path"] == os.path.join(".hercules", state_b.session_id, "code_summary.json")
     assert not (tmp_path / ".hercules" / "code_summary.json").exists()
 
 
@@ -205,8 +205,8 @@ def test_test_plan_is_per_session(workspace, monkeypatch) -> None:
     result_b = run(mcp_server.hercules_generate_test_plan(session_id=state_b.session_id))
 
     assert "error" not in result_a and "error" not in result_b
-    assert result_a["test_plan_path"] == str(tmp_path / ".hercules" / state_a.session_id / "test_plan.json")
-    assert result_b["test_plan_path"] == str(tmp_path / ".hercules" / state_b.session_id / "test_plan.json")
+    assert result_a["test_plan_path"] == os.path.join(".hercules", state_a.session_id, "test_plan.json")
+    assert result_b["test_plan_path"] == os.path.join(".hercules", state_b.session_id, "test_plan.json")
     assert not (tmp_path / ".hercules" / "test_plan.json").exists()
 
 

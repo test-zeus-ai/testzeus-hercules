@@ -185,3 +185,52 @@ def test_bulk_select_option_tolerates_non_dict_entry(monkeypatch: pytest.MonkeyP
     assert "Entry must contain selector and value_to_fill." in results[0]["error"]
     assert results[1]["selector"] == "sel_b"
     assert "1 failed" in results[2]["summary"]
+
+
+# ── selector-store failure hook honours ENABLE_SELECTOR_RECORDING ─────────────
+
+
+class _RecordingStore:
+    def __init__(self) -> None:
+        self.calls: List[str] = []
+
+    def lookup(self, name: str) -> Dict[str, str]:
+        self.calls.append(f"lookup:{name}")
+        return {}
+
+    def record_failure(self, name: str) -> None:
+        self.calls.append(f"failure:{name}")
+
+
+def _run_not_found_click(monkeypatch: pytest.MonkeyPatch) -> _RecordingStore:
+    import testzeus_hercules.healing.selector_store as store_module
+    from types import SimpleNamespace
+
+    class _NoElementManager:
+        async def find_element(self, selector: str, page: Any, element_name: str = "") -> None:
+            return None
+
+    class _NullSelectorLogger:
+        async def log_selector_interaction(self, **kwargs: Any) -> None:
+            return None
+
+    store = _RecordingStore()
+    monkeypatch.setattr(store_module, "get_default_store", lambda: store)
+    monkeypatch.setattr(click_module, "PlaywrightManager", _NoElementManager)
+    monkeypatch.setattr(click_module, "get_browser_logger", lambda path: _NullSelectorLogger())
+    monkeypatch.setattr(click_module, "get_global_conf", lambda: SimpleNamespace(get_proof_path=lambda: "unused"))
+    try:
+        asyncio.run(click_module.do_click(FakePage(), "role=button[name='Save']", 0, "click"))
+    except Exception:
+        pass  # the not-found outcome itself is covered elsewhere; only the store side effects matter here
+    return store
+
+
+def test_click_not_found_skips_selector_store_when_recording_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ENABLE_SELECTOR_RECORDING", raising=False)
+    assert _run_not_found_click(monkeypatch).calls == []
+
+
+def test_click_not_found_updates_selector_store_when_recording_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ENABLE_SELECTOR_RECORDING", "true")
+    assert _run_not_found_click(monkeypatch).calls == ["lookup:role=button[name='Save']", "failure:role=button[name='Save']"]

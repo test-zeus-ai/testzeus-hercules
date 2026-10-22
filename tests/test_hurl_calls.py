@@ -431,14 +431,16 @@ def test_hurl_environment_is_minimal_and_keeps_proxy_ca_and_variables(monkeypatc
     monkeypatch.setenv("SSL_CERT_FILE", "/etc/ssl/ca.pem")
     monkeypatch.setenv("OPENAI_API_KEY", "sk-secret")
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "aws-secret")
-    monkeypatch.setenv("HURL_VARIABLE_ambient", "leak")
+    monkeypatch.setenv("HURL_VARIABLE_ambient", "from-ci")
+    monkeypatch.setenv("HURL_VARIABLE_token", "parent-value")
     env = hurl_calls._hurl_environment({"token": "t-1"})
     assert env["PATH"] == "/usr/bin" and env["HOME"] == "/home/u" and env["LC_ALL"] == "C"
     assert env["HTTPS_PROXY"] == "http://proxy:3128" and env["SSL_CERT_FILE"] == "/etc/ssl/ca.pem"
     assert env["HURL_VARIABLE_token"] == "t-1"
     assert "OPENAI_API_KEY" not in env
     assert "AWS_SECRET_ACCESS_KEY" not in env
-    assert "HURL_VARIABLE_ambient" not in env
+    # The parent's own HURL_VARIABLE_* entries pass through; tool-supplied values win.
+    assert env["HURL_VARIABLE_ambient"] == "from-ci"
 
 
 def test_parent_secrets_do_not_reach_the_hurl_subprocess(fake_hurl, proof_env, tmp_path, monkeypatch) -> None:
@@ -450,3 +452,44 @@ def test_parent_secrets_do_not_reach_the_hurl_subprocess(fake_hurl, proof_env, t
     assert "LEAK:[]" in excerpt
     assert "sk-parent-secret" not in excerpt
     assert "VAR:[stage]" in excerpt
+
+
+def test_captured_secret_under_a_harmless_hurl_name_is_scrubbed(fake_hurl, proof_env, tmp_path) -> None:
+    from testzeus_hercules.core.tools.api_calls import set_variable_value
+
+    set_variable_value("access_token", "captured-tok-777")
+    report = FAILING_REPORT.replace("expected 200, actual 500", "body echoed captured-tok-777")
+    fake_hurl(WRITE_REPORT_TEMPLATE.format(report=report) + 'echo "value=$HURL_VARIABLE_h"\n')
+    verdict = _run(_write_hurl(tmp_path), variables={"h": "${access_token}"})
+    assert "captured-tok-777" not in json.dumps(verdict)
+    with open(f"{proof_env.get_proof_path()}/hurl_logs.log", "r", encoding="utf-8") as log_file:
+        assert "captured-tok-777" not in log_file.read()
+
+
+def test_saved_junit_report_copy_is_redacted_and_still_valid_xml(fake_hurl, proof_env, tmp_path) -> None:
+    import xml.etree.ElementTree as ElementTree
+
+    report = FAILING_REPORT.replace("expected 200, actual 500", "Authorization: Bearer hunter2-secret value=hunter2-secret https://u:pw123@api.test/x?token=t0k")
+    fake_hurl(WRITE_REPORT_TEMPLATE.format(report=report))
+    verdict = _run(_write_hurl(tmp_path), variables={"api_token": "hunter2-secret"})
+    with open(verdict["junit_report"], "r", encoding="utf-8") as copy_file:
+        saved = copy_file.read()
+    assert "hunter2-secret" not in saved
+    assert "pw123" not in saved and "t0k" not in saved
+    ElementTree.fromstring(saved)
+
+
+@pytest.mark.parametrize("name", ["notes.txt", "suite.hurl.bak"])
+def test_non_hurl_file_input_is_refused(fake_hurl, proof_env, tmp_path, name) -> None:
+    fake_hurl(WRITE_REPORT_TEMPLATE.format(report=PASSING_REPORT))
+    verdict = _run(_write_hurl(tmp_path, name=name))
+    assert verdict["assertion"] == "ERROR"
+    assert ".hurl" in verdict["reason"]
+
+
+def test_sensitive_file_input_is_refused(fake_hurl, proof_env, tmp_path) -> None:
+    fake_hurl(WRITE_REPORT_TEMPLATE.format(report=PASSING_REPORT))
+    (tmp_path / ".env").write_text("OPENAI_API_KEY=sk-1", encoding="utf-8")
+    verdict = _run(".env")
+    assert verdict["assertion"] == "ERROR"
+    assert "sk-1" not in json.dumps(verdict)
