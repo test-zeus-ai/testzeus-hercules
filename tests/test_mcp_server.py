@@ -291,7 +291,7 @@ def test_generate_and_execute_plan_subset(workspace, monkeypatch) -> None:
 
     monkeypatch.setattr(mcp_server, "execute_feature_file", fake_execute)
 
-    result = run(mcp_server.hercules_generate_and_execute(session_id=state.session_id, test_ids=["TC001"], additional_instructions="Use the admin user"))
+    result = run(mcp_server.hercules_generate_and_execute(session_id=state.session_id, test_ids=["TC001"], additional_instructions="Use the admin user", approve_plan=True))
 
     assert "error" not in result
     feature_name = os.path.basename(captured["feature_path"])
@@ -391,7 +391,7 @@ def test_generate_and_execute_rejects_unknown_test_ids(workspace) -> None:
     plan_to_json(make_plan(), str(plan_file))
     state.test_plan_path = str(plan_file)
 
-    result = run(mcp_server.hercules_generate_and_execute(test_ids=["TC999"]))
+    result = run(mcp_server.hercules_generate_and_execute(test_ids=["TC999"], approve_plan=True))
     assert "error" in result and "TC999" in result["error"]
 
 
@@ -422,7 +422,7 @@ def test_rerun_uses_test_plan(workspace, monkeypatch) -> None:
         return _fake_outcome()
 
     monkeypatch.setattr(mcp_server, "execute_feature_file", fake_execute)
-    result = run(mcp_server.hercules_rerun(session_id=state.session_id, test_ids=["TC002"]))
+    result = run(mcp_server.hercules_rerun(session_id=state.session_id, test_ids=["TC002"], approve_plan=True))
     assert "error" not in result
     assert result["source"] == "test_plan"
 
