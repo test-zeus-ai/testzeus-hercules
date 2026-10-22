@@ -282,3 +282,15 @@ def test_verdicts_are_recorded_with_fingerprint(proof_env, spec_20_file) -> None
     assert entries[0]["path"] == "GET /pets"
     expected_subject = hashlib.sha1(json.dumps([PET_20], separators=(",", ":"), default=str).encode()).hexdigest()[:12]
     assert entries[0]["subject"] == expected_subject
+
+
+def test_spec_outside_allowed_roots_is_error(proof_env) -> None:
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as elsewhere:
+        outside = f"{elsewhere}/pets.json"
+        with open(outside, "w", encoding="utf-8") as handle:
+            json.dump(SPEC_20, handle)
+        verdict = _validate(PET_20, outside)
+    assert verdict["assertion"] == "ERROR"
+    assert "Access denied" in verdict["reason"]

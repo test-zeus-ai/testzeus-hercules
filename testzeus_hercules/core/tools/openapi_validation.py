@@ -25,6 +25,7 @@ from testzeus_hercules.core.tools.tool_registry import (
 )
 from testzeus_hercules.utils.jsonpath_helper import find_json_path
 from testzeus_hercules.utils.logger import logger
+from testzeus_hercules.utils.path_guard import resolve_in_roots
 
 OPENAPI_SCHEMA_VALIDATOR_INSTALL_HINT = (
     "openapi_schema_validator is not installed. Install the API extras to " "enable OpenAPI contract validation: pip install 'testzeus-hercules[api]' " "(provides openapi-schema-validator)."
@@ -38,7 +39,9 @@ def _minified(payload: Dict[str, Any]) -> str:
 
 
 def _load_spec(spec_path: str) -> Dict[str, Any]:
-    """Load an OpenAPI/Swagger spec from a JSON or YAML file."""
+    """Load an OpenAPI/Swagger spec from a JSON or YAML file inside the test data / project roots."""
+    # Model-supplied path: confined (PathConfinementError is a ValueError).
+    spec_path = resolve_in_roots(spec_path)
     if not os.path.isfile(spec_path):
         raise FileNotFoundError(f"OpenAPI spec file not found: {spec_path}")
     with open(spec_path, "r", encoding="utf-8") as spec_file:
