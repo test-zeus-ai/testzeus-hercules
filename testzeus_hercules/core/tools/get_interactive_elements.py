@@ -17,6 +17,97 @@ from testzeus_hercules.utils.get_detailed_accessibility_tree import (
 from testzeus_hercules.utils.logger import logger
 
 
+# Flatten the hierarchy into a list of elements
+def flatten_elements(node: dict, parent_name: str = "", parent_title: str = "") -> list[dict]:
+    elements = []
+    interactive_roles = {
+        "button",
+        "link",
+        "checkbox",
+        "radio",
+        "textbox",
+        "combobox",
+        "listbox",
+        "menuitem",
+        "menuitemcheckbox",
+        "menuitemradio",
+        "option",
+        "slider",
+        "spinbutton",
+        "switch",
+        "tab",
+        "treeitem",
+    }
+
+    if "children" in node:
+        # Get current node's name and title for passing to children
+        current_name = node.get("name", parent_name)
+        current_title = node.get("title", parent_title)
+
+        for child in node["children"]:
+            # If child doesn't have name/title, it will use parent's values
+            if "name" not in child and current_name:
+                child["name"] = current_name
+            if "title" not in child and current_title:
+                child["title"] = current_title
+            elements.extend(flatten_elements(child, current_name, current_title))
+
+    # Include elements with interactive roles or clickable/focusable elements
+    if "md" in node and (
+        (node.get("role") or node.get("r") or "").lower() in interactive_roles
+        or node.get("tag", "").lower() in {"a", "button", "input", "select", "textarea"}
+        or node.get("clickable", False)
+        or node.get("focusable", False)
+    ):
+        new_node = node.copy()
+        new_node.pop("children", None)
+        elements.append(compact_interactive_node(new_node))
+    return elements
+
+
+def compact_value(value: Any) -> Any:
+    if isinstance(value, str):
+        cleaned = " ".join(value.split())
+        if len(cleaned) > 300:
+            return f"{cleaned[:300]}...[truncated]"
+        return cleaned
+    if isinstance(value, list):
+        return [compact_value(item) for item in value[:30]]
+    if isinstance(value, dict):
+        return {str(key): compact_value(item_value) for key, item_value in value.items() if item_value not in ("", None, [], {})}
+    return value
+
+
+def compact_interactive_node(node: dict) -> dict:
+    allowed_keys = (
+        "md",
+        "tag",
+        "role",
+        "r",
+        "name",
+        "title",
+        "description",
+        "text",
+        "aria-label",
+        "value",
+        "tag_type",
+        "type",
+        "placeholder",
+        "tooltip",
+        "clickable",
+        "focusable",
+        "checked",
+        "selected",
+        "field_name",
+        "disabled",
+        "expanded",
+        "level",
+        "options",
+        "additional_info",
+    )
+    return {key: compact_value(node[key]) for key in allowed_keys if key in node and node[key] not in ("", None, [], {})}
+
+
 @tool(
     agent_names=["browser_nav_agent"],
     description="""DOM Type dict Retrieval Tool, giving all interactive elements on page.
@@ -40,93 +131,6 @@ async def get_interactive_elements() -> Annotated[str, "DOM type dict giving all
     await wait_for_non_loading_dom_state(page, 1)
 
     extracted_data = await do_get_accessibility_info(page, only_input_fields=False)
-
-    # Flatten the hierarchy into a list of elements
-    def flatten_elements(node: dict, parent_name: str = "", parent_title: str = "") -> list[dict]:
-        elements = []
-        interactive_roles = {
-            "button",
-            "link",
-            "checkbox",
-            "radio",
-            "textbox",
-            "combobox",
-            "listbox",
-            "menuitem",
-            "menuitemcheckbox",
-            "menuitemradio",
-            "option",
-            "slider",
-            "spinbutton",
-            "switch",
-            "tab",
-            "treeitem",
-        }
-
-        if "children" in node:
-            # Get current node's name and title for passing to children
-            current_name = node.get("name", parent_name)
-            current_title = node.get("title", parent_title)
-
-            for child in node["children"]:
-                # If child doesn't have name/title, it will use parent's values
-                if "name" not in child and current_name:
-                    child["name"] = current_name
-                if "title" not in child and current_title:
-                    child["title"] = current_title
-                elements.extend(flatten_elements(child, current_name, current_title))
-
-        # Include elements with interactive roles or clickable/focusable elements
-        if "md" in node and (
-            node.get("r", "").lower() in interactive_roles
-            or node.get("tag", "").lower() in {"a", "button", "input", "select", "textarea"}
-            or node.get("clickable", False)
-            or node.get("focusable", False)
-        ):
-            new_node = node.copy()
-            new_node.pop("children", None)
-            elements.append(compact_interactive_node(new_node))
-        return elements
-
-    def compact_value(value: Any) -> Any:
-        if isinstance(value, str):
-            cleaned = " ".join(value.split())
-            if len(cleaned) > 300:
-                return f"{cleaned[:300]}...[truncated]"
-            return cleaned
-        if isinstance(value, list):
-            return [compact_value(item) for item in value[:30]]
-        if isinstance(value, dict):
-            return {str(key): compact_value(item_value) for key, item_value in value.items() if item_value not in ("", None, [], {})}
-        return value
-
-    def compact_interactive_node(node: dict) -> dict:
-        allowed_keys = (
-            "md",
-            "tag",
-            "role",
-            "r",
-            "name",
-            "title",
-            "description",
-            "text",
-            "aria-label",
-            "value",
-            "tag_type",
-            "type",
-            "placeholder",
-            "tooltip",
-            "clickable",
-            "focusable",
-            "checked",
-            "selected",
-            "disabled",
-            "expanded",
-            "level",
-            "options",
-            "additional_info",
-        )
-        return {key: compact_value(node[key]) for key in allowed_keys if key in node and node[key] not in ("", None, [], {})}
 
     flattened_data = flatten_elements(extracted_data) if isinstance(extracted_data, dict) else []
 

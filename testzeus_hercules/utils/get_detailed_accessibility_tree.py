@@ -512,6 +512,12 @@ async def __fetch_dom_info(page: Page, accessibility_tree: dict[str, Any], only_
 
                 # Update the node with fetched information
                 if element_attributes:
+                    # For checkboxes and radios the HTML `name` attribute is the form-group name
+                    # ("r", "newsletter"), not what the user sees. Keep the label-derived accessible
+                    # name and expose the form name separately as `field_name`.
+                    if node.get("name") and node.get("role") in ("checkbox", "radio") and element_attributes.get("name") and element_attributes["name"] != node["name"]:
+                        element_attributes = {**element_attributes, "field_name": element_attributes["name"]}
+                        del element_attributes["name"]
                     node.update(element_attributes)
 
                     # check if 'name' and 'md' are the same
@@ -1070,6 +1076,17 @@ async def do_get_accessibility_info(page: Page, only_input_fields: bool = False)
                             if (labelElement) return cleanName(labelElement.innerText);
                         }
 
+                        // Form controls: the text of their associated <label> is the accessible name.
+                        // Without this a labelled checkbox/radio/input is named after its value ("on")
+                        // or its name attribute instead of the text the user sees.
+                        if (element.labels && element.labels.length) {
+                            const labelText = Array.from(element.labels)
+                                .map((label) => (label.innerText || label.textContent || '').trim())
+                                .filter(Boolean)
+                                .join(' ');
+                            if (labelText) return cleanName(labelText);
+                        }
+
                         if (element.alt) return cleanName(element.alt);
                         if (element.title) return cleanName(element.title);
                         if (element.placeholder) return cleanName(element.placeholder);
@@ -1146,6 +1163,41 @@ async def do_get_accessibility_info(page: Page, only_input_fields: bool = False)
                         return '';
                     }
 
+                    const CHECKABLE_ROLES = ['checkbox', 'radio', 'switch', 'menuitemcheckbox', 'menuitemradio'];
+
+                    // Live widget state, so an agent can read a control before acting on it and
+                    // verify the result afterwards. Native controls report the live property
+                    // (it diverges from the HTML attribute after interaction); ARIA widgets
+                    // report aria-checked / aria-selected, including the "mixed" state.
+                    function getControlState(element, role) {
+                        const state = {};
+                        const tag = element.tagName.toLowerCase();
+                        const type = tag === 'input' ? (element.type || '').toLowerCase() : '';
+
+                        if (tag === 'input' && (type === 'checkbox' || type === 'radio')) {
+                            state.checked = element.indeterminate ? 'mixed' : element.checked === true;
+                        } else if (CHECKABLE_ROLES.includes(role)) {
+                            const ariaChecked = element.getAttribute('aria-checked');
+                            if (ariaChecked !== null) {
+                                state.checked = ariaChecked === 'mixed' ? 'mixed' : ariaChecked === 'true';
+                            }
+                        }
+
+                        if (tag === 'option') {
+                            state.selected = element.selected === true;
+                        } else {
+                            const ariaSelected = element.getAttribute('aria-selected');
+                            if (ariaSelected !== null) state.selected = ariaSelected === 'true';
+                        }
+
+                        if (element.disabled === true || element.getAttribute('aria-disabled') === 'true') {
+                            state.disabled = true;
+                        }
+                        const ariaExpanded = element.getAttribute('aria-expanded');
+                        if (ariaExpanded !== null) state.expanded = ariaExpanded === 'true';
+                        return state;
+                    }
+
                     function getRequiredAriaAttributes(element) {
                         const role = getRole(element);
                         return requiredAriaAttributesByRole[role] || [];
@@ -1166,6 +1218,8 @@ async def do_get_accessibility_info(page: Page, only_input_fields: bool = False)
 
                         const name = getAccessibleName(element);
                         if (name) node.name = name;
+
+                        Object.assign(node, getControlState(element, role));
 
                         const title = element.getAttribute('title');
                         if (title) node.title = cleanName(title);
