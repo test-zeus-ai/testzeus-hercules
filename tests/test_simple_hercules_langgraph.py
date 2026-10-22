@@ -46,6 +46,35 @@ def _hercules() -> SimpleHercules:
     return SimpleHercules(stake_id="test", browser_nav_max_chat_round=5)
 
 
+def test_create_normalizes_all_agent_configs_for_chatopenai(monkeypatch) -> None:
+    async def initialize_agents(self: SimpleHercules) -> dict[str, Any]:
+        return {}
+
+    monkeypatch.setattr(SimpleHercules, "_initialize_agents", initialize_agents)
+    monkeypatch.setattr(SimpleHercules, "_build_graph", lambda self: object())
+
+    model_cfg = {
+        "model_config_params": {"model": "claude-haiku-5-5"},
+        "llm_config_params": {"max_tokens_to_sample": 900, "temperature": 0.1},
+    }
+    configs = [
+        {
+            "model_config_params": dict(model_cfg["model_config_params"]),
+            "llm_config_params": dict(model_cfg["llm_config_params"]),
+        }
+        for _ in range(3)
+    ]
+
+    async def run() -> list[dict[str, Any]]:
+        await SimpleHercules.create("test", *configs)
+        return [config["llm_config_params"] for config in configs]
+
+    params = asyncio.run(run())
+
+    assert all(item["max_tokens"] == 900 for item in params)
+    assert all("max_tokens_to_sample" not in item for item in params)
+
+
 def test_executor_routes_every_target_helper_to_expected_agent() -> None:
     async def run() -> None:
         hercules = _hercules()
