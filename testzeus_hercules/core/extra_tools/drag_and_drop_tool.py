@@ -89,7 +89,6 @@ async def drag_and_drop(
                     break
             except Exception as e:
 
-                traceback.print_exc()
                 logger.exception(f"Error finding target element: {e}")
                 continue
 

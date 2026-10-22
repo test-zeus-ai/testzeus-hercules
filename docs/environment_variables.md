@@ -1,6 +1,10 @@
 # Environment Variables and Configuration Guide
 
-This document provides a comprehensive guide to all environment variables and configuration options available in TestZeus Hercules.
+This document provides a guide to the main environment variables and
+configuration options available in TestZeus Hercules. It covers the variables
+you will typically set; a few niche switches are documented closer to the
+feature that uses them (see `docs/run_guide.md`, `docs/mcp_server.md`, and the
+orchestration sections of the README).
 
 ## Table of Contents
 - [Core Environment Variables](#core-environment-variables)
@@ -28,6 +32,7 @@ This document provides a comprehensive guide to all environment variables and co
   - [Cache and Performance](#cache-and-performance)
   - [Portkey Integration](#portkey-integration)
   - [MCP Integration](#mcp-integration)
+  - [Run History and Workspace Hygiene](#run-history-and-workspace-hygiene)
   - [Telemetry and Monitoring](#telemetry-and-monitoring)
   - [Additional Features](#additional-features)
 - [Reliability, Reporting and Strictness Flags](#reliability-reporting-and-strictness-flags)
@@ -100,6 +105,12 @@ LLM_MODEL_AWS_PROFILE_NAME=<aws_profile_name>
 LLM_MODEL_AWS_SESSION_TOKEN=<aws_session_token>
 LLM_MODEL_PRICING=<pricing>
 ```
+
+- `MODEL_API_KEY`: last-resort API key fallback on the direct-LLM path
+  - Usage: when neither `api_key`/`model_api_key` in the model config nor
+    `LLM_MODEL_API_KEY` provides a key, `utils/llm_helper.py` falls back to
+    `MODEL_API_KEY`; if that is also unset, model creation fails with
+    "LLM API key is missing. Set MODEL_API_KEY or model_api_key in config."
 
 ### LLM Configuration File Structure
 The `agents_llm_config.json` supports multiple providers and agent configurations. Each provider can have different configurations for different agents:
@@ -194,6 +205,14 @@ LLM Parameters:
   - Default: `None` (no cookies)
   - Implementation: Cookies are added to the browser context after creation using `browserContext.add_cookies()`
 
+- `BROWSER_STORAGE_DIR`: Persistent browser user-data directory override
+  - Values: Path to a directory
+  - Default: unset (an empty temporary user-data dir is used per launch)
+  - Usage: When set, the directory's contents are copied into the browser's
+    user-data dir, so browser profile state (storage, cookies, extensions) can
+    persist across runs
+  - Implementation: Read in `core/playwright_manager.py` when creating the browser context
+
 ## Testing Configuration
 
 ### Test Execution
@@ -206,6 +225,12 @@ LLM Parameters:
   - Values: `true`, `false`
   - Default: `false`
   - Implementation: Used in test runners for batch processing
+
+- `EXIT_CODE_COMPAT`: Legacy always-exit-0 behavior
+  - Values: `1` to enable; any other value leaves CI gating active
+  - Default: unset (Hercules exits `1` when any scenario fails or errors)
+  - Usage: When set to `1`, the CLI and the orchestrators (`run_manager`, `hercules-suite`, `hercules-monitor`) exit `0` even on failures
+  - Implementation: Checked in `testzeus_hercules/__main__.py` and `orchestrator/run_manager.py`, `orchestrator/suites.py`, `orchestrator/scheduler.py`
 
 ### Test Evidence
 - `RECORD_VIDEO`: Record test execution videos
@@ -240,7 +265,17 @@ LLM Parameters:
   - Values: `true`, `false`
   - Usage: Equivalent to passing `--dry-run`
 
+- `EDITOR`: Editor used for guided feature editing
+  - Values: Any editor command launchable as `<editor> <file>`
+  - Default: `nano`
+  - Usage: Launched by the interactive guided test builder (`utils/test_builder.py`) when you pick the edit option for the generated feature
+
 ### Python Sandbox
+- `SANDBOX_MODE`: Execution mode of `execute_python_sandbox`
+  - Values: `inprocess`, `subprocess`
+  - Default: `inprocess` (script runs in the agent process with the live `page`/`browser`/`context`/`playwright_manager`)
+  - Usage: `subprocess` runs each script in a disposable child process with CPU/memory rlimits and a hard timeout (SIGKILL of the process group). Live browser objects cannot cross the process boundary there: set `CDP_ENDPOINT_URL` and the child re-attaches over CDP, otherwise `page`/`browser`/... raise a clear error. Neither mode is a security boundary.
+
 - `SANDBOX_TENANT_ID`: Sandbox permission profile
   - Values: `executor_agent`, `data_agent`, `api_agent`, `restricted_agent`
   - Default: empty (base injections only)
@@ -293,10 +328,16 @@ LLM Parameters:
   - Default: `text`
   - Implementation: Controls logger output format in `logger.py`
 
-- `LOG_FILE_PATH`: Also write logs to this file
-  - Values: a file path (parent directories are created)
-  - Default: unset (console only)
-  - Implementation: Rotating file handler in `logger.py` (10 MB per file, 5 backups), same format as the console output
+- `LOG_FILE_PATH`: Optional rotating log file
+  - Values: A writable file path
+  - Default: unset (logs go to the console only)
+  - Usage: When set, runtime logs are also written to this file as a rotating log (10 MB per file, 5 backups) — useful for post-run inspection in CI
+  - Implementation: Read in `testzeus_hercules/utils/logger.py`
+
+- `SAVE_CHAT_LOGS_TO_FILE`: Persist agent chat logs to files
+  - Values: `true`, `false`
+  - Default: `true`
+  - Implementation: Read in `core/runner.py`; controls whether the agents' chat logs are saved to disk during a run
 
 ### Debugging Tools
 - `ENABLE_PLAYWRIGHT_TRACING`: Enable Playwright tracing
@@ -393,10 +434,35 @@ Hercules can also run as an MCP server through `testzeus-hercules-mcp`.
 The server entrypoint uses these variables:
 
 - `TESTZEUS_ROOT`: Repository or project root for server-side test execution
-- `TESTZEUS_PYTHON`: Python executable used to run Hercules
-- `MCP_HOST`: Bind host, default `0.0.0.0`
+- `TESTZEUS_PYTHON`: Reserved for helpers that shell out; currently unused by the in-process MCP server (it does not spawn subprocesses)
+- `MCP_HOST`: Bind host, default `127.0.0.1` (loopback). A non-loopback value is refused unless `MCP_AUTH_TOKEN` is set
 - `MCP_PORT`: Bind port, default `8000`
 - `MCP_PATH`: HTTP path, default `/mcp`
+- `MCP_AUTH_TOKEN`: Bearer token required on every request when set (>= 16 chars; mandatory for non-loopback binds)
+- `MCP_ALLOWED_HOSTS`: Extra comma-separated `Host` header names accepted by the MCP server
+- `HERCULES_MCP_ALLOWED_ROOTS`: `os.pathsep`-separated extra directories that MCP `project_path`/`prd_path` may point into (defaults: `TESTZEUS_ROOT`/cwd, `PROJECT_SOURCE_ROOT`, `TEST_DATA_PATH`)
+- `HERCULES_MCP_AUTO_APPROVE_PLAN`: `true` runs PRD-derived test plans without the `approve_plan` confirmation (default `false`)
+- `PRD_FETCH_ALLOW_PRIVATE_HOSTS`: `true` lets PRD URLs point at private/loopback hosts (default `false`: public http(s) only, redirects re-validated)
+- `HERCULES_MCP_EXEC_TIMEOUT`: Per-run execution deadline in seconds for the MCP run tools, default `1800`; invalid values fall back to the default
+
+### Run History and Workspace Hygiene
+- `HERCULES_HISTORY_DB`: Run-history SQLite database location
+  - Values: Database URL or file path
+  - Default: `<PROJECT_SOURCE_ROOT>/hercules_history.db` (i.e. `opt/hercules_history.db`)
+  - Usage: Overrides where the run history is stored; `hercules-dashboard` reads the same DB. Parallel/suite runners pin this for scenario subprocesses so history is not lost with the throwaway workspaces.
+  - Implementation: Used in `reporting/run_db.py` and `orchestrator/run_manager.py`
+
+- `HERCULES_KEEP_WORKSPACES`: Keep scenario workspaces for debugging
+  - Values: `1` to enable; any other value leaves cleanup active
+  - Default: unset (successful workspaces are cleaned up; failed workspaces are always kept)
+  - Usage: Setting `1` keeps parallel/suite scenario workspaces and the compiled-plan tempdirs of plan-only suites after the run, for debugging
+  - Implementation: Used in `orchestrator/run_manager.py` and `orchestrator/suites.py`
+
+- `HERCULES_RUN_RETENTION_HOURS`: Retention window for scheduled suite runs
+  - Values: Integer number of hours
+  - Default: `72`
+  - Usage: `hercules-monitor` sweeps `.hercules/suite_runs/` trees and `.hercules/parallel_*` run-manager workroots older than this many hours before every cycle (the run manager also sweeps old `.hercules/parallel_*` workroots before each run); trees younger than 1 hour are never swept regardless of the setting
+  - Implementation: Used in `orchestrator/scheduler.py` and `orchestrator/run_manager.py`
 
 ### Telemetry and Monitoring
 - `ENABLE_TELEMETRY`: Enable usage telemetry
@@ -443,6 +509,7 @@ defaults to the previous behaviour**. Boolean flags accept `1`, `true`, `yes` or
 | `ENABLE_FAILURE_BUNDLES` | off | Copies per-failure evidence (screenshots, video, network log) into a `bundles/` directory next to the JUnit XML. |
 | `ENABLE_RUN_HISTORY` | off | Records every run and testcase in the `hercules_history.db` run-history database. |
 | `ENABLE_FAILURE_CLASSIFICATION` | off | Classifies failed testcases and annotates their bundle and run-history entry (best effort). |
+| `ENABLE_SELECTOR_RECORDING` | off | Records observed alternative selectors into the healing selector store (writes `selector_store.json` under `opt/`) and counts failed click selectors there. When off, the store is neither read nor written. Observability only; nothing is auto-healed. |
 | `STRICT_AGENTS_LLM_CONFIG` | off | A configured `AGENTS_LLM_CONFIG_FILE` that is missing or cannot be parsed raises an error at startup. By default the problem is logged and the `LLM_MODEL_*` environment configuration is used. |
 | `CONFIG_DICT_OVERRIDES_ENV` | off | Values passed programmatically as a config dict win over environment variables. By default environment variables win. Guided and bulk mode always apply their per-run overrides (generated feature file, per-folder project root, input file and test data path) this way, and these per-run overrides also win over CLI flags such as `--project-base`. |
 | `HERCULES_DISABLE_CLI_PARSE` | off | Skip parsing the shared Hercules command-line flags. They are parsed for every entrypoint except known subcommand CLIs (`hercules-dashboard`, `hercules-suite`). |
@@ -479,3 +546,8 @@ The effective configuration is assembled in this order:
 Later sources override earlier sources (set `CONFIG_DICT_OVERRIDES_ENV=true` to move the config dict above the process environment and `.env`). If both `AGENTS_LLM_CONFIG_FILE` and
 direct `LLM_MODEL_*` settings are present, the selected runtime path depends on
 which CLI/config values are active for that run.
+
+### Dashboard and CLI services
+- `DASHBOARD_AUTH_TOKEN`: Token required by `hercules-dashboard` (`Authorization: Bearer <token>`, or HTTP Basic with the token as password so a browser can log in). Mandatory (>= 16 chars) when `--host` is not loopback
+- `DASHBOARD_ALLOWED_HOSTS`: Extra comma-separated `Host` header names accepted by the dashboard (loopback names and a specific bind host are always accepted; with a wildcard bind and no list the Host check is skipped and the token is the only gate)
+

@@ -1,0 +1,1 @@
+"""Dashboard web app (starlette)."""

@@ -1,6 +1,5 @@
 import asyncio
 import inspect
-import traceback
 from typing import Annotated
 
 from playwright.async_api import Page  # type: ignore
@@ -103,8 +102,7 @@ async def do_press_key_combination(browser_manager: PlaywrightManager, page: Pag
 
     except Exception as e:
 
-        traceback.print_exc()
-        logger.error(f'Error executing press_key_combination "{key_combination}": {e}')
+        logger.error(f'Error executing press_key_combination "{key_combination}": {e}', exc_info=True)
         return False
 
     await browser_manager.take_screenshots(f"{function_name}_end", page)

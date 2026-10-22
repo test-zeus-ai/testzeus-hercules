@@ -1,0 +1,32 @@
+# Monitoring daemon config for `hercules-monitor`
+# (testzeus_hercules.orchestrator.scheduler).
+#
+# Copy this file to .hercules/monitor.yaml and adjust. Schema:
+#
+#   suites:         Required, non-empty list of suite names from suites.yaml.
+#   config:         Path to the suites YAML (default .hercules/suites.yaml).
+#   interval_hours: Sleep between cycles, in hours (default 24, fractional OK).
+#   webhook_url:    POST target receiving {"text": "<summary>"} (optional).
+#   notify_on:      "always" | "failure" | "regression" (default regression).
+#                   regression = a scenario that passed last cycle now fails.
+#                   The very first cycle has no baseline, so nothing counts as
+#                   a regression yet — use "failure" to also alert on failures.
+#   baseline:       "last_run" (rolling previous cycle, default) or a concrete
+#                   run_id from the state file to compare against a pinned run.
+#   state_file:     JSON state with the last results and run history
+#                   (default .hercules/monitor_state.json).
+#
+# Run modes:
+#   hercules-monitor                      # daemon loop
+#   hercules-monitor --once               # single cycle; exit 1 on failures
+#   hercules-monitor --interval-hours 1   # override the configured interval
+
+suites:
+  - smoke
+  - regression
+config: .hercules/suites.yaml
+interval_hours: 24
+webhook_url: https://hooks.example.com/services/T000000/B000000/XXXXXXXXXXXXXXXXXXXXXXXX
+notify_on: regression
+baseline: last_run
+state_file: .hercules/monitor_state.json

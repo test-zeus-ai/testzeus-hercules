@@ -402,6 +402,10 @@ class BrowserLogger:
         """Record observed alternative selectors into the shared selector store (best effort, silent)."""
         if not canonical_name or not selectors:
             return
+        from testzeus_hercules.utils.env_flags import selector_recording_enabled
+
+        if not selector_recording_enabled():
+            return
         try:
             from testzeus_hercules.healing.selector_store import get_default_store
 
