@@ -90,7 +90,7 @@ from testzeus_hercules.utils.http_security import (
     parse_csv,
 )
 from testzeus_hercules.utils.litellm_helper import get_litellm_chat_model
-from testzeus_hercules.utils.path_guard import PathOutsideRootsError, resolve_within
+from testzeus_hercules.utils.path_guard import ForbiddenFileError, PathOutsideRootsError, check_prd_document, resolve_within
 
 # ── configuration ─────────────────────────────────────────────────────────────
 
@@ -142,6 +142,18 @@ def _allowed_roots() -> list[str]:
 def _confine_path(path: str, label: str, extra_roots: tuple[str, ...] = ()) -> str:
     """Resolve a client-supplied local path inside the allowed roots (realpath + prefix check)."""
     return resolve_within(path, [*_allowed_roots(), *extra_roots], label=label)
+
+
+def _confine_prd_path(path: str, extra_roots: tuple[str, ...] = ()) -> str:
+    """Confine a local PRD path to the allowed roots AND to plain document types.
+
+    Only .md/.markdown/.txt/.rst/.pdf/.docx are accepted, and dotfiles, config/secret
+    files (agents_llm_config*, *.env, *.pem, *.key, sessions.json, history DBs) are
+    refused even inside an allowed root: the file content is sent to the LLM.
+    """
+    resolved = _confine_path(path, "prd_path", extra_roots)
+    check_prd_document(resolved, "prd_path")
+    return resolved
 
 
 def _display_path(path: str | Path) -> str:
@@ -355,7 +367,7 @@ async def _build_standard_prd(state: SessionState, prd_path: str) -> tuple[Norma
     if not source.startswith(("http://", "https://")):
         # Local PRD sources are read and sent to the LLM: confine them (realpath) to the
         # allowed roots plus this session's project_path. URLs go through the SSRF guard in prd_parser.
-        source = _confine_path(source, "prd_path", (state.project_path,) if state.project_path else ())
+        source = _confine_prd_path(source, (state.project_path,) if state.project_path else ())
     prd = await build_normalized_prd(source)
     out_path = os.path.join(str(_session_state_dir(state)), "standard_prd.json")
     prd_to_json(prd, out_path)
@@ -455,8 +467,8 @@ async def hercules_configure_session(
         resolved_project = _confine_path(project_path, "project_path") if project_path else ""
         resolved_prd = prd_path
         if prd_path and not prd_path.startswith(("http://", "https://")):
-            resolved_prd = _confine_path(prd_path, "prd_path", (resolved_project,) if resolved_project else ())
-    except PathOutsideRootsError as exc:
+            resolved_prd = _confine_prd_path(prd_path, (resolved_project,) if resolved_project else ())
+    except (PathOutsideRootsError, ForbiddenFileError) as exc:
         return _error(str(exc))
 
     reachable = await _check_app_url(app_url)

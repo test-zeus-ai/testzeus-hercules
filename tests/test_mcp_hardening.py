@@ -86,6 +86,50 @@ def test_standardized_prd_rejects_traversal_and_symlink_escape(workspace) -> Non
         assert "outside the allowed roots" in result["error"], candidate
 
 
+@pytest.mark.parametrize("name", ["prd.html", ".hidden.md", "agents_llm_config.json", "server.key", "sessions.json", "hercules_history.db", "prod.env", "noext"])
+def test_prd_path_rejects_non_documents_and_sensitive_files_inside_root(workspace, name) -> None:
+    root, manager = workspace
+    target = root / name
+    target.write_text("TOP SECRET")
+    result = run(mcp_server.hercules_configure_session("https://app.example.com", prd_path=str(target)))
+    assert "prd_path" in result["error"] and "outside the allowed roots" not in result["error"], name
+    state = manager.create_session("https://app.example.com")
+    result = run(mcp_server.hercules_generate_standardized_prd(session_id=state.session_id, prd_path=str(target)))
+    assert "prd_path" in result["error"], name
+
+
+def test_prd_path_rejects_sensitive_symlink_target_inside_root(workspace) -> None:
+    root, _manager = workspace
+    secret = root / "agents_llm_config.json"
+    secret.write_text('{"api_key": "x"}')
+    link = root / "prd.md"
+    link.symlink_to(secret)
+    result = run(mcp_server.hercules_configure_session("https://app.example.com", prd_path=str(link)))
+    assert "prd_path" in result["error"]
+
+
+def test_prd_path_accepts_markdown_inside_root(workspace) -> None:
+    root, _manager = workspace
+    doc = root / "prd.md"
+    doc.write_text("# PRD")
+    assert "error" not in run(mcp_server.hercules_configure_session("https://app.example.com", prd_path=str(doc)))
+
+
+def test_server_started_from_home_does_not_allow_home_as_root(workspace, monkeypatch, tmp_path) -> None:
+    root, _manager = workspace
+    monkeypatch.setenv("HOME", str(root))  # cwd (the Hercules root) == $HOME
+    doc = root / "prd.md"
+    doc.write_text("# PRD")
+    result = run(mcp_server.hercules_configure_session("https://app.example.com", prd_path=str(doc)))
+    assert "outside the allowed roots" in result["error"]
+    # an explicit, specific allowed root still works
+    sub = root / "proj"
+    sub.mkdir()
+    (sub / "prd.md").write_text("# PRD")
+    monkeypatch.setenv("HERCULES_MCP_ALLOWED_ROOTS", str(sub))
+    assert "error" not in run(mcp_server.hercules_configure_session("https://app.example.com", prd_path=str(sub / "prd.md")))
+
+
 def test_standardized_prd_url_blocks_internal_targets(workspace, monkeypatch) -> None:
     import testzeus_hercules.utils.litellm_helper as litellm_helper
 

@@ -18,6 +18,7 @@ from xml.etree import ElementTree
 import httpx
 from testzeus_hercules.intelligence.normalized_prd import NormalizedPRD, PRDRequirement
 from testzeus_hercules.utils.logger import logger
+from testzeus_hercules.utils.path_guard import ForbiddenFileError, check_prd_document
 from testzeus_hercules.utils.redact import redact_url
 from testzeus_hercules.utils.url_guard import UnsafeURLError, fetch_text
 
@@ -277,16 +278,27 @@ def _docx_text_unstructured(path: str) -> str:
     return "\n\n".join(parts)
 
 
+_MAX_DOCX_XML_BYTES = 10 * 1024 * 1024  # cap for the word/document.xml member parsed by the stdlib fallback
 _WORD_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 
 
 def _docx_text_fallback(path: str) -> str:
     """Extract docx text with only the stdlib: unzip and parse ``word/document.xml``."""
     with zipfile.ZipFile(path) as archive:
-        with archive.open("word/document.xml") as handle:
-            tree = ElementTree.parse(handle)
+        info = archive.getinfo("word/document.xml")
+        if info.file_size > _MAX_DOCX_XML_BYTES:
+            raise ValueError(f"word/document.xml is too large ({info.file_size} bytes; limit {_MAX_DOCX_XML_BYTES})")
+        with archive.open(info) as handle:
+            data = handle.read(_MAX_DOCX_XML_BYTES + 1)  # the declared size is attacker-controlled: bound the real read too
+    if len(data) > _MAX_DOCX_XML_BYTES:
+        raise ValueError(f"word/document.xml is too large (limit {_MAX_DOCX_XML_BYTES} bytes)")
+    # Reject DTDs outright (entity expansion / "billion laughs"); NULs are stripped so UTF-16 payloads are caught too.
+    lowered = data.replace(b"\x00", b"").lower()
+    if b"<!doctype" in lowered or b"<!entity" in lowered:
+        raise ValueError("word/document.xml contains a DOCTYPE/ENTITY declaration, which is not allowed")
+    root = ElementTree.fromstring(data)
     paragraphs = []
-    for paragraph in tree.iter(f"{_WORD_NS}p"):
+    for paragraph in root.iter(f"{_WORD_NS}p"):
         texts = [node.text or "" for node in paragraph.iter(f"{_WORD_NS}t")]
         text = "".join(texts).strip()
         if text:
@@ -350,6 +362,12 @@ def extract_text(source: str, metadata: dict[str, Any] | None = None) -> str:
         raise FileNotFoundError(f"PRD source not found (neither a URL nor an existing file): {source}")
     if os.path.isdir(source):
         raise ValueError(f"PRD source is a directory, expected a file or URL: {source}")
+
+    # Defense in depth (the MCP layer also confines paths): only plain documents, never config/secret files.
+    try:
+        check_prd_document(source, "PRD source")
+    except ForbiddenFileError as exc:
+        raise ValueError(str(exc)) from exc
 
     meta["source_type"] = "file"
     extension = os.path.splitext(source)[1].lower().lstrip(".")
