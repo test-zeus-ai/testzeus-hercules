@@ -265,6 +265,11 @@ LLM Parameters:
   - Usage: Launched by the interactive guided test builder (`utils/test_builder.py`) when you pick the edit option for the generated feature
 
 ### Python Sandbox
+- `SANDBOX_MODE`: Execution mode of `execute_python_sandbox`
+  - Values: `inprocess`, `subprocess`
+  - Default: `inprocess` (script runs in the agent process with the live `page`/`browser`/`context`/`playwright_manager`)
+  - Usage: `subprocess` runs each script in a disposable child process with CPU/memory rlimits and a hard timeout (SIGKILL of the process group). Live browser objects cannot cross the process boundary there: set `CDP_ENDPOINT_URL` and the child re-attaches over CDP, otherwise `page`/`browser`/... raise a clear error. Neither mode is a security boundary.
+
 - `SANDBOX_TENANT_ID`: Sandbox permission profile
   - Values: `executor_agent`, `data_agent`, `api_agent`, `restricted_agent`
   - Default: empty (base injections only)
@@ -424,9 +429,14 @@ The server entrypoint uses these variables:
 
 - `TESTZEUS_ROOT`: Repository or project root for server-side test execution
 - `TESTZEUS_PYTHON`: Reserved for helpers that shell out; currently unused by the in-process MCP server (it does not spawn subprocesses)
-- `MCP_HOST`: Bind host, default `127.0.0.1` (loopback). The endpoint is unauthenticated; a non-loopback value exposes it on that interface, so use a firewall and/or an authenticating proxy and only opt in deliberately
+- `MCP_HOST`: Bind host, default `127.0.0.1` (loopback). A non-loopback value is refused unless `MCP_AUTH_TOKEN` is set
 - `MCP_PORT`: Bind port, default `8000`
 - `MCP_PATH`: HTTP path, default `/mcp`
+- `MCP_AUTH_TOKEN`: Bearer token required on every request when set (>= 16 chars; mandatory for non-loopback binds)
+- `MCP_ALLOWED_HOSTS`: Extra comma-separated `Host` header names accepted by the MCP server
+- `HERCULES_MCP_ALLOWED_ROOTS`: `os.pathsep`-separated extra directories that MCP `project_path`/`prd_path` may point into (defaults: `TESTZEUS_ROOT`/cwd, `PROJECT_SOURCE_ROOT`, `TEST_DATA_PATH`)
+- `HERCULES_MCP_AUTO_APPROVE_PLAN`: `true` runs PRD-derived test plans without the `approve_plan` confirmation (default `false`)
+- `PRD_FETCH_ALLOW_PRIVATE_HOSTS`: `true` lets PRD URLs point at private/loopback hosts (default `false`: public http(s) only, redirects re-validated)
 - `HERCULES_MCP_EXEC_TIMEOUT`: Per-run execution deadline in seconds for the MCP run tools, default `1800`; invalid values fall back to the default
 
 ### Run History and Workspace Hygiene
@@ -493,3 +503,8 @@ is loaded with `override=True`, it overrides pre-set process environment
 variables, not the other way around. If both `AGENTS_LLM_CONFIG_FILE` and
 direct `LLM_MODEL_*` settings are present, the selected runtime path depends on
 which CLI/config values are active for that run.
+
+### Dashboard and CLI services
+- `DASHBOARD_AUTH_TOKEN`: Token required by `hercules-dashboard` (`Authorization: Bearer <token>`, or HTTP Basic with the token as password so a browser can log in). Mandatory (>= 16 chars) when `--host` is not loopback
+- `DASHBOARD_ALLOWED_HOSTS`: Extra comma-separated `Host` header names accepted by the dashboard (loopback names and a specific bind host are always accepted; with a wildcard bind and no list the Host check is skipped and the token is the only gate)
+
