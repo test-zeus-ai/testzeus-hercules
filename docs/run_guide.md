@@ -547,7 +547,9 @@ variables for every scenario subprocess), `shared_state` (exports
 `HERCULES_SUITE_STATE_FILE=<workroot>/suite_state.json` so features can chain
 suite-level state), and `max_parallel` (scenario subprocesses; default 1 runs
 features sequentially). `--max-parallel` on the CLI overrides the suite
-value.
+value. `hercules-suite` exits 1 when any scenario failed or errored
+(`EXIT_CODE_COMPAT=1` forces 0) and 2 with a one-line error for configuration
+problems (missing or invalid suites file, unknown suite, dependency cycle).
 
 `env` entries may override the reserved workspace-injected variables
 (`HERCULES_HISTORY_DB`, `PROJECT_SOURCE_ROOT`, `INPUT_GHERKIN_FILE_PATH`,
