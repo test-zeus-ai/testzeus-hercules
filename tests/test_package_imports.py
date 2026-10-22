@@ -39,7 +39,7 @@ print("testzeus_hercules.core" in sys.modules)
         env=env,
         capture_output=True,
         text=True,
-        timeout=60,
+        timeout=15,
     )
 
     assert result.returncode == 0, result.stderr
@@ -72,7 +72,7 @@ print("testzeus_hercules.core.agents" in sys.modules)
         env=env,
         capture_output=True,
         text=True,
-        timeout=60,
+        timeout=15,
     )
 
     assert result.returncode == 0, result.stderr

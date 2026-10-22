@@ -198,3 +198,19 @@ def test_gate_module_level_helpers(tmp_path: Path) -> None:
     assert e2e_gate.load_waiver_patterns(waiver) == ["PATTERN-1"]
     with pytest.raises(e2e_gate.GateCannotJudge):
         e2e_gate.judge(tmp_path / "nothing", [], None)
+
+
+def test_non_junit_xml_is_not_scanned(tmp_path: Path) -> None:
+    results_dir = tmp_path / "10.0" / "results"
+    results_dir.mkdir(parents=True)
+    (results_dir / "junit.xml").write_text(PASS_XML, encoding="utf-8")
+    (results_dir / "hurl-report.xml").write_text("<report><entry name='x'/></report>", encoding="utf-8")
+    assert e2e_gate.main(["--results-dir", str(results_dir), "--known-failures", str(tmp_path / "none.txt")]) == 0
+    summary = json.loads((tmp_path / "10.0" / "e2e-summary.json").read_text(encoding="utf-8"))
+    assert summary["scanned_files"] == 1
+
+
+def test_waiver_matching_no_case_is_reported_without_failing(tmp_path: Path) -> None:
+    code, summary, _ = _run_gate(tmp_path, PASS_XML, known_failures="REMOVED-CASE-99\n")
+    assert code == 0
+    assert summary["unmatched_waivers"] == ["REMOVED-CASE-99"]

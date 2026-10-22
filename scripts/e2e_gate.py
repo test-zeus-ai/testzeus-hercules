@@ -45,6 +45,7 @@ MERGED_JUNIT_NAME = "e2e-junit.xml"
 BLOCKED_FILENAME = "blocked.json"
 
 FAIL_KINDS = ("failure", "error", "skipped")
+JUNIT_ROOT_TAGS = ("testsuite", "testsuites")
 
 
 class GateCannotJudge(RuntimeError):
@@ -85,6 +86,7 @@ class GateReport:
     blocked_report: dict[str, object] = field(default_factory=dict)
     waiver_file: str | None = None
     waiver_patterns: list[str] = field(default_factory=list)
+    unmatched_waivers: list[str] = field(default_factory=list)  # informational: a renamed/deleted case leaves its waiver behind
     parsed_roots: list[tuple[Path, ET.Element]] = field(default_factory=list)
     zero_cases_reason: str | None = None
 
@@ -183,6 +185,9 @@ def judge(results_dir: Path, waiver_patterns: Sequence[str], blocked_path: Path 
             root = ET.parse(path).getroot()
         except ET.ParseError as exc:
             raise GateCannotJudge(f"corrupt XML in {path}: {exc}") from exc
+        if root.tag not in JUNIT_ROOT_TAGS:
+            LOGGER.warning("skipping %s: not a JUnit report (root <%s>)", path, root.tag)
+            continue
         report.scanned_files += 1
         report.parsed_roots.append((path, root))
         for element in root.iter("testcase"):
@@ -196,6 +201,7 @@ def judge(results_dir: Path, waiver_patterns: Sequence[str], blocked_path: Path 
     report.waived = [case for case in report.cases if case.kind in FAIL_KINDS and case.waived_by is not None]
     report.stale_waivers = [(case.waived_by or "", case) for case in report.cases if case.kind == "passed" and case.waived_by is not None]
     report.blocked_report = load_blocked_report(blocked_path)
+    report.unmatched_waivers = [pattern for pattern in waiver_patterns if not any(_waiver_matches(f"{case.classname}::{case.name}", pattern) for case in report.cases)]
     return report
 
 
@@ -211,6 +217,7 @@ def build_summary(report: GateReport, waiver_file: str | None) -> dict[str, obje
         "skipped": report.skipped,
         "waived": len(report.waived),
         "stale_waivers": [{"pattern": pattern, "name": case.name, "classname": case.classname} for pattern, case in report.stale_waivers],
+        "unmatched_waivers": report.unmatched_waivers,
         "failures": [{"name": case.name, "classname": case.classname, "kind": case.kind, "message": case.message, "source": case.source} for case in report.unwaived_failures],
         "blocked_excluded": report.blocked_report,
         "known_failures_file": waiver_file,
@@ -267,6 +274,8 @@ def _print_report(report: GateReport) -> None:
         print("e2e-gate: no blocked.json found next to the results dir; excluded-case counts unknown")
     for case in report.unwaived_failures:
         print(f"e2e-gate: FAILURE {case.classname}::{case.name} [{case.kind}] {case.message or ''}")
+    for pattern in report.unmatched_waivers:
+        print(f"e2e-gate: WARNING waiver {pattern!r} matches no scanned case; delete it if the case was renamed or removed")
     for pattern, case in report.stale_waivers:
         print(f"e2e-gate: STALE WAIVER {pattern!r} matches passing case {case.classname}::{case.name}; delete the waiver")
     print(f"e2e-gate: VERDICT: {report.verdict.upper()}")

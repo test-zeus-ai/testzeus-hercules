@@ -492,12 +492,31 @@ def _materialize(
         for path in (plan.feature_path, plan.test_data_path):
             if not path.resolve().is_relative_to(tests_root):
                 raise AssemblyError(f"materialized path {path} escapes {tests_root}; aborting assembly")
+    # Reject symlinks in test_data before touching the output: copytree would follow them
+    # and pull out-of-tree content into the run dir.
+    for plan in plans:
+        if plan.test_data_src is not None:
+            _reject_symlinks(plan.test_data_src)
+    # Start from a clean tests/ dir: merging into leftovers from an earlier assembly would
+    # keep running suites that were since removed or fully blocked.
+    stale_tests = run_dir / "tests"
+    if stale_tests.is_symlink():
+        raise AssemblyError(f"{stale_tests} is a symlink; refusing to assemble into it")
+    if stale_tests.exists():
+        shutil.rmtree(stale_tests)
     for plan in plans:
         plan.feature_path.parent.mkdir(parents=True, exist_ok=True)
         plan.feature_path.write_text(plan.text, encoding="utf-8")
         if plan.test_data_src is not None:
-            shutil.copytree(plan.test_data_src, plan.test_data_path, dirs_exist_ok=True)
+            shutil.copytree(plan.test_data_src, plan.test_data_path)
     return plans
+
+
+def _reject_symlinks(directory: Path) -> None:
+    """Abort when ``directory`` or anything beneath it is a symlink."""
+    for candidate in (directory, *directory.rglob("*")):
+        if candidate.is_symlink():
+            raise AssemblyError(f"symlink not allowed in test_data: {candidate}")
 
 
 def assemble(

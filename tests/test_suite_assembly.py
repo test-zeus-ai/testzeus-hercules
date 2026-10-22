@@ -347,3 +347,24 @@ def test_main_assembles_via_cli(library: Path, tmp_path: Path) -> None:
     assert assemble_version.main(["--version", "1.0", "--library", str(library), "--run-root", str(run_root)]) == 0
     assert (run_root / "1.0" / "tests" / "api-auth" / "input" / "api-auth.feature").is_file()
     assert (run_root / "1.0" / "blocked.json").is_file()
+
+
+def test_reassembly_clears_suites_removed_since_last_run(library: Path, tmp_path: Path) -> None:
+    run_root = tmp_path / "run"
+    assemble_version.assemble(library, run_root, version="1.0")
+    stale = run_root / "1.0" / "tests" / "api-payments" / "input" / "api-payments.feature"
+    assert stale.is_file()
+    (library / "api" / "payments" / "1.0.feature").unlink()
+    assemble_version.assemble(library, run_root, version="1.0")
+    assert not stale.exists()  # a removed module must not keep running
+    assert (run_root / "1.0" / "tests" / "api-auth" / "input" / "api-auth.feature").is_file()
+
+
+def test_symlink_in_test_data_aborts_before_writing(library: Path, tmp_path: Path) -> None:
+    secret = tmp_path / "outside.txt"
+    secret.write_text("secret", encoding="utf-8")
+    (library / "api" / "auth" / "test_data" / "leak.txt").symlink_to(secret)
+    run_root = tmp_path / "run"
+    with pytest.raises(AssemblyError, match="symlink"):
+        assemble_version.assemble(library, run_root, version="1.0")
+    assert not (run_root / "1.0" / "tests").exists()
