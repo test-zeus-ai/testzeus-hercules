@@ -330,3 +330,119 @@ def test_every_verdict_is_recorded_with_payload_fingerprint(proof_env) -> None:
         assert entry["path"] == "$.body.name"
         assert entry["subject"] == hashlib.sha1(json.dumps(DOC, separators=(",", ":"), default=str).encode()).hexdigest()[:12]
         assert len(entry["subject"]) == 12
+
+
+# ── per-value operators judge EVERY match ────────────────────────────────────
+
+
+@requires_jsonpath_ng
+def test_eq_checks_every_match_not_only_the_first(proof_env) -> None:
+    # qty values are [1, 2]: the first match equals 1, the second does not.
+    verdict = _assert(DOC, "$.body.items[*].qty", "eq", 1)
+    assert verdict["assertion"] == "FAILED"
+    assert verdict["matched_count"] == 2
+    assert verdict["actual"] == [1, 2]
+    assert "Match 1 of 2" in verdict["reason"]
+
+
+@requires_jsonpath_ng
+def test_ne_requires_that_no_match_equals_expected(proof_env) -> None:
+    assert _assert(DOC, "$.body.items[*].sku", "ne", "Z")["assertion"] == "PASSED"
+    # "B" is the SECOND match; the old first-match-only check passed this.
+    verdict = _assert(DOC, "$.body.items[*].sku", "ne", "B")
+    assert verdict["assertion"] == "FAILED"
+    assert "Match 1 of 2" in verdict["reason"]
+
+
+@requires_jsonpath_ng
+def test_contains_checks_every_match(proof_env) -> None:
+    doc = {"names": ["alpha-1", "beta-1", "gamma-2"]}
+    assert _assert(doc, "$.names[*]", "contains", "-")["assertion"] == "PASSED"
+    verdict = _assert(doc, "$.names[*]", "contains", "-1")
+    assert verdict["assertion"] == "FAILED"
+    assert "Match 2 of 3" in verdict["reason"]
+
+
+@requires_jsonpath_ng
+def test_gt_lt_check_every_match(proof_env) -> None:
+    assert _assert(DOC, "$.body.items[*].qty", "gt", 0)["assertion"] == "PASSED"
+    verdict = _assert(DOC, "$.body.items[*].qty", "gt", 1)
+    assert verdict["assertion"] == "FAILED"
+    assert "Match 0 of 2" in verdict["reason"]
+    assert _assert(DOC, "$.body.items[*].qty", "lt", 3)["assertion"] == "PASSED"
+    assert _assert(DOC, "$.body.items[*].qty", "lt", 2)["assertion"] == "FAILED"
+    not_numeric = _assert(DOC, "$.body.items[*].sku", "gt", 1)
+    assert not_numeric["assertion"] == "ERROR"
+
+
+@requires_jsonpath_ng
+def test_not_empty_checks_every_match(proof_env) -> None:
+    doc = {"rows": [{"v": "x"}, {"v": "  "}]}
+    verdict = _assert(doc, "$.rows[*].v", "not_empty")
+    assert verdict["assertion"] == "FAILED"
+    assert "Match 1 of 2" in verdict["reason"]
+
+
+@requires_jsonpath_ng
+def test_single_match_behaviour_is_unchanged(proof_env) -> None:
+    verdict = _assert(DOC, "$.body.total", "eq", 3)
+    assert verdict["assertion"] == "PASSED"
+    assert verdict["actual"] == 3  # not wrapped in a list
+    assert "reason" not in verdict
+
+
+# ── count_eq must be a whole number ──────────────────────────────────────────
+
+
+@requires_jsonpath_ng
+def test_count_eq_rejects_non_integer_counts(proof_env) -> None:
+    for bad in (2.5, "2.5", "nan", "inf"):
+        verdict = _assert(DOC, "$.body.items", "count_eq", bad)
+        assert verdict["assertion"] == "ERROR", bad
+        assert "whole number" in verdict["reason"]
+    assert _assert(DOC, "$.body.items", "count_eq", "2")["assertion"] == "PASSED"
+    assert _assert(DOC, "$.body.items", "count_eq", 2.0)["assertion"] == "PASSED"
+
+
+# ── operator lookalike guard no longer eats legitimate strings ───────────────
+
+
+@requires_jsonpath_ng
+@pytest.mark.parametrize("value", ["exists_in_cart", "contains the cart", "eq_check_passed", "not_empty_cart", "count_equal"])
+def test_legitimate_strings_starting_with_an_operator_word_are_compared(proof_env, value) -> None:
+    doc = {"body": {"status": value}}
+    verdict = _assert(doc, "$.body.status", "eq", value)
+    assert verdict["assertion"] == "PASSED", verdict
+    assert "reason" not in verdict
+
+
+@requires_jsonpath_ng
+def test_literal_prefix_asserts_a_value_that_is_exactly_an_operator_name(proof_env) -> None:
+    doc = {"body": {"mode": "exists"}}
+    assert _assert(doc, "$.body.mode", "eq", "literal:exists")["assertion"] == "PASSED"
+    # Without the escape the slip is still caught.
+    assert _assert(doc, "$.body.mode", "ne", "exists")["assertion"] == "ERROR"
+
+
+def test_operator_slips_are_still_caught(proof_env) -> None:
+    for slip in ("count_eq:2", "ne_path:$.body.id", "ne_path", "not_empty", "exists"):
+        verdict = _assert(DOC, "$.body.name", "ne", slip)
+        assert verdict["assertion"] == "ERROR", slip
+
+
+# ── ledger redaction ─────────────────────────────────────────────────────────
+
+
+@requires_jsonpath_ng
+def test_ledger_redacts_secret_named_paths_and_captured_secret_values(proof_env) -> None:
+    doc = {"body": {"password": "hunter2-pass", "note": "value hunter2-token is here", "auth_token": "tok-abc-123"}}
+    _assert(doc, "$.body.password", "eq", "hunter2-pass")
+    set_variable_value("api_token", "hunter2-token")
+    _assert(doc, "$.body.note", "contains", "${api_token}")
+
+    raw = open(f"{proof_env.get_proof_path()}/assertion_logs.log", encoding="utf-8").read()
+    assert "hunter2-pass" not in raw
+    assert "hunter2-token" not in raw
+    assert "[REDACTED]" in raw
+    lines = _ledger_lines(proof_env)
+    assert [entry["verdict"] for entry in lines] == ["PASSED", "PASSED"]  # redaction never changes the verdict

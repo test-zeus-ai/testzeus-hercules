@@ -17,6 +17,7 @@ from testzeus_hercules.utils.path_guard import resolve_in_roots
 from testzeus_hercules.utils.redact import (
     _redact_post_data,
     _redact_sensitive_headers,
+    is_sensitive_name,
     redact_url,
 )
 
@@ -60,6 +61,11 @@ def _var_store() -> Dict[str, Any]:
 def reset_variables(test_id: Optional[str] = None) -> None:
     """Drop the captured variables of `test_id` (default: the current test); call at scenario start."""
     _VARIABLES.pop(test_id if test_id is not None else get_global_conf().get_default_test_id(), None)
+
+
+def sensitive_variable_values() -> list:
+    """Text forms of the current scenario's captured values whose NAME marks them secret (scrubbed from ledgers)."""
+    return [stringify_interpolated_value(value) for name, value in _var_store().items() if is_sensitive_name(name)]
 
 
 def set_variable_value(as_name: str, value: Any) -> None:

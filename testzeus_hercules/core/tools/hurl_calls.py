@@ -32,8 +32,9 @@ from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.path_guard import PathConfinementError, resolve_in_roots
 from testzeus_hercules.utils.redact import (
     REDACTED_PLACEHOLDER,
-    REDACTED_POST_DATA_PATTERNS,
+    is_sensitive_name,
     redact_url,
+    scrub_secret_values,
 )
 
 HURL_BINARY = "hurl"
@@ -41,11 +42,6 @@ HURL_BINARY = "hurl"
 # Variables reach hurl as HURL_VARIABLE_<name> environment entries (never as
 # --variable argv, which is visible to every local user via the process list).
 _VARIABLE_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]*$")
-
-# A variable whose NAME contains one of these has its VALUE scrubbed from the
-# raw hurl output before it is logged or returned to the model.
-_SENSITIVE_VARIABLE_NAME_PARTS = REDACTED_POST_DATA_PATTERNS + ("key", "auth", "cookie", "session", "credential", "bearer")
-_MIN_SECRET_VALUE_LENGTH = 3
 
 _SECRET_HEADER_LINE_RE = re.compile(r"(?im)^(\s*(?:authorization|proxy-authorization|cookie|set-cookie|x-api-key|api-key)\s*:\s*).+$")
 _URL_TOKEN_RE = re.compile(r"https?://[^\s'\"<>]+")
@@ -67,14 +63,14 @@ def _minified(payload: Dict[str, Any]) -> str:
 
 def _redact_output(text: str, secret_values: List[str]) -> str:
     """Scrub secrets from raw hurl output: sensitive variable values, auth/cookie header lines and URL credentials."""
-    for value in sorted(set(secret_values), key=len, reverse=True):
-        text = text.replace(value, REDACTED_PLACEHOLDER)
+    text = scrub_secret_values(text, secret_values)
     text = _SECRET_HEADER_LINE_RE.sub(lambda match: match.group(1) + REDACTED_PLACEHOLDER, text)
     return _URL_TOKEN_RE.sub(lambda match: redact_url(match.group(0)), text)
 
 
 def _secret_variable_values(variables: Dict[str, str]) -> List[str]:
-    return [value for name, value in variables.items() if len(value) >= _MIN_SECRET_VALUE_LENGTH and any(part in name.lower() for part in _SENSITIVE_VARIABLE_NAME_PARTS)]
+    """Values of the variables whose NAME marks them as secret-bearing (scrubbed from output)."""
+    return [value for name, value in variables.items() if is_sensitive_name(name)]
 
 
 def _suite_files(hurl_path: str) -> List[str]:
