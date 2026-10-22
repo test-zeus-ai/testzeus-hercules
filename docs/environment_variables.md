@@ -286,6 +286,19 @@ LLM Parameters:
 - `SANDBOX_CUSTOM_INJECTIONS`: JSON object describing extra modules and custom objects
   - Example: `{"modules": ["jwt"], "custom_objects": {"MAX_RETRIES": 3}}`
 
+### API Verification Tools
+- `API_REQUEST_TIMEOUT`: HTTP timeout in seconds for `generic_http_api`
+  - Default: `5`
+
+- `API_ALLOWED_PATHS`: Extra folders model-supplied file paths may live in (multipart uploads, Hurl suites, OpenAPI specs)
+  - Separator: `os.pathsep` (`:` on POSIX)
+  - Default: empty (only `TEST_DATA_PATH` and `PROJECT_SOURCE_ROOT` are allowed)
+
+- `ENABLE_UI_ASSERTIONS`: Register the `assert_ui` / `capture_ui_value` tools on the browser, MCP and mobile agents
+  - Values: `true`, `false`
+  - Default: `false`
+  - See `docs/api_verification.md`
+
 ## Device Configuration
 
 ### Device Manager

@@ -2,7 +2,10 @@ from datetime import datetime
 from string import Template
 from typing import Any
 
-from testzeus_hercules.core.agents.base_nav_agent import BaseNavAgent
+from testzeus_hercules.core.agents.base_nav_agent import (
+    BaseNavAgent,
+    ui_assertion_prompt_addendum,
+)
 from testzeus_hercules.utils.logger import logger
 
 
@@ -31,6 +34,7 @@ class MultimodalBaseNavAgent(BaseNavAgent):
                 system_message,
             )
 
+        system_message = system_message + ui_assertion_prompt_addendum(self.agent_name)
         system_message = system_message + "\n" + f"Current timestamp is {datetime.now().strftime('%Y/%m/%d %H:%M:%S')}"
         logger.warning(
             "[SYSTEM_PROMPT_DEBUG] agent=%s user_ltm=%r system_message_tail=%r",
