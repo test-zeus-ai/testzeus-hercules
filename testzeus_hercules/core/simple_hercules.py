@@ -39,6 +39,7 @@ from testzeus_hercules.utils.error_evidence import (
     _redact_error_text,
     persist_error_evidence,
 )
+from testzeus_hercules.utils.env_flags import observer_invariants_enabled
 from testzeus_hercules.utils.llm_helper import (
     GraphChatResult,
     convert_model_config_to_langchain_format,
@@ -1119,9 +1120,12 @@ class SimpleHercules:
 
         logger.info("[EXECUTOR] %s response: %s", agent_name, helper_response[:300])
 
-        # Observer invariants: judge the proof artifacts written so far.
-        # Containment-wrapped — a poll failure is logged and swallowed.
-        self._poll_invariants_safely()
+        # Observer invariants (opt-in, ENABLE_OBSERVER_INVARIANTS=true): judge the
+        # proof artifacts written so far. Containment-wrapped — a poll failure is
+        # logged and swallowed. Off by default: HTTP 5xx / console TypeError
+        # evidence can fail a scenario that the planner legitimately passed.
+        if observer_invariants_enabled():
+            self._poll_invariants_safely()
 
         # Feed the helper's full response back into the planner conversation
         messages: list[AnyMessage] = list(state.get("messages", []))

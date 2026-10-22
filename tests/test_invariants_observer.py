@@ -47,6 +47,7 @@ TEST_ID = "invariant-observer"
 @pytest.fixture(autouse=True)
 def proof_env(tmp_path, monkeypatch):
     """Point the global conf at tmp_path for proof + ledger writes."""
+    monkeypatch.setenv("ENABLE_OBSERVER_INVARIANTS", "true")  # the observer is opt-in
     reset_invariant_offsets()
     conf = get_global_conf()
     original_config = dict(conf.get_config())
@@ -506,4 +507,19 @@ def test_run_without_any_proof_artifacts_stays_clean(proof_env, tmp_path) -> Non
 
     parsed = parse_agent_response(result.summary)
     assert parsed["is_passed"] is True
+    assert _ledger_lines(proof_env) == []
+
+
+def test_observer_invariants_are_off_by_default(proof_env, tmp_path, monkeypatch) -> None:
+    """Without ENABLE_OBSERVER_INVARIANTS a 5xx in the proof artifacts never overrules a claimed pass."""
+    monkeypatch.delenv("ENABLE_OBSERVER_INVARIANTS", raising=False)
+    proofs = _proof_dir(proof_env)
+    _write_jsonl(os.path.join(proofs, "network_logs.json"), [{"type": "response", "status": 500, "url": "https://api.test/orders"}])
+    _write_jsonl(os.path.join(proofs, "console_logs.json"), [{"type": "console", "level": "error", "timestamp": 1.0, "text": "Uncaught TypeError: x is undefined"}])
+
+    result = asyncio.run(_make_hercules([_STEP, _PASS]).process_command("check the orders page"))
+
+    parsed = parse_agent_response(result.summary)
+    assert parsed["is_passed"] is True
+    assert "Observer invariants" not in (parsed["assert_summary"] or "")
     assert _ledger_lines(proof_env) == []

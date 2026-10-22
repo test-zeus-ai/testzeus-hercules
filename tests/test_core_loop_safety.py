@@ -845,6 +845,8 @@ def test_terminate_yes_with_empty_target_helper_reaches_pass_terminal() -> None:
 
 
 def test_invariant_binding_accumulator_resets_between_commands_and_dedupes(monkeypatch) -> None:
+    monkeypatch.setenv("ENABLE_OBSERVER_INVARIANTS", "true")
+
     async def run() -> None:
         import testzeus_hercules.core.simple_hercules as simple_hercules_module
 
@@ -887,6 +889,8 @@ def test_invariant_binding_accumulator_resets_between_commands_and_dedupes(monke
 
 
 def test_invariant_binding_dedupes_duplicates_within_one_poll(monkeypatch) -> None:
+    monkeypatch.setenv("ENABLE_OBSERVER_INVARIANTS", "true")
+
     async def run() -> None:
         import testzeus_hercules.core.simple_hercules as simple_hercules_module
 
