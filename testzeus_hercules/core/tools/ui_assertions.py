@@ -10,13 +10,18 @@ PASSED/FAILED/ERROR verdict (as minified JSON) for the agent to relay.
 the per-scenario ``${name}`` variable store shared with the API tools, so a
 value seen on a page can be cross-checked against an API response later.
 
+These tools are OPT-IN: they are registered on the browser/MCP/mobile nav
+agents only when ``ENABLE_UI_ASSERTIONS=true`` (default off), and the agent
+prompts mention them only then (see :func:`prompt_addendum_for`).
+
 Before matching, the payload is normalized:
 
 - a JSON payload is searched ONLY in its string values (keys, numbers and
   structure never satisfy a text assertion);
 - URLs and id/test-id/class-like attribute assignments are stripped, so a
   value that exists only inside a hidden attribute (e.g. ``id="login"``) or a
-  link target cannot satisfy a visible-text assertion;
+  link target cannot satisfy a visible-text assertion (pass ``raw=true`` to
+  keep them, e.g. to assert that a link target is shown);
 - an empty or blank payload is an ERROR — never a silent pass;
 - ``scope`` narrows matching to the paragraph (block of consecutive non-empty
   lines) containing the first occurrence of the scope substring.
@@ -53,6 +58,7 @@ from typing import Annotated, Any, Dict, List, Optional, Tuple
 from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.tools.api_calls import (
     interpolate_value,
+    sensitive_variable_values,
     set_variable_value,
     stringify_interpolated_value,
 )
@@ -60,9 +66,11 @@ from testzeus_hercules.core.tools.tool_registry import (
     assertion_logger,
     assertion_subject,
     tool,
+    tool_registry,
 )
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.logger import logger
+from testzeus_hercules.utils.redact import redact_value
 
 MODES = ("contains", "absent", "count_eq", "no_placeholder")
 
@@ -98,6 +106,48 @@ _MARKDOWN_HEADER_RE = re.compile(r"^[ \t]{0,3}#{1,6}\s+\S", re.MULTILINE)
 # keys.
 _I18N_KEY_RE = re.compile(r"(?<![\w.])[a-z][a-z0-9_]{3,}(?:\.[a-z][a-z0-9_]{3,}){2,}(?![\w.])")
 _FILE_NAME_EXT_RE = re.compile(r"\.(?:json|js|ts|css|html|png|jpg|svg)$")
+
+UI_ASSERTION_AGENTS = ["browser_nav_agent", "mcp_nav_agent", "mobile_nav_agent"]
+
+_ASSERT_UI_DESCRIPTION = (
+    "Deterministically assert on the visible text returned by a page-reading "
+    "tool. NEVER decide pass/fail by reading the page yourself — call this "
+    "tool and use its returned 'assertion' value (PASSED/FAILED/ERROR). "
+    f"Modes: {', '.join(MODES)}. "
+    "'contains': expected text is visible. "
+    "'absent': forbidden text is NOT visible; REQUIRES must_contain (a "
+    "string that must be visible) as positive control proving the page "
+    "actually rendered — without it the check is rejected, because absent "
+    "passes trivially on an unrendered page. "
+    "'count_eq': expected text occurs exactly 'count' times. "
+    "'no_placeholder': best-effort scan for unrendered placeholder shapes "
+    "(undefined / NaN tokens, [object Object], {{tpl}}/${tpl}, raw "
+    "markdown headers, leaked i18n keys). Heuristic, not a guarantee: "
+    "prose that merely resembles a shape (e.g. 'undefined behavior', "
+    "'config.settings.json') is deliberately spared, and unusual "
+    "placeholder shapes may be missed. "
+    "JSON payloads are searched only in their string values; ids/testIds/"
+    "class names/URLs are stripped before matching (set raw=true to keep "
+    "URLs and attribute assignments, e.g. to assert a link target is shown). "
+    "'scope' narrows matching to the paragraph containing it. "
+    "expected/forbidden/must_contain/scope may reference captured values "
+    "as ${name}."
+)
+
+_CAPTURE_UI_VALUE_DESCRIPTION = (
+    "Capture a value from the visible text returned by a page-reading tool "
+    "into a named variable for later use. Reference the captured value in "
+    "subsequent calls or assertions (including the API tools) as "
+    "${as_name}. Strategy: when 'path_hint' already IS the value it is "
+    "captured verbatim (whole-line match first); when the hint is a label, "
+    "the value following it on the same line is captured (hint: value / "
+    "hint - value / hint value, or a value glued to the hint as "
+    "hintvalue). "
+    "'scope' narrows the search to the paragraph containing it. URLs are "
+    "stripped before matching unless raw=true."
+)
+
+_RAW_PARAM_DESCRIPTION = "Keep URLs and id/class attribute assignments in the searched text instead of stripping them (needed to assert on a link target or attribute value)."
 
 
 def _minified(payload: Dict[str, Any]) -> str:
@@ -157,9 +207,10 @@ def _strip_noise(text: str) -> str:
     return _ATTR_ASSIGNMENT_RE.sub(" ", text)
 
 
-def _prepare_search_text(payload: Any) -> str:
-    """Normalize a payload and strip non-visible noise from it."""
-    return _strip_noise(_payload_to_text(payload)).strip()
+def _prepare_search_text(payload: Any, raw: bool = False) -> str:
+    """Normalize a payload and strip non-visible noise from it (raw=True keeps URLs and attribute assignments)."""
+    text = _payload_to_text(payload)
+    return (text if raw else _strip_noise(text)).strip()
 
 
 def _scope_window(text: str, scope: str) -> Optional[str]:
@@ -216,18 +267,22 @@ def _interpolate_param(value: Any, param_name: str) -> Tuple[Optional[str], Opti
 
 
 def _record(source: str, search_text: str, result: Dict[str, Any]) -> None:
-    """Append the verdict to the audit ledger, tagged with the text fingerprint."""
+    """Append the (redacted) verdict to the audit ledger, tagged with the text fingerprint."""
     entry: Dict[str, Any] = {
         "source": source,
         "test_id": get_global_conf().get_default_test_id(),
         "subject": assertion_subject(search_text),
         "verdict": result.get("assertion"),
     }
+    # A secret-named capture/hint, or the value of a secret-named captured
+    # variable, never lands in the audit file.
+    key_hint = f"{result.get('as_name') or ''} {result.get('path_hint') or ''}"
+    secrets = sensitive_variable_values()
     for key in ("mode", "expected", "actual", "as_name", "value", "scope", "reason", "note"):
         # Keep every documented field that exists — falsy values (an actual
         # count of 0, an empty reason) are still facts worth recording.
         if key in result:
-            entry[key] = result[key]
+            entry[key] = redact_value(result[key], key_hint if key in ("expected", "actual", "value") else "", secrets)
     try:
         assertion_logger(json.dumps(entry, separators=(",", ":"), default=str))
     except Exception as e:
@@ -262,33 +317,6 @@ def _placeholder_findings(text: str) -> List[Dict[str, str]]:
     return findings
 
 
-@tool(
-    agent_names=["browser_nav_agent", "mcp_nav_agent", "mobile_nav_agent"],
-    name="assert_ui",
-    description=(
-        "Deterministically assert on the visible text returned by a page-reading "
-        "tool. NEVER decide pass/fail by reading the page yourself — call this "
-        "tool and use its returned 'assertion' value (PASSED/FAILED/ERROR). "
-        f"Modes: {', '.join(MODES)}. "
-        "'contains': expected text is visible. "
-        "'absent': forbidden text is NOT visible; REQUIRES must_contain (a "
-        "string that must be visible) as positive control proving the page "
-        "actually rendered — without it the check is rejected, because absent "
-        "passes trivially on an unrendered page. "
-        "'count_eq': expected text occurs exactly 'count' times. "
-        "'no_placeholder': best-effort scan for unrendered placeholder shapes "
-        "(undefined / NaN tokens, [object Object], {{tpl}}/${tpl}, raw "
-        "markdown headers, leaked i18n keys). Heuristic, not a guarantee: "
-        "prose that merely resembles a shape (e.g. 'undefined behavior', "
-        "'config.settings.json') is deliberately spared, and unusual "
-        "placeholder shapes may be missed. "
-        "JSON payloads are searched only in their string values; ids/testIds/"
-        "class names/URLs are stripped before matching. "
-        "'scope' narrows matching to the paragraph containing it. "
-        "expected/forbidden/must_contain/scope may reference captured values "
-        "as ${name}."
-    ),
-)
 async def assert_ui(
     payload: Annotated[Any, "The text/payload returned by a page-reading tool (get_page_text-style)."],
     mode: Annotated[str, f"Assertion mode. One of: {', '.join(MODES)}."],
@@ -297,10 +325,11 @@ async def assert_ui(
     scope: Annotated[Optional[str], "Optional substring narrowing the check to the paragraph containing it."] = None,
     forbidden: Annotated[Optional[str], "Text that must NOT be visible (absent mode). Falls back to 'expected' when omitted."] = None,
     must_contain: Annotated[Optional[str], "Positive control required by the absent mode: text that must be visible, proving the page rendered."] = None,
+    raw: Annotated[bool, _RAW_PARAM_DESCRIPTION] = False,
 ) -> Annotated[str, "Minified JSON verdict: {assertion: PASSED|FAILED|ERROR, mode, expected, actual, ...}."]:
     add_event(EventType.INTERACTION, EventData(detail="assert_ui"))
     try:
-        result = _evaluate_assert_ui(payload, mode, expected, count, scope, forbidden, must_contain)
+        result = _evaluate_assert_ui(payload, mode, expected, count, scope, forbidden, must_contain, raw)
     except Exception as e:
         logger.exception("assert_ui failed unexpectedly")
         result = {"assertion": "ERROR", "mode": mode, "expected": expected, "reason": f"Assertion could not be evaluated: {type(e).__name__}: {e}"}
@@ -309,7 +338,7 @@ async def assert_ui(
     return _minified(result)
 
 
-def _evaluate_assert_ui(payload: Any, mode: str, expected: Any, count: Any, scope: Any, forbidden: Any, must_contain: Any) -> Dict[str, Any]:
+def _evaluate_assert_ui(payload: Any, mode: str, expected: Any, count: Any, scope: Any, forbidden: Any, must_contain: Any, raw: bool = False) -> Dict[str, Any]:
     """Run one UI assertion and build its verdict payload."""
     mode_name = str(mode or "").strip().lower()
 
@@ -322,7 +351,7 @@ def _evaluate_assert_ui(payload: Any, mode: str, expected: Any, count: Any, scop
     if mode_name not in MODES:
         return _payload(assertion="ERROR", reason=f"Unknown mode '{mode_name}'. Valid modes: {', '.join(MODES)}.")
 
-    search_text = _prepare_search_text(payload)
+    search_text = _prepare_search_text(payload, bool(raw))
     if not search_text:
         return _payload(
             assertion="ERROR",
@@ -450,30 +479,16 @@ def _evaluate_assert_ui(payload: Any, mode: str, expected: Any, count: Any, scop
     return result
 
 
-@tool(
-    agent_names=["browser_nav_agent", "mcp_nav_agent", "mobile_nav_agent"],
-    name="capture_ui_value",
-    description=(
-        "Capture a value from the visible text returned by a page-reading tool "
-        "into a named variable for later use. Reference the captured value in "
-        "subsequent calls or assertions (including the API tools) as "
-        "${as_name}. Strategy: when 'path_hint' already IS the value it is "
-        "captured verbatim (whole-line match first); when the hint is a label, "
-        "the value following it on the same line is captured (hint: value / "
-        "hint - value / hint value, or a value glued to the hint as "
-        "hintvalue). "
-        "'scope' narrows the search to the paragraph containing it."
-    ),
-)
 async def capture_ui_value(
     payload: Annotated[Any, "The text/payload returned by a page-reading tool (get_page_text-style)."],
     path_hint: Annotated[str, "Label or exact value to locate; the hint itself is captured when it already is the value."],
     as_name: Annotated[str, "Name to store the value under; reference it later as ${as_name}."],
     scope: Annotated[Optional[str], "Optional substring narrowing the search to the paragraph containing it."] = None,
+    raw: Annotated[bool, _RAW_PARAM_DESCRIPTION] = False,
 ) -> Annotated[str, "Minified JSON with the capture verdict, the stored value and its ${as_name} reference."]:
     add_event(EventType.INTERACTION, EventData(detail="capture_ui_value"))
     try:
-        result = _evaluate_capture_ui_value(payload, path_hint, as_name, scope)
+        result = _evaluate_capture_ui_value(payload, path_hint, as_name, scope, raw)
     except Exception as e:
         logger.exception("capture_ui_value failed unexpectedly")
         result = {"assertion": "ERROR", "path_hint": path_hint, "as_name": as_name, "reason": f"Capture could not be evaluated: {type(e).__name__}: {e}"}
@@ -482,7 +497,7 @@ async def capture_ui_value(
     return _minified(result)
 
 
-def _evaluate_capture_ui_value(payload: Any, path_hint: Any, as_name: Any, scope: Any) -> Dict[str, Any]:
+def _evaluate_capture_ui_value(payload: Any, path_hint: Any, as_name: Any, scope: Any, raw: bool = False) -> Dict[str, Any]:
     """Locate the value for one capture and store it in the variable store."""
 
     def _payload(**overrides: Any) -> Dict[str, Any]:
@@ -497,7 +512,7 @@ def _evaluate_capture_ui_value(payload: Any, path_hint: Any, as_name: Any, scope
     if not name:
         return _payload(assertion="ERROR", reason="A non-blank 'as_name' is required.")
 
-    search_text = _prepare_search_text(payload)
+    search_text = _prepare_search_text(payload, bool(raw))
     if not search_text:
         return _payload(
             assertion="ERROR",
@@ -575,3 +590,37 @@ def _evaluate_capture_ui_value(payload: Any, path_hint: Any, as_name: Any, scope
         reference=f"${{{name}}}",
         strategy=strategy,
     )
+
+
+# ------------------------------------------------------------------------------
+# Opt-in registration (ENABLE_UI_ASSERTIONS) and prompt guidance
+# ------------------------------------------------------------------------------
+
+_PROMPT_ADDENDUM = """
+
+## Deterministic UI assertions
+- Never decide pass/fail on visible page text by reading it yourself. Read the page with the page-text tool, then call `assert_ui` with that payload and use its returned `assertion` value (PASSED/FAILED/ERROR) as the verdict.
+- Use `capture_ui_value` to store a value seen on the page as `${name}` for later steps or API cross-checks.
+"""
+
+
+def ui_assertions_enabled() -> bool:
+    """True when ENABLE_UI_ASSERTIONS opts the run into the assert_ui / capture_ui_value tools."""
+    return get_global_conf().get_enable_ui_assertions()
+
+
+def register_ui_assertion_tools() -> None:
+    """Register assert_ui / capture_ui_value on the browser, MCP and mobile nav agents."""
+    tool(agent_names=UI_ASSERTION_AGENTS, name="assert_ui", description=_ASSERT_UI_DESCRIPTION)(assert_ui)
+    tool(agent_names=UI_ASSERTION_AGENTS, name="capture_ui_value", description=_CAPTURE_UI_VALUE_DESCRIPTION)(capture_ui_value)
+
+
+def prompt_addendum_for(agent_name: str) -> str:
+    """Prompt guidance for `agent_name`: non-empty only when assert_ui is actually registered for it."""
+    if any(entry.get("name") == "assert_ui" for entry in tool_registry.get(agent_name, [])):
+        return _PROMPT_ADDENDUM
+    return ""
+
+
+if ui_assertions_enabled():
+    register_ui_assertion_tools()

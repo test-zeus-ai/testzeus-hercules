@@ -405,10 +405,109 @@ def test_ledger_records_falsy_fields_like_zero_actual(proof_env) -> None:
     assert entry["actual"] == 0
 
 
-# ── registration ─────────────────────────────────────────────────────────────
+# ── raw mode (URLs / attributes kept) ────────────────────────────────────────
 
 
-def test_ui_tools_are_registered_for_the_nav_agents() -> None:
-    for agent in ("browser_nav_agent", "mcp_nav_agent", "mobile_nav_agent"):
-        registered = {entry["name"] for entry in tool_registry[agent]}
-        assert {"assert_ui", "capture_ui_value"} <= registered, agent
+def test_urls_are_stripped_by_default_but_kept_in_raw_mode(proof_env) -> None:
+    payload = "Order confirmed\nTrack: https://shop.test/orders/42/track\n"
+    assert _assert_ui(payload, "contains", expected="https://shop.test/orders/42/track")["assertion"] == "FAILED"
+    raw = _assert_ui(payload, "contains", expected="https://shop.test/orders/42/track", raw=True)
+    assert raw["assertion"] == "PASSED"
+
+
+def test_attribute_assignments_are_kept_in_raw_mode(proof_env) -> None:
+    payload = 'Sign in\ndata-testid="login-btn"'
+    assert _assert_ui(payload, "contains", expected='data-testid="login-btn"')["assertion"] == "FAILED"
+    assert _assert_ui(payload, "contains", expected='data-testid="login-btn"', raw=True)["assertion"] == "PASSED"
+
+
+def test_capture_can_keep_a_url_in_raw_mode(proof_env) -> None:
+    payload = "Receipt\nLink: https://shop.test/r/9\n"
+    captured = _capture(payload, "Link", "receipt_link")
+    assert captured.get("value") != "https://shop.test/r/9"  # the URL was stripped from the searched text
+    verdict = json.loads(asyncio.run(capture_ui_value(payload, "Link", "receipt_link", None, True)))
+    assert verdict["assertion"] == "PASSED"
+    assert verdict["value"] == "https://shop.test/r/9"
+
+
+# ── ledger redaction ─────────────────────────────────────────────────────────
+
+
+def test_ledger_redacts_secret_captures_and_values(proof_env) -> None:
+    page = "Account\nPassword: hunter2-pass\nSession note: id hunter2-sess seen\n"
+    _capture(page, "Password", "login_password")
+    set_variable_value("session_token", "hunter2-sess")
+    _assert_ui(page, "contains", expected="${session_token}")
+
+    raw = open(f"{proof_env.get_proof_path()}/assertion_logs.log", encoding="utf-8").read()
+    assert "hunter2-pass" not in raw
+    assert "hunter2-sess" not in raw
+    assert "[REDACTED]" in raw
+    # The captured value itself is still usable by later steps.
+    assert interpolate_value("${login_password}") == "hunter2-pass"
+
+
+# ── opt-in registration (ENABLE_UI_ASSERTIONS) ───────────────────────────────
+
+UI_AGENTS = ("browser_nav_agent", "mcp_nav_agent", "mobile_nav_agent")
+
+_REGISTRY_PROBE = (
+    "import json;"
+    "import testzeus_hercules.core.tools.ui_assertions;"
+    "from testzeus_hercules.core.tools.tool_registry import tool_registry;"
+    "print('PROBE:' + json.dumps({a: sorted(e['name'] for e in tool_registry[a] if e['name'] in ('assert_ui','capture_ui_value')) for a in %r}))"
+) % (UI_AGENTS,)
+
+
+def _probe_registry(flag):
+    import os
+    import subprocess
+    import sys
+
+    env = {key: value for key, value in os.environ.items() if key != "ENABLE_UI_ASSERTIONS"}
+    if flag is not None:
+        env["ENABLE_UI_ASSERTIONS"] = flag
+    env["IS_TEST_ENV"] = "true"
+    completed = subprocess.run([sys.executable, "-c", _REGISTRY_PROBE], capture_output=True, text=True, env=env, timeout=120)
+    line = next(item for item in completed.stdout.splitlines() if item.startswith("PROBE:"))
+    return json.loads(line[len("PROBE:") :])
+
+
+def test_ui_tools_are_not_registered_by_default() -> None:
+    assert _probe_registry(None) == {agent: [] for agent in UI_AGENTS}
+
+
+def test_ui_tools_are_registered_for_the_nav_agents_when_enabled() -> None:
+    assert _probe_registry("true") == {agent: ["assert_ui", "capture_ui_value"] for agent in UI_AGENTS}
+
+
+@pytest.fixture
+def clean_ui_registry():
+    saved = {agent: list(tool_registry[agent]) for agent in UI_AGENTS}
+    for agent in UI_AGENTS:
+        tool_registry[agent] = [entry for entry in tool_registry[agent] if entry["name"] not in ("assert_ui", "capture_ui_value")]
+    yield
+    for agent in UI_AGENTS:
+        tool_registry[agent] = saved[agent]
+
+
+def test_config_flag_defaults_off_and_parses_truthy_values(monkeypatch) -> None:
+    config = get_global_conf()
+    monkeypatch.delitem(config.get_config(), "ENABLE_UI_ASSERTIONS", raising=False)
+    assert config.get_enable_ui_assertions() is False
+    for value, expected in (("true", True), ("TRUE", True), ("1", True), ("yes", True), ("false", False), ("", False), ("0", False)):
+        monkeypatch.setitem(config.get_config(), "ENABLE_UI_ASSERTIONS", value)
+        assert config.get_enable_ui_assertions() is expected, value
+
+
+def test_prompt_mentions_ui_tools_only_when_they_are_registered(clean_ui_registry) -> None:
+    from testzeus_hercules.core.agents.base_nav_agent import ui_assertion_prompt_addendum
+    from testzeus_hercules.core.tools.ui_assertions import register_ui_assertion_tools
+
+    for agent in UI_AGENTS:
+        assert ui_assertion_prompt_addendum(agent) == ""
+    register_ui_assertion_tools()
+    for agent in UI_AGENTS:
+        addendum = ui_assertion_prompt_addendum(agent)
+        assert "assert_ui" in addendum and "capture_ui_value" in addendum
+    assert ui_assertion_prompt_addendum("api_nav_agent") == ""
