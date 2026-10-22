@@ -746,20 +746,69 @@ def test_validate_planner_decision_accepts_valid_payloads() -> None:
     validate({"terminate": "no", "next_step": "scan", "target_helper": "sec", "is_assert": False, "is_passed": False})
 
 
-def test_invalid_planner_decision_ends_in_failed_planner_state() -> None:
+def test_invalid_planner_decision_ends_in_failed_planner_state_after_one_reprompt() -> None:
     async def run() -> None:
-        planner_llm = _PlannerLLMStub(payloads=[json.dumps({"next_step": "open the site", "target_helper": "does_not_exist", "terminate": "no"})])
+        bad = json.dumps({"next_step": "open the site", "target_helper": "does_not_exist", "terminate": "no"})
+        planner_llm = _PlannerLLMStub(payloads=[bad, bad])
         hercules = _make_hercules(planner_llm)
 
         result = await hercules.process_command("misrouted task")
 
         assert result is not None, "an invalid decision must fail the scenario, not crash the graph"
         assert result.terminate == "yes"
-        assert planner_llm.calls == 1
+        assert planner_llm.calls == 2, "exactly one corrective re-prompt, then fail"
         parsed = parse_agent_response(result.summary)
         assert parsed["terminate"] == "yes"
         assert parsed["is_passed"] is False
         assert "Invalid planner decision" in (parsed["final_response"] or "")
+
+    asyncio.run(run())
+
+
+def test_invalid_planner_decision_is_corrected_by_one_reprompt() -> None:
+    async def run() -> None:
+        # is_assert as the string "true" is a classic formatting slip: one corrective
+        # re-prompt must recover the scenario instead of failing it immediately.
+        bad = json.dumps({"terminate": "yes", "final_response": "done", "is_assert": "true", "is_passed": True, "assert_summary": "ok"})
+        good = json.dumps({"terminate": "yes", "final_response": "done", "is_assert": True, "is_passed": True, "assert_summary": "ok"})
+        seen_messages: list[list[Any]] = []
+
+        class _RecordingPlannerLLM(_PlannerLLMStub):
+            async def ainvoke(self, messages: list[Any]) -> AIMessage:
+                seen_messages.append(list(messages))
+                return await super().ainvoke(messages)
+
+        planner_llm = _RecordingPlannerLLM(payloads=[bad, good])
+        hercules = _make_hercules(planner_llm)
+
+        result = await hercules.process_command("slightly malformed planner")
+
+        assert result is not None and result.terminate == "yes"
+        assert planner_llm.calls == 2
+        parsed = parse_agent_response(result.summary)
+        assert parsed["is_passed"] is True
+        assert "Invalid planner decision" not in (parsed["final_response"] or "")
+        # The second call carried the failed attempt plus a corrective instruction.
+        retry_tail = seen_messages[1][-2:]
+        assert isinstance(retry_tail[0], AIMessage) and "is_assert" in retry_tail[0].content
+        assert "not a valid decision" in str(retry_tail[1].content)
+        assert "is_assert" in str(retry_tail[1].content)
+
+    asyncio.run(run())
+
+
+def test_empty_next_step_with_terminate_no_is_corrected_by_one_reprompt() -> None:
+    async def run() -> None:
+        bad = json.dumps({"plan": "p", "next_step": "", "terminate": "no"})
+        good = json.dumps({"terminate": "yes", "final_response": "done", "is_assert": True, "is_passed": True, "assert_summary": "ok"})
+        planner_llm = _PlannerLLMStub(payloads=[bad, good])
+        hercules = _make_hercules(planner_llm)
+
+        result = await hercules.process_command("empty step planner")
+
+        assert result is not None
+        assert planner_llm.calls == 2
+        assert parse_agent_response(result.summary)["is_passed"] is True
 
     asyncio.run(run())
 
