@@ -39,7 +39,7 @@ from testzeus_hercules.utils.error_evidence import (
     _redact_error_text,
     persist_error_evidence,
 )
-from testzeus_hercules.utils.env_flags import observer_invariants_enabled
+from testzeus_hercules.utils.env_flags import observer_invariants_enabled, strict_verdict_enabled
 from testzeus_hercules.utils.llm_helper import (
     GraphChatResult,
     convert_model_config_to_langchain_format,
@@ -683,10 +683,11 @@ class SimpleHercules:
                 next_step[:200],
             )
 
-        # Zombie-loop guard: an empty next_step (unparseable planner output) or a
-        # repeated already-completed step makes no executable progress. The counter
-        # resets whenever a fresh, executable step is produced.
-        if terminate == "yes" or (next_step and not repeated_step):
+        # Zombie-loop guard: only an empty next_step (unparseable planner output)
+        # counts as no executable progress. A repeated step that executes (e.g.
+        # clicking "Next page" several times) is legitimate and stays non-fatal
+        # (see PLANNER_REPEAT_NOTICE above); the counter resets on any step.
+        if terminate == "yes" or next_step:
             progress_stall_count = 0
         else:
             progress_stall_count = int(state.get("progress_stall_count", 0) or 0) + 1
@@ -696,7 +697,7 @@ class SimpleHercules:
 
         if progress_stall_count >= self._PLANNER_STALL_LIMIT:
             elapsed = time.perf_counter() - start
-            stall_final_response = f"Planner produced no executable progress {progress_stall_count} times in a row " "(empty or already-completed steps); terminating early to avoid a planner loop."
+            stall_final_response = f"Planner produced no executable progress {progress_stall_count} times in a row " "(empty or unparseable steps); terminating early to avoid a planner loop."
             assert_summary = "EXPECTED RESULT: the planner produces executable steps.\n" f"ACTUAL RESULT: {stall_final_response}"
             stall_content = json.dumps(
                 {
@@ -1383,7 +1384,9 @@ class SimpleHercules:
             "next_step": "",
             "terminate": "yes",
             "final_response": final_response,
-            "is_assert": True,
+            # Preserve the planner's is_assert: a non-asserting terminal decision
+            # must keep the junit no-assertion verdict path.
+            "is_assert": bool(state.get("is_assert", False)),
             "assert_summary": assert_summary,
             "is_passed": is_passed,
             "target_helper": "Not_Applicable",
@@ -1413,11 +1416,12 @@ class SimpleHercules:
         is_assert = bool(state.get("is_assert", False))
         target_helper = str(state.get("target_helper", "browser")).lower()
         if terminate == "yes":
-            # Assertion-shaped terminal payloads must still pass through the
-            # assertion node so the final-result JSON AIMessage and the
-            # assertion timing row are recorded; the assertion node then ends
-            # the graph. Everything else ends immediately.
-            if is_assert or target_helper == "not_applicable":
+            # Assertion terminal payloads pass through the assertion node so the
+            # final-result JSON AIMessage and the assertion timing row are
+            # recorded; the assertion node then ends the graph. A non-asserting
+            # terminal decision ends immediately (origin/main behaviour) unless
+            # STRICT_VERDICT also routes Not_Applicable terminals through it.
+            if is_assert or (strict_verdict_enabled() and target_helper == "not_applicable"):
                 return "assertion"
             return "end"
         if is_assert and target_helper == "not_applicable":

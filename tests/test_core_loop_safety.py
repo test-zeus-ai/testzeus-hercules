@@ -629,6 +629,77 @@ def test_plain_terminate_yes_still_ends_immediately_without_assertion() -> None:
     asyncio.run(run())
 
 
+# ── non-asserting terminal decisions keep the origin/main verdict path ────────
+
+
+@pytest.mark.parametrize("target_helper", ["Not_Applicable", "browser"])
+@pytest.mark.parametrize("strict", [False, True])
+def test_non_asserting_terminal_keeps_is_assert_false(monkeypatch, target_helper: str, strict: bool) -> None:
+    if strict:
+        monkeypatch.setenv("STRICT_VERDICT", "true")
+    else:
+        monkeypatch.delenv("STRICT_VERDICT", raising=False)
+
+    async def run() -> None:
+        terminal = {
+            "plan": "p",
+            "next_step": "",
+            "terminate": "yes",
+            "final_response": "navigated ok",
+            "is_assert": False,
+            "assert_summary": "",
+            "is_passed": False,
+            "target_helper": target_helper,
+        }
+        planner_llm = _PlannerLLMStub(payloads=[json.dumps(terminal)])
+        hercules = _make_hercules(planner_llm)
+
+        result = await hercules.process_command("navigate")
+
+        assert result is not None
+        assert result.terminate == "yes"
+        parsed = parse_agent_response(result.summary)
+        # is_assert must stay False so junit takes the no-assertion path (a
+        # terminated scenario passes there unless STRICT_VERDICT is on).
+        assert parsed["is_assert"] is False
+        assert parsed["final_response"] == "navigated ok"
+        ai_messages = [m for m in result.messages if isinstance(m, AIMessage)]
+        if not strict:
+            assert len(ai_messages) == 1, "with STRICT_VERDICT off a non-asserting terminate must end immediately (origin/main)"
+            assert json.loads(ai_messages[0].content) == terminal
+
+    asyncio.run(run())
+
+
+def test_assertion_node_preserves_is_assert_from_state() -> None:
+    hercules = SimpleHercules(stake_id="assert-node")
+    out = hercules._assertion_node({"is_assert": False, "is_passed": False, "final_response": "done", "messages": []})
+    assert json.loads(out["messages"][-1].content)["is_assert"] is False
+    out = hercules._assertion_node({"is_assert": True, "is_passed": True, "final_response": "done", "messages": []})
+    assert json.loads(out["messages"][-1].content)["is_assert"] is True
+
+
+# ── a repeated step that executes is progress, not a stall ────────────────────
+
+
+def test_repeated_executed_step_does_not_trip_stall_guard() -> None:
+    async def run() -> None:
+        repeat = json.dumps({"next_step": "Click the Next page button", "target_helper": "browser", "terminate": "no"})
+        done = json.dumps({"terminate": "yes", "final_response": "reached page 5", "is_assert": True, "is_passed": True, "assert_summary": "ok"})
+        planner_llm = _PlannerLLMStub(payloads=[repeat] * 5 + [done])
+        hercules = _make_hercules(planner_llm, planner_rounds=50)
+
+        result = await hercules.process_command("page through results")
+
+        assert result is not None
+        assert planner_llm.calls == 6, "repeating an executed step must not be treated as a planner stall"
+        parsed = parse_agent_response(result.summary)
+        assert parsed["is_passed"] is True
+        assert parsed["final_response"] == "reached page 5"
+
+    asyncio.run(run())
+
+
 # ── turn 12: refresh on the LAST tool call appends no "skipped 0" nag ─────────
 
 
