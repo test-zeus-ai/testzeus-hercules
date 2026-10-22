@@ -1,22 +1,26 @@
 """
 Python Sandbox Execution Tool
 
-Execute agent-authored Python scripts in a DISPOSABLE CHILD PROCESS.
+Execute agent-authored Python scripts. Two execution modes (``SANDBOX_MODE``):
 
-Isolation model (honest version):
-- Each execution launches a fresh child process (`sys.executable -c` bootstrap)
-  that runs the script with the module's standard injections and is destroyed
-  afterwards.
-- The child runs with a hard wall-clock timeout (capped at ``_MAX_TIMEOUT_SECONDS``)
-  plus POSIX rlimits (CPU time and address space). On timeout the whole process
-  group is SIGKILLed, so runaway scripts can never freeze the agent.
-- stdout/stderr are captured from the child (bounded, with truncation marker),
-  which also means sandbox prints can no longer corrupt the agent's own output.
+``inprocess`` (default, historical behaviour)
+    The script is exec'd inside the agent process with the LIVE Playwright objects
+    (``page``, ``browser``, ``context``, ``playwright_manager``) injected, stdout
+    captured and the whole run bounded by ``asyncio.wait_for``. Synchronous
+    infinite loops cannot be interrupted in this mode.
 
-This is a robustness/containment boundary, NOT a security boundary: the executed
-code runs with a full Python runtime (os, sys, __import__, network, filesystem
-all reachable) and with browser access when CDP_ENDPOINT_URL is configured.
-Do not run untrusted code through this tool.
+``subprocess`` (opt-in isolation)
+    Each execution launches a fresh child process (`sys.executable -c` bootstrap)
+    that runs the script with the module's standard injections and is destroyed
+    afterwards, under a hard wall-clock timeout (capped at ``_MAX_TIMEOUT_SECONDS``)
+    plus POSIX rlimits (CPU time and address space). On timeout the whole process
+    group is SIGKILLed. Live Playwright objects cannot cross the process boundary:
+    the child gets placeholders unless CDP_ENDPOINT_URL is set, in which case it
+    re-attaches to the browser over CDP.
+
+Neither mode is a security boundary: the executed code runs with a full Python
+runtime (os, sys, __import__, network, filesystem all reachable). Do not run
+untrusted code through this tool.
 """
 
 import asyncio
@@ -58,10 +62,10 @@ class ExecutionTimeout(Exception):
 
 @tool(
     agent_names=["executor_nav_agent"],
-    description="""Execute Python code from a file in a disposable child process with access to common injected modules.
-    Each run starts a fresh child process with CPU/memory limits and a hard wall-clock timeout (capped at 300s); the child is SIGKILLed on timeout, so runaway scripts cannot hang the agent.
-    This is containment for robustness, NOT a security boundary: executed code has full Python capabilities (imports, network, filesystem). Only run trusted scripts.
-    The child automatically receives playwright_manager, page, browser, context, asyncio, logger and configured module injections; live browser objects require CDP_ENDPOINT_URL to be set.
+    description="""Execute Python code from a file with access to common injected modules.
+    By default the script runs in-process with the live browser objects (page, browser, context, playwright_manager) plus asyncio, logger and configured module injections.
+    When the operator sets SANDBOX_MODE=subprocess the script instead runs in a disposable child process with CPU/memory limits and a hard wall-clock timeout (capped at 300s); there the live browser objects are only available if CDP_ENDPOINT_URL is configured.
+    This is NOT a security boundary: executed code has full Python capabilities (imports, network, filesystem). Only run trusted scripts.
     The code file can contain both synchronous and asynchronous functions.
     Supports multi-tenant injections configured via environment variables.""",
     name="execute_python_sandbox",
@@ -76,8 +80,8 @@ async def execute_python_sandbox(
     Execute Python code from a file in a disposable child process.
 
     Args:
-        file_path: Path to Python file (absolute or relative, must stay inside the workspace root)
-        timeout_seconds: Maximum execution time (default 300s, hard capped at 300s)
+        file_path: Path to Python file (absolute or relative, must stay inside the workspace root or the test-data directory)
+        timeout_seconds: Maximum execution time (default 300s; hard capped at 300s in subprocess mode)
         function_name: Optional specific function to call
         function_args: Optional JSON string of function arguments
 
@@ -89,9 +93,10 @@ async def execute_python_sandbox(
         - SANDBOX_TENANT_ID: Determines tenant-specific module access
         - SANDBOX_CUSTOM_INJECTIONS: JSON string with custom modules/objects to inject
 
-        The code runs in a disposable child process with resource limits and a hard
-        timeout. It is not a security boundary against hostile code — do not run
-        untrusted code.
+        SANDBOX_MODE=inprocess (default) runs the code in the agent process with live
+        browser objects; SANDBOX_MODE=subprocess runs it in a disposable child process
+        with resource limits and a hard timeout. Neither is a security boundary against
+        hostile code — do not run untrusted code.
     """
     logger.info("Executing Python sandbox: file=%s, timeout=%ss", file_path, timeout_seconds)
     add_event(EventType.INTERACTION, EventData(detail="execute_python_sandbox"))
@@ -413,13 +418,26 @@ def _build_sandbox_injections(
     return injections
 
 
+def _allowed_script_roots() -> List[Path]:
+    """Roots a sandbox script may live under: the workspace (PROJECT_SOURCE_ROOT) and the test-data directory."""
+    config = get_global_conf()
+    roots = [Path(config.get_project_source_root()).resolve()]
+    try:
+        test_data = Path(config.get_test_data_path()).resolve()
+        if test_data not in roots:
+            roots.append(test_data)
+    except Exception:  # test-data path is optional here; the workspace root still applies
+        pass
+    return roots
+
+
 def _resolve_file_path(file_path: str) -> str:
     """
-    Resolve the file path to an absolute path, confined to the workspace root.
+    Resolve the file path to an absolute path, confined to the workspace/test-data roots.
 
-    Absolute paths INSIDE the workspace remain allowed; anything resolving
-    outside the workspace root (PROJECT_SOURCE_ROOT) is rejected, including
-    via symlinks (paths are resolved before the containment check).
+    Absolute paths INSIDE an allowed root remain allowed; anything resolving
+    outside them is rejected, including via symlinks (paths are resolved
+    before the containment check).
 
     Args:
         file_path: Original file path (absolute or relative)
@@ -429,14 +447,14 @@ def _resolve_file_path(file_path: str) -> str:
 
     Raises:
         FileNotFoundError: If file doesn't exist
-        PermissionError: If the resolved path is outside the workspace root
+        PermissionError: If the resolved path is outside the allowed roots
     """
-    config = get_global_conf()
-    workspace_root = Path(config.get_project_source_root()).resolve()
+    roots = _allowed_script_roots()
+    workspace_root = roots[0]
 
     def _confine(candidate: Path) -> Path:
         resolved = candidate.resolve()
-        if resolved != workspace_root and workspace_root not in resolved.parents:
+        if not any(resolved == root or root in resolved.parents for root in roots):
             raise PermissionError(f"access denied: '{file_path}' resolves to '{resolved}', which is outside the workspace root ({workspace_root})")
         return resolved
 
@@ -448,10 +466,11 @@ def _resolve_file_path(file_path: str) -> str:
             return str(_confine(path))
         raise FileNotFoundError(f"File not found: {file_path}")
 
-    # Try relative to workspace root
-    full_path = workspace_root / path
-    if full_path.exists():
-        return str(_confine(full_path))
+    # Try relative to workspace root, then the other allowed roots
+    for root in roots:
+        full_path = root / path
+        if full_path.exists():
+            return str(_confine(full_path))
 
     # Try relative to current working directory
     cwd_path = Path.cwd() / path
@@ -506,28 +525,29 @@ class _UnavailableSandboxObject:
         raise RuntimeError(f"'{self._name}' is not available in the sandbox child process: {self._reason}")
 
 
-def _prepare_sandbox_globals(file_path: str, spec: Dict[str, Any]) -> Dict[str, Any]:
+def _prepare_sandbox_globals(file_path: str, spec: Dict[str, Any], live_objects: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """
-    Build the sandbox globals executed against inside the child process.
+    Build the sandbox globals the script is executed against.
 
-    Mirrors the historical in-process globals (core modules + all tenant/config/
-    custom injections from ``_build_sandbox_injections``). Live Playwright
-    objects cannot cross the process boundary, so placeholders are injected;
-    ``_attach_browser_bridge`` may replace them via CDP.
+    ``live_objects`` (in-process mode) maps ``page``/``browser``/``context``/
+    ``playwright_manager`` to the real Playwright objects. Without it (subprocess
+    mode) those names are placeholders because live objects cannot cross the
+    process boundary; ``_attach_browser_bridge`` may replace them via CDP.
     """
     config = get_global_conf()
     unavailable_reason = "live Playwright objects cannot be shared with the sandbox child process; " "set CDP_ENDPOINT_URL to re-attach the browser from inside sandbox scripts"
+    browser_objects = live_objects or {name: _UnavailableSandboxObject(name, unavailable_reason) for name in ("page", "browser", "context", "playwright_manager")}
 
     sandbox_globals: Dict[str, Any] = {
         # Core components (always available)
         "__builtins__": __builtins__,
         "__name__": "__sandbox__",
         "__file__": file_path,
-        # Playwright components (re-attached via CDP when configured)
-        "page": _UnavailableSandboxObject("page", unavailable_reason),
-        "browser": _UnavailableSandboxObject("browser", unavailable_reason),
-        "context": _UnavailableSandboxObject("context", unavailable_reason),
-        "playwright_manager": _UnavailableSandboxObject("playwright_manager", unavailable_reason),
+        # Playwright components (live in-process; placeholders / CDP re-attach in the child)
+        "page": browser_objects["page"],
+        "browser": browser_objects["browser"],
+        "context": browser_objects["context"],
+        "playwright_manager": browser_objects["playwright_manager"],
         # Async support
         "asyncio": asyncio,
         # Logging
@@ -552,6 +572,29 @@ def _prepare_sandbox_globals(file_path: str, spec: Dict[str, Any]) -> Dict[str, 
     sandbox_globals.update(additional_injections)
 
     return sandbox_globals
+
+
+async def _invoke_entrypoint(sandbox_globals: Dict[str, Any], sandbox_locals: Dict[str, Any], function_name: str, args_dict: Dict[str, Any]) -> Any:
+    """Resolve and call the script entry point: function_name -> main -> _sandbox_result -> None."""
+    if function_name:
+        if function_name not in sandbox_locals and function_name not in sandbox_globals:
+            raise ValueError(f"Function '{function_name}' not found in script")
+        func = sandbox_locals.get(function_name) or sandbox_globals.get(function_name)
+        if asyncio.iscoroutinefunction(func):
+            return await func(**args_dict)
+        return func(**args_dict)
+
+    if "main" in sandbox_locals or "main" in sandbox_globals:
+        main_func = sandbox_locals.get("main") or sandbox_globals.get("main")
+        if asyncio.iscoroutinefunction(main_func):
+            return await main_func()
+        return main_func()
+
+    if "_sandbox_result" in sandbox_locals:
+        return sandbox_locals["_sandbox_result"]
+    if "_sandbox_result" in sandbox_globals:
+        return sandbox_globals["_sandbox_result"]
+    return None
 
 
 async def _attach_browser_bridge(sandbox_globals: Dict[str, Any], spec: Dict[str, Any]) -> None:
@@ -617,38 +660,7 @@ def _run_agent_code(code_file: str, spec: Dict[str, Any]) -> Dict[str, Any]:
 
         exec(code, sandbox_globals, sandbox_locals)  # noqa: S102 - runs in the disposable child process
 
-        # Determine what to return (same resolution order as before)
-        result: Any = None
-
-        if function_name:
-            # Call specific function
-            if function_name not in sandbox_locals and function_name not in sandbox_globals:
-                raise ValueError(f"Function '{function_name}' not found in script")
-
-            func = sandbox_locals.get(function_name) or sandbox_globals.get(function_name)
-
-            # Call the function (handle both sync and async)
-            if asyncio.iscoroutinefunction(func):
-                result = await func(**args_dict)
-            else:
-                result = func(**args_dict)
-
-        elif "main" in sandbox_locals or "main" in sandbox_globals:
-            # Call main function if it exists
-            main_func = sandbox_locals.get("main") or sandbox_globals.get("main")
-            if asyncio.iscoroutinefunction(main_func):
-                result = await main_func()
-            else:
-                result = main_func()
-
-        elif "_sandbox_result" in sandbox_locals:
-            # Use explicitly set result
-            result = sandbox_locals["_sandbox_result"]
-
-        elif "_sandbox_result" in sandbox_globals:
-            result = sandbox_globals["_sandbox_result"]
-
-        return result
+        return await _invoke_entrypoint(sandbox_globals, sandbox_locals, function_name, args_dict)
 
     result = asyncio.run(_drive())
     return {"success": True, "result": _as_json_safe(result)}
@@ -785,7 +797,102 @@ def _read_result_envelope(result_file: Path) -> Optional[Dict[str, Any]]:
         return None
 
 
+def _sandbox_mode() -> str:
+    """``inprocess`` (default, legacy) or ``subprocess``; read from config/env ``SANDBOX_MODE``."""
+    raw = ""
+    try:
+        raw = str(get_global_conf().get_config().get("SANDBOX_MODE", "") or "")
+    except Exception:  # config is best-effort here; env still applies
+        raw = ""
+    mode = (raw or os.getenv("SANDBOX_MODE", "")).strip().lower()
+    if mode in ("subprocess", "isolated", "child"):
+        return "subprocess"
+    if mode and mode not in ("inprocess", "in-process", "in_process"):
+        logger.warning(f"Unknown SANDBOX_MODE={mode!r}; using 'inprocess'")
+    return "inprocess"
+
+
+async def _execute_in_process(
+    page: Any,
+    browser: Any,
+    context: Any,
+    browser_manager: Any,
+    file_path: str,
+    timeout_seconds: float,
+    function_name: str = "",
+    function_args: str = "{}",
+    tenant_id: str = "",
+    custom_injections: str = "{}",
+) -> Dict[str, Any]:
+    """Legacy mode: exec the script inside the agent process with the LIVE Playwright objects injected."""
+    with open(file_path, "r", encoding="utf-8") as f:
+        code = f.read()
+
+    try:
+        args_dict = json.loads(function_args) if function_args else {}
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Invalid function_args JSON: {e}")
+
+    import io
+
+    stdout_capture = io.StringIO()
+    sandbox_globals = _prepare_sandbox_globals(
+        file_path,
+        {"tenant_id": tenant_id, "custom_injections": custom_injections},
+        live_objects={"page": page, "browser": browser, "context": context, "playwright_manager": browser_manager},
+    )
+    sandbox_locals: Dict[str, Any] = {}
+
+    async def execute_with_timeout() -> Any:
+        old_stdout = sys.stdout
+        sys.stdout = stdout_capture
+        try:
+            exec(code, sandbox_globals, sandbox_locals)  # noqa: S102 - historical in-process mode (not a security boundary)
+            return await _invoke_entrypoint(sandbox_globals, sandbox_locals, function_name, args_dict)
+        finally:
+            sys.stdout = old_stdout
+
+    try:
+        result = await asyncio.wait_for(execute_with_timeout(), timeout=timeout_seconds)
+    except asyncio.TimeoutError:
+        raise ExecutionTimeout(f"Execution exceeded {timeout_seconds} seconds")
+    except Exception as e:
+        logger.error(f"Execution error: {str(e)}\n{traceback.format_exc()}")
+        raise
+
+    return {"success": True, "result": result, "stdout": _truncate_output(stdout_capture.getvalue().encode("utf-8")), "execution_time": 0.0}
+
+
 async def _execute_in_sandbox(
+    page: Any,
+    browser: Any,
+    context: Any,
+    browser_manager: Any,
+    file_path: str,
+    timeout_seconds: float,
+    function_name: str = "",
+    function_args: str = "{}",
+    tenant_id: str = "",
+    custom_injections: str = "{}",
+    mode: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Dispatch to the in-process (default) or subprocess executor according to ``SANDBOX_MODE``."""
+    runner = _execute_in_subprocess if (mode or _sandbox_mode()) == "subprocess" else _execute_in_process
+    return await runner(
+        page=page,
+        browser=browser,
+        context=context,
+        browser_manager=browser_manager,
+        file_path=file_path,
+        timeout_seconds=timeout_seconds,
+        function_name=function_name,
+        function_args=function_args,
+        tenant_id=tenant_id,
+        custom_injections=custom_injections,
+    )
+
+
+async def _execute_in_subprocess(
     page: Any,
     browser: Any,
     context: Any,

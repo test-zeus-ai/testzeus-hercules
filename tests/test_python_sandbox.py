@@ -27,7 +27,14 @@ from testzeus_hercules.core.tools.execute_python_sandbox import (
     ExecutionTimeout,
     _execute_in_sandbox,
     _resolve_file_path,
+    _sandbox_mode,
 )
+
+
+@pytest.fixture(autouse=True)
+def _subprocess_mode(monkeypatch):
+    """The child-process tests below exercise the opt-in SANDBOX_MODE=subprocess isolation."""
+    monkeypatch.setenv("SANDBOX_MODE", "subprocess")
 
 
 @pytest.fixture()
@@ -170,3 +177,85 @@ def test_resolve_allows_paths_inside_workspace_root(sandbox_dir):
     relative = inside.resolve().relative_to(workspace_root)
     resolved = _resolve_file_path(str(relative))
     assert Path(resolved) == inside.resolve()
+
+
+# ── SANDBOX_MODE: legacy in-process default keeps live Playwright objects ────
+
+
+class _FakePage:
+    url = "https://example.test/live"
+
+
+def _run_in_mode(code_file: str, mode, **kwargs):
+    page = _FakePage()
+    return asyncio.run(
+        _execute_in_sandbox(
+            page=page,
+            browser="browser-obj",
+            context="context-obj",
+            browser_manager="manager-obj",
+            file_path=code_file,
+            timeout_seconds=20.0,
+            mode=mode,
+            **kwargs,
+        )
+    )
+
+
+def test_default_mode_is_inprocess(monkeypatch):
+    monkeypatch.delenv("SANDBOX_MODE", raising=False)
+    assert _sandbox_mode() == "inprocess"
+    monkeypatch.setenv("SANDBOX_MODE", "subprocess")
+    assert _sandbox_mode() == "subprocess"
+    monkeypatch.setenv("SANDBOX_MODE", "bogus")
+    assert _sandbox_mode() == "inprocess"
+
+
+def test_inprocess_mode_exposes_live_browser_objects(sandbox_dir, monkeypatch):
+    monkeypatch.delenv("SANDBOX_MODE", raising=False)
+    code = "def main():\n    print('hi')\n    return {'url': page.url, 'browser': browser, 'context': context, 'pm': playwright_manager}\n"
+    code_file = _write_script(sandbox_dir, code)
+
+    result = _run_in_mode(code_file, mode=None)
+
+    assert result["success"] is True
+    assert result["result"] == {"url": "https://example.test/live", "browser": "browser-obj", "context": "context-obj", "pm": "manager-obj"}
+    assert "hi" in result["stdout"]
+
+
+def test_inprocess_mode_async_function_and_timeout(sandbox_dir, monkeypatch):
+    monkeypatch.delenv("SANDBOX_MODE", raising=False)
+    ok = _write_script(sandbox_dir, "async def main():\n    await asyncio.sleep(0)\n    return 7\n")
+    assert _run_in_mode(ok, mode=None)["result"] == 7
+
+    slow = sandbox_dir / "slow.py"
+    slow.write_text("async def main():\n    await asyncio.sleep(5)\n", encoding="utf-8")
+    with pytest.raises(ExecutionTimeout):
+        asyncio.run(
+            _execute_in_sandbox(
+                page=_FakePage(),
+                browser=None,
+                context=None,
+                browser_manager=None,
+                file_path=str(slow),
+                timeout_seconds=0.2,
+                mode="inprocess",
+            )
+        )
+
+
+def test_inprocess_mode_restores_stdout_after_script_error(sandbox_dir):
+    import sys
+
+    before = sys.stdout
+    code_file = _write_script(sandbox_dir, "raise RuntimeError('boom')\n")
+    with pytest.raises(RuntimeError, match="boom"):
+        _run_in_mode(code_file, mode="inprocess")
+    assert sys.stdout is before
+
+
+def test_subprocess_mode_does_not_expose_live_objects(sandbox_dir):
+    code = "def main():\n    return page.url\n"
+    code_file = _write_script(sandbox_dir, code)
+    with pytest.raises(ValueError, match="not available in the sandbox child process"):
+        _run_in_mode(code_file, mode="subprocess")
