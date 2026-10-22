@@ -411,9 +411,13 @@ class GraphChatResult:
             return planner_summary
         # 2) A terminal helper answer (PASS/FAIL verdict or terminate marker)
         # preserves the real test outcome even when the planner's latest
-        # message is a non-terminal decision.
+        # message is a non-terminal decision, provided the graph itself ended
+        # (terminate == "yes"). When the run was cut short (terminate == "no":
+        # planner round limit, abort) only an explicit helper verdict counts: helpers end
+        # every successful STEP with the terminate marker, so a bare marker would
+        # turn an unfinished run into a pass.
         helper_result = parse_response(self.last_helper_response)
-        if helper_result.get("terminate") == "yes":
+        if helper_result.get("terminate") == "yes" and (self.terminate == "yes" or helper_result.get("is_assert") is True):
             return json.dumps(helper_result)
         # 3) Non-terminal planner response.
         if planner_summary:

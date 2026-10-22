@@ -260,3 +260,33 @@ def test_full_config_normalization_uses_openai_compatible_token_key() -> None:
 
     assert params["max_tokens"] == 1200
     assert "max_tokens_to_sample" not in params
+
+
+# ── a bare terminate marker is a step boundary, not a test verdict (#136) ─────
+
+
+def _nonterminal_planner_message() -> AIMessage:
+    return AIMessage(content=json.dumps({"plan": "1. open 2. click 3. verify total", "next_step": "verify the order total", "target_helper": "browser", "terminate": "no"}))
+
+
+def test_summary_bare_terminate_marker_does_not_override_nonterminal_planner() -> None:
+    result = GraphChatResult(messages=[_nonterminal_planner_message()], terminate="no", last_helper_response="Clicked the Login button. ##TERMINATE TASK##")
+
+    summary = json.loads(result.summary)
+    assert summary.get("terminate") != "yes", "a completed step must not be reported as a finished (passing) test"
+    assert summary["next_step"] == "verify the order total"
+
+
+def test_summary_helper_success_section_still_overrides_nonterminal_planner() -> None:
+    helper = "### Success:\nOrder total matches 42.00\n##TERMINATE TASK##"
+    result = GraphChatResult(messages=[_nonterminal_planner_message()], terminate="no", last_helper_response=helper)
+
+    summary = json.loads(result.summary)
+    assert summary["terminate"] == "yes" and summary["is_assert"] is True and summary["is_passed"] is True
+
+
+def test_summary_helper_pass_prefix_still_overrides_nonterminal_planner() -> None:
+    result = GraphChatResult(messages=[_nonterminal_planner_message()], terminate="no", last_helper_response="PASS: order total is 42.00")
+
+    summary = json.loads(result.summary)
+    assert summary["terminate"] == "yes" and summary["is_assert"] is True and summary["is_passed"] is True
