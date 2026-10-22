@@ -433,6 +433,7 @@ defaults to the previous behaviour**. Boolean flags accept `1`, `true`, `yes` or
 | `ENABLE_FAILURE_BUNDLES` | off | Copies per-failure evidence (screenshots, video, network log) into a `bundles/` directory next to the JUnit XML. |
 | `ENABLE_RUN_HISTORY` | off | Records every run and testcase in the `hercules_history.db` run-history database. |
 | `ENABLE_FAILURE_CLASSIFICATION` | off | Classifies failed testcases and annotates their bundle and run-history entry (best effort). |
+| `STRICT_AGENTS_LLM_CONFIG` | off | A configured `AGENTS_LLM_CONFIG_FILE` that is missing or cannot be parsed raises an error at startup. By default the problem is logged and the `LLM_MODEL_*` environment configuration is used. |
 | `CONFIG_DICT_OVERRIDES_ENV` | off | Values passed programmatically as a config dict win over environment variables. By default environment variables win. Guided and bulk mode always apply their per-run overrides (generated feature file, per-folder project root) this way. |
 | `HERCULES_DISABLE_CLI_PARSE` | off | Skip parsing the shared Hercules command-line flags. They are parsed for every entrypoint except known subcommand CLIs (`hercules-dashboard`, `hercules-suite`). |
 
