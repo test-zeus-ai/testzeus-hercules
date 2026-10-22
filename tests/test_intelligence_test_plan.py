@@ -372,6 +372,19 @@ def test_filter_plan_by_test_ids() -> None:
     assert len(plan.requirements) == 3
 
 
+def test_filter_plan_by_test_ids_is_case_insensitive() -> None:
+    filtered = filter_plan_by_test_ids(_plan_for_coverage(), ["tc002"])
+    assert [case.id for case in filtered.test_cases] == ["TC002"]
+    assert [entry["id"] for entry in filtered.requirements] == ["REQ-001", "REQ-002"]
+
+
+def test_filter_plan_by_test_ids_accepts_a_string() -> None:
+    # A bare string must not be iterated char-by-char ("T", "C", "0", ...).
+    filtered = filter_plan_by_test_ids(_plan_for_coverage(), "TC001 TC002")
+    assert [case.id for case in filtered.test_cases] == ["TC001", "TC002"]
+    assert filter_plan_by_test_ids(_plan_for_coverage(), "TC001").test_cases[0].id == "TC001"
+
+
 # --- json helpers -------------------------------------------------------------------
 
 
