@@ -1,9 +1,12 @@
 """Pure Appium capability builder.
 
 ``build_capabilities`` is side-effect free: no environment probing, no I/O.
-The Android and iOS base blocks mirror the classic Appium defaults for
-unattended test runs; the ``extra`` mapping is applied last so user-supplied
-``APPIUM_CAPABILITIES`` always win.
+The Android and iOS base blocks hold only stable, platform-agnostic defaults
+for unattended runs: ``noReset`` is ``False`` on both platforms (the Appium
+default, i.e. a clean app state per session), no automatic permission grants
+and no obsolete or heavyweight iOS options. Anything else (``autoGrantPermissions``,
+``startIWDP``, ...) is opt-in through ``extra``, which is applied last so
+user-supplied ``APPIUM_CAPABILITIES`` always win.
 """
 
 from typing import Any, Optional
@@ -55,10 +58,8 @@ def build_capabilities(
             "showXcodeLog": True,
             "includeSafariInWebviews": True,
             "maxTypingFrequency": 60,
-            "nativeInstrumentsLib": True,
             "fullReset": False,
-            "noReset": True,
-            "startIWDP": True,
+            "noReset": False,
             "webviewConnectTimeout": 90000,
             "preventWDAAttachments": True,
             "clearSystemFiles": True,
@@ -68,7 +69,6 @@ def build_capabilities(
             "platformName": "Android",
             "deviceName": device_name,
             "automationName": automation_name or "UiAutomator2",
-            "autoGrantPermissions": True,
             "noReset": False,
             "newCommandTimeout": 300,
             "settings[waitForIdleTimeout]": 0,

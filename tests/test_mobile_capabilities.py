@@ -13,7 +13,7 @@ def test_android_base_capabilities() -> None:
     assert caps["platformName"] == "Android"
     assert caps["deviceName"] == "emulator-5554"
     assert caps["automationName"] == "UiAutomator2"
-    assert caps["autoGrantPermissions"] is True
+    assert "autoGrantPermissions" not in caps  # permissions are never granted silently
     assert caps["noReset"] is False
     assert caps["newCommandTimeout"] == 300
     assert caps["settings[waitForIdleTimeout]"] == 0
@@ -46,11 +46,30 @@ def test_ios_base_capabilities() -> None:
     assert caps["useNewWDA"] is True
     assert caps["wdaLaunchTimeout"] == 120000
     assert caps["wdaConnectionTimeout"] == 120000
-    assert caps["noReset"] is True
+    assert caps["noReset"] is False  # consistent with Android
     assert caps["fullReset"] is False
     assert caps["preventWDAAttachments"] is True
     assert caps["clearSystemFiles"] is True
     assert "platformVersion" not in caps  # no probing: only set when provided
+
+
+def test_obsolete_and_heavyweight_ios_capabilities_are_not_defaulted() -> None:
+    caps = cm.mobile_capabilities.build_capabilities("ios", device_name="d")
+    assert "nativeInstrumentsLib" not in caps
+    assert "startIWDP" not in caps
+
+
+def test_no_reset_default_is_consistent_across_platforms() -> None:
+    android = cm.mobile_capabilities.build_capabilities("android", device_name="d")
+    ios = cm.mobile_capabilities.build_capabilities("ios", device_name="d")
+    assert android["noReset"] is ios["noReset"] is False
+
+
+def test_opt_in_capabilities_via_extra() -> None:
+    caps = cm.mobile_capabilities.build_capabilities("android", device_name="d", extra={"autoGrantPermissions": True})
+    assert caps["autoGrantPermissions"] is True
+    ios = cm.mobile_capabilities.build_capabilities("ios", device_name="d", extra={"startIWDP": True})
+    assert ios["startIWDP"] is True
 
 
 def test_optional_keys_included_when_provided() -> None:
@@ -75,7 +94,7 @@ def test_extra_capabilities_win_last() -> None:
     assert caps["automationName"] == "Espresso"
     assert caps["noReset"] is True
     assert caps["appium:customOption"] == "x"
-    assert caps["autoGrantPermissions"] is True  # untouched key survives
+    assert caps["newCommandTimeout"] == 300  # untouched key survives
 
 
 def test_extra_none_is_safe() -> None:
