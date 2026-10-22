@@ -669,8 +669,11 @@ testzeus-hercules-mcp
 ```
 
 This starts a FastMCP streamable HTTP server at
-`http://0.0.0.0:8000/mcp` by default and exposes tools such as
-`generate_gherkin`, `run_test`, and `get_test_results`.
+`http://127.0.0.1:8000/mcp` by default (loopback only) and exposes the
+`hercules_*` tools plus the legacy `generate_gherkin`, `run_test`, and
+`get_test_results` aliases. Set `MCP_HOST`/`MCP_PORT`/`MCP_PATH` to change the
+bind address; a non-loopback `MCP_HOST` requires `MCP_AUTH_TOKEN` (bearer token).
+See `docs/mcp_server.md`.
 
 - Hercules considers a base folder that is by default `./opt` but can be changed by the environment variable `PROJECT_SOURCE_ROOT`.
 

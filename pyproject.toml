@@ -46,6 +46,7 @@ dependencies = [
     "portkey-ai>=1.11.1,<2",
     "opentelemetry-proto>=1.27.0",
     "starlette>=1.3.1,<2",
+    "uvicorn>=0.30.0,<1",
     "urllib3>=2.8.0,<3",
     "pypdf>=6.19.0,<7",
     "fonttools>=4.61.0,<5",
@@ -68,6 +69,10 @@ Documentation = "https://testzeus.com/hercules/docs"
 [project.scripts]
 testzeus-hercules = "testzeus_hercules.__main__:main"
 testzeus-hercules-mcp = "testzeus_hercules.mcp_server:main"
+hercules-suite = "testzeus_hercules.orchestrator.suites:main"
+hercules-dashboard = "testzeus_hercules.dashboard.app:main"
+hercules-monitor = "testzeus_hercules.orchestrator.scheduler:main"
+hercules-run-manager = "testzeus_hercules.orchestrator.run_manager:main"
 
 [dependency-groups]
 dev = [
@@ -98,6 +103,11 @@ testzeus_hercules = ["py.typed"]
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+markers = [
+    "live: end-to-end tests that need real LLM credentials and a browser (deselect offline with -m 'not live')",
+]
 
 [tool.isort]
 profile = "black"

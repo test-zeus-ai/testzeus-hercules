@@ -15,6 +15,17 @@ from testzeus_hercules.utils.llm_helper import create_chat_model
 from testzeus_hercules.utils.logger import logger
 
 
+def ui_assertion_prompt_addendum(agent_name: str) -> str:
+    """Prompt guidance for the opt-in assert_ui / capture_ui_value tools; empty unless they are registered for this agent."""
+    try:
+        from testzeus_hercules.core.tools.ui_assertions import prompt_addendum_for
+
+        return prompt_addendum_for(agent_name)
+    except Exception as e:  # prompt guidance must never block agent construction
+        logger.debug("UI assertion prompt addendum unavailable: %s", e)
+        return ""
+
+
 class BaseNavAgent:
     agent_name: str = "base_nav_agent"
     prompt = "Base Agent"
@@ -35,6 +46,7 @@ class BaseNavAgent:
             system_message = "\n".join(system_prompt) if isinstance(system_prompt, list) else system_prompt
             logger.info(f"Using custom system prompt for BaseNavAgent: {system_message}")
 
+        system_message = system_message + ui_assertion_prompt_addendum(self.agent_name)
         system_message = system_message + "\n" + f"Current timestamp is {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         logger.warning(
             "[SYSTEM_PROMPT_DEBUG] agent=%s user_ltm=%r system_message_tail=%r",

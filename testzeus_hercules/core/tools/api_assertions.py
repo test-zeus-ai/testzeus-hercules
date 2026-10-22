@@ -13,14 +13,16 @@ folding away cross-page checks.
 """
 
 import json
+import math
 import re
-from typing import Annotated, Any, Dict, List, Optional
+from typing import Annotated, Any, Callable, Dict, List, Optional, Tuple
 
 from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.tools.api_calls import (
     _var_store,
     interpolate_value,
     parse_json_payload,
+    sensitive_variable_values,
     stringify_interpolated_value,
 )
 from testzeus_hercules.core.tools.tool_registry import (
@@ -34,6 +36,7 @@ from testzeus_hercules.utils.jsonpath_helper import (
     path_leaf_name,
 )
 from testzeus_hercules.utils.logger import logger
+from testzeus_hercules.utils.redact import redact_value
 
 OPERATORS = (
     "eq",
@@ -51,6 +54,10 @@ OPERATORS = (
 )
 
 DEFAULT_OPERATOR = "eq"
+
+# Prefix that marks `expected` as a literal value, bypassing the operator-name
+# lookalike guard ("literal:exists" asserts the text "exists").
+LITERAL_PREFIX = "literal:"
 
 _UNRESOLVED_PLACEHOLDER_RE = re.compile(r"\$\{([^{}]+)\}")
 
@@ -77,8 +84,12 @@ def _operator_lookalike(expected: Any) -> Optional[str]:
     """
     Return the operator name that `expected` looks like, or None.
 
-    Matches bare operator names ("not_empty"), operator-prefixed tokens
-    ("ne_path:$.x", "count_eq:2") and operator-derived variants ("ne_path").
+    Only unambiguous slips match: a bare operator name ("not_empty"), an
+    operator glued to a value with a colon ("count_eq:2", "ne_path:$.x") and
+    the bare path variants ("ne_path"). Ordinary strings that merely start
+    with an operator word ("exists_in_cart", "contains the cart") are legitimate
+    expected values and are NOT flagged; use the "literal:" prefix for a value
+    that is exactly an operator name.
     """
     if not isinstance(expected, str):
         return None
@@ -87,12 +98,15 @@ def _operator_lookalike(expected: Any) -> Optional[str]:
         return None
     if token in OPERATORS:
         return token
-    head = re.split(r"[:\s]", token, maxsplit=1)[0]
-    if head in OPERATORS:
-        return head
-    for operator in OPERATORS:
-        if head.startswith(operator + "_"):
-            return operator
+    head, separator, rest = token.partition(":")
+    variant_of = {f"{operator}_path": operator for operator in OPERATORS}
+    if separator and rest[:1] and not rest[:1].isspace():
+        if head in OPERATORS:
+            return head
+        if head in variant_of:
+            return variant_of[head]
+    if not separator and token in variant_of:
+        return variant_of[token]
     return None
 
 
@@ -195,21 +209,37 @@ def _compare_bounded(matches: List[Any], expected: Any, operator: str) -> tuple:
     return True, None, False
 
 
+def _check_each(matches: List[Any], check: Callable[[Any], Tuple[bool, Optional[str]]]) -> Tuple[bool, Optional[str], Optional[int]]:
+    """Apply `check(value) -> (passed, note)` to EVERY match; returns (passed, note, first_failing_index)."""
+    first_note: Optional[str] = None
+    for index, value in enumerate(matches):
+        passed, note = check(value)
+        if note and first_note is None:
+            first_note = note
+        if not passed:
+            return False, note or first_note, index
+    return True, first_note, None
+
+
 def _record(response_json: Any, result: Dict[str, Any]) -> None:
     """Append the verdict to the audit ledger, tagged with the payload fingerprint."""
+    # Ledger values are redacted: a secret-named path (or the value of a
+    # secret-named captured variable) never lands in the audit file.
+    key_hint = f"{result.get('path') or ''} {result.get('compared_path') or ''}"
+    secrets = sensitive_variable_values()
     entry = {
         "source": "assert_json_path",
         "test_id": get_global_conf().get_default_test_id(),
         "subject": assertion_subject(_payload_text(response_json)),
         "path": result.get("path"),
         "operator": result.get("operator"),
-        "expected": result.get("expected"),
-        "actual": result.get("actual"),
+        "expected": redact_value(result.get("expected"), key_hint, secrets),
+        "actual": redact_value(result.get("actual"), key_hint, secrets),
         "verdict": result.get("assertion"),
     }
     for optional_key in ("note", "reason"):
         if result.get(optional_key):
-            entry[optional_key] = result[optional_key]
+            entry[optional_key] = redact_value(result[optional_key], "", secrets)
     try:
         assertion_logger(json.dumps(entry, separators=(",", ":"), default=str))
     except Exception as e:
@@ -234,7 +264,10 @@ def _payload_text(response_json: Any) -> str:
         "NEVER decide pass/fail by reading the response yourself — call this "
         "tool and use its returned 'assertion' value (PASSED/FAILED/ERROR). "
         f"Operators: {', '.join(OPERATORS)}. "
-        "'expected' may reference captured values as ${name}."
+        "'expected' may reference captured values as ${name}. "
+        "When several values match the path, eq/ne/contains/gt/lt/not_empty must hold for EVERY match "
+        "(use exists, count_eq, all_gte/all_lte or a narrower path for aggregate checks). "
+        f"To assert a value that is exactly an operator name, pass it as '{LITERAL_PREFIX}<value>'."
     ),
 )
 async def assert_json_path(
@@ -277,7 +310,11 @@ def _evaluate(response_json: Any, path: str, operator: str, expected: Any) -> Di
             reason=f"Unknown operator '{operator_name}'. Valid operators: {', '.join(OPERATORS)}.",
         )
 
-    lookalike = _operator_lookalike(expected)
+    literal = isinstance(expected, str) and expected.startswith(LITERAL_PREFIX)
+    if literal:
+        expected = expected[len(LITERAL_PREFIX) :]
+
+    lookalike = None if literal else _operator_lookalike(expected)
     if lookalike:
         if operator_name == DEFAULT_OPERATOR and _strip_quoted(str(expected)).lower() == lookalike:
             # `expected` is exactly an operator name and `operator` is still
@@ -352,22 +389,49 @@ def _evaluate_with_operator(response_json: Any, path: str, operator: str, expect
 
     actual = matches[0]
     matched_count = len(matches)
+    # Per-value operators judge EVERY match; several matches are reported as the full list.
+    shown = actual if matched_count == 1 else list(matches)
+
+    def _each_reason(index: Optional[int], detail: str = "did not satisfy") -> Optional[str]:
+        if index is None or matched_count == 1:
+            return None
+        return f"Match {index} of {matched_count} ({matches[index]!r}) {detail} '{operator}'; with several matches the operator must hold for every one (narrow the path, or use exists/count_eq/all_gte/all_lte)."
 
     if operator == "exists":
         return _payload(assertion="PASSED", actual=actual, matched_count=matched_count)
     if operator == "not_empty":
-        if actual is None:
-            return _payload(assertion="FAILED", actual=actual, reason="Value is null.")
-        if isinstance(actual, str) and not actual.strip():
-            return _payload(assertion="FAILED", actual=actual, reason="Value is a blank string.")
-        if isinstance(actual, (list, dict)) and not actual:
-            return _payload(assertion="FAILED", actual=actual, reason="Value is an empty container.")
-        return _payload(assertion="PASSED", actual=actual, matched_count=matched_count)
+
+        def _non_empty(value: Any) -> Tuple[bool, Optional[str]]:
+            if value is None:
+                return False, "Value is null."
+            if isinstance(value, str) and not value.strip():
+                return False, "Value is a blank string."
+            if isinstance(value, (list, dict)) and not value:
+                return False, "Value is an empty container."
+            return True, None
+
+        passed, empty_note, failed_index = _check_each(matches, _non_empty)
+        if not passed:
+            reason = empty_note if matched_count == 1 else f"Match {failed_index} of {matched_count}: {empty_note}"
+            return _payload(assertion="FAILED", actual=shown, matched_count=matched_count, reason=reason)
+        return _payload(assertion="PASSED", actual=shown, matched_count=matched_count)
     if operator in ("gt", "lt"):
-        passed, bound_note = _compare_ordered(actual, expected, operator)
-        if bound_note:
-            return _payload(assertion="ERROR", actual=actual, reason=bound_note)
-        return _payload(assertion="PASSED" if passed else "FAILED", actual=actual, matched_count=matched_count)
+        bound_error: List[str] = []
+
+        def _ordered(value: Any) -> Tuple[bool, Optional[str]]:
+            passed_one, error_note = _compare_ordered(value, expected, operator)
+            if error_note:
+                bound_error.append(error_note)
+                return False, error_note
+            return passed_one, None
+
+        passed, _bound_note, failed_index = _check_each(matches, _ordered)
+        if bound_error:
+            return _payload(assertion="ERROR", actual=shown, reason=bound_error[0])
+        verdict = _payload(assertion="PASSED" if passed else "FAILED", actual=shown, matched_count=matched_count)
+        if not passed and matched_count > 1:
+            verdict["reason"] = _each_reason(failed_index)
+        return verdict
     if operator in ("all_gte", "all_lte"):
         passed, bound_note, is_error = _compare_bounded(matches, expected, operator)
         if is_error:
@@ -389,6 +453,9 @@ def _evaluate_with_operator(response_json: Any, path: str, operator: str, expect
         expected_number = _as_number(expected)
         if expected_number is None:
             return _payload(assertion="ERROR", actual=count, reason=f"Expected count {expected!r} is not a number.")
+        if not math.isfinite(expected_number) or expected_number != int(expected_number):
+            # int(2.5) == 2 would silently turn "2.5" into a passing count of 2.
+            return _payload(assertion="ERROR", actual=count, reason=f"Expected count {expected!r} is not a whole number.")
         passed = count == int(expected_number)
         return _payload(
             assertion="PASSED" if passed else "FAILED",
@@ -419,22 +486,37 @@ def _evaluate_with_operator(response_json: Any, path: str, operator: str, expect
             result["note"] = f"{note}; {eq_note}" if note else eq_note
         return result
 
-    # eq / ne / contains
+    # eq / ne / contains: every match must satisfy the operator.
     if operator == "contains":
-        passed, contains_note = _compare_contains(actual, expected)
-        return _payload(
+        passed, contains_note, failed_index = _check_each(matches, lambda value: _compare_contains(value, expected))
+        verdict = _payload(
             assertion="PASSED" if passed else "FAILED",
-            actual=actual,
+            actual=shown,
             matched_count=matched_count,
             note=contains_note or note,
         )
-    passed, eq_note = _compare_eq(actual, expected)
-    if operator == "ne":
-        passed = not passed
-        if eq_note:
-            eq_note = eq_note.replace("Matched by text comparison", "Declared not-equal, but the values match by text comparison")
-    verdict = "PASSED" if passed else "FAILED"
-    result = _payload(assertion=verdict, actual=actual, matched_count=matched_count)
+        if not passed and matched_count > 1:
+            verdict["reason"] = _each_reason(failed_index)
+        return verdict
+
+    eq_notes: List[str] = []
+
+    def _equals(value: Any) -> Tuple[bool, Optional[str]]:
+        equal, equal_note = _compare_eq(value, expected)
+        if equal_note:
+            eq_notes.append(equal_note)
+        if operator == "ne":
+            return (not equal), None
+        return equal, None
+
+    passed, _unused_note, failed_index = _check_each(matches, _equals)
+    eq_note = eq_notes[0] if eq_notes else None
+    if operator == "ne" and eq_note:
+        eq_note = eq_note.replace("Matched by text comparison", "Declared not-equal, but the values match by text comparison")
+    verdict_label = "PASSED" if passed else "FAILED"
+    result = _payload(assertion=verdict_label, actual=shown, matched_count=matched_count)
+    if not passed and matched_count > 1:
+        result["reason"] = _each_reason(failed_index)
     if eq_note:
         result["note"] = f"{note}; {eq_note}" if note else eq_note
     return result

@@ -113,6 +113,13 @@ class _FakeConf:
         return None
 
 
+@pytest.fixture(autouse=True)
+def _enable_opt_in_reporting(monkeypatch) -> None:
+    """These tests cover the opt-in reporting / history / bundle / classification pipeline."""
+    for flag in ("ENABLE_RUN_REPORTING", "ENABLE_FAILURE_BUNDLES", "ENABLE_RUN_HISTORY", "ENABLE_FAILURE_CLASSIFICATION", "ENABLE_SELECTOR_RECORDING"):
+        monkeypatch.setenv(flag, "true")
+
+
 @pytest.fixture()
 def failed_run_env(monkeypatch, tmp_path):
     """Mocked single-failure run environment bound to a tmp run-history DB."""

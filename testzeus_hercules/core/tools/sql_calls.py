@@ -237,11 +237,12 @@ async def execute_select_cte_query_sql(
             return rows
     except SQLAlchemyError as e:
 
-        logger.error(f"SQLAlchemy error occurred: {_scrub_error(e)}", exc_info=True)
+        # No exc_info: the traceback would re-emit the unscrubbed exception text (DSN credentials).
+        logger.error(f"SQLAlchemy error occurred: {_scrub_error(e)}")
         return {"error": _scrub_error(e)}
     except Exception as e:
 
-        logger.error(f"An unexpected error occurred: {_scrub_error(e)}", exc_info=True)
+        logger.error(f"An unexpected error occurred: {_scrub_error(e)}")
         return {"error": _scrub_error(e)}
     finally:
         try:

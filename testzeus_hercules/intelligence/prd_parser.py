@@ -18,6 +18,8 @@ from xml.etree import ElementTree
 import httpx
 from testzeus_hercules.intelligence.normalized_prd import NormalizedPRD, PRDRequirement
 from testzeus_hercules.utils.logger import logger
+from testzeus_hercules.utils.redact import redact_url
+from testzeus_hercules.utils.url_guard import UnsafeURLError, fetch_text
 
 _HTML_ENTITY_RE = re.compile(r"&(#\d+|#x[0-9a-fA-F]+|[a-zA-Z]+);")
 _LAZY_SCAN_WINDOW = 100_000  # max chars searched for a block closer after an opener
@@ -309,14 +311,20 @@ def _docx_text(path: str) -> str:
 
 
 def _fetch_url_text(url: str, metadata: dict[str, Any]) -> str:
+    """Fetch a PRD URL through the SSRF guard (public http/https only, redirects re-validated, size/time bounded).
+
+    Set ``PRD_FETCH_ALLOW_PRIVATE_HOSTS=true`` to allow internal/loopback hosts (e.g. an intranet wiki).
+    """
+    allow_private = os.getenv("PRD_FETCH_ALLOW_PRIVATE_HOSTS", "").strip().lower() in ("1", "true", "yes", "on")
     try:
-        response = httpx.get(url, follow_redirects=True, timeout=30)
-        response.raise_for_status()
+        result = fetch_text(url, allow_private=allow_private)
+    except UnsafeURLError as exc:
+        raise ValueError(f"Refusing to fetch PRD source URL {redact_url(url)}: {exc}") from exc
     except httpx.HTTPError as exc:
-        raise ValueError(f"Failed to fetch PRD source URL {url}: {exc}") from exc
+        raise ValueError(f"Failed to fetch PRD source URL {redact_url(url)}: {exc}") from exc
     metadata["url"] = url
-    metadata["http_status_code"] = response.status_code
-    raw = response.text
+    metadata["http_status_code"] = result.status_code
+    raw = result.text
     stripped = strip_html_tags(raw)
     return stripped if stripped else raw.strip()
 

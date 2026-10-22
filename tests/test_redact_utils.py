@@ -271,3 +271,22 @@ def test_separator_free_api_key_header_is_redacted() -> None:
     assert redacted["apiKey"] == "[REDACTED]"
     assert redacted["X-API-KEY"] == "[REDACTED]"
     assert redacted["Content-Type"] == "application/json"
+
+
+# ── redact_value / is_sensitive_name (assertion ledgers) ─────────────────────
+
+
+def test_redact_value_redacts_by_key_hint_and_secret_values() -> None:
+    from testzeus_hercules.utils.redact import is_sensitive_name, redact_value
+
+    assert is_sensitive_name("$.body.password")
+    assert is_sensitive_name("api_token")
+    assert not is_sensitive_name("$.body.name")
+    assert redact_value("hunter2", "$.body.password") == "[REDACTED]"
+    assert redact_value("keep", "$.body.name") == "keep"
+    assert redact_value("abc hunter2 def", "", ["hunter2"]) == "abc [REDACTED] def"
+    assert redact_value({"password": "x", "n": 1}) == {"password": "[REDACTED]", "n": 1}
+    assert redact_value(1234, "$.body.pin_secret") == "[REDACTED]"  # a numeric secret is still a secret
+    assert redact_value(3, "$.body.total") == 3
+    assert redact_value("see https://u:pw@h.test/p?token=zzz", "") == "see https://h.test/p?token=[REDACTED]"
+    assert redact_value(None) is None

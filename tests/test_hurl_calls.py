@@ -185,14 +185,89 @@ def test_variables_are_passed_and_bridged(fake_hurl, proof_env, tmp_path) -> Non
     from testzeus_hercules.core.tools.api_calls import set_variable_value
 
     set_variable_value("token", "secret-42")
-    fake_hurl(WRITE_REPORT_TEMPLATE.format(report=PASSING_REPORT) + 'echo "ARGS:$@"\n')
+    fake_hurl(WRITE_REPORT_TEMPLATE.format(report=PASSING_REPORT) + 'echo "ARGS:$@"\necho "ENV:$HURL_VARIABLE_env/$HURL_VARIABLE_token"\n')
     verdict = _run(_write_hurl(tmp_path), variables={"env": "stage", "token": "${token}"})
     assert verdict["assertion"] == "PASSED"
-    # The ${name} placeholder is resolved from the variable store before the
-    # command line is built, and each variable is passed as its own --variable.
+    # The ${name} placeholder is resolved from the variable store, and each
+    # variable travels in a HURL_VARIABLE_<name> environment entry; it never
+    # appears on the command line (argv is visible to other local users).
     excerpt = verdict.get("output_excerpt", "")
-    assert "--variable env=stage" in excerpt
-    assert "--variable token=secret-42" in excerpt
+    assert "--variable" not in excerpt
+    assert "stage" not in excerpt.split("ARGS:")[1].splitlines()[0]
+    assert "ENV:stage/" in excerpt
+    # A secret-named variable's value is scrubbed from the returned output.
+    assert "secret-42" not in excerpt
+    assert "[REDACTED]" in excerpt
+
+
+def test_secrets_never_reach_the_proof_log_or_failure_messages(fake_hurl, proof_env, tmp_path) -> None:
+    report = FAILING_REPORT.replace("expected 200, actual 500", "got token=hunter2-secret in body")
+    fake_hurl(
+        WRITE_REPORT_TEMPLATE.format(report=report)
+        + 'echo "Authorization: Bearer hunter2-secret"\necho "GET https://user:pw123@api.test/x?api_key=hunter2-secret"\necho "value=$HURL_VARIABLE_api_token"\n'
+    )
+    verdict = _run(_write_hurl(tmp_path), variables={"api_token": "hunter2-secret"})
+    blob = json.dumps(verdict)
+    assert "hunter2-secret" not in blob
+    assert "pw123" not in blob
+    with open(f"{proof_env.get_proof_path()}/hurl_logs.log", "r", encoding="utf-8") as log_file:
+        log_text = log_file.read()
+    assert "hunter2-secret" not in log_text
+    assert "pw123" not in log_text
+
+
+def test_invalid_variable_name_is_a_structured_error(fake_hurl, proof_env, tmp_path) -> None:
+    fake_hurl(WRITE_REPORT_TEMPLATE.format(report=PASSING_REPORT))
+    verdict = _run(_write_hurl(tmp_path), variables={"bad=name": "x"})
+    assert verdict["assertion"] == "ERROR"
+    assert "bad=name" in verdict["reason"]
+
+
+def test_nonzero_exit_code_never_reports_passed(fake_hurl, proof_env, tmp_path) -> None:
+    # JUnit says every case passed, but hurl itself exited non-zero.
+    fake_hurl(WRITE_REPORT_TEMPLATE.format(report=PASSING_REPORT), exit_code=4)
+    verdict = _run(_write_hurl(tmp_path))
+    assert verdict["assertion"] == "FAILED"
+    assert verdict["exit_code"] == 4
+    assert "exited with code 4" in verdict["reason"]
+
+
+def test_hurl_path_outside_allowed_roots_is_refused(fake_hurl, proof_env, tmp_path) -> None:
+    import tempfile
+
+    fake_hurl(WRITE_REPORT_TEMPLATE.format(report=PASSING_REPORT))
+    with tempfile.TemporaryDirectory() as elsewhere:
+        outside = os.path.join(elsewhere, "evil.hurl")
+        with open(outside, "w", encoding="utf-8") as handle:
+            handle.write("GET http://127.0.0.1:1/x\nHTTP 200\n")
+        verdict = _run(outside)
+    assert verdict["assertion"] == "ERROR"
+    assert "Access denied" in verdict["reason"]
+
+
+def test_symlinked_hurl_file_escaping_the_roots_is_refused(fake_hurl, proof_env, tmp_path) -> None:
+    import tempfile
+
+    fake_hurl(WRITE_REPORT_TEMPLATE.format(report=PASSING_REPORT))
+    suite_dir = tmp_path / "suite"
+    suite_dir.mkdir()
+    with tempfile.TemporaryDirectory() as elsewhere:
+        target = os.path.join(elsewhere, "evil.hurl")
+        with open(target, "w", encoding="utf-8") as handle:
+            handle.write("GET http://127.0.0.1:1/x\nHTTP 200\n")
+        (suite_dir / "link.hurl").symlink_to(target)
+        verdict = _run(str(suite_dir))
+    assert verdict["assertion"] == "ERROR"
+    assert "Access denied" in verdict["reason"]
+
+
+def test_dash_prefixed_path_is_passed_as_an_absolute_path(fake_hurl, proof_env, tmp_path, monkeypatch) -> None:
+    fake_hurl(WRITE_REPORT_TEMPLATE.format(report=PASSING_REPORT) + 'echo "ARGS:$@"\n')
+    (tmp_path / "-oops.hurl").write_text("GET http://127.0.0.1:1/x\nHTTP 200\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    verdict = _run("-oops.hurl")
+    args = verdict["output_excerpt"].split("ARGS:")[1].split()
+    assert os.path.isabs(args[-1]) and args[-1].endswith("-oops.hurl")
 
 
 def test_nul_byte_variable_returns_structured_error(fake_hurl, proof_env, tmp_path) -> None:

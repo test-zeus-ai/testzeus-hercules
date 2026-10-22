@@ -10,7 +10,7 @@ can be imported from anywhere, including orchestrator.session.
 import json
 import re
 import urllib.parse
-from typing import Any, Dict
+from typing import Any, Dict, Iterable
 
 from testzeus_hercules.utils.logger import logger
 
@@ -202,3 +202,54 @@ def _redact_post_data(post_data: Any, content_type: str = "") -> Any:
     except Exception as e:
         logger.debug(f"Skipping post-data redaction ({e}); logging body unchanged.")
     return post_data
+
+
+# Name fragments that mark a variable / JSONPath / field as secret-bearing (the
+# post-data patterns plus a few that only show up in names, not payload keys).
+SENSITIVE_NAME_PARTS = REDACTED_POST_DATA_PATTERNS + ("cookie", "credential", "bearer", "private_key", "private-key")
+
+# Secret values shorter than this are not scrubbed from free text (a 1-2 char
+# "secret" would shred unrelated output).
+MIN_SCRUBBED_SECRET_LENGTH = 3
+
+
+def is_sensitive_name(name: Any) -> bool:
+    """True when `name` (a variable name, JSONPath, field) suggests it holds a secret."""
+    lowered = str(name or "").lower()
+    return any(part in lowered for part in SENSITIVE_NAME_PARTS)
+
+
+def scrub_secret_values(text: str, secret_values: Iterable[str]) -> str:
+    """Replace every occurrence of each known secret value inside `text` (longest first)."""
+    for value in sorted({str(item) for item in secret_values if len(str(item)) >= MIN_SCRUBBED_SECRET_LENGTH}, key=len, reverse=True):
+        text = text.replace(value, REDACTED_PLACEHOLDER)
+    return text
+
+
+def redact_value(value: Any, key_hint: str = "", secret_values: Iterable[str] = ()) -> Any:
+    """Best-effort redaction of one value destined for a persisted ledger (never raises).
+
+    - a `key_hint` (JSONPath, variable name, ...) that is secret-bearing redacts the whole value;
+    - dicts/lists have sensitive keys redacted (same rules as logged request bodies);
+    - strings have known `secret_values` scrubbed and URL credentials/query secrets stripped.
+    """
+    try:
+        if value is None or isinstance(value, bool):
+            return value
+        if is_sensitive_name(key_hint):
+            return REDACTED_PLACEHOLDER
+        if isinstance(value, (int, float)):
+            return value
+        secrets = list(secret_values)
+        if isinstance(value, dict):
+            return {key: redact_value(item, str(key), secrets) for key, item in _redact_json_secrets(value).items()}
+        if isinstance(value, (list, tuple)):
+            return [redact_value(item, "", secrets) for item in value]
+        if isinstance(value, str):
+            text = scrub_secret_values(value, secrets)
+            if "://" in text:
+                text = re.sub(r"[a-zA-Z][a-zA-Z0-9+.\-]*://[^\s'\"<>]+", lambda match: redact_url(match.group(0)), text)
+            return text
+        return value
+    except Exception:
+        return REDACTED_PLACEHOLDER

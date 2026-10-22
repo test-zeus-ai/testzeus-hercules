@@ -59,6 +59,8 @@ class BaseRunner:
         self.nav_agent_config = dict(nav_config)
         self.helper_config = dict(helper_config)
 
+        self._reset_scenario_variables()
+
         self.simple_hercules = await SimpleHercules.create(
             self.stake_id,
             self.planner_agent_config,
@@ -75,6 +77,15 @@ class BaseRunner:
 
         self.browser_manager = PlaywrightManager(gui_input_mode=False, stake_id=self.stake_id)
         await self.browser_manager.async_initialize()
+
+    def _reset_scenario_variables(self) -> None:
+        """Start the scenario with an empty ${name} capture scope (stale values from a re-run must not leak in)."""
+        try:
+            from testzeus_hercules.core.tools.api_calls import reset_variables
+
+            reset_variables(self.stake_id)
+        except Exception as e:  # never let variable bookkeeping block a run
+            logger.debug("Could not reset the captured-variable scope: %s", e)
 
     async def clean_up(self) -> None:
         # Collect every cleanup failure: agent shutdown and browser stop both

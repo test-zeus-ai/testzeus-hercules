@@ -11,6 +11,7 @@ import asyncio
 import glob
 import json
 import os
+import re
 import shutil
 import signal
 import tempfile
@@ -28,8 +29,22 @@ from testzeus_hercules.core.tools.api_calls import (
 )
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
+from testzeus_hercules.utils.path_guard import PathConfinementError, resolve_in_roots
+from testzeus_hercules.utils.redact import (
+    REDACTED_PLACEHOLDER,
+    is_sensitive_name,
+    redact_url,
+    scrub_secret_values,
+)
 
 HURL_BINARY = "hurl"
+
+# Variables reach hurl as HURL_VARIABLE_<name> environment entries (never as
+# --variable argv, which is visible to every local user via the process list).
+_VARIABLE_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]*$")
+
+_SECRET_HEADER_LINE_RE = re.compile(r"(?im)^(\s*(?:authorization|proxy-authorization|cookie|set-cookie|x-api-key|api-key)\s*:\s*).+$")
+_URL_TOKEN_RE = re.compile(r"https?://[^\s'\"<>]+")
 
 # Characters of hurl's raw stdout/stderr echoed back in the result payload.
 MAX_OUTPUT_EXCERPT_CHARS = 8 * 1024
@@ -44,6 +59,18 @@ POST_KILL_DRAIN_SECONDS = 5
 
 def _minified(payload: Dict[str, Any]) -> str:
     return json.dumps(payload, separators=(",", ":"))
+
+
+def _redact_output(text: str, secret_values: List[str]) -> str:
+    """Scrub secrets from raw hurl output: sensitive variable values, auth/cookie header lines and URL credentials."""
+    text = scrub_secret_values(text, secret_values)
+    text = _SECRET_HEADER_LINE_RE.sub(lambda match: match.group(1) + REDACTED_PLACEHOLDER, text)
+    return _URL_TOKEN_RE.sub(lambda match: redact_url(match.group(0)), text)
+
+
+def _secret_variable_values(variables: Dict[str, str]) -> List[str]:
+    """Values of the variables whose NAME marks them as secret-bearing (scrubbed from output)."""
+    return [value for name, value in variables.items() if is_sensitive_name(name)]
 
 
 def _suite_files(hurl_path: str) -> List[str]:
@@ -116,6 +143,7 @@ def _kill_process_tree(process: "asyncio.subprocess.Process") -> None:
         "Run a pre-written Hurl suite (a .hurl file or a directory of them) as "
         "a fully deterministic, LLM-free regression check. Use this for checks "
         "that are already known instead of re-deciding them with assertions. "
+        "The path must be inside the test data / project folder. "
         "Variable values may reference captured values as ${name}. Requires "
         "the hurl binary on PATH; returns a structured ERROR result when it is "
         "missing."
@@ -123,7 +151,7 @@ def _kill_process_tree(process: "asyncio.subprocess.Process") -> None:
 )
 async def run_hurl_suite(
     hurl_path: Annotated[str, "Path to a .hurl file, or to a directory whose *.hurl files run as one suite."],
-    variables: Annotated[Optional[Dict[str, Any]], "Variables passed to hurl as --variable k=v; values may use ${name} placeholders."] = None,
+    variables: Annotated[Optional[Dict[str, Any]], "Variables passed to hurl through HURL_VARIABLE_<name> environment entries (never argv); values may use ${name} placeholders."] = None,
     timeout_seconds: Annotated[int, "Kill the suite after this many seconds. Defaults to 60."] = 60,
 ) -> Annotated[str, "Minified JSON verdict with executed/succeeded/failed counts and per-case failures."]:
     hurl_binary = shutil.which(HURL_BINARY)
@@ -136,23 +164,34 @@ async def run_hurl_suite(
             }
         )
 
-    files = _suite_files(hurl_path)
+    suite = _suite_name(hurl_path)
+    # Model-supplied path: Hurl files can send arbitrary requests and write
+    # files, so only files inside the test data / project roots may run. The
+    # resolved absolute paths are passed on, so a leading '-' can never be
+    # read as an option.
+    try:
+        resolved_input = resolve_in_roots(hurl_path)
+        files = [resolve_in_roots(item) for item in _suite_files(resolved_input)]
+    except PathConfinementError as e:
+        return _minified({"assertion": "ERROR", "suite": suite, "reason": str(e)})
     if not files or not all(os.path.exists(item) for item in files):
-        return _minified({"assertion": "ERROR", "suite": _suite_name(hurl_path), "reason": f"No .hurl input found at '{hurl_path}'."})
+        return _minified({"assertion": "ERROR", "suite": suite, "reason": f"No .hurl input found at '{hurl_path}'."})
 
     # Variables may themselves be ${name} — bridging an LLM-captured value
     # into an otherwise LLM-free suite.
     resolved_variables = {str(key): stringify_interpolated_value(interpolate_value(value)) for key, value in (variables or {}).items()}
+    invalid_names = sorted(name for name in resolved_variables if not _VARIABLE_NAME_RE.match(name))
+    if invalid_names:
+        return _minified({"assertion": "ERROR", "suite": suite, "reason": f"Invalid hurl variable name(s): {', '.join(invalid_names)} (use letters, digits, '_' or '-')."})
+    secret_values = _secret_variable_values(resolved_variables)
+    process_env = {**os.environ, **{f"HURL_VARIABLE_{name}": value for name, value in resolved_variables.items()}}
 
     # A directory (not mkstemp): hurl panics when the report path already
     # exists, so the report file itself must not pre-exist.
     junit_dir = tempfile.mkdtemp(prefix="hurl-junit-")
     junit_path = os.path.join(junit_dir, "report.xml")
     try:
-        command = [hurl_binary, "--test", "--report-junit", junit_path]
-        for key, value in resolved_variables.items():
-            command += ["--variable", f"{key}={value}"]
-        command += files
+        command = [hurl_binary, "--test", "--report-junit", junit_path] + files
 
         try:
             process = await asyncio.create_subprocess_exec(
@@ -160,6 +199,7 @@ async def run_hurl_suite(
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
                 start_new_session=True,
+                env=process_env,
             )
         except (OSError, ValueError) as e:
             # ValueError: a variable name or value contains an embedded NUL byte.
@@ -167,7 +207,7 @@ async def run_hurl_suite(
             reason = f"Failed to launch {HURL_BINARY}: {e}"
             if offending_variables:
                 reason += f" (offending variable(s): {', '.join(offending_variables)})"
-            return _minified({"assertion": "ERROR", "suite": _suite_name(hurl_path), "reason": reason})
+            return _minified({"assertion": "ERROR", "suite": suite, "reason": reason})
 
         # communicate() runs as a task so a timeout can kill the process group
         # WITHOUT cancelling the read: cancelling it would discard the output
@@ -193,10 +233,10 @@ async def run_hurl_suite(
         else:
             output_bytes, _ = await communicate_task
 
-        raw_output = output_bytes.decode("utf-8", errors="ignore")
+        # Redact before anything is logged or handed to the model.
+        raw_output = _redact_output(output_bytes.decode("utf-8", errors="ignore"), secret_values)
         _append_log(raw_output)
 
-        suite = _suite_name(hurl_path)
         if timed_out:
             return _minified(
                 {
@@ -232,19 +272,24 @@ async def run_hurl_suite(
 
         executed = report["executed"]
         failed = report["failed"]
-        return _minified(
-            {
-                "assertion": "PASSED" if failed == 0 and executed > 0 else "FAILED",
-                "suite": suite,
-                "executed": executed,
-                "succeeded": executed - failed,
-                "failed": failed,
-                "failures": report["failures"],
-                "junit_report": saved_copy,
-                "exit_code": process.returncode,
-                "output_excerpt": truncate_for_log(raw_output, MAX_OUTPUT_EXCERPT_CHARS),
-            }
-        )
+        failures = [{"name": item["name"], "message": _redact_output(item["message"], secret_values) if item["message"] else None} for item in report["failures"]]
+        # The JUnit counts alone are not enough: a non-zero exit code (crash,
+        # connection error, ...) means the suite did not succeed either.
+        clean_exit = process.returncode == 0
+        verdict: Dict[str, Any] = {
+            "assertion": "PASSED" if failed == 0 and executed > 0 and clean_exit else "FAILED",
+            "suite": suite,
+            "executed": executed,
+            "succeeded": executed - failed,
+            "failed": failed,
+            "failures": failures,
+            "junit_report": saved_copy,
+            "exit_code": process.returncode,
+            "output_excerpt": truncate_for_log(raw_output, MAX_OUTPUT_EXCERPT_CHARS),
+        }
+        if failed == 0 and executed > 0 and not clean_exit:
+            verdict["reason"] = f"Hurl exited with code {process.returncode} although the JUnit report lists no failed cases; the suite is not reported as passed."
+        return _minified(verdict)
     finally:
         with suppress(OSError):
             shutil.rmtree(junit_dir)

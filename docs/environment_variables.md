@@ -35,6 +35,7 @@ orchestration sections of the README).
   - [Run History and Workspace Hygiene](#run-history-and-workspace-hygiene)
   - [Telemetry and Monitoring](#telemetry-and-monitoring)
   - [Additional Features](#additional-features)
+- [Reliability, Reporting and Strictness Flags](#reliability-reporting-and-strictness-flags)
 - [Configuration Priority](#configuration-priority)
 
 ## Core Environment Variables
@@ -265,6 +266,11 @@ LLM Parameters:
   - Usage: Launched by the interactive guided test builder (`utils/test_builder.py`) when you pick the edit option for the generated feature
 
 ### Python Sandbox
+- `SANDBOX_MODE`: Execution mode of `execute_python_sandbox`
+  - Values: `inprocess`, `subprocess`
+  - Default: `inprocess` (script runs in the agent process with the live `page`/`browser`/`context`/`playwright_manager`)
+  - Usage: `subprocess` runs each script in a disposable child process with CPU/memory rlimits and a hard timeout (SIGKILL of the process group). Live browser objects cannot cross the process boundary there: set `CDP_ENDPOINT_URL` and the child re-attaches over CDP, otherwise `page`/`browser`/... raise a clear error. Neither mode is a security boundary.
+
 - `SANDBOX_TENANT_ID`: Sandbox permission profile
   - Values: `executor_agent`, `data_agent`, `api_agent`, `restricted_agent`
   - Default: empty (base injections only)
@@ -274,6 +280,19 @@ LLM Parameters:
 
 - `SANDBOX_CUSTOM_INJECTIONS`: JSON object describing extra modules and custom objects
   - Example: `{"modules": ["jwt"], "custom_objects": {"MAX_RETRIES": 3}}`
+
+### API Verification Tools
+- `API_REQUEST_TIMEOUT`: HTTP timeout in seconds for `generic_http_api`
+  - Default: `5`
+
+- `API_ALLOWED_PATHS`: Extra folders model-supplied file paths may live in (multipart uploads, Hurl suites, OpenAPI specs)
+  - Separator: `os.pathsep` (`:` on POSIX)
+  - Default: empty (only `TEST_DATA_PATH` and `PROJECT_SOURCE_ROOT` are allowed)
+
+- `ENABLE_UI_ASSERTIONS`: Register the `assert_ui` / `capture_ui_value` tools on the browser, MCP and mobile agents
+  - Values: `true`, `false`
+  - Default: `false`
+  - See `docs/api_verification.md`
 
 ## Device Configuration
 
@@ -424,9 +443,14 @@ The server entrypoint uses these variables:
 
 - `TESTZEUS_ROOT`: Repository or project root for server-side test execution
 - `TESTZEUS_PYTHON`: Reserved for helpers that shell out; currently unused by the in-process MCP server (it does not spawn subprocesses)
-- `MCP_HOST`: Bind host, default `127.0.0.1` (loopback). The endpoint is unauthenticated; a non-loopback value exposes it on that interface, so use a firewall and/or an authenticating proxy and only opt in deliberately
+- `MCP_HOST`: Bind host, default `127.0.0.1` (loopback). A non-loopback value is refused unless `MCP_AUTH_TOKEN` is set
 - `MCP_PORT`: Bind port, default `8000`
 - `MCP_PATH`: HTTP path, default `/mcp`
+- `MCP_AUTH_TOKEN`: Bearer token required on every request when set (>= 16 chars; mandatory for non-loopback binds)
+- `MCP_ALLOWED_HOSTS`: Extra comma-separated `Host` header names accepted by the MCP server
+- `HERCULES_MCP_ALLOWED_ROOTS`: `os.pathsep`-separated extra directories that MCP `project_path`/`prd_path` may point into (defaults: `TESTZEUS_ROOT`/cwd, `PROJECT_SOURCE_ROOT`, `TEST_DATA_PATH`)
+- `HERCULES_MCP_AUTO_APPROVE_PLAN`: `true` runs PRD-derived test plans without the `approve_plan` confirmation (default `false`)
+- `PRD_FETCH_ALLOW_PRIVATE_HOSTS`: `true` lets PRD URLs point at private/loopback hosts (default `false`: public http(s) only, redirects re-validated)
 - `HERCULES_MCP_EXEC_TIMEOUT`: Per-run execution deadline in seconds for the MCP run tools, default `1800`; invalid values fall back to the default
 
 ### Run History and Workspace Hygiene
@@ -477,19 +501,49 @@ The server entrypoint uses these variables:
 - `NO_WAIT_FOR_LOAD_STATE`: Skip waiting for Playwright load state in supported browser operations
   - Values: `true`, `false`
 
+## Reliability, Reporting and Strictness Flags
+
+These flags control the core-loop hardening and run-reporting features. Everything
+that could change results, exit codes or the files written by a run is **opt-in and
+defaults to the previous behaviour**. Boolean flags accept `1`, `true`, `yes` or `on`
+(case-insensitive); anything else, including unset, means off.
+
+| Variable | Default | Effect when enabled |
+|----------|---------|---------------------|
+| `STRICT_EXIT_CODE` | off | The process exits with status `1` when any scenario failed or errored. By default the exit status is `0` regardless of scenario results (`EXIT_CODE_COMPAT=1` still forces this legacy behaviour even when `STRICT_EXIT_CODE` is set). |
+| `STRICT_VERDICT` | off | A scenario only counts as passed when it terminated cleanly **and** the planner explicitly recorded `is_passed: true`. By default a scenario without an explicit assertion passes when it terminated, and an asserting scenario passes on a truthy `is_passed`. Missing results and structured execution/cleanup failures are always failures. |
+| `ENABLE_OBSERVER_INVARIANTS` | off | After each helper step the proof artifacts are judged and a claimed pass is overruled by HTTP 5xx responses or uncaught console exceptions (`Uncaught`, `TypeError`, `Cannot read`). Off by default because these signals can fail otherwise healthy scenarios. |
+| `ENABLE_RUN_REPORTING` | off | Writes `Hercules_Test_Report.md` next to the merged JUnit XML. |
+| `ENABLE_FAILURE_BUNDLES` | off | Copies per-failure evidence (screenshots, video, network log) into a `bundles/` directory next to the JUnit XML. |
+| `ENABLE_RUN_HISTORY` | off | Records every run and testcase in the `hercules_history.db` run-history database. |
+| `ENABLE_FAILURE_CLASSIFICATION` | off | Classifies failed testcases and annotates their bundle and run-history entry (best effort). |
+| `CONFIG_DICT_OVERRIDES_ENV` | off | Values passed programmatically as a config dict win over environment variables. By default environment variables win. Guided and bulk mode always apply their per-run overrides (generated feature file, per-folder project root) this way. |
+| `HERCULES_DISABLE_CLI_PARSE` | off | Skip parsing the shared Hercules command-line flags. They are parsed for every entrypoint except known subcommand CLIs (`hercules-dashboard`, `hercules-suite`). |
+
+Always on (bug and safety fixes, no flag): cancellation (Ctrl-C, `asyncio.wait_for`) is never
+swallowed by the scenario loop, filename sanitisation, network-log and error redaction,
+cleanup error aggregation, tool-result size capping, planner failure containment, and one
+corrective re-prompt for an invalid planner decision before the scenario is failed.
+
+The optional mobile (Appium) and healing hooks are inert unless `DEVICE_MANAGER=appium` is
+set and the Appium client is installed.
+
 ## Configuration Priority
 
 The effective configuration is assembled in this order:
 
 1. Built-in defaults
-2. Process environment variables (they form the base layer)
-3. `.env` values (loaded with `load_dotenv(override=True)`, so a `.env` entry
-   **wins over** the same variable pre-set in the process environment)
-4. `--config` YAML/JSON file values
-5. Command-line arguments
+2. Values passed programmatically as a config dict
+3. `.env` values
+4. Process environment variables
+5. `--config` YAML/JSON file values
+6. Command-line arguments
 
-Later steps override earlier steps. Note step 3 in particular: because `.env`
-is loaded with `override=True`, it overrides pre-set process environment
-variables, not the other way around. If both `AGENTS_LLM_CONFIG_FILE` and
+Later sources override earlier sources (set `CONFIG_DICT_OVERRIDES_ENV=true` to move the config dict above the environment). If both `AGENTS_LLM_CONFIG_FILE` and
 direct `LLM_MODEL_*` settings are present, the selected runtime path depends on
 which CLI/config values are active for that run.
+
+### Dashboard and CLI services
+- `DASHBOARD_AUTH_TOKEN`: Token required by `hercules-dashboard` (`Authorization: Bearer <token>`, or HTTP Basic with the token as password so a browser can log in). Mandatory (>= 16 chars) when `--host` is not loopback
+- `DASHBOARD_ALLOWED_HOSTS`: Extra comma-separated `Host` header names accepted by the dashboard (loopback names and a specific bind host are always accepted; with a wildcard bind and no list the Host check is skipped and the token is the only gate)
+

@@ -267,3 +267,33 @@ def test_non_sqlalchemy_error_also_redacted(monkeypatch) -> None:
     assert isinstance(result, dict) and "error" in result
     assert "letmein" not in result["error"]
     assert "abc123" not in result["error"]
+
+
+def test_error_logging_is_scrubbed_and_has_no_traceback(monkeypatch) -> None:
+    records: list[tuple[str, dict]] = []
+
+    class _Recorder:
+        def error(self, message, *args, **kwargs):
+            records.append((str(message), kwargs))
+
+        def __getattr__(self, name):
+            return lambda *args, **kwargs: None
+
+    monkeypatch.setattr(sql_calls, "logger", _Recorder())
+    secret_error = 'connection failed for "postgresql+asyncpg://bob:s3cret-pw@db.example.com/db" password=hunter2'
+
+    engine = _FakeEngine(fail_on_enter=SQLAlchemyError(secret_error))
+    monkeypatch.setattr(sql_calls, "create_async_engine", lambda cs, echo=False: engine)
+    _run(execute_select_cte_query_sql(connection_string="postgresql+asyncpg://bob:s3cret-pw@db.example.com/db", query="SELECT 1"))
+
+    class _ExplodingEngine(_FakeEngine):
+        def connect(self):
+            raise ValueError(secret_error)
+
+    monkeypatch.setattr(sql_calls, "create_async_engine", lambda cs, echo=False: _ExplodingEngine())
+    _run(execute_select_cte_query_sql(connection_string="postgresql://bob:s3cret-pw@db.example.com/db", query="SELECT 1"))
+
+    assert len(records) == 2
+    for message, kwargs in records:
+        assert "s3cret-pw" not in message and "hunter2" not in message
+        assert not kwargs.get("exc_info"), "exc_info would re-emit the unscrubbed exception"

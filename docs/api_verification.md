@@ -1,0 +1,50 @@
+# Deterministic API verification tools
+
+The `api_nav_agent` can verify responses in code instead of judging them by eye. The tools live in `testzeus_hercules/core/tools/` and are available when the API agent runs. Most of them need the `api` extra:
+
+```bash
+pip install 'testzeus-hercules[api]'   # jsonpath-ng + openapi-schema-validator
+```
+
+Without the extra the tools return a structured `ERROR` verdict that names the missing package.
+
+## Tools
+
+| Tool | Purpose |
+| --- | --- |
+| `generic_http_api` | Send an HTTP request (any method, auth type, body mode). |
+| `extract_from_response` | Capture a JSONPath value into `${name}` for later calls and assertions. |
+| `assert_json_path` | Assert a value with an operator and get an explicit `PASSED`/`FAILED`/`ERROR` verdict. |
+| `validate_response_schema` | Validate a body (or a sub-value) against a JSON Schema. |
+| `validate_against_openapi_spec` | Validate a body against the response schema declared in an OpenAPI/Swagger spec. |
+| `run_hurl_suite` | Run a pre-written Hurl suite (needs the `hurl` binary). |
+| `assert_ui` / `capture_ui_value` | Assertions over page text. **Opt-in**, see below. |
+
+Every assertion verdict (passes included) is appended to `proofs/assertion_logs.log`. Values in that ledger are redacted: a secret-named path or capture name (`password`, `token`, `secret`, `api_key`, ...) hides the value, and the values of secret-named captured variables are scrubbed from the text.
+
+## Flags
+
+| Variable | Default | Effect |
+| --- | --- | --- |
+| `API_REQUEST_TIMEOUT` | `5` | HTTP timeout in seconds for `generic_http_api` (the long-standing default). |
+| `API_ALLOWED_PATHS` | empty | Extra folders (separated by `:` on POSIX, `;` on Windows) that model-supplied file paths may live in, on top of the test data folder and the project root. |
+| `ENABLE_UI_ASSERTIONS` | `false` | Register `assert_ui` and `capture_ui_value` on the browser, MCP and mobile agents and add a short guidance block to their prompts. Set it before startup. |
+
+## Path confinement (always on)
+
+Paths supplied by the model are resolved with `realpath` (so `..` and symlinks are followed) and must sit inside `TEST_DATA_PATH`, `PROJECT_SOURCE_ROOT` or an `API_ALLOWED_PATHS` folder. This applies to:
+
+- the `file_path` of a multipart upload in `generic_http_api`,
+- `hurl_path` of `run_hurl_suite` (including every `.hurl` file inside a directory),
+- `spec_path` of `validate_against_openapi_spec`.
+
+A path outside the roots returns an `Access denied` error and nothing is read. Relative paths are looked up under the test data folder first.
+
+## Behaviour notes
+
+- **`generic_http_api` result.** The tool returns one minified JSON string: `{"status_code":..,"status_type":..,"body":..,"duration_seconds":..}`. Earlier revisions of this tool returned a `(text, duration)` tuple, which the executor rendered as text; the duration is now a regular field and the whole result always parses as JSON. A response longer than 100,000 characters is shortened by truncating `body` (or `error_detail`) and setting `body_truncated` (or `error_detail_truncated`), so the result stays valid JSON.
+- **Captured variables** (`${name}`) are scoped to the scenario and cleared when the scenario starts, so a re-run never sees stale values.
+- **`assert_json_path` with several matches.** `eq`, `ne`, `contains`, `gt`, `lt` and `not_empty` must hold for every match, and the failure names the first match that broke it. Use `exists`, `count_eq`, `all_gte`/`all_lte` or a narrower path for aggregate checks. `count_eq` needs a whole number.
+- **Operator names in `expected`.** A value that is exactly an operator name, or an operator glued to a value (`count_eq:2`, `ne_path:$.x`), is rejected as a likely parameter mix-up. Ordinary strings that start with an operator word (`exists_in_cart`) are compared normally. To assert a value that is exactly an operator name, pass `literal:<value>`.
+- **`run_hurl_suite`.** Variables are passed through `HURL_VARIABLE_<name>` environment entries, not `--variable` arguments (argv is visible to other local users). The raw output is scrubbed of secret-named variable values, `Authorization`/cookie header lines and URL credentials before it is logged or returned. The verdict is `PASSED` only when the JUnit report has no failures **and** hurl exits with code 0.
+- **`assert_ui` text normalisation.** URLs and `id=`/`class=`/`data-testid=` assignments are stripped before matching. Pass `raw=true` to keep them (for example to assert that a link target is shown).

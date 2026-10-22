@@ -18,21 +18,39 @@ python -m testzeus_hercules.mcp_server
 Both start a FastMCP streamable-http server at `http://127.0.0.1:8000/mcp` by
 default (loopback only).
 
-> **Security note:** the MCP server exposes an **unauthenticated** tool
-> endpoint that can drive test execution (browsers, API calls, LLM usage) with
-> the privileges of the server process. The default loopback bind keeps it
-> local to your machine. If you set `MCP_HOST` to a non-loopback address, the
-> endpoint becomes reachable by anyone who can reach that interface — restrict
-> it with a firewall and/or put an authenticating reverse proxy in front, and
-> bind non-loopback only as an explicit, deliberate opt-in.
+> **Security model:** the MCP server exposes tools that can drive test execution
+> (browsers, API calls, LLM usage) with the privileges of the server process. It
+> therefore binds **loopback only** by default and keeps DNS-rebinding protection
+> (the `Host`/`Origin` headers must be loopback names). To bind any other address
+> (`MCP_HOST=0.0.0.0`, a LAN IP, ...) you **must** set `MCP_AUTH_TOKEN` to a random
+> secret of at least 16 characters; the server refuses to start otherwise. When a
+> token is set it is enforced on every request, loopback included: clients send
+> `Authorization: Bearer <token>`. Terminate TLS in front of the server when it
+> leaves the machine, because the token travels in a request header.
+>
+> Client-supplied filesystem paths (`project_path`, local `prd_path`) must resolve
+> inside the Hercules root (`TESTZEUS_ROOT`/cwd), `PROJECT_SOURCE_ROOT`,
+> `TEST_DATA_PATH` or a directory listed in `HERCULES_MCP_ALLOWED_ROOTS`. PRD URLs
+> may only be public `http(s)` hosts (no loopback/private/link-local/metadata
+> addresses, every redirect re-checked, size/time bounded).
+>
+> `hercules_generate_and_execute` **executes what you give it** (`gherkin` or the
+> Gherkin generated from `description`). A test plan generated from a PRD is
+> untrusted LLM output and is **not** executed until you review it and pass
+> `approve_plan=true` (or set `HERCULES_MCP_AUTO_APPROVE_PLAN=true`).
 
 ### Environment variables (all optional)
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `MCP_HOST` | `127.0.0.1` | Bind host for the MCP server. Non-loopback values expose the unauthenticated endpoint on that interface — see the security note above. |
-| `MCP_PORT` | `8000` | Bind port. |
-| `MCP_PATH` | `/mcp` | URL path of the MCP endpoint. |
+| `MCP_HOST` | `127.0.0.1` | Bind host (applied to the HTTP server). Non-loopback values require `MCP_AUTH_TOKEN`. |
+| `MCP_PORT` | `8000` | Bind port (applied to the HTTP server). |
+| `MCP_PATH` | `/mcp` | URL path of the MCP endpoint (applied to the HTTP server). |
+| `MCP_AUTH_TOKEN` | *(unset)* | Bearer token required on every request when set (>= 16 chars, mandatory for non-loopback binds). |
+| `MCP_ALLOWED_HOSTS` | *(unset)* | Extra comma-separated `Host` header names to accept (e.g. a public DNS name). With a wildcard bind (`0.0.0.0`) and no list, the Host check is skipped and the token is the only gate. |
+| `HERCULES_MCP_ALLOWED_ROOTS` | *(unset)* | `os.pathsep`-separated extra directories that `project_path`/`prd_path` may point into. |
+| `HERCULES_MCP_AUTO_APPROVE_PLAN` | `false` | Skip the `approve_plan` confirmation for PRD-derived test plans. |
+| `PRD_FETCH_ALLOW_PRIVATE_HOSTS` | `false` | Allow PRD URLs on private/loopback hosts (e.g. an intranet wiki). |
 | `TESTZEUS_ROOT` | current working directory | Project root; `opt/` and `.hercules/` are resolved under it. |
 | `HERCULES_MCP_EXEC_TIMEOUT` | `1800` | Per-run execution deadline in seconds for the run tools (`hercules_generate_and_execute`, `hercules_rerun`). Invalid values fall back to the default. Note: the description-to-Gherkin LLM generation step has a separate, fixed 120-second deadline (`_GHERKIN_GENERATION_TIMEOUT_S`, not configurable); on timeout the tool returns an error dict before execution starts. |
 | `TESTZEUS_PYTHON` | `sys.executable` | Reserved helper variable. The in-process server does not shell out, so it is currently unused; kept for compatibility with external tooling. |
@@ -79,7 +97,8 @@ MCP config:
 }
 ```
 
-Adjust `url` when you changed `MCP_HOST`/`MCP_PORT`/`MCP_PATH`.
+Adjust `url` when you changed `MCP_HOST`/`MCP_PORT`/`MCP_PATH`, and add
+`"headers": {"Authorization": "Bearer <MCP_AUTH_TOKEN>"}` when a token is configured.
 
 ## Tools
 
@@ -94,15 +113,15 @@ results are read from `opt/output/` and configuration checks are process-wide.
 
 | Tool | Arguments | Returns |
 | --- | --- | --- |
-| `hercules_configure_session` | `app_url` (required), `project_path`, `test_type` (`frontend`/`backend`/`mixed`), `test_scope` (`codebase`/`diff`), `credentials` (dict, stored redacted), `prd_path` | `session_id`, `app_url`, `app_url_reachable` (true/false/null), `project_path`, `test_type`, `test_scope`, `prd_path`, `next_action` |
+| `hercules_configure_session` | `app_url` (required), `project_path`, `test_type` (informational label: `frontend`/`backend`/`mixed`), `test_scope` (only `codebase`; `diff` is rejected), `credentials` (deprecated, ignored and never stored), `prd_path` | `session_id`, `app_url`, `app_url_reachable` (true/false/null), `project_path`, `test_type`, `test_scope`, `prd_path`, `next_action` |
 | `hercules_generate_code_summary` | `session_id`, `project_path` | `summary` (frameworks, languages, entry point/route counts), `total_files`, `code_summary_path`, optional `llm_notes`, `next_action` |
 | `hercules_generate_standardized_prd` | `session_id`, `prd_path` | `requirement_count`, `project_name`, `standard_prd_path`, `requirements` (first 50 `{id, title}`), `next_action`, optional `warning` (set when some PRD chunks failed extraction; the requirement set may be incomplete) |
 | `hercules_generate_test_plan` | `session_id`, `prd_path`, `cases_per_requirement` (default 3) | `test_plan_path`, `case_count`, `coverage` (requirement matrix totals), `test_cases` (`{id, title, category, priority, tags}`), `next_action` |
-| `hercules_generate_and_execute` | `session_id`, `test_ids` (plan subset), `gherkin`, `description`, `additional_instructions` | `success`, `duration_s`, `summaries`, `run_report_md`, `bundles_count`, `progress_events` (last 20), `steps_completed`, `feature_file`, `source`, optional `error`, `next_action`, and `additional_instructions_note` (set when `additional_instructions` were appended as Gherkin comments). With a `description`, Gherkin generation has a separate fixed 120-second deadline (`_GHERKIN_GENERATION_TIMEOUT_S`, not configurable); on timeout the tool returns an error dict before execution starts |
+| `hercules_generate_and_execute` | `session_id`, `test_ids` (plan subset), `gherkin`, `description`, `additional_instructions`, `approve_plan` (required to run a PRD-derived plan) | `success`, `duration_s`, `summaries`, `run_report_md`, `bundles_count`, `progress_events` (last 20), `steps_completed`, `feature_file`, `source`, optional `error`, `next_action`, and `additional_instructions_note` (set when `additional_instructions` were appended as Gherkin comments). With a `description`, Gherkin generation has a separate fixed 120-second deadline (`_GHERKIN_GENERATION_TIMEOUT_S`, not configurable); on timeout the tool returns an error dict before execution starts |
 | `hercules_get_run_results` | `session_id`, `run_id` (omit for newest run) | `run_id`, `junit_xml`, `total`/`passed`/`failed`/`errors`, `report_md`, `html`, `bundles`, `test_cases` (`{name, status, time, failure_message?}`) |
 | `hercules_open_dashboard` | `session_id` | `dashboard: "not_running"`, `report_url` (`file://` URI of the newest markdown/HTML report), `hint` (start `hercules-dashboard`) |
 | `hercules_check_config` | `session_id`, `ping_model` (send a tiny prompt and report latency) | `ok`, `checks`: `llm_config`, `litellm_model`, `playwright`, optional `model_ping` |
-| `hercules_rerun` | `session_id`, `test_ids` | Same shape as `hercules_generate_and_execute`; prefers the session test-plan subset, falls back to the last executed feature file |
+| `hercules_rerun` | `session_id`, `test_ids`, `approve_plan` | Same shape as `hercules_generate_and_execute`; prefers the session test-plan subset, falls back to the last executed feature file |
 
 ### Deprecated aliases
 
@@ -124,7 +143,8 @@ deprecated:
 4. **Plan** — `hercules_generate_test_plan` produces `TC001...` cases with a
    requirement coverage matrix.
 5. **Execute** — `hercules_generate_and_execute`, either with raw `gherkin`,
-   a plain-English `description`, or `test_ids` selecting plan cases.
+   a plain-English `description`, or `test_ids` selecting plan cases (after
+   reviewing the plan, pass `approve_plan=true`).
 6. **Inspect** — `hercules_get_run_results` for per-scenario statuses, the
    markdown report, and failure bundle paths; `hercules_rerun` to re-run.
 
@@ -132,7 +152,7 @@ deprecated:
 
 Session state (including artifacts) is stored under the project root:
 
-- `.hercules/sessions.json` — session registry; credentials are stored redacted (`***`).
+- `.hercules/sessions.json` — session registry; `app_url` userinfo is redacted and credentials are never stored.
 - `.hercules/<session_id>/code_summary.json` — code scan output.
 - `.hercules/<session_id>/standard_prd.json` — normalized PRD.
 - `.hercules/<session_id>/test_plan.json` — generated test plan.

@@ -1,4 +1,4 @@
-"""Test plan generation (TestSprite-flavored) and deterministic Gherkin compilation.
+"""Test plan generation and deterministic Gherkin compilation.
 
 Turns a :class:`NormalizedPRD` into a structured :class:`TestPlan` via an LLM,
 then compiles the plan to a Gherkin feature file without any LLM involvement.

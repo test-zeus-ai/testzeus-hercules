@@ -2,7 +2,7 @@
 
 Covers: log_response capture cap (no full-body buffering just for logging),
 tool-result truncation, JSON payload integrity (no quote mangling) and the
-duration folded into the returned string instead of a tuple. A MockTransport
+duration reported as a `duration_seconds` field of the returned JSON string (not a tuple). A MockTransport
 serves responses; no network is involved.
 """
 
@@ -15,6 +15,13 @@ import pytest
 from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.tools import api_calls
 from testzeus_hercules.core.tools.api_calls import generic_http_api, log_response
+
+
+@pytest.fixture
+def allow_tmp(monkeypatch, tmp_path):
+    """Make tmp_path an allowed upload root (model-supplied file paths are confined)."""
+    monkeypatch.setitem(get_global_conf().get_config(), "API_ALLOWED_PATHS", str(tmp_path))
+    return tmp_path
 
 
 def _capture_api_logs(monkeypatch) -> list:
@@ -104,13 +111,11 @@ def test_generic_http_api_returns_json_string_with_duration(monkeypatch) -> None
     assert '"status_code":200' in result
     assert "'status_code'" not in result  # the old .replace('"', "'") corruption is gone
     assert '"note":"it\'s \'quoted\' and \\"double\\""' in result  # string values survive intact
-    import re
-
-    assert re.search(r"\[duration: \d+\.\d{2}s\]$", result)
-    # The JSON prefix (everything before the duration marker) parses.
-    payload = result[: result.rindex(" [duration:")]
-    parsed = json.loads(payload)
+    # The whole result is one valid JSON document; the duration is a field.
+    parsed = json.loads(result)
     assert parsed["body"]["token"] == "abc"
+    assert isinstance(parsed["duration_seconds"], float)
+    assert "[duration:" not in result
 
 
 def test_generic_http_api_truncates_large_response(monkeypatch) -> None:
@@ -123,9 +128,26 @@ def test_generic_http_api_truncates_large_response(monkeypatch) -> None:
     result = _run(generic_http_api("GET", "https://api.test/big"))
 
     assert isinstance(result, str)
-    assert len(result) < api_calls.MAX_RESULT_CHARS + 200
+    assert len(result) <= api_calls.MAX_RESULT_CHARS
     assert "[truncated" in result
-    assert "[duration:" in result
+    # Truncation must keep the result a valid JSON document.
+    parsed = json.loads(result)
+    assert parsed["body_truncated"] is True
+    assert parsed["status_code"] == 200
+    assert "duration_seconds" in parsed
+
+
+def test_truncated_error_detail_keeps_the_result_valid_json(monkeypatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, json={"detail": "e" * 400_000})
+
+    _install_transport(monkeypatch, handler)
+    result = _run(generic_http_api("GET", "https://api.test/fail"))
+
+    assert len(result) <= api_calls.MAX_RESULT_CHARS
+    parsed = json.loads(result)
+    assert parsed["status_code"] == 500
+    assert parsed["error_detail_truncated"] is True
 
 
 def test_error_response_returns_payload_string_with_duration(monkeypatch) -> None:
@@ -138,7 +160,7 @@ def test_error_response_returns_payload_string_with_duration(monkeypatch) -> Non
     assert isinstance(result, str)
     assert '"status_code":500' in result
     assert '"status_type":"server_error"' in result
-    assert "[duration:" in result
+    assert "duration_seconds" in json.loads(result)
 
 
 def test_transport_failure_returns_payload_string(monkeypatch) -> None:
@@ -149,7 +171,7 @@ def test_transport_failure_returns_payload_string(monkeypatch) -> None:
     result = _run(generic_http_api("GET", "https://api.test/unreachable"))
 
     assert isinstance(result, str)
-    parsed = json.loads(result[: result.rindex(" [duration:")])
+    parsed = json.loads(result)
     assert parsed["status_type"] == "failure"
     assert parsed["status_code"] is None
 
@@ -213,7 +235,7 @@ def test_falsy_json_body_reaches_the_server(monkeypatch) -> None:
     _install_transport(monkeypatch, handler)
     result = _run(generic_http_api("POST", "https://api.test/echo", body={}, body_mode="json"))
 
-    parsed = json.loads(result[: result.rindex(" [duration:")])
+    parsed = json.loads(result)
     assert parsed["status_code"] == 200
     assert seen["body"] == b"{}"  # the 2-byte body was actually sent
     assert seen["content_type"] == "application/json"
@@ -229,7 +251,7 @@ def test_falsy_raw_body_does_not_vanish_silently(monkeypatch) -> None:
     _install_transport(monkeypatch, handler)
     result = _run(generic_http_api("POST", "https://api.test/echo", body=0, body_mode="raw"))
 
-    parsed = json.loads(result[: result.rindex(" [duration:")])
+    parsed = json.loads(result)
     # httpx cannot send a bare int as the body; the fix surfaces that as a
     # structured failure instead of silently dropping the falsy body.
     assert parsed["status_type"] == "failure"
@@ -239,7 +261,7 @@ def test_falsy_raw_body_does_not_vanish_silently(monkeypatch) -> None:
 # ── multipart encoding (the old httpx.FormData path never worked) ────────────
 
 
-def test_multipart_mode_sends_real_multipart_and_drops_caller_content_type(monkeypatch, tmp_path) -> None:
+def test_multipart_mode_sends_real_multipart_and_drops_caller_content_type(monkeypatch, tmp_path, allow_tmp) -> None:
     upload = tmp_path / "report.bin"
     upload.write_bytes(b"file-content-bytes")
 
@@ -261,7 +283,7 @@ def test_multipart_mode_sends_real_multipart_and_drops_caller_content_type(monke
         )
     )
 
-    parsed = json.loads(result[: result.rindex(" [duration:")])
+    parsed = json.loads(result)
     body = parsed["body"]
     assert body["content_type"].startswith("multipart/form-data; boundary=")
     assert 'name="note"' in body["body_text"]
@@ -282,8 +304,63 @@ def test_multipart_missing_file_returns_structured_error(monkeypatch) -> None:
         )
     )
 
-    parsed = json.loads(result[: result.rindex(" [duration:")])
+    parsed = json.loads(result)
     assert "Invalid multipart body" in parsed["error"]
+
+
+def test_multipart_file_outside_allowed_roots_is_refused(monkeypatch, tmp_path) -> None:
+    secret = tmp_path / "outside" / "secret.txt"
+    secret.parent.mkdir()
+    secret.write_text("TOP-SECRET-CONTENT", encoding="utf-8")
+    allowed = tmp_path / "allowed"
+    allowed.mkdir()
+    monkeypatch.setitem(get_global_conf().get_config(), "TEST_DATA_PATH", str(allowed))
+    monkeypatch.setitem(get_global_conf().get_config(), "PROJECT_SOURCE_ROOT", str(allowed))
+    monkeypatch.setitem(get_global_conf().get_config(), "API_ALLOWED_PATHS", "")
+    sent: list = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(request)
+        return httpx.Response(200, json={"ok": True})
+
+    _install_transport(monkeypatch, handler)
+    _capture_api_logs(monkeypatch)
+    result = _run(generic_http_api("POST", "https://api.test/upload", body={"payload": {"file_path": str(secret)}}, body_mode="multipart"))
+
+    parsed = json.loads(result)
+    assert "Invalid multipart body" in parsed["error"]
+    assert "Access denied" in parsed["error"]
+    assert sent == []  # nothing was uploaded
+    assert "TOP-SECRET-CONTENT" not in result
+
+
+def test_multipart_symlink_escaping_the_roots_is_refused(monkeypatch, tmp_path) -> None:
+    outside = tmp_path / "outside.txt"
+    outside.write_text("ESCAPED", encoding="utf-8")
+    allowed = tmp_path / "allowed"
+    allowed.mkdir()
+    (allowed / "link.txt").symlink_to(outside)
+    monkeypatch.setitem(get_global_conf().get_config(), "TEST_DATA_PATH", str(allowed))
+    monkeypatch.setitem(get_global_conf().get_config(), "PROJECT_SOURCE_ROOT", str(allowed))
+    monkeypatch.setitem(get_global_conf().get_config(), "API_ALLOWED_PATHS", "")
+    _capture_api_logs(monkeypatch)
+
+    with pytest.raises(ValueError, match="Access denied"):
+        api_calls.build_multipart_fields({"payload": {"file_path": "link.txt"}})
+    with pytest.raises(ValueError, match="Access denied"):
+        api_calls.build_multipart_fields({"payload": {"file_path": "../outside.txt"}})
+
+
+def test_multipart_relative_path_resolves_inside_test_data(monkeypatch, tmp_path) -> None:
+    allowed = tmp_path / "td"
+    allowed.mkdir()
+    (allowed / "doc.bin").write_bytes(b"abc")
+    monkeypatch.setitem(get_global_conf().get_config(), "TEST_DATA_PATH", str(allowed))
+    monkeypatch.setitem(get_global_conf().get_config(), "PROJECT_SOURCE_ROOT", str(tmp_path))
+
+    fields = api_calls.build_multipart_fields({"payload": {"file_path": "doc.bin"}})
+
+    assert fields["payload"] == ("doc.bin", b"abc")
 
 
 # ── request timeout comes from API_REQUEST_TIMEOUT ───────────────────────────
@@ -298,7 +375,7 @@ def test_timeout_returns_named_error_with_configured_seconds(monkeypatch) -> Non
     _install_transport(monkeypatch, handler)
     result = _run(generic_http_api("GET", "https://api.test/slow"))
 
-    parsed = json.loads(result[: result.rindex(" [duration:")])
+    parsed = json.loads(result)
     assert parsed["status_type"] == "timeout"
     assert parsed["status_code"] is None
     assert "Request timed out after 2s" in parsed["error"]
@@ -338,7 +415,7 @@ def test_log_request_redaction_and_url_redaction_still_apply(monkeypatch) -> Non
     assert "supersecret" not in logged
 
 
-def test_multipart_request_body_is_captured_and_redacted_in_log(monkeypatch, tmp_path) -> None:
+def test_multipart_request_body_is_captured_and_redacted_in_log(monkeypatch, tmp_path, allow_tmp) -> None:
     captured = _capture_api_logs(monkeypatch)
     upload = tmp_path / "report.bin"
     upload.write_bytes(b"file-content-bytes")

@@ -6,7 +6,8 @@ The per-scenario containment must hold for every failure class:
    runner's ``shutdown()`` is attempted so its browser cannot leak into the
    next scenario;
 2. a runner cancelled mid-run (``asyncio.CancelledError`` — a BaseException)
-   is isolated the same way instead of killing the whole run;
+   stops the whole run (cancellation is never swallowed): the cancelled runner
+   is torn down, its junit entry is recorded and the cancellation re-raised;
 3. a failing best-effort ``shutdown()`` must not break the loop either.
 
 All collaborators are stubbed; no network, no LLM, no browser.
@@ -163,24 +164,63 @@ def test_crashing_scenario_is_isolated_and_shut_down(monkeypatch, tmp_path) -> N
     assert any("EXPECTED RESULT" in (case["failure_message"] or "") for case in cases)
 
 
-def test_cancelled_scenario_is_isolated_not_fatal(monkeypatch, tmp_path) -> None:
-    _install_two_scenario_run(monkeypatch, tmp_path, _CancelledRunner)
+def test_cancelled_scenario_stops_the_run_after_cleanup(monkeypatch, tmp_path) -> None:
+    conf = _install_two_scenario_run(monkeypatch, tmp_path, _CancelledRunner)
 
-    summary = asyncio.run(sequential_process())
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(sequential_process())
 
-    # The cancelled first scenario must not kill the run: both ran, both are red.
-    assert len(_CancelledRunner.instances) == 2
-    assert [runner.shutdown_calls for runner in _CancelledRunner.instances] == [1, 1]
-    assert summary["total"] == 2
-    assert summary["failed"] == 2
-    assert summary["passed"] == 0
+    # Cancellation stops the batch: the second scenario never started...
+    assert len(_CancelledRunner.instances) == 1
+    # ...but the cancelled runner was torn down first (no leaked browser)...
+    assert [runner.shutdown_calls for runner in _CancelledRunner.instances] == [1]
+    # ...and the cancelled scenario was recorded as a failed junit entry.
+    junit_files = [name for name in os.listdir(conf.junit_base) if name.endswith(".xml")]
+    assert junit_files
+    assert any("cancelled" in (conf.junit_base / name).read_text(encoding="utf-8").lower() for name in junit_files)
 
-    cases = parse_junit_testcases(summary["junit_xml"])
-    assert all(case["status"] == "failed" for case in cases)
-    assert any("CancelledError" in (case["failure_message"] or "") for case in cases)
+
+def test_wait_for_timeout_cancels_a_hanging_run(monkeypatch, tmp_path) -> None:
+    """A real asyncio.wait_for timeout must actually stop a hanging scenario."""
+
+    class _HangingRunner(_CrashingRunner):
+        async def start(self) -> None:
+            await asyncio.sleep(60)
+
+    _install_two_scenario_run(monkeypatch, tmp_path, _HangingRunner)
+
+    async def run() -> None:
+        await asyncio.wait_for(sequential_process(), timeout=0.5)
+
+    with pytest.raises(asyncio.TimeoutError):
+        asyncio.run(run())
+
+    # The timeout stopped the batch at the first scenario and tore its runner down.
+    assert len(_HangingRunner.instances) == 1
+    assert _HangingRunner.instances[0].shutdown_calls == 1
+
+
+def test_task_cancel_propagates_out_of_the_batch(monkeypatch, tmp_path) -> None:
+    class _HangingRunner(_CrashingRunner):
+        async def start(self) -> None:
+            await asyncio.sleep(60)
+
+    _install_two_scenario_run(monkeypatch, tmp_path, _HangingRunner)
+
+    async def run() -> None:
+        task = asyncio.ensure_future(sequential_process())
+        await asyncio.sleep(0.3)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert task.cancelled()
+
+    asyncio.run(run())
+    assert len(_HangingRunner.instances) == 1
 
 
 def test_failing_best_effort_shutdown_does_not_break_the_loop(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("ENABLE_RUN_REPORTING", "true")
     _install_two_scenario_run(monkeypatch, tmp_path, _CrashingRunner)
     _CrashingRunner.shutdown_error = OSError("browser teardown exploded")
 

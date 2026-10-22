@@ -208,14 +208,40 @@ async def shutdown_wrapper() -> None:
 _pending_shutdown_tasks: set = set()
 
 
-def _handle_shutdown_signal() -> None:
+# Handlers that were installed for SIGTERM/SIGINT before ours; a real signal is
+# forwarded to them after the telemetry flush so Ctrl-C / SIGTERM still stop the
+# process (KeyboardInterrupt / default termination) instead of being swallowed.
+_previous_signal_handlers: dict = {}
+
+
+def _chain_previous_signal_handler(signum: int, frame: Any) -> None:
+    previous = _previous_signal_handlers.get(signum)
+    if callable(previous):
+        previous(signum, frame)
+    elif previous == signal.SIG_DFL:
+        signal.signal(signum, signal.SIG_DFL)
+        os.kill(os.getpid(), signum)
+
+
+def _handle_shutdown_signal(signum: Optional[int] = None, frame: Any = None) -> None:
     """Run the shutdown coroutine from a signal handler without leaking tasks.
+
+    Usable both as a ``signal.signal`` handler (called with ``(signum, frame)``)
+    and as an ``atexit`` callback (called with no arguments).
 
     With an event loop running in this thread (the normal path while the app is
     driven by asyncio), the coroutine is scheduled on that loop as a referenced
     task. Otherwise the coroutine is driven by a fresh loop via ``asyncio.run``;
-    if even that is impossible, log and skip — a signal handler must not raise.
+    if even that is impossible, log and skip. For a real signal the handler that
+    was installed before ours is invoked afterwards (default SIGINT handler raises
+    KeyboardInterrupt, default SIGTERM terminates), so the signal is not swallowed.
     """
+    _schedule_shutdown_flush()
+    if signum is not None:
+        _chain_previous_signal_handler(signum, frame)
+
+
+def _schedule_shutdown_flush() -> None:
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
@@ -242,8 +268,8 @@ def register_shutdown() -> None:
     if not ENABLE_TELEMETRY:
         return  # Do not register shutdown if telemetry is disabled
 
-    signal.signal(signal.SIGTERM, _handle_shutdown_signal)
-    signal.signal(signal.SIGINT, _handle_shutdown_signal)
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        _previous_signal_handlers[sig] = signal.signal(sig, _handle_shutdown_signal)
 
     # Register with atexit to ensure it runs when the program exits
     atexit.register(_handle_shutdown_signal)

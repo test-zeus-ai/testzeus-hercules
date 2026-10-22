@@ -60,6 +60,7 @@ class SessionState:
     code_summary_path: str = ""
     standard_prd_path: str = ""
     test_plan_path: str = ""
+    plan_approved: bool = False  # LLM/PRD-derived plans must be explicitly approved before execution
     last_run_summaries: list = field(default_factory=list)
     app_url_reachable: bool | None = None
 
@@ -96,6 +97,7 @@ class SessionState:
             "code_summary_path": self.code_summary_path,
             "standard_prd_path": self.standard_prd_path,
             "test_plan_path": self.test_plan_path,
+            "plan_approved": self.plan_approved,
             "last_run_summaries": list(self.last_run_summaries)[-MAX_RUN_SUMMARIES:],
             "app_url_reachable": self.app_url_reachable,
         }
@@ -138,8 +140,8 @@ class SessionManager:
         """
         if test_type not in ("frontend", "backend", "mixed"):
             raise ValueError(f"Invalid test_type {test_type!r}; expected one of: frontend, backend, mixed")
-        if test_scope not in ("codebase", "diff"):
-            raise ValueError(f"Invalid test_scope {test_scope!r}; expected one of: codebase, diff")
+        if test_scope != "codebase":
+            raise ValueError(f"Invalid test_scope {test_scope!r}; only 'codebase' is supported")
 
         state = SessionState(
             session_id=f"sess_{secrets.token_hex(4)}",
