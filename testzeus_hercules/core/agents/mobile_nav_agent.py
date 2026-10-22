@@ -15,6 +15,9 @@ class MobileNavAgent(MultimodalBaseNavAgent):
 
     agent_name: str = "mobile_nav_agent"
     prompt = MOBILE_NAV_SYSTEM_PROMPT
+    # The mobile prompt carries its own UI-assertion block (read_mobile_screen
+    # based); the generic addendum points at a page-text tool this agent lacks.
+    include_generic_ui_assertion_addendum = False
 
     def __init__(
         self,
