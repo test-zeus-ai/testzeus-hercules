@@ -44,7 +44,7 @@ inputs:
   image:
     description: 'Docker image used when runner=docker. Must contain Hercules and its Playwright browsers.'
     required: false
-    default: 'ghcr.io/testzeus/hercules:latest'
+    default: 'testzeus/hercules:latest'
   llm-config:
     description: >-
       Path (in the user repo) to the agents_llm_config.json file. Exported as
@@ -68,8 +68,9 @@ inputs:
     default: ''
   blocking:
     description: >-
-      When true (default) the step fails if any test fails. When false, Hercules
-      runs with EXIT_CODE_COMPAT=1 so failures do not fail the job.
+      When true (default) the step fails if any test fails (Hercules runs with
+      STRICT_EXIT_CODE=true). When false, Hercules runs with EXIT_CODE_COMPAT=1 so
+      failures do not fail the job.
     required: false
     default: 'true'
   python-version:
@@ -88,6 +89,14 @@ inputs:
     default: 'hercules-results'
   pr-comment:
     description: 'Post/update a PR comment with the results summary (only on pull_request events).'
+    required: false
+    default: 'false'
+  pr-comment-failure-details:
+    description: >-
+      Include (redacted, truncated) failure messages in the PR comment. Default false:
+      the comment lists only case names, statuses and durations, because raw failure
+      text can contain secrets or private data and PR comments are readable by anyone
+      who can see the PR.
     required: false
     default: 'false'
   github-token:
@@ -128,7 +137,12 @@ runs:
     - name: Pull Hercules image (docker)
       if: inputs.runner == 'docker'
       shell: bash
-      run: docker pull "${{ inputs.image }}"
+      env:
+        IMAGE: ${{ inputs.image }}
+      run: |
+        set -euo pipefail
+        case "$IMAGE" in -*) echo "::error::Invalid image reference: $IMAGE" >&2; exit 1 ;; esac
+        docker pull -- "$IMAGE"
 
     # ------------------------------------------------------------------
     # (b) Prepare inputs: single feature copy / bulk layout check / mode validation
@@ -143,6 +157,11 @@ runs:
       run: |
         set -euo pipefail
         mode="single"
+
+        # Inputs become positional arguments later: a leading '-' would be parsed as an option.
+        for value in "$INPUT_FEATURE" "$INPUT_SUITE"; do
+          case "$value" in -*) echo "::error::Invalid input (must not start with '-'): $value" >&2; exit 1 ;; esac
+        done
 
         if [ -n "$INPUT_SUITE" ]; then
           mode="suite"
@@ -191,9 +210,18 @@ runs:
           line="${line%$'\r'}"
           [ -z "$line" ] && continue
           case "$line" in '#'*) continue ;; esac
-          case "$line" in *=*) ;; *) echo "::warning::Ignoring malformed env-vars line: $line" ; continue ;; esac
+          case "$line" in *=*) ;; *) echo "::warning::Ignoring malformed env-vars line (expected KEY=VALUE)" ; continue ;; esac
+          name="${line%%=*}"
+          # Only plain variable names; never let a value rewrite the runner/loader/shell environment.
+          if ! [[ "$name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+            echo "::warning::Ignoring env-vars entry with an invalid variable name" ; continue
+          fi
+          case "$name" in
+            PATH|BASH_ENV|ENV|SHELL|IFS|PYTHONPATH|PYTHONSTARTUP|LD_*|DYLD_*|NODE_OPTIONS|GITHUB_*|RUNNER_*)
+              echo "::warning::Ignoring env-vars entry for protected variable $name" ; continue ;;
+          esac
           printf '%s\n' "$line" >> "$GITHUB_ENV"
-          names="${names}${names:+ }${line%%=*}"
+          names="${names}${names:+ }${name}"
         done <<< "$ENV_VARS_INPUT"
         echo "HERCULES_PASSTHROUGH_VARS=$names" >> "$GITHUB_ENV"
 
@@ -227,23 +255,31 @@ runs:
           exit 1
         fi
 
-        # Build the Hercules command (runs from the workspace root; opt/ lands here).
+        case "$IMAGE" in -*) echo "::error::Invalid image reference: $IMAGE" >&2; exit 1 ;; esac
+        case "$MAX_PARALLEL" in ''|*[!0-9]*) echo "::error::max-parallel must be a positive integer" >&2; exit 1 ;; esac
+
+        # Build the Hercules command as an argv ARRAY (never a shell string): workflow inputs are
+        # passed as discrete arguments, so quotes/metacharacters in them cannot change the command.
+        # Env settings are collected separately and applied with `docker -e` / `export`.
+        CMD=()
+        RUN_ENV=()
         case "$RUN_MODE" in
           suite)
-            CMD="hercules-suite '$INPUT_SUITE' --config '$SUITE_CONFIG'"
+            CMD=(hercules-suite "$INPUT_SUITE" --config "$SUITE_CONFIG")
             if [ "$MAX_PARALLEL" != "1" ]; then
-              CMD="$CMD --max-parallel '$MAX_PARALLEL'"
+              CMD+=(--max-parallel "$MAX_PARALLEL")
             fi
             ;;
           bulk)
-            CMD="EXECUTE_BULK=true python -m testzeus_hercules"
+            CMD=(python -m testzeus_hercules)
+            RUN_ENV+=(EXECUTE_BULK=true)
             ;;
           single)
             if [ "$MAX_PARALLEL" != "1" ]; then
               # Parallel scenario execution via run_manager on the original feature path.
-              CMD="python -m testzeus_hercules.orchestrator.run_manager '$INPUT_FEATURE' --max-parallel '$MAX_PARALLEL'"
+              CMD=(python -m testzeus_hercules.orchestrator.run_manager "$INPUT_FEATURE" --max-parallel "$MAX_PARALLEL")
             else
-              CMD="python -m testzeus_hercules"
+              CMD=(python -m testzeus_hercules)
             fi
             ;;
           *)
@@ -252,36 +288,43 @@ runs:
             ;;
         esac
 
-        # Non-blocking runs must not fail the job (opt-out of CI gating).
-        if [ "$BLOCKING" != "true" ]; then
-          CMD="EXIT_CODE_COMPAT=1 $CMD"
+        # Blocking runs gate the job on the strict exit code; non-blocking runs must not fail it.
+        if [ "$BLOCKING" = "true" ]; then
+          RUN_ENV+=(STRICT_EXIT_CODE=true)
+        else
+          RUN_ENV+=(EXIT_CODE_COMPAT=1)
         fi
 
         if [ "$RUNNER_MODE" = "docker" ]; then
           # Mount the workspace so opt/ (reports, proofs, history DB) lands in $GITHUB_WORKSPACE.
-          # The image's venv is prepended to PATH so `python`/`hercules-suite` resolve to it;
-          # the image ENTRYPOINT is bypassed (it hard-codes the demo command).
+          # The image ENTRYPOINT hard-codes the demo command, so override it and invoke the
+          # image's venv binaries directly by absolute path (no shell involved).
+          VENV_BIN=/testzeus-hercules/.venv/bin
           DOCKER_ARGS=(run --rm
+            --entrypoint "$VENV_BIN/${CMD[0]}"
             -v "$GITHUB_WORKSPACE:/workspace"
             -w /workspace
-            -e PATH=/testzeus-hercules/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+            -e PATH=$VENV_BIN:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
             -e AUTO_MODE=1
             -e CI=true
             -e HOME=/root
           )
+
+          for kv in ${RUN_ENV[@]+"${RUN_ENV[@]}"}; do
+            DOCKER_ARGS+=(-e "$kv")
+          done
 
           if [ -n "$LLM_CONFIG" ] && [ -f "$LLM_CONFIG" ]; then
             cfg="/workspace/${LLM_CONFIG#./}"
             DOCKER_ARGS+=(-e "AGENTS_LLM_CONFIG_FILE=$cfg" -e "AGENTS_LLM_CONFIG_FILE_REF_KEY=$LLM_CONFIG_REF_KEY")
           fi
 
-          # Pass user env-vars through into the container.
+          # Pass user env-vars through BY NAME (values come from the job environment, never argv).
           for name in $HERCULES_PASSTHROUGH_VARS; do
             DOCKER_ARGS+=(-e "$name")
           done
 
-          DOCKER_ARGS+=("${IMAGE}" /bin/bash -lec "$CMD")
-          docker "${DOCKER_ARGS[@]}"
+          docker "${DOCKER_ARGS[@]}" "$IMAGE" "${CMD[@]:1}"
         else
           # uv runner: execute inside the synced environment.
           if [ -n "$LLM_CONFIG" ] && [ -f "$LLM_CONFIG" ]; then
@@ -290,8 +333,10 @@ runs:
           fi
           export AUTO_MODE=1
           export CI=true
-          # shellcheck disable=SC2086
-          uv run bash -lec "$CMD"
+          for kv in ${RUN_ENV[@]+"${RUN_ENV[@]}"}; do
+            export "$kv"
+          done
+          uv run -- "${CMD[@]}"
         fi
 
     # ------------------------------------------------------------------
@@ -337,8 +382,10 @@ runs:
         GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
         JUNIT_PATH: ${{ steps.results.outputs.junit-path }}
         RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        INCLUDE_FAILURE_DETAILS: ${{ inputs.pr-comment-failure-details }}
+        ACTION_PATH: ${{ github.action_path }}
       run: |
-        bash "${{ github.action_path }}/pr_comment.sh"
+        bash "$ACTION_PATH/pr_comment.sh"
 
     # ------------------------------------------------------------------
     # Conclude: propagate the run outcome (always)

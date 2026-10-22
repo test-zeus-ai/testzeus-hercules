@@ -10,6 +10,12 @@
 #   JUNIT_PATH          - path to the JUnit XML to summarize (optional; missing file
 #                         yields a "no results" comment)
 #   RUN_URL             - link to the workflow run shown in the comment (optional)
+#   INCLUDE_FAILURE_DETAILS - "true" to include redacted, truncated failure messages in the
+#                         comment; any other value (default) lists only names/statuses/durations,
+#                         because raw failure text can contain secrets and PR comments are public
+#                         to everyone who can read the PR
+#   HERCULES_PASSTHROUGH_VARS - space-separated env var NAMES whose values are masked in any text
+#   HERCULES_PR_COMMENT_DRY_RUN - "1" prints the comment body and exits without calling the API
 #
 # The comment is idempotent: it is identified by the marker below and updated
 # in place instead of being posted again.
@@ -34,6 +40,17 @@ if [ -z "${GITHUB_PR_NUMBER:-}" ]; then
   esac
 fi
 
+# Defence in depth for values that end up in API paths.
+case "$GITHUB_PR_NUMBER" in ''|*[!0-9]*)
+  echo "::error::pr-comment: invalid PR number" >&2
+  exit 1
+  ;;
+esac
+if [ -n "${GITHUB_REPOSITORY:-}" ] && ! [[ "$GITHUB_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+  echo "::error::pr-comment: invalid repository name" >&2
+  exit 1
+fi
+
 # ---------------------------------------------------------------------------
 # Build the comment body (pure python3 stdlib; no external deps)
 # ---------------------------------------------------------------------------
@@ -41,8 +58,9 @@ export HERCULES_MARKER="$MARKER"
 export HERCULES_MAX_ROWS="$MAX_ROWS"
 
 if [ -n "${JUNIT_PATH:-}" ] && [ -f "${JUNIT_PATH}" ]; then
-  BODY="$(JUNIT_PATH="$JUNIT_PATH" RUN_URL="${RUN_URL:-}" python3 <<'PY'
+  BODY="$(JUNIT_PATH="$JUNIT_PATH" RUN_URL="${RUN_URL:-}" INCLUDE_FAILURE_DETAILS="${INCLUDE_FAILURE_DETAILS:-false}" python3 <<'PY'
 import os
+import re
 import xml.etree.ElementTree as ET
 from xml.sax.saxutils import escape
 
@@ -52,12 +70,49 @@ marker = os.environ["HERCULES_MARKER"]
 max_rows = int(os.environ.get("HERCULES_MAX_ROWS", "50"))
 
 
+include_details = os.environ.get("INCLUDE_FAILURE_DETAILS", "").strip().lower() == "true"
+
+_SECRET_PATTERNS = [
+    re.compile(r"(?i)(://)[^/\s:@]+:[^@\s]+@"),  # URL userinfo
+    re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+"),
+    re.compile(r"(?i)\b(authorization|password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key|client[_-]?secret)(\"?\s*[=:]\s*)(\"[^\"]*\"|'[^']*'|\S+)"),
+    re.compile(r"\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\b"),  # JWT
+    re.compile(r"\b(sk|pk|rk)-[A-Za-z0-9_-]{8,}\b"),
+    re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}\b"),
+    re.compile(r"\bAKIA[0-9A-Z]{12,}\b"),
+]
+_SENSITIVE_NAME = re.compile(r"(?i)(key|token|secret|password|passwd|credential)")
+
+
+def _known_secret_values():
+    passthrough = set(os.environ.get("HERCULES_PASSTHROUGH_VARS", "").split())
+    values = {os.environ[name] for name in passthrough if name in os.environ and len(os.environ[name]) >= 4}
+    values.update(value for name, value in os.environ.items() if _SENSITIVE_NAME.search(name) and len(value) >= 8)
+    return sorted(values, key=len, reverse=True)
+
+
+_SECRET_VALUES = _known_secret_values()
+
+
+def redact(text):
+    """Mask credentials/tokens (patterns plus the literal values of secret-like env vars)."""
+    text = str(text)
+    for value in _SECRET_VALUES:
+        text = text.replace(value, "***")
+    text = _SECRET_PATTERNS[0].sub(r"\1***@", text)
+    text = _SECRET_PATTERNS[1].sub("Bearer ***", text)
+    text = _SECRET_PATTERNS[2].sub(lambda m: f"{m.group(1)}{m.group(2)}***", text)
+    for pattern in _SECRET_PATTERNS[3:]:
+        text = pattern.sub("***", text)
+    return text
+
+
 def clean(text):
-    """Make text safe for a markdown table cell."""
+    """Make text safe for a markdown table cell: redacted, no @mentions, no table/HTML breakage."""
     if not text:
         return ""
-    text = " ".join(str(text).split())  # collapse whitespace/newlines
-    text = text.replace("|", "\\|")
+    text = " ".join(redact(text).split())  # collapse whitespace/newlines
+    text = text.replace("|", "\\|").replace("@", "@\u200b")  # zero-width space defuses @mentions
     return escape(text)
 
 
@@ -116,8 +171,8 @@ lines = [
     f":fast_forward: {totals['skipped']} skipped | "
     f":stopwatch: {totals['time']:.1f}s",
     "",
-    "| Test case | Status | Duration | Failure message |",
-    "| --- | --- | --- | --- |",
+    ("| Test case | Status | Duration | Failure message |" if include_details else "| Test case | Status | Duration |"),
+    ("| --- | --- | --- | --- |" if include_details else "| --- | --- | --- |"),
 ]
 for name, status, duration, message in cases[:max_rows]:
     icon = {
@@ -126,14 +181,15 @@ for name, status, duration, message in cases[:max_rows]:
         "error": ":rotating_light:",
         "skipped": ":fast_forward:",
     }[status]
-    lines.append(f"| {clean(name)} | {icon} {status} | {clean(duration)}s | {truncate(message)} |")
+    row = f"| {clean(name)} | {icon} {status} | {clean(duration)}s |"
+    lines.append(row + (f" {truncate(message)} |" if include_details else ""))
 if len(cases) > max_rows:
-    lines.append(f"| ... and {len(cases) - max_rows} more cases (see artifacts) | | | |")
+    lines.append(f"| ... and {len(cases) - max_rows} more cases (see artifacts) | |" + (" | |" if include_details else " |"))
 
 if bad > 0:
     lines += [
         "",
-        "Failure evidence (screenshots, traces, bundles) is attached to the failing cases in the artifacts.",
+        "Failure details (messages, screenshots, traces, bundles) are in the run artifacts; they are not posted here to avoid leaking sensitive data.",
     ]
 if run_url:
     lines += [
@@ -158,6 +214,11 @@ Check the workflow logs and the uploaded artifact for details."
     BODY="$BODY
 [View workflow run](${RUN_URL})"
   fi
+fi
+
+if [ "${HERCULES_PR_COMMENT_DRY_RUN:-}" = "1" ]; then
+  printf '%s\n' "$BODY"
+  exit 0
 fi
 
 # ---------------------------------------------------------------------------
