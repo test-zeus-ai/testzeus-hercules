@@ -1,0 +1,47 @@
+name: Backmerge main to dev
+
+# Keep dev up to date with main: on every push to main, merge main into dev and push it.
+# If the merge conflicts, open (or update) a "Backmerge main to dev" PR into dev instead.
+#
+# Pushes made with GITHUB_TOKEN do not trigger other workflows, so this cannot loop.
+# Opening the conflict PR needs either the repository setting
+# "Allow GitHub Actions to create and approve pull requests" or a BACKMERGE_TOKEN secret
+# (fine-grained PAT / GitHub App token with contents + pull-requests write). Without either,
+# the job opens an issue with a compare link and fails so the conflict is not missed.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: backmerge-main-to-dev
+  cancel-in-progress: false
+
+jobs:
+  backmerge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.BACKMERGE_TOKEN || github.token }}
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Merge main into dev
+        env:
+          GH_TOKEN: ${{ secrets.BACKMERGE_TOKEN || github.token }}
+          SOURCE_BRANCH: main
+          TARGET_BRANCH: dev
+        run: bash .github/scripts/backmerge-main-to-dev.sh
