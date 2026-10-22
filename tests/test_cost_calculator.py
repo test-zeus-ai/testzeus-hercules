@@ -303,19 +303,21 @@ def test_build_cost_metrics_provider_reported_cost_wins(monkeypatch: pytest.Monk
     assert "cost_unavailable" not in usage
 
 
-def test_build_cost_metrics_estimates_when_provider_cost_is_zero(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_build_cost_metrics_provider_reported_zero_cost_wins(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(cost_calculator, "resolve_model_pricing", lambda role=None: 2.0)
     final_state = {
         "total_prompt_tokens": 100_000,
         "total_completion_tokens": 0,
         "cost_available": True,
-        "total_cost": 0.0,  # reported but falsy -> estimate instead
+        "total_cost": 0.0,  # a reported 0.0 (free model) is a real cost, not "unavailable"
     }
 
     usage = _bare_hercules()._build_cost_metrics(final_state)["usage_including_cached_inference"]
 
-    assert usage["total_cost"] == pytest.approx(0.2)
-    assert usage["cost_source"] == "estimated_from_model_pricing"
+    assert usage["total_cost"] == 0.0
+    assert usage["langgraph"]["cost"] == 0.0
+    assert "cost_source" not in usage
+    assert "cost_unavailable" not in usage
 
 
 def test_build_cost_metrics_keeps_cost_unavailable_when_no_pricing(monkeypatch: pytest.MonkeyPatch) -> None:

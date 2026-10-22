@@ -969,8 +969,9 @@ class SimpleHercules:
             "langgraph": langgraph_usage,
         }
         provider_cost = float(final_state.get("total_cost", 0.0) or 0.0) if final_state.get("cost_available") else None
-        if provider_cost:
-            # Provider-reported cost always wins.
+        if provider_cost is not None:
+            # Provider-reported cost always wins, including a reported 0.0
+            # (e.g. a free model), as on origin/main.
             usage["total_cost"] = provider_cost
             langgraph_usage["cost"] = provider_cost
         else:
