@@ -33,6 +33,16 @@ from starlette.responses import (
 from starlette.routing import Route
 from testzeus_hercules.healing.failure_classifier import classify_case
 from testzeus_hercules.reporting.bundle import parse_junit_testcases
+from testzeus_hercules.utils.http_security import (
+    MIN_REMOTE_TOKEN_LENGTH,
+    BearerTokenMiddleware,
+    HostAllowlistMiddleware,
+    InsecureBindError,
+    build_host_allowlist,
+    enforce_bind_policy,
+    normalize_token,
+    parse_csv,
+)
 from testzeus_hercules.reporting.run_db import (
     RunHistory,
     get_default_history,
@@ -813,7 +823,12 @@ def _default_project_root() -> str:
         return FALLBACK_PROJECT_SOURCE_ROOT
 
 
-def create_app(db_url: str | None = None, project_root: str | None = None) -> Starlette:
+def create_app(
+    db_url: str | None = None,
+    project_root: str | None = None,
+    auth_token: str | None = None,
+    allowed_hosts: set[str] | None = None,
+) -> Starlette:
     """Build the dashboard app.
 
     Args:
@@ -822,6 +837,12 @@ def create_app(db_url: str | None = None, project_root: str | None = None) -> St
             sqlite URL in tests to share one temp DB with the seeded fixture.
         project_root (str | None): Root containing ``output/`` and evidence
             paths; None resolves from config. Also bounds /artifact access.
+        auth_token (str | None): When set, every request must carry it as
+            ``Authorization: Bearer <token>`` (or HTTP Basic with the token as
+            the password, so a browser can log in). Embedders keep the old
+            unauthenticated behaviour by leaving this unset.
+        allowed_hosts (set[str] | None): When set, requests whose ``Host`` header
+            (port ignored) is not in the set are rejected (DNS-rebinding defence).
 
     Returns:
         Starlette: Configured app (state carries the RunHistory + root).
@@ -845,6 +866,11 @@ def create_app(db_url: str | None = None, project_root: str | None = None) -> St
             Route("/live", live_page, methods=["GET"]),
         ]
     )
+    if auth_token:
+        app.add_middleware(BearerTokenMiddleware, token=auth_token, allow_basic=True, realm="hercules-dashboard")
+    if allowed_hosts:
+        # Added last so it is the outermost layer: a bad Host never reaches auth/routes.
+        app.add_middleware(HostAllowlistMiddleware, allowed_hosts=allowed_hosts)
     app.state.history = history
     app.state.project_root = project_root
     return app
@@ -867,15 +893,26 @@ def normalize_db_url(value: str | None) -> str | None:
 def main(argv: list[str] | None = None) -> int:
     """Console-script entry point (``hercules-dashboard``): serve the dashboard via uvicorn."""
     parser = argparse.ArgumentParser(prog="hercules-dashboard", description="Hercules run-history dashboard.")
-    parser.add_argument("--host", default=DEFAULT_HOST, help=f"Bind host (default: {DEFAULT_HOST}).")
+    parser.add_argument(
+        "--host",
+        default=DEFAULT_HOST,
+        help=f"Bind host (default: {DEFAULT_HOST}). A non-loopback host requires DASHBOARD_AUTH_TOKEN (>= {MIN_REMOTE_TOKEN_LENGTH} chars).",
+    )
     parser.add_argument("--port", type=int, default=DEFAULT_PORT, help=f"Bind port (default: {DEFAULT_PORT}).")
     parser.add_argument("--db", default=None, help="Run-history database URL (default: <PROJECT_SOURCE_ROOT>/hercules_history.db (opt/hercules_history.db)).")
     parser.add_argument("--project-root", default=None, help="Project root holding output/ and evidence paths (default: config value).")
     args = parser.parse_args(argv)
 
+    token = normalize_token(os.getenv("DASHBOARD_AUTH_TOKEN"))
     try:
-        import uvicorn  # transitive via mcp; not a hard dependency of the package
-    except ImportError as exc:
+        enforce_bind_policy("the Hercules dashboard", args.host, token, "DASHBOARD_AUTH_TOKEN")
+    except InsecureBindError as exc:
+        raise SystemExit(str(exc)) from exc
+    allowed_hosts = build_host_allowlist(args.host, parse_csv(os.getenv("DASHBOARD_ALLOWED_HOSTS")))
+
+    try:
+        import uvicorn
+    except ImportError as exc:  # declared in pyproject dependencies; guard kept for odd installs
         raise SystemExit("uvicorn is required to serve the dashboard. Install it with: pip install uvicorn") from exc
 
     db_url = normalize_db_url(args.db)
@@ -884,8 +921,9 @@ def main(argv: list[str] | None = None) -> int:
         if parent:
             os.makedirs(parent, exist_ok=True)
 
-    app = create_app(db_url=db_url, project_root=args.project_root)
+    app = create_app(db_url=db_url, project_root=args.project_root, auth_token=token, allowed_hosts=allowed_hosts)
     print(f"Hercules dashboard listening on http://{args.host}:{args.port}")
+    print("Auth: " + ("bearer/basic token required (DASHBOARD_AUTH_TOKEN)" if token else "none (loopback bind only)"))
     print(f"Run history DB: {app.state.history.db_url}")
     print("Press Ctrl+C to stop.")
     uvicorn.run(app, host=args.host, port=args.port)

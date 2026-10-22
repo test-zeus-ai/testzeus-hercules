@@ -25,6 +25,9 @@ Environment variables (all optional):
     MCP_HOST          – bind host,  default 127.0.0.1
     MCP_PORT          – bind port,  default 8000
     MCP_PATH          – URL path,   default /mcp
+    MCP_AUTH_TOKEN    – bearer token required on every request when set; REQUIRED
+                        (>= 16 chars) to bind a non-loopback MCP_HOST
+    MCP_ALLOWED_HOSTS – extra comma-separated Host header names to accept
     HERCULES_MCP_EXEC_TIMEOUT – per-run execution deadline in seconds, default 1800
 """
 
@@ -42,6 +45,7 @@ from uuid import uuid4
 
 import httpx
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 
 # Module-level imports for every collaborator the tools use, so tests (and
 # callers) can monkeypatch symbols in THIS namespace, e.g.
@@ -77,6 +81,14 @@ from testzeus_hercules.orchestrator.session import (
 )
 from testzeus_hercules.reporting.bundle import parse_junit_testcases
 from testzeus_hercules.utils.gherkin_generator import generate_gherkin_from_description
+from testzeus_hercules.utils.http_security import (
+    BearerTokenMiddleware,
+    InsecureBindError,
+    build_host_allowlist,
+    enforce_bind_policy,
+    normalize_token,
+    parse_csv,
+)
 from testzeus_hercules.utils.litellm_helper import get_litellm_chat_model
 
 # ── configuration ─────────────────────────────────────────────────────────────
@@ -970,27 +982,79 @@ async def get_test_results(run_id: str = "") -> str:
 # ── entrypoint ────────────────────────────────────────────────────────────────
 
 
+def _mcp_auth_token() -> str | None:
+    return normalize_token(os.getenv("MCP_AUTH_TOKEN"))
+
+
+def _transport_security(allowlist: set[str] | None) -> TransportSecuritySettings:
+    """FastMCP DNS-rebinding settings for a Host allowlist (None = wildcard bind, token-gated)."""
+    if allowlist is None:
+        # Wildcard bind (the bearer token is mandatory there): any Host name may reach this machine.
+        return TransportSecuritySettings(enable_dns_rebinding_protection=False)
+    hosts: list[str] = []
+    origins: list[str] = []
+    for name in sorted(allowlist):
+        display = f"[{name}]" if ":" in name else name
+        hosts += [display, f"{display}:*"]
+        origins += [f"http://{display}", f"http://{display}:*", f"https://{display}", f"https://{display}:*"]
+    return TransportSecuritySettings(enable_dns_rebinding_protection=True, allowed_hosts=hosts, allowed_origins=origins)
+
+
+def build_http_app(host: str | None = None, port: int | None = None, path: str | None = None, token: str | None = None):
+    """Build the hardened streamable-http ASGI app for this server.
+
+    Applies host/port/path to the FastMCP settings (they are NOT read from the
+    environment by FastMCP itself), enforces the bind policy (non-loopback
+    requires ``MCP_AUTH_TOKEN``), configures DNS-rebinding protection and wraps
+    the app in bearer-token auth when a token is configured.
+
+    Raises:
+        InsecureBindError: non-loopback ``host`` without a sufficiently long token.
+    """
+    host = host if host is not None else _mcp_host()
+    port = port if port is not None else _mcp_port()
+    path = path if path is not None else _mcp_path()
+    token = token if token is not None else _mcp_auth_token()
+    enforce_bind_policy("the Hercules MCP server", host, token, "MCP_AUTH_TOKEN")
+
+    mcp.settings.host = host
+    mcp.settings.port = port
+    mcp.settings.streamable_http_path = path
+
+    mcp.settings.transport_security = _transport_security(build_host_allowlist(host, parse_csv(os.getenv("MCP_ALLOWED_HOSTS"))))
+    # The session manager is created lazily by streamable_http_app(); drop any one
+    # built with earlier settings so the new transport security applies.
+    mcp._session_manager = None  # noqa: SLF001
+
+    app = mcp.streamable_http_app()
+    if token:
+        app.add_middleware(BearerTokenMiddleware, token=token, realm="hercules-mcp")
+    return app
+
+
 def main() -> None:
     """Entrypoint for the testzeus-hercules-mcp console script."""
+    import uvicorn
+
     host = _mcp_host()
     port = _mcp_port()
     path = _mcp_path()
+    token = _mcp_auth_token()
+    try:
+        app = build_http_app(host, port, path, token)
+    except InsecureBindError as exc:
+        raise SystemExit(str(exc)) from exc
     print(f"Starting TestZeus Hercules MCP server on http://{host}:{port}{path}")
+    if token:
+        print("Bearer-token auth enabled (MCP_AUTH_TOKEN): send 'Authorization: Bearer <token>'.")
+    else:
+        print("No MCP_AUTH_TOKEN set: auth disabled (loopback bind only).")
     print("Add to your mcp_servers config:")
-    print(
-        json.dumps(
-            {
-                "mcpServers": {
-                    "testzeus-hercules": {
-                        "transport": "streamable-http",
-                        "url": f"http://{host}:{port}{path}",
-                    }
-                }
-            },
-            indent=4,
-        )
-    )
-    mcp.run(transport="streamable-http")
+    client_entry: dict[str, Any] = {"transport": "streamable-http", "url": f"http://{host}:{port}{path}"}
+    if token:
+        client_entry["headers"] = {"Authorization": "Bearer <MCP_AUTH_TOKEN>"}
+    print(json.dumps({"mcpServers": {"testzeus-hercules": client_entry}}, indent=4))
+    uvicorn.run(app, host=host, port=port, log_level="info")
 
 
 if __name__ == "__main__":
