@@ -151,6 +151,13 @@ def _make_fake_runner(results_by_stake: dict[str, str], evidence: dict[str, dict
     return _FakeRunner
 
 
+@pytest.fixture(autouse=True)
+def _enable_opt_in_reporting(monkeypatch) -> None:
+    """These tests cover the opt-in reporting / history / bundle / classification pipeline."""
+    for flag in ("ENABLE_RUN_REPORTING", "ENABLE_FAILURE_BUNDLES", "ENABLE_RUN_HISTORY", "ENABLE_FAILURE_CLASSIFICATION", "ENABLE_SELECTOR_RECORDING"):
+        monkeypatch.setenv(flag, "true")
+
+
 @pytest.fixture()
 def hermetic_root(monkeypatch, tmp_path):
     """Rebuild the global config against a tmp PROJECT_SOURCE_ROOT.

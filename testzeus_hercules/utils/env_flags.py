@@ -71,3 +71,8 @@ def strict_exit_code_enabled() -> bool:
     if os.getenv("EXIT_CODE_COMPAT", "").strip() == "1":
         return False
     return env_flag("STRICT_EXIT_CODE")
+
+
+def selector_recording_enabled() -> bool:
+    """``ENABLE_SELECTOR_RECORDING``: record observed alternative selectors into the healing selector store (writes a file under opt/)."""
+    return env_flag("ENABLE_SELECTOR_RECORDING")
