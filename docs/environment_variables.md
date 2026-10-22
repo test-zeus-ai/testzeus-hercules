@@ -528,6 +528,11 @@ corrective re-prompt for an invalid planner decision before the scenario is fail
 
 The optional mobile (Appium) and healing hooks are inert unless `DEVICE_MANAGER=appium` is
 set and the Appium client is installed.
+The mobile settings (`DEVICE_MANAGER`, `DEVICE_OS`, `APPIUM_SERVER_URL`, `APPIUM_SERVER_PORT`,
+`PLATFORM_NAME`, `DEVICE_NAME`, `APP_PATH`, `APPIUM_APK_PATH`, `APPIUM_DEVICE_UUID`,
+`APPIUM_PLATFORM_VERSION`, `APPIUM_CAPABILITIES`) are described in
+[mobile_automation.md](mobile_automation.md); install the client with the `mobile` extra
+(`pip install "testzeus-hercules[mobile]"`) and run an Appium 2.x server yourself.
 
 ## Configuration Priority
 
