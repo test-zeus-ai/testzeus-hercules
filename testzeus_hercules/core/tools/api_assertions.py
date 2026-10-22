@@ -15,7 +15,7 @@ folding away cross-page checks.
 import json
 import math
 import re
-from typing import Annotated, Any, Callable, Dict, List, Optional, Tuple
+from typing import Annotated, Any, Callable, Dict, List, Optional, Tuple, Union
 
 from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.tools.api_calls import (
@@ -33,6 +33,7 @@ from testzeus_hercules.core.tools.tool_registry import (
 from testzeus_hercules.utils.jsonpath_helper import (
     closest_parent_keys,
     find_json_path,
+    is_singular_path,
     path_leaf_name,
 )
 from testzeus_hercules.utils.logger import logger
@@ -60,6 +61,24 @@ DEFAULT_OPERATOR = "eq"
 LITERAL_PREFIX = "literal:"
 
 _UNRESOLVED_PLACEHOLDER_RE = re.compile(r"\$\{([^{}]+)\}")
+
+# Operators that judge presence/emptiness only and so legitimately omit `expected`.
+OPERATORS_WITHOUT_EXPECTED = ("exists", "not_exists", "not_empty")
+
+
+class _ExpectedNotGiven:
+    """Sentinel default for `expected`: tells "omitted" apart from an explicit null."""
+
+    def __repr__(self) -> str:
+        return "<not given>"
+
+
+EXPECTED_NOT_GIVEN = _ExpectedNotGiven()
+
+# Plain decimal number text (JSON-literal style plus a leading '+'): no "1_000",
+# "inf", "nan", "0x10" or surrounding junk.
+_NUMBER_TEXT_RE = re.compile(r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?")
+_INTEGER_TEXT_RE = re.compile(r"[+-]?\d+")
 
 # Guidance shown when an operator name is found inside `expected` instead of
 # the `operator` parameter — a recurring LLM slip that would otherwise judge
@@ -110,17 +129,28 @@ def _operator_lookalike(expected: Any) -> Optional[str]:
     return None
 
 
-def _as_number(value: Any) -> Optional[float]:
-    """Coerce a value (or JSON-literal text) to a number, else None."""
+def _as_number(value: Any) -> Optional[Union[int, float]]:
+    """
+    Coerce a value (or plain decimal text) to a finite number, else None.
+
+    Integral inputs stay ints so large ids (beyond 2**53) compare exactly
+    instead of after a lossy float conversion; Python compares int/float
+    pairs exactly too. "1_000", "inf", "nan" and other non-decimal spellings
+    that float() would accept are rejected.
+    """
     if isinstance(value, bool):
         return None
-    if isinstance(value, (int, float)):
-        return float(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
     if isinstance(value, str):
-        try:
-            return float(value.strip())
-        except ValueError:
-            return None
+        text = value.strip()
+        if _INTEGER_TEXT_RE.fullmatch(text):
+            return int(text)
+        if _NUMBER_TEXT_RE.fullmatch(text):
+            number = float(text)
+            return number if math.isfinite(number) else None
     return None
 
 
@@ -185,17 +215,27 @@ def _compare_ordered(actual: Any, expected: Any, operator: str) -> tuple:
     return (actual_number < expected_number), None
 
 
-def _compare_bounded(matches: List[Any], expected: Any, operator: str) -> tuple:
+def _binds_array_elements(path: str, matches: List[Any]) -> bool:
     """
-    all_gte/all_lte bind every matched value (like count_eq, a path landing on
-    exactly one array binds its elements); an empty bound set is FAILED, not
-    vacuously true. Returns (passed, note, is_error) — is_error marks an
+    True when the path names exactly one array (no wildcard/slice/filter/union/
+    recursive descent anywhere in it), so count_eq/all_gte/all_lte act on its
+    elements ($.body.items). A multi-valued path that happens to match one
+    value that is itself a list ($.m[*] on [[1,2,3]]) binds that single match.
+    """
+    return len(matches) == 1 and isinstance(matches[0], list) and is_singular_path(path)
+
+
+def _compare_bounded(matches: List[Any], expected: Any, operator: str, path: str) -> tuple:
+    """
+    all_gte/all_lte bind every matched value (like count_eq, a singular path
+    landing on one array binds its elements); an empty bound set is FAILED,
+    not vacuously true. Returns (passed, note, is_error) — is_error marks an
     unevaluable (type) problem rather than an evaluable mismatch.
     """
     expected_number = _as_number(expected)
     if expected_number is None:
         return False, f"Expected value {expected!r} is not numeric.", True
-    values = matches[0] if len(matches) == 1 and isinstance(matches[0], list) else matches
+    values = matches[0] if _binds_array_elements(path, matches) else matches
     if not values:
         return False, "The bound matched an empty set of values.", False
     for index, value in enumerate(values):
@@ -264,7 +304,8 @@ def _payload_text(response_json: Any) -> str:
         "NEVER decide pass/fail by reading the response yourself — call this "
         "tool and use its returned 'assertion' value (PASSED/FAILED/ERROR). "
         f"Operators: {', '.join(OPERATORS)}. "
-        "'expected' may reference captured values as ${name}. "
+        "'expected' is required except for exists/not_exists/not_empty (pass null explicitly to compare against null) "
+        "and may reference captured values as ${name}. "
         "When several values match the path, eq/ne/contains/gt/lt/not_empty must hold for EVERY match "
         "(use exists, count_eq, all_gte/all_lte or a narrower path for aggregate checks). "
         f"To assert a value that is exactly an operator name, pass it as '{LITERAL_PREFIX}<value>'."
@@ -274,20 +315,27 @@ async def assert_json_path(
     response_json: Annotated[Any, "The JSON response body (object or JSON string) to assert against."],
     path: Annotated[str, "JSONPath expression selecting the value(s) to check, e.g. $.body.items[0].id."],
     operator: Annotated[str, f"Comparison operator. One of: {', '.join(OPERATORS)}. Defaults to eq."] = DEFAULT_OPERATOR,
-    expected: Annotated[Any, "Expected value (or a second JSONPath when operator is eq_path). Optional for exists/not_exists/not_empty."] = None,
+    expected: Annotated[
+        Any,
+        "Expected value (or a second JSONPath when operator is eq_path). Required for every operator except exists/not_exists/not_empty; pass null explicitly to compare against null.",
+    ] = EXPECTED_NOT_GIVEN,
 ) -> Annotated[str, "Minified JSON verdict: {assertion: PASSED|FAILED|ERROR, path, operator, actual, expected, ...}."]:
     try:
         result = _evaluate(response_json, path, operator, expected)
     except Exception as e:
         logger.exception("assert_json_path failed unexpectedly")
-        result = {"assertion": "ERROR", "path": path, "operator": operator, "expected": expected, "reason": f"Assertion could not be evaluated: {type(e).__name__}: {e}"}
+        shown_expected = None if expected is EXPECTED_NOT_GIVEN else expected
+        result = {"assertion": "ERROR", "path": path, "operator": operator, "expected": shown_expected, "reason": f"Assertion could not be evaluated: {type(e).__name__}: {e}"}
     _record(response_json, result)
     return _minified(result)
 
 
-def _evaluate(response_json: Any, path: str, operator: str, expected: Any) -> Dict[str, Any]:
+def _evaluate(response_json: Any, path: str, operator: str, expected: Any = EXPECTED_NOT_GIVEN) -> Dict[str, Any]:
     """Run one assertion and build its verdict payload."""
     operator_name = str(operator or DEFAULT_OPERATOR).strip().lower() or DEFAULT_OPERATOR
+    expected_given = expected is not EXPECTED_NOT_GIVEN
+    if not expected_given:
+        expected = None
 
     def _payload(**overrides: Any) -> Dict[str, Any]:
         base: Dict[str, Any] = {"path": path, "operator": operator_name, "actual": None, "expected": expected}
@@ -310,6 +358,14 @@ def _evaluate(response_json: Any, path: str, operator: str, expected: Any) -> Di
             reason=f"Unknown operator '{operator_name}'. Valid operators: {', '.join(OPERATORS)}.",
         )
 
+    if not expected_given and operator_name not in OPERATORS_WITHOUT_EXPECTED:
+        return _payload(
+            assertion="ERROR",
+            reason=(
+                f"Operator '{operator_name}' needs an 'expected' value, but none was given. " f"Only {', '.join(OPERATORS_WITHOUT_EXPECTED)} may omit it; pass null explicitly to compare against null."
+            ),
+        )
+
     literal = isinstance(expected, str) and expected.startswith(LITERAL_PREFIX)
     if literal:
         expected = expected[len(LITERAL_PREFIX) :]
@@ -328,7 +384,8 @@ def _evaluate(response_json: Any, path: str, operator: str, expected: Any) -> Di
             reason=(f"'expected' looks like an operator name ('{expected}'). " f"{_OPERATOR_MISPLACED_GUIDANCE}"),
         )
 
-    if isinstance(expected, str):
+    # A literal: value is compared as written, placeholder text included.
+    if isinstance(expected, str) and not literal:
         unresolved = _UNRESOLVED_PLACEHOLDER_RE.search(expected)
         if unresolved:
             return _payload(
@@ -342,6 +399,18 @@ def _evaluate(response_json: Any, path: str, operator: str, expected: Any) -> Di
             )
 
     return _evaluate_with_operator(response_json, path, operator_name, expected, None)
+
+
+def _count_verdict(payload: Callable[..., Dict[str, Any]], expected: Any, count: int, count_of: str, matched_count: int) -> Dict[str, Any]:
+    """count_eq verdict for an already computed `count`."""
+    expected_number = _as_number(expected)
+    if expected_number is None:
+        return payload(assertion="ERROR", actual=count, reason=f"Expected count {expected!r} is not a number.")
+    if expected_number != int(expected_number):
+        # int(2.5) == 2 would silently turn "2.5" into a passing count of 2.
+        return payload(assertion="ERROR", actual=count, reason=f"Expected count {expected!r} is not a whole number.")
+    passed = count == int(expected_number)
+    return payload(assertion="PASSED" if passed else "FAILED", actual=count, count_of=count_of, matched_count=matched_count)
 
 
 def _evaluate_with_operator(response_json: Any, path: str, operator: str, expected: Any, note: Optional[str]) -> Dict[str, Any]:
@@ -369,6 +438,10 @@ def _evaluate_with_operator(response_json: Any, path: str, operator: str, expect
     if operator == "not_exists":
         verdict = "PASSED" if not matches else "FAILED"
         return _payload(assertion=verdict, actual=None if not matches else matches[0], matched_count=len(matches))
+
+    if not matches and operator == "count_eq":
+        # Zero matches is a count of 0 (e.g. $.items[*] on an empty array).
+        return _count_verdict(_payload, expected, 0, "path matches", 0)
 
     if not matches:
         failure: Dict[str, Any] = {
@@ -433,7 +506,7 @@ def _evaluate_with_operator(response_json: Any, path: str, operator: str, expect
             verdict["reason"] = _each_reason(failed_index)
         return verdict
     if operator in ("all_gte", "all_lte"):
-        passed, bound_note, is_error = _compare_bounded(matches, expected, operator)
+        passed, bound_note, is_error = _compare_bounded(matches, expected, operator, path)
         if is_error:
             return _payload(assertion="ERROR", actual=actual, reason=bound_note)
         return _payload(
@@ -443,26 +516,13 @@ def _evaluate_with_operator(response_json: Any, path: str, operator: str, expect
             reason=None if passed else bound_note,
         )
     if operator == "count_eq":
-        # When the path lands on exactly one array, count its elements
-        # ($.body.items matches the array itself); an explicit [*] suffix
-        # still counts path matches.
-        if matched_count == 1 and isinstance(actual, list):
-            count = len(actual)
-        else:
-            count = matched_count
-        expected_number = _as_number(expected)
-        if expected_number is None:
-            return _payload(assertion="ERROR", actual=count, reason=f"Expected count {expected!r} is not a number.")
-        if not math.isfinite(expected_number) or expected_number != int(expected_number):
-            # int(2.5) == 2 would silently turn "2.5" into a passing count of 2.
-            return _payload(assertion="ERROR", actual=count, reason=f"Expected count {expected!r} is not a whole number.")
-        passed = count == int(expected_number)
-        return _payload(
-            assertion="PASSED" if passed else "FAILED",
-            actual=count,
-            count_of="array elements" if (matched_count == 1 and isinstance(actual, list)) else "path matches",
-            matched_count=matched_count,
-        )
+        # A singular path landing on one array counts its elements
+        # ($.body.items matches the array itself). A multi-valued path
+        # (wildcard, slice, filter, ...) counts its matches, even when there is
+        # exactly one match that happens to be a list ($.m[*] on [[1,2,3]] is 1).
+        if _binds_array_elements(path, matches):
+            return _count_verdict(_payload, expected, len(actual), "array elements", matched_count)
+        return _count_verdict(_payload, expected, matched_count, "path matches", matched_count)
     if operator == "eq_path":
         # Cross-field check: compare the first match against a second JSONPath.
         if not isinstance(expected, str):

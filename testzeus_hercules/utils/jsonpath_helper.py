@@ -79,6 +79,33 @@ def closest_parent_keys(doc: Any, path: str) -> Optional[dict]:
     return None
 
 
+def is_singular_path(path: str) -> bool:
+    """
+    True when ``path`` can select at most one value: only the root, named
+    fields (one name, not ``*``) and single indexes. Wildcards, slices,
+    filters, unions and recursive descent make a path multi-valued, so a
+    single match of such a path is one element of a set, never "the" value.
+
+    Raises the same errors as :func:`find_json_path` for a missing package or
+    an unparsable path.
+    """
+    try:
+        from jsonpath_ng import Child, Fields, Index, Root, This
+    except ImportError as e:
+        raise ImportError(JSONPATH_NG_INSTALL_HINT) from e
+
+    def _singular(node: Any) -> bool:
+        if type(node) is Child:
+            return _singular(node.left) and _singular(node.right)
+        if type(node) in (Root, This, Index):
+            return True
+        if type(node) is Fields:
+            return len(node.fields) == 1 and node.fields[0] != "*"
+        return False
+
+    return _singular(_ext_parse(path))
+
+
 def path_leaf_name(path: str) -> Optional[str]:
     """
     Return the plain field name of the path's right-most segment, or None when

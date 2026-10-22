@@ -80,3 +80,25 @@ def test_missing_library_raises_import_error_with_install_hint(monkeypatch) -> N
         find_json_path(DOC, "$.status")
     assert "testzeus-hercules[api]" in str(excinfo.value)
     assert JSONPATH_NG_INSTALL_HINT in str(excinfo.value)
+
+
+@pytest.mark.parametrize(
+    ("path", "singular"),
+    [
+        ("$", True),
+        ("$.a", True),
+        ("$.a[0].b", True),
+        ("$.a[*]", False),
+        ("$.a.*", False),
+        ("$.a[1:3]", False),
+        ("$.a[?(@ > 1)]", False),
+        ("$..a", False),
+        ("$['a','b']", False),
+        ("$.a[*].b", False),
+    ],
+)
+def test_is_singular_path(path, singular) -> None:
+    pytest.importorskip("jsonpath_ng")
+    from testzeus_hercules.utils.jsonpath_helper import is_singular_path
+
+    assert is_singular_path(path) is singular
