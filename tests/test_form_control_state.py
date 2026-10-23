@@ -7,6 +7,7 @@ and is skipped otherwise.
 """
 
 import asyncio
+import json
 import os
 from pathlib import Path
 
@@ -96,6 +97,11 @@ FORM = """<form>
 <label><input type=checkbox role=switch id=dm name=dm> Night mode</label>
 <fieldset disabled><label><input type=checkbox id=fs> Opt in</label></fieldset>
 <button id=go type=button>Go</button><label for=go>Button label</label>
+<span id=ql>Quantity of items</span><input id=qty type=number aria-labelledby=ql name=qty_field>
+<input id=srch type=text placeholder="Search products" name=q>
+<button id=sub type=submit name=submit_action value=1>Place order</button>
+<label><input type=checkbox role=menuitem aria-checked=false name=menu_name> Menu entry</label>
+<iframe srcdoc="<label>Framed field <input name=framed_name></label>"></iframe>
 </form>"""
 
 
@@ -136,7 +142,11 @@ async def _check_real_tree(tmp_path: Path) -> None:
                 page = await browser.new_page()
                 await page.set_content(FORM)
 
-                before = _controls(await do_get_accessibility_info(page, only_input_fields=False))
+                full_tree = await do_get_accessibility_info(page, only_input_fields=False)
+                before = _controls(full_tree)
+                # nodes that skip the md handling (role=menuitem, content of a frame the injector missed) carry no transient keys either
+                assert "label_text" not in json.dumps(full_tree)
+                assert "Menu entry" in json.dumps(full_tree) and "Framed field" in json.dumps(full_tree)
                 by_name = {c.get("name"): c for c in before if c.get("role") in {"checkbox", "radio", "switch", "option"}}
                 assert by_name["Newsletter"]["checked"] is True
                 assert by_name["Terms"]["checked"] is False
@@ -160,6 +170,13 @@ async def _check_real_tree(tmp_path: Path) -> None:
                 assert any(c.get("name") == "remember" and c.get("role") == "checkbox" for c in before)
                 # a <label for=...> pointing at a button must not replace the button's own text
                 assert any(c.get("name") == "Go" and c.get("tag") == "button" for c in before)
+
+                # the HTML name attribute never overwrites the accessible name, whatever names the control
+                by_field = {c.get("field_name"): c for c in before if c.get("field_name")}
+                assert by_field["qty_field"]["name"] == "Quantity of items"  # aria-labelledby
+                assert by_field["q"]["name"] == "Search products"  # placeholder
+                assert by_field["submit_action"]["name"] == "Place order"  # button text
+                assert not any(c.get("name") == "qty_field" or c.get("name") == "q" for c in before)
 
                 await page.click("#c2")
                 await page.click("#r2")
