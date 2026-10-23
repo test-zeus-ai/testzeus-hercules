@@ -15,7 +15,7 @@ from testzeus_hercules.core.tools.tool_registry import sec_logger as file_logger
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.path_guard import resolve_in_roots
-from testzeus_hercules.utils.redact import REDACTED_PLACEHOLDER, redact_url
+from testzeus_hercules.utils.redact import REDACTED_HEADER_PATTERNS, REDACTED_PLACEHOLDER, is_sensitive_name, redact_url
 
 # Define cache and binary paths
 CACHE_DIR = Path(get_global_conf().get_hf_home()) / "nuclei_tool"
@@ -146,10 +146,22 @@ def redact_command_for_log(command: List[str]) -> str:
     return " ".join(parts)
 
 
+def _is_credential_header(name: str) -> bool:
+    """True for headers that carry a credential (Authorization, Cookie, X-Api-Key, X-Auth-Token, ...); ordinary ones are not."""
+    lowered = str(name).lower()
+    return is_sensitive_name(lowered) or any(pattern in lowered for pattern in REDACTED_HEADER_PATTERNS)
+
+
 def _header_secrets(headers: Optional[List[Tuple[str, str]]]) -> List[str]:
-    """Header values passed to nuclei plus the bare credential after a scheme ("Bearer <token>")."""
+    """Values of credential headers passed to nuclei, plus the bare credential after a scheme ("Bearer <token>").
+
+    Ordinary headers (Accept, User-Agent, ...) are never secrets: scrubbing "application/json" from the whole
+    nuclei output would make every finding that mentions it unreadable.
+    """
     secrets: List[str] = []
-    for _name, value in headers or []:
+    for name, value in headers or []:
+        if not _is_credential_header(name):
+            continue
         secrets.append(value)
         secrets.extend(value.split(" ", 1)[1:])
     return secrets

@@ -399,6 +399,29 @@ def test_nuclei_stdout_and_stderr_are_redacted_before_logging_and_returning(proo
         assert SECRET not in text
 
 
+def test_only_credential_headers_are_scrubbed_from_nuclei_output(proof_env, monkeypatch, tmp_path) -> None:
+    class _Process:
+        returncode = 0
+
+        async def communicate(self):
+            return (b"[json-leak] [http] [low] https://t.test/api (application/json, Mozilla/5.0 (X11; Linux)) auth Bearer " + SECRET.encode(), b"")
+
+    async def fake_installed():
+        return None
+
+    async def fake_exec(*args, **kwargs):
+        return _Process()
+
+    monkeypatch.setattr(api_sec_calls, "file_logger", lambda _line: None)
+    monkeypatch.setattr(api_sec_calls, "ensure_nuclei_installed", fake_installed)
+    monkeypatch.setattr(api_sec_calls.asyncio, "create_subprocess_exec", fake_exec)
+    headers = [("Accept", "application/json"), ("User-Agent", "Mozilla/5.0 (X11; Linux)"), ("Authorization", f"Bearer {SECRET}"), ("X-Api-Key", "k-12345")]
+    stdout, _stderr, _code = _run(api_sec_calls.run_nuclei_command(False, None, "https://t.test", "cve", tmp_path / "o.txt", headers=headers))
+    assert "application/json" in stdout and "Mozilla/5.0 (X11; Linux)" in stdout and "https://t.test/api" in stdout
+    assert SECRET not in stdout
+    assert api_sec_calls._header_secrets(headers) == [f"Bearer {SECRET}", SECRET, "k-12345"]
+
+
 # ── 7. OpenAPI status code given as a string ────────────────────────────────
 
 
