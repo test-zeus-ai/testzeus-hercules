@@ -112,7 +112,8 @@ def test_configure_session_returns_session_dict(workspace, monkeypatch) -> None:
     assert result["session_id"].startswith("sess_")
     assert result["app_url_reachable"] is True
     assert result["next_action"]
-    assert result["project_path"] == str(tmp_path)
+    assert result["project_path"] == "."  # root-relative, never the absolute host path
+    assert str(tmp_path) not in json.dumps(result)
 
 
 def test_configure_session_rejects_bad_enums(workspace) -> None:
@@ -660,7 +661,9 @@ def test_open_dashboard_returns_report_url(synthetic_runs) -> None:
     _tmp_path, _manager, _old, new = synthetic_runs
     result = run(mcp_server.hercules_open_dashboard())
     assert result["dashboard"] == "not_running"
-    assert result["report_url"] == (new / "Hercules_Test_Report.md").as_uri()
+    expected = f"opt/output/{new.name}/Hercules_Test_Report.md"
+    assert result["report_url"] == expected
+    assert result["report_path"] == expected
     assert "hercules-dashboard" in result["hint"]
 
 

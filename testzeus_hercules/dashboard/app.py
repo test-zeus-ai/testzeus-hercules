@@ -44,7 +44,7 @@ from testzeus_hercules.utils.http_security import (
     normalize_token,
     parse_csv,
 )
-from testzeus_hercules.utils.path_guard import is_sensitive_name
+from testzeus_hercules.utils.path_guard import is_sensitive_name, is_within
 from testzeus_hercules.reporting.run_db import (
     RunHistory,
     get_default_history,
@@ -233,16 +233,24 @@ def _page(title: str, body: str, script_nonce: str | None = None) -> HTMLRespons
     return HTMLResponse(document, headers=headers)
 
 
-def _resolve_artifact_file(path_value: str | None, child_names: tuple[str, ...] = ()) -> str | None:
-    """Resolve an artifact DB path to an existing file, trying child names inside directories."""
+def _resolve_artifact_file(path_value: str | None, child_names: tuple[str, ...] = (), root: str | None = None) -> str | None:
+    """Resolve an artifact DB path to an existing file, trying child names inside directories.
+
+    Artifact paths come from JUnit XML properties (attacker/tool-controlled
+    data), so when ``root`` is given a path that does not resolve (symlinks
+    followed) inside it is ignored, never opened: the same containment the
+    /artifact route enforces.
+    """
     if not path_value:
+        return None
+    if root is not None and not is_within(path_value, root):
         return None
     if os.path.isfile(path_value):
         return path_value
     if os.path.isdir(path_value):
         for name in child_names:
             candidate = os.path.join(path_value, name)
-            if os.path.isfile(candidate):
+            if os.path.isfile(candidate) and (root is None or is_within(candidate, root)):
                 return candidate
     return None
 
@@ -418,10 +426,10 @@ def _healing_section(events: list[dict]) -> str:
     return f"<h2>Healing</h2><table>{header}{rows}</table>"
 
 
-def _network_table(case: dict) -> str:
+def _network_table(case: dict, root: str | None = None) -> str:
     """Network log viewer: JSON-lines parsed server-side, first 200 entries."""
     network_path = next(
-        (_resolve_artifact_file(artifact["path"], _NETWORK_FILENAMES) for artifact in case["artifacts"] if artifact["kind"] == "network"),
+        (_resolve_artifact_file(artifact["path"], _NETWORK_FILENAMES, root) for artifact in case["artifacts"] if artifact["kind"] == "network"),
         None,
     )
     entries = _parse_network_entries(network_path)
@@ -448,10 +456,10 @@ def _network_table(case: dict) -> str:
     return shown + f"<table>{header}{''.join(rows)}</table>"
 
 
-def _video_player(case: dict) -> str:
+def _video_player(case: dict, root: str | None = None) -> str:
     """Video player for the case recording, streamed through /artifact."""
     video_path = next(
-        (_resolve_artifact_file(artifact["path"], _VIDEO_FILENAMES) for artifact in case["artifacts"] if artifact["kind"] == "video"),
+        (_resolve_artifact_file(artifact["path"], _VIDEO_FILENAMES, root) for artifact in case["artifacts"] if artifact["kind"] == "video"),
         None,
     )
     if video_path is None:
@@ -459,29 +467,31 @@ def _video_player(case: dict) -> str:
     return f"<video controls width='100%' src='{_artifact_href(video_path)}'>Video playback not supported by this browser.</video>"
 
 
-def _screenshot_paths(case: dict) -> list[str]:
+def _screenshot_paths(case: dict, root: str | None = None) -> list[str]:
     """All screenshot files for a case (artifact values may be files or directories)."""
     paths: list[str] = []
     for artifact in case["artifacts"]:
         if artifact["kind"] != "screenshot":
             continue
         value = artifact["path"]
+        if root is not None and value and not is_within(value, root):
+            continue
         if value and os.path.isdir(value):
-            paths.extend(sorted(glob.glob(os.path.join(value, "*.png"))))
+            paths.extend(path for path in sorted(glob.glob(os.path.join(value, "*.png"))) if root is None or is_within(path, root))
         else:
-            resolved = _resolve_artifact_file(value)
+            resolved = _resolve_artifact_file(value, (), root)
             if resolved:
                 paths.append(resolved)
     return paths
 
 
-def _planner_text(case: dict) -> str | None:
+def _planner_text(case: dict, root: str | None = None) -> str | None:
     """Planner-thoughts content (truncated); prefers the planner-named log artifact."""
     planner_path = None
     for artifact in case["artifacts"]:
         if artifact["kind"] != "log":
             continue
-        resolved = _resolve_artifact_file(artifact["path"], _PLANNER_FILENAMES)
+        resolved = _resolve_artifact_file(artifact["path"], _PLANNER_FILENAMES, root)
         if resolved and (planner_path is None or "planner" in os.path.basename(resolved).lower()):
             planner_path = resolved
         if planner_path and "planner" in os.path.basename(planner_path).lower():
@@ -722,9 +732,9 @@ def case_page(request):
     else:
         sections.append("<p class='muted'>(no artifacts recorded)</p>")
 
-    sections.append("<h2>Video</h2>" + _video_player(case))
+    sections.append("<h2>Video</h2>" + _video_player(case, _project_root(request)))
 
-    screenshots = _screenshot_paths(case)
+    screenshots = _screenshot_paths(case, _project_root(request))
     sections.append("<h2>Screenshots</h2>")
     if screenshots:
         gallery = "".join(f"<a href='{_artifact_href(path)}' target='_blank'><img src='{_artifact_href(path)}' width='300' alt='screenshot' loading='lazy'></a>" for path in screenshots)
@@ -732,9 +742,9 @@ def case_page(request):
     else:
         sections.append("<p class='muted'>(no screenshots for this case)</p>")
 
-    sections.append("<h2>Network log</h2>" + _network_table(case))
+    sections.append("<h2>Network log</h2>" + _network_table(case, _project_root(request)))
 
-    planner = _planner_text(case)
+    planner = _planner_text(case, _project_root(request))
     sections.append("<h2>Planner thoughts</h2>")
     sections.append("<pre>" + _esc(planner) + "</pre>" if planner else "<p class='muted'>(no planner thoughts recorded)</p>")
 
@@ -766,13 +776,22 @@ def artifact_endpoint(request):
     raw_path = request.query_params.get("path") or ""
     if not raw_path:
         return PlainTextResponse("Missing ?path= parameter", status_code=400)
+    if "\x00" in raw_path:
+        return PlainTextResponse("Invalid path", status_code=400)
     root = os.path.realpath(_project_root(request))
-    candidate = os.path.realpath(raw_path)
+    try:
+        candidate = os.path.realpath(raw_path)
+    except (ValueError, OSError):
+        return PlainTextResponse("Invalid path", status_code=400)
     if candidate != root and not candidate.startswith(root + os.sep):
         return PlainTextResponse("Path is outside the project root", status_code=403)
     if _is_sensitive_artifact(raw_path, candidate, root):
         return PlainTextResponse("Path is not a servable artifact", status_code=403)
-    if not os.path.isfile(candidate):
+    try:
+        is_file = os.path.isfile(candidate)
+    except (ValueError, OSError):  # e.g. ENAMETOOLONG
+        is_file = False
+    if not is_file:
         return PlainTextResponse("File not found", status_code=404)
     extension = os.path.splitext(candidate)[1].lower()
     media_type = _MEDIA_TYPES.get(extension) or mimetypes.guess_type(candidate)[0] or "application/octet-stream"

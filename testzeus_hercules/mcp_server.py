@@ -159,6 +159,43 @@ def _confine_prd_path(path: str, extra_roots: tuple[str, ...] = ()) -> str:
     return resolved
 
 
+_HTTP_SCHEME_RE = re.compile(r"^https?://", re.IGNORECASE)
+
+
+def _normalize_prd_source(value: str | None) -> str:
+    """Strip whitespace and lowercase an http(s) scheme so ``HTTP://`` URLs are recognised as URLs."""
+    text = (value or "").strip()
+    if _HTTP_SCHEME_RE.match(text):
+        scheme, sep, rest = text.partition("://")
+        text = scheme.lower() + sep + rest
+    return text
+
+
+def _is_prd_url(value: str) -> bool:
+    return value.startswith(("http://", "https://"))
+
+
+def _prd_url_credentials_error(url: str) -> str | None:
+    """Error text when a PRD URL embeds userinfo (it would be persisted and echoed), else None."""
+    try:
+        parts = urlsplit(url)
+        has_userinfo = parts.username is not None or parts.password is not None or "@" in parts.netloc
+    except ValueError:
+        has_userinfo = "@" in url.split("/", 3)[2] if url.count("/") >= 2 else False
+    if has_userinfo:
+        return "prd_path URLs must not embed credentials (user:password@host); pass a public URL, or a token via a query parameter the host accepts."
+    return None
+
+
+def _display_prd(value: str) -> str:
+    """Echo form of a prd_path: URLs lose userinfo and sensitive query values, local paths are shown root-relative."""
+    if not value:
+        return value
+    if _is_prd_url(value):
+        return redact_url(value)
+    return _display_path(value)
+
+
 def _display_path(path: str | Path) -> str:
     """Render a filesystem path for tool results and error messages.
 
@@ -170,6 +207,29 @@ def _display_path(path: str | Path) -> str:
         return str(Path(path).resolve().relative_to(Path(_hercules_root()).resolve()))
     except ValueError:
         return Path(path).name
+
+
+def _scrub_paths(text: str) -> str:
+    """Rewrite the host's absolute Hercules-root/home paths inside free text (errors, failure messages).
+
+    ``<root>/opt/output/x`` becomes ``opt/output/x`` and the root itself ``.``;
+    the home directory becomes ``~``. Paths elsewhere are left untouched
+    (``_display_path`` handles the ones we build ourselves).
+    """
+    if not text:
+        return text
+    out = str(text)
+    root_variants: set[str] = set()
+    try:
+        root_variants.update({os.path.abspath(_hercules_root()), str(Path(_hercules_root()).resolve())})
+    except OSError:
+        pass
+    for root in sorted((item for item in root_variants if item and item != os.sep), key=len, reverse=True):
+        out = out.replace(root + os.sep, "").replace(root, ".")
+    home = os.path.expanduser("~")
+    if home and home != os.sep:
+        out = out.replace(home + os.sep, "~" + os.sep).replace(home, "~")
+    return out
 
 
 def _display_optional(path: str | Path | None) -> str | None:
@@ -234,7 +294,7 @@ def _mcp_path() -> str:
 
 def _error(message: str, **extra: Any) -> dict:
     """Build a uniform error dict returned by tools instead of raising."""
-    return {"error": message, **extra}
+    return {"error": _scrub_paths(message), **extra}
 
 
 # ── run-safety constants & helpers ────────────────────────────────────────────
@@ -261,6 +321,7 @@ _DEFAULT_EXEC_TIMEOUT_S = 1800.0  # per-run deadline; override via HERCULES_MCP_
 _GHERKIN_GENERATION_TIMEOUT_S = 120.0  # deadline for description->Gherkin LLM generation held under _EXEC_LOCK (a hung LLM call must not pin the run lock for the full run timeout)
 _MODEL_PING_TIMEOUT_S = 60.0  # deadline for the hercules_check_config LLM ping
 _RUN_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+_MAX_RUN_ID_LEN = 128  # one path component; longer names hit ENAMETOOLONG (and used to leak the absolute path)
 
 
 def _exec_timeout() -> float:
@@ -276,8 +337,9 @@ def _exec_timeout() -> float:
 
 def _run_id_error(run_id: str) -> str | None:
     """Return an error message when ``run_id`` could escape the output dir, else None."""
-    if not _RUN_ID_RE.fullmatch(run_id) or run_id in {".", ".."}:
-        return f"Invalid run_id {run_id!r}: expected a run folder name (letters, digits, '.', '_', '-')."
+    if len(run_id) > _MAX_RUN_ID_LEN or not _RUN_ID_RE.fullmatch(run_id) or run_id in {".", ".."}:
+        shown = run_id if len(run_id) <= 64 else f"{run_id[:64]}..."
+        return f"Invalid run_id {shown!r}: expected a run folder name (letters, digits, '.', '_', '-'; max {_MAX_RUN_ID_LEN} chars)."
     return None
 
 
@@ -392,7 +454,7 @@ def _resolve_session(session_id: str = "") -> SessionState:
 
 def _resolve_prd_source(state: SessionState, prd_path: str) -> str | None:
     """Pick a PRD source: explicit path > session PRD > project README.md."""
-    source = prd_path or state.prd_path
+    source = _normalize_prd_source(prd_path) or _normalize_prd_source(state.prd_path)
     if source:
         return source
     if state.project_path:
@@ -407,7 +469,11 @@ async def _build_standard_prd(state: SessionState, prd_path: str) -> tuple[Norma
     source = _resolve_prd_source(state, prd_path)
     if not source:
         raise ValueError("No PRD source available. Pass prd_path (file or URL), configure prd_path via " "hercules_configure_session, or set the session's project_path so README.md can be used.")
-    if not source.startswith(("http://", "https://")):
+    if _is_prd_url(source):
+        credentials_error = _prd_url_credentials_error(source)
+        if credentials_error:
+            raise ValueError(credentials_error)
+    else:
         # Local PRD sources are read and sent to the LLM: confine them (realpath) to the
         # allowed roots plus this session's project_path. URLs go through the SSRF guard in prd_parser.
         source = _confine_prd_path(source, (state.project_path,) if state.project_path else ())
@@ -508,9 +574,13 @@ async def hercules_configure_session(
         warnings.append("credentials are ignored (never stored); provide login steps in the Gherkin instead.")
     try:
         resolved_project = _confine_path(project_path, "project_path") if project_path else ""
-        resolved_prd = prd_path
-        if prd_path and not prd_path.startswith(("http://", "https://")):
-            resolved_prd = _confine_prd_path(prd_path, (resolved_project,) if resolved_project else ())
+        resolved_prd = _normalize_prd_source(prd_path)
+        if resolved_prd and _is_prd_url(resolved_prd):
+            credentials_error = _prd_url_credentials_error(resolved_prd)
+            if credentials_error:
+                return _error(credentials_error)
+        elif resolved_prd:
+            resolved_prd = _confine_prd_path(resolved_prd, (resolved_project,) if resolved_project else ())
     except (PathOutsideRootsError, ForbiddenFileError) as exc:
         return _error(str(exc))
 
@@ -534,10 +604,10 @@ async def hercules_configure_session(
         # Echo the redacted URL; the raw URL stays on the in-memory session state.
         "app_url": redact_url(state.app_url),
         "app_url_reachable": reachable,
-        "project_path": state.project_path,
+        "project_path": _display_optional(state.project_path) or "",
         "test_type": state.test_type,
         "test_scope": state.test_scope,
-        "prd_path": state.prd_path,
+        "prd_path": _display_prd(state.prd_path),
         "next_action": next_action,
     }
     if warnings:
@@ -829,7 +899,7 @@ async def hercules_generate_and_execute(
 
 
 @mcp.tool()
-async def hercules_get_run_results(session_id: str = "", run_id: str = "") -> dict:
+async def hercules_get_run_results(session_id: str = "", run_id: str = "", result_id: str = "") -> dict:
     """Fetch results of the newest (or a specific) Hercules run.
 
     Parses the run's merged ``*_result.xml`` JUnit file and returns per-scenario
@@ -838,18 +908,30 @@ async def hercules_get_run_results(session_id: str = "", run_id: str = "") -> di
     Args:
         session_id: Kept for symmetry; results are read from opt/output.
         run_id: Specific run folder name (e.g. run_20260609_132411); omit for the newest run.
+        result_id: A run folder holds one result per executed feature file (one MCP process shares one
+            folder); pass a ``result_id`` from an earlier response (``other_results``) to select that one.
+            Omit for the newest result in the folder.
 
     Returns:
-        {"run_id", "junit_xml", "total", "passed", "failed", "errors", "report_md",
+        {"run_id", "result_id", "junit_xml", "total", "passed", "failed", "errors", "report_md",
         "html", "bundles", "test_cases": [{name, status, time, failure_message?}]}.
     """
     output_dir = _result_dir()
+    result_stem = result_id.strip()
+    if result_stem:
+        invalid = _run_id_error(result_stem)
+        if invalid:
+            return _error(invalid.replace("run_id", "result_id").replace("run folder name", "result name"))
     if run_id:
         invalid = _run_id_error(run_id)
         if invalid:
             return _error(invalid)
         run_dir = output_dir / run_id
-        if not run_dir.is_dir():
+        try:
+            found = run_dir.is_dir()
+        except OSError:
+            found = False
+        if not found:
             return _error(f"Run '{run_id}' not found in {_display_path(output_dir)}.")
     else:
         runs = _sorted_newest_first(_list_subdirs(output_dir))
@@ -861,6 +943,13 @@ async def hercules_get_run_results(session_id: str = "", run_id: str = "") -> di
         xml_files = _sorted_newest_first(list(run_dir.glob("*_result.xml")))
     except OSError:
         xml_files = []  # run vanished mid-enumeration
+    if result_stem:
+        # A run folder is shared by every run of one MCP process (one XML/HTML pair per
+        # feature file); select the pair the caller asked for.
+        wanted = [path for path in xml_files if path.name == f"{result_stem}.xml" or path.name == f"{result_stem}_result.xml"]
+        if not wanted:
+            return _error(f"Result '{result_stem}' not found in run '{run_dir.name}'.")
+        xml_files = wanted
     cases: list[dict] = []
     if xml_files:
         try:
@@ -871,27 +960,41 @@ async def hercules_get_run_results(session_id: str = "", run_id: str = "") -> di
     statuses = [case["status"] for case in cases]
     report_md = run_dir / "Hercules_Test_Report.md"
     bundles_dir = run_dir / "bundles"
-    try:
-        html_files = sorted(run_dir.glob("*.html"))
-    except OSError:
-        html_files = []  # run vanished mid-enumeration
+    # The HTML belonging to the chosen XML (<feature>_result.xml -> <feature>_result.html);
+    # picking "the first *.html" would mix reports of different runs in a shared folder.
+    chosen_html: Path | None = None
+    if xml_files:
+        sibling = xml_files[0].with_suffix(".html")
+        try:
+            chosen_html = sibling if sibling.is_file() else None
+        except OSError:
+            chosen_html = None
+    if chosen_html is None and not xml_files:
+        try:
+            html_files = _sorted_newest_first(list(run_dir.glob("*.html")))
+        except OSError:
+            html_files = []  # run vanished mid-enumeration
+        chosen_html = html_files[0] if html_files else None
+    other_results = sorted(path.name[: -len(".xml")] for path in xml_files[1:]) if not result_stem else []
 
     return {
         "run_id": run_dir.name,
+        "result_id": xml_files[0].name[: -len(".xml")] if xml_files else None,
+        **({"other_results": other_results} if other_results else {}),
         "junit_xml": _display_path(xml_files[0]) if xml_files else None,
         "total": len(cases),
         "passed": statuses.count("passed"),
         "failed": statuses.count("failed"),
         "errors": statuses.count("error"),
         "report_md": _display_path(report_md) if report_md.exists() else None,
-        "html": _display_path(html_files[0]) if html_files else None,
+        "html": _display_path(chosen_html) if chosen_html else None,
         "bundles": sorted(_display_path(path) for path in _list_subdirs(bundles_dir)),
         "test_cases": [
             {
                 "name": case["name"],
                 "status": case["status"],
                 "time": case["time"],
-                **({"failure_message": case["failure_message"]} if case.get("failure_message") else {}),
+                **({"failure_message": _scrub_paths(case["failure_message"])} if case.get("failure_message") else {}),
             }
             for case in cases
         ],
@@ -905,32 +1008,34 @@ async def hercules_get_run_results(session_id: str = "", run_id: str = "") -> di
 async def hercules_open_dashboard(session_id: str = "") -> dict:
     """Locate the latest Hercules test report (the web dashboard arrives in a later phase).
 
-    Returns a file:// URL of the newest Hercules_Test_Report.md (or the run's
-    HTML report) plus a hint for serving the web dashboard.
+    Returns the root-relative path of the newest Hercules_Test_Report.md (or the
+    run's HTML report) plus a hint for serving the web dashboard.
 
     Args:
         session_id: Kept for symmetry; the report is located under opt/output.
 
     Returns:
-        {"dashboard": "not_running", "report_url": file://... | None, "hint"}.
+        {"dashboard": "not_running", "report_path": <root-relative path> | None, "report_url": (same), "hint"}.
     """
-    report_url: str | None = None
+    report_path: str | None = None
     output_dir = _result_dir()
     for run_dir in _sorted_newest_first(_list_subdirs(output_dir)):
         report_md = run_dir / "Hercules_Test_Report.md"
         try:
             if report_md.exists():
-                report_url = report_md.as_uri()
+                report_path = _display_path(report_md)
                 break
-            html_files = sorted(run_dir.glob("*.html"))
+            xml_files = _sorted_newest_first(list(run_dir.glob("*_result.xml")))
+            html_files = [xml.with_suffix(".html") for xml in xml_files[:1] if xml.with_suffix(".html").is_file()] or _sorted_newest_first(list(run_dir.glob("*.html")))
         except OSError:
             continue  # run vanished mid-enumeration
         if html_files:
-            report_url = html_files[0].as_uri()
+            report_path = _display_path(html_files[0])
             break
     return {
         "dashboard": "not_running",
-        "report_url": report_url,
+        "report_path": report_path,
+        "report_url": report_path,  # same value, kept for compatibility; paths are root-relative, never absolute host paths
         "hint": "start `hercules-dashboard` to serve the web dashboard",
     }
 
@@ -955,7 +1060,7 @@ async def hercules_check_config(session_id: str = "", ping_model: bool = False) 
     # Anchor the default at the Hercules root (TESTZEUS_ROOT or cwd) like every
     # other path in this module; AGENTS_LLM_CONFIG_FILE keeps override semantics.
     config_file = os.getenv("AGENTS_LLM_CONFIG_FILE", str(Path(_hercules_root()) / "agents_llm_config.json"))
-    checks["llm_config"] = {"path": os.path.abspath(config_file), "exists": os.path.isfile(config_file)}
+    checks["llm_config"] = {"path": _display_path(os.path.abspath(config_file)), "exists": os.path.isfile(config_file)}
 
     model = None
     model_error: str | None = None

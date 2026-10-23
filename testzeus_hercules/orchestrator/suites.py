@@ -645,7 +645,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        summary = asyncio.run(run_suite(args.suite_name, path=args.config, max_parallel_override=args.max_parallel, out_dir=args.out_dir))
+        summary = run_manager.run_cli(run_suite(args.suite_name, path=args.config, max_parallel_override=args.max_parallel, out_dir=args.out_dir))
+    except run_manager.CliInterrupted as exc:
+        print(f"hercules-suite: interrupted (signal {exc.signum}); scenario processes terminated.", file=sys.stderr)
+        return exc.exit_code
     except (FileNotFoundError, ValueError, yaml.YAMLError) as exc:
         # Configuration problems (missing/invalid suites file, unknown suite,
         # dependency cycle, empty suite): one clear line, not a traceback.

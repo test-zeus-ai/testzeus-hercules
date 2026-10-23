@@ -326,7 +326,7 @@ def test_check_config_anchors_llm_config_at_hercules_root(workspace, monkeypatch
 
     result = run(mcp_server.hercules_check_config(ping_model=False))
 
-    assert result["checks"]["llm_config"]["path"] == str(tmp_path / "agents_llm_config.json")
+    assert result["checks"]["llm_config"]["path"] == "agents_llm_config.json"
     assert result["checks"]["llm_config"]["exists"] is False
 
 
@@ -338,5 +338,5 @@ def test_check_config_honors_llm_config_env_override(workspace, monkeypatch) -> 
 
     result = run(mcp_server.hercules_check_config(ping_model=False))
 
-    assert result["checks"]["llm_config"]["path"] == str(custom)
+    assert result["checks"]["llm_config"]["path"] == "custom_llm_config.json"
     assert result["checks"]["llm_config"]["exists"] is True

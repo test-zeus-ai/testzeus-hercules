@@ -53,6 +53,52 @@ def redact_url(url: str) -> str:
     return urllib.parse.urlunsplit((parsed.scheme, netloc, parsed.path, redacted_query, parsed.fragment))
 
 
+def redact_webhook_url(url: str) -> str:
+    """Log-safe form of a webhook URL: ``scheme://host[:port]`` plus a masked path; never raises.
+
+    Webhook URLs carry their secret in the path (Slack ``/services/T/B/SECRET``,
+    Discord ``/api/webhooks/<id>/<token>``) or the query (``?token=...``), so
+    only the origin survives. Userinfo, path segments, query and fragment are
+    dropped; a non-empty path becomes ``/[REDACTED]``.
+    """
+    if not url:
+        return url
+    try:
+        parsed = urllib.parse.urlsplit(str(url).strip())
+        host = parsed.hostname or ""
+        if not parsed.scheme or not host:
+            return "[unparsable-url]"
+        netloc = f"[{host}]" if ":" in host else host
+        try:
+            port = parsed.port
+        except ValueError:
+            port = None
+        if port is not None:
+            netloc = f"{netloc}:{port}"
+        path = f"/{REDACTED_PLACEHOLDER}" if parsed.path.strip("/") else ""
+        return f"{parsed.scheme}://{netloc}{path}"
+    except Exception:
+        return "[unparsable-url]"
+
+
+_URL_IN_TEXT_RE = re.compile(r"[a-zA-Z][a-zA-Z0-9+.\-]*://[^\s'\"<>]+")
+
+
+def redact_webhook_text(text: str, url: str = "") -> str:
+    """Mask every URL inside ``text`` (e.g. an httpx error message) with :func:`redact_webhook_url`.
+
+    The exact ``url`` is replaced first so URLs the regex would cut short
+    (spaces, quotes) cannot leak either.
+    """
+    try:
+        out = str(text)
+        if url:
+            out = out.replace(url, redact_webhook_url(url))
+        return _URL_IN_TEXT_RE.sub(lambda match: redact_webhook_url(match.group(0)), out)
+    except Exception:
+        return "[redacted]"
+
+
 # Query parameter names whose values must never reach log output. Matched
 # case-insensitively against the decoded parameter name: exactly for these
 # short names (so a non-secret like "monitor" or "keyword" is kept), and by the

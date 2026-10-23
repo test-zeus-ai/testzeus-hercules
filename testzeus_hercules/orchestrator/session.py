@@ -92,7 +92,7 @@ class SessionState:
             f"SessionState(session_id={self.session_id!r}, app_url={_redact_url(self.app_url)!r}, "
             f"project_path={self.project_path!r}, test_type={self.test_type!r}, "
             f"test_scope={self.test_scope!r}, credentials={'***' if self.credentials else '{}'!r}, "
-            f"prd_path={self.prd_path!r}, created_at={self.created_at!r}, "
+            f"prd_path={_redact_url(self.prd_path)!r}, created_at={self.created_at!r}, "
             f"code_summary_path={self.code_summary_path!r}, standard_prd_path={self.standard_prd_path!r}, "
             f"test_plan_path={self.test_plan_path!r}, "
             f"last_run_summaries={len(self.last_run_summaries)} run(s), "
@@ -115,7 +115,8 @@ class SessionState:
             "test_type": self.test_type,
             "test_scope": self.test_scope,
             "credentials": credentials,
-            "prd_path": self.prd_path,
+            # A PRD URL may carry a token in its query: persist it redacted (in-memory state keeps the real value).
+            "prd_path": _redact_url(self.prd_path) if self.prd_path.lower().startswith(("http://", "https://")) else self.prd_path,
             "created_at": self.created_at,
             "code_summary_path": self.code_summary_path,
             "standard_prd_path": self.standard_prd_path,

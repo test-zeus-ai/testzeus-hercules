@@ -56,6 +56,12 @@ RESERVED_INJECTED_ENV_VARS = frozenset({"HERCULES_HISTORY_DB", "PROJECT_SOURCE_R
 # Upper bound on waiting out a killed child's pipes: when a wedged browser
 # process group survived the kill, reaping must not outlive the deadline.
 REAP_TIMEOUT_S = 10.0
+# Grace between SIGTERM and SIGKILL when the runner itself is interrupted or exits
+# with scenario subprocesses still alive (lets chromium close cleanly).
+TERMINATE_GRACE_S = 3.0
+# Process-group leaders (== pids; children are started with start_new_session=True)
+# of scenario subprocesses that are currently running.
+_LIVE_GROUPS: set[int] = set()
 
 
 @dataclass
@@ -237,6 +243,116 @@ def _kill_process_tree(proc: asyncio.subprocess.Process) -> None:
         pass  # the child was reaped between the timeout and the kill
 
 
+def _signal_group(pgid: int, sig: int) -> bool:
+    """Send ``sig`` to a process group; True while the group (still) exists."""
+    if not hasattr(os, "killpg"):
+        return False
+    try:
+        os.killpg(pgid, sig)
+    except ProcessLookupError:
+        return False
+    except OSError:
+        return False
+    return True
+
+
+def terminate_live_children(grace_s: float = TERMINATE_GRACE_S) -> int:
+    """SIGTERM every live scenario process group, wait ``grace_s``, then SIGKILL the rest.
+
+    Safety net for the CLI entry points: whatever way the runner exits
+    (SIGTERM, SIGINT, an exception, normal exit) no ``python -m testzeus_hercules``
+    or browser tree may be left behind (orphaned to ppid 1). Returns the number
+    of groups that were still alive. Never raises.
+    """
+    groups = sorted(_LIVE_GROUPS)
+    _LIVE_GROUPS.clear()
+    alive = [pgid for pgid in groups if _signal_group(pgid, signal.SIGTERM)]
+    deadline = time.monotonic() + max(0.0, grace_s)
+    while alive and time.monotonic() < deadline:
+        time.sleep(0.05)
+        for pgid in list(alive):
+            try:
+                # Reap the leader if it is our (zombie) child so the group can disappear.
+                os.waitpid(pgid, os.WNOHANG)
+            except (ChildProcessError, OSError):
+                pass
+        alive = [pgid for pgid in alive if _signal_group(pgid, 0)]
+    for pgid in alive:
+        _signal_group(pgid, signal.SIGKILL)
+    return len(groups)
+
+
+async def _terminate_process_tree(proc: asyncio.subprocess.Process, grace_s: float = TERMINATE_GRACE_S) -> None:
+    """Graceful tree shutdown for a cancelled run: SIGTERM the group, wait, then SIGKILL it."""
+    if hasattr(os, "killpg"):
+        _signal_group(proc.pid, signal.SIGTERM)
+        try:
+            await asyncio.wait_for(asyncio.shield(proc.wait()), timeout=grace_s)
+        except (asyncio.TimeoutError, Exception):  # noqa: BLE001 - escalate to SIGKILL below
+            pass
+    _kill_process_tree(proc)
+    try:
+        await asyncio.wait_for(proc.wait(), timeout=REAP_TIMEOUT_S)
+    except Exception:  # noqa: BLE001 - reaping a dead child must never raise
+        pass
+
+
+class CliInterrupted(Exception):
+    """Raised by :func:`run_cli` when SIGINT/SIGTERM interrupted the run (``exit_code`` = 128 + signal)."""
+
+    def __init__(self, signum: int):
+        super().__init__(f"interrupted by signal {signum}")
+        self.signum = signum
+        self.exit_code = 128 + int(signum)
+
+
+def run_cli(coro):
+    """``asyncio.run`` for the CLI entry points with orphan-proof signal handling.
+
+    SIGINT/SIGTERM cancel the main task (so every running scenario subprocess
+    gets a SIGTERM -> grace -> SIGKILL of its whole process group, see
+    :func:`run_feature_isolated`) and surface as :class:`CliInterrupted` instead
+    of a traceback. A ``finally`` safety net terminates any process group that
+    is still registered, whatever the exit path.
+    """
+    received: list[int] = []
+
+    async def _runner():
+        loop = asyncio.get_running_loop()
+        task = asyncio.current_task()
+        installed: list[int] = []
+
+        def _on_signal(signum: int) -> None:
+            received.append(signum)
+            task.cancel()
+
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            try:
+                loop.add_signal_handler(sig, _on_signal, int(sig))
+                installed.append(sig)
+            except (NotImplementedError, RuntimeError, ValueError):  # Windows / non-main thread
+                pass
+        try:
+            return await coro
+        finally:
+            for sig in installed:
+                try:
+                    loop.remove_signal_handler(sig)
+                except Exception:  # noqa: BLE001
+                    pass
+
+    try:
+        return asyncio.run(_runner())
+    except asyncio.CancelledError:
+        if received:
+            raise CliInterrupted(received[0]) from None
+        raise
+    except KeyboardInterrupt:
+        raise CliInterrupted(int(signal.SIGINT)) from None
+    finally:
+        terminate_live_children()
+
+
 async def run_feature_isolated(feature_path: str, workroot: str, env_extra: dict[str, str] | None = None, timeout_s: float = DEFAULT_TIMEOUT_S) -> FeatureResult:
     """Run one (single-scenario) feature file in an isolated subprocess.
 
@@ -295,9 +411,15 @@ async def run_feature_isolated(feature_path: str, workroot: str, env_extra: dict
             error=f"Failed to start subprocess: {type(exc).__name__}: {exc}",
         )
 
+    _LIVE_GROUPS.add(proc.pid)
     try:
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_s)
         exit_code = proc.returncode
+    except asyncio.CancelledError:
+        # The runner is being interrupted (SIGINT/SIGTERM or an outer cancel):
+        # take the child's whole tree down instead of orphaning chromium.
+        await _terminate_process_tree(proc)
+        raise
     except asyncio.TimeoutError:
         _kill_process_tree(proc)
         try:
@@ -310,6 +432,8 @@ async def run_feature_isolated(feature_path: str, workroot: str, env_extra: dict
         except Exception:  # noqa: BLE001 - reaping a dead child must never raise
             stdout, stderr = b"", b""
         error = f"Timed out after {timeout_s:g}s; process killed."
+    finally:
+        _LIVE_GROUPS.discard(proc.pid)
 
     duration = time.monotonic() - start
     junit_xml = _find_junit_xml(workspace)
@@ -560,7 +684,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT_S, help="Per-scenario timeout in seconds (default: 1800).")
     args = parser.parse_args(argv)
 
-    summary = asyncio.run(run_feature_file_parallel(args.feature_file, max_parallel=args.max_parallel, out_dir=args.out_dir, timeout_s=args.timeout))
+    try:
+        summary = run_cli(run_feature_file_parallel(args.feature_file, max_parallel=args.max_parallel, out_dir=args.out_dir, timeout_s=args.timeout))
+    except CliInterrupted as exc:
+        print(f"hercules-run-manager: interrupted (signal {exc.signum}); scenario processes terminated.", file=sys.stderr)
+        return exc.exit_code
+    except FileNotFoundError as exc:
+        print(f"hercules-run-manager: error: {exc}", file=sys.stderr)
+        return 2
     if summary.get("error") and not summary.get("results"):
         # Nothing ran (e.g. a feature file without scenarios): that is not a
         # green run, whatever EXIT_CODE_COMPAT says.

@@ -92,7 +92,10 @@ async def execute_feature_file(feature_path: str, progress_sink: Callable[[dict]
         except SystemExit as exc:
             code = getattr(exc, "code", None)
             if code in (1, "1"):
-                error = f"Execution aborted with exit code 1: no scenarios could be run from feature file " f"{feature_path}. Ensure the file exists and contains at least one 'Scenario:' block."
+                error = (
+                    f"Execution aborted with exit code 1: no scenarios could be run from feature file "
+                    f"{os.path.basename(feature_path)}. Ensure the file exists and contains at least one 'Scenario:' block."
+                )
             else:
                 raise
         except Exception as exc:

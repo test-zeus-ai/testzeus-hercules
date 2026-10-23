@@ -551,6 +551,14 @@ value. `hercules-suite` exits 1 when any scenario failed or errored
 (`EXIT_CODE_COMPAT=1` forces 0) and 2 with a one-line error for configuration
 problems (missing or invalid suites file, unknown suite, dependency cycle).
 
+`hercules-run-manager`, `hercules-suite` and `hercules-monitor` are orphan-proof:
+each scenario runs in its own process group, and on SIGINT/SIGTERM (or any exit
+path) the whole group (scenario process plus its browser tree) gets SIGTERM, a
+short grace period, then SIGKILL. `hercules-run-manager` and `hercules-suite`
+then exit 130 (SIGINT) or 143 (SIGTERM) without a traceback; the monitor daemon
+treats the signal as a normal stop and exits 0. `hercules-run-manager` prints a
+one-line error and exits 2 when the feature file does not exist.
+
 `env` entries may override the reserved workspace-injected variables
 (`HERCULES_HISTORY_DB`, `PROJECT_SOURCE_ROOT`, `INPUT_GHERKIN_FILE_PATH`,
 `TEST_DATA_PATH`); the override wins, and a warning is logged when it replaces
@@ -570,6 +578,9 @@ hercules-monitor --config .hercules/monitor.yaml   # daemon loop
 hercules-monitor --once                            # single cycle, exit 1 on failures
 hercules-monitor --interval-hours 1                # override the configured interval
 ```
+
+Webhook log lines never contain the webhook URL's path or query (Slack/Discord
+secrets live there): only `scheme://host` plus a masked path is logged.
 
 Key settings: `suites` (required), `interval_hours` (default 24, fractional
 OK), `webhook_url` (receives `{"text": "<summary>"}`), `notify_on`
