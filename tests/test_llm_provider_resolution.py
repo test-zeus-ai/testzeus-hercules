@@ -248,3 +248,83 @@ def test_planner_uses_a_placeholder_key_only_when_no_key_exists(monkeypatch) -> 
     agent = high_level_planner_agent.PlannerAgent({"model_name": "llama3", "model_api_type": "ollama"}, {})
 
     assert agent.llm.openai_api_key.get_secret_value() == "not-needed"
+
+
+# ── credentials: one resolution for the planner and the navigation agents ───────────────────────────────
+
+
+def _planner_key(monkeypatch, config: dict) -> str | None:
+    monkeypatch.setattr(high_level_planner_agent, "get_user_ltm", lambda: None)
+    key = high_level_planner_agent.PlannerAgent(config, {}).llm.openai_api_key
+    return key.get_secret_value() if key else None
+
+
+def test_planner_uses_model_api_key_from_the_environment(monkeypatch) -> None:
+    monkeypatch.setenv("MODEL_API_KEY", "env-model-key")
+    config = {"model": "gpt-4o", "base_url": "https://api.example.com/v1"}
+
+    assert _planner_key(monkeypatch, config) == "env-model-key"
+    assert create_chat_model(config).openai_api_key.get_secret_value() == "env-model-key"
+
+
+def test_planner_accepts_the_raw_model_api_key(monkeypatch) -> None:
+    config = {"model_name": "gpt-4o", "model_api_key": "raw-key", "model_base_url": "https://api.example.com/v1"}
+
+    assert _planner_key(monkeypatch, config) == "raw-key"
+    assert create_chat_model(config).openai_api_key.get_secret_value() == "raw-key"
+
+
+def test_planner_uses_azure_openai_api_key_from_the_environment(monkeypatch) -> None:
+    monkeypatch.setenv("AZURE_OPENAI_API_KEY", "azure-env-key")
+    config = {"model": "gpt-4o", "api_type": "azure", "api_version": "2024-05-01-preview", "base_url": "https://res.openai.azure.com"}
+    monkeypatch.setattr(high_level_planner_agent, "get_user_ltm", lambda: None)
+
+    agent = high_level_planner_agent.PlannerAgent(config, {})
+
+    assert isinstance(agent.llm, AzureChatOpenAI) and agent.llm.openai_api_key.get_secret_value() == "azure-env-key"
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        {"model": "gpt-4o", "api_key": "k", "base_url": "https://api.example.com/v1"},
+        {"model": "llama3", "api_type": "ollama", "client_host": "http://gpu-box:11434"},
+        {"model": "qwen", "base_url": "http://127.0.0.1:4000/v1"},
+        {"model": "gemini-2.0-flash", "api_key": "g"},
+    ],
+)
+def test_planner_and_navigation_agents_resolve_the_same_endpoint_and_key(monkeypatch, config) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-other-service")
+    monkeypatch.setattr(high_level_planner_agent, "get_user_ltm", lambda: None)
+
+    planner = high_level_planner_agent.PlannerAgent(dict(config), {}).llm
+    nav = create_chat_model(dict(config), {})
+
+    assert planner.openai_api_base == nav.openai_api_base
+    assert planner.openai_api_key.get_secret_value() == nav.openai_api_key.get_secret_value()
+
+
+# ── the real OPENAI_API_KEY must not be sent to an Ollama host ──────────────────────────────────────────
+
+
+@pytest.mark.parametrize("host", ["http://gpu-box:11434", "gpu-box:11434", "http://localhost:11434"])
+def test_ollama_never_receives_the_environment_openai_key(monkeypatch, host) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-real-secret")
+    config = {"model_name": "llama3", "model_api_type": "ollama", "model_client_host": host}
+
+    assert create_chat_model(config).openai_api_key.get_secret_value() == "not-needed"
+    assert _planner_key(monkeypatch, {"model_name": "llama3", "model_api_type": "ollama", "model_client_host": host}) == "not-needed"
+
+
+# ── Azure next to an OpenAI gateway configured in the environment ───────────────────────────────────────
+
+
+@pytest.mark.parametrize("variable", ["OPENAI_BASE_URL", "OPENAI_API_BASE"])
+def test_azure_client_ignores_an_openai_gateway_in_the_environment(monkeypatch, variable) -> None:
+    monkeypatch.setenv(variable, "https://gateway.corp/v1")
+    config = {"model_name": "gpt-4o", "model_api_key": "k", "model_api_type": "azure", "model_api_version": "2024-05-01-preview", "model_base_url": "https://res.openai.azure.com"}
+
+    model = create_chat_model(config)
+
+    assert isinstance(model, AzureChatOpenAI)
+    assert str(model.client._client.base_url) == "https://res.openai.azure.com/openai/deployments/gpt-4o/"

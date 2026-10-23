@@ -1,13 +1,17 @@
 name: Publish Docker image
 
-# Builds testzeus/hercules for linux/amd64 and linux/arm64 and pushes it to Docker Hub.
+# Publishes testzeus/hercules for linux/amd64 and linux/arm64 to Docker Hub as one multi-arch tag.
 # The published image used to be arm64-only (Intel/AMD hosts could not run it) and was last
 # pushed in May 2025; this replaces the commented-out publish step in release.yml.
+#
+# Each architecture is built on a native runner (arm64 under QEMU emulation would not finish: the
+# image installs torch/CUDA wheels and Playwright browsers), pushed by digest, and a final job
+# merges the two digests into the tags.
 #
 # Pushing happens only for release tags (and for a manual run from the default branch with
 # "push" ticked). Every other run builds both architectures without pushing, so a manual run from
 # a feature branch is a safe build check. Needs the DOCKERHUB_USERNAME repository variable and the
-# DOCKERHUB_TOKEN secret; without them the image is built but not pushed.
+# DOCKERHUB_TOKEN secret; without them the images are built but not pushed.
 
 on:
   push:
@@ -28,18 +32,23 @@ on:
 permissions:
   contents: read
 
-# One publish at a time, so an older tag finishing late cannot overwrite a newer image.
+# One queue per ref: every release tag gets its own run, so tags pushed close together are never
+# dropped (a single shared group keeps only one pending run and would cancel the ones in between).
 concurrency:
-  group: docker-publish
+  group: docker-publish-${{ github.ref }}
   cancel-in-progress: false
 
 env:
   IMAGE_NAME: testzeus/hercules
 
 jobs:
-  docker:
+  prepare:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 10
+    outputs:
+      tags: ${{ steps.tags.outputs.tags }}
+      primary: ${{ steps.tags.outputs.primary }}
+      push: ${{ steps.tags.outputs.push }}
     env:
       DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -48,12 +57,9 @@ jobs:
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
     steps:
       - uses: actions/checkout@v7
-
-      # torch + the CUDA wheels make this a multi-GB image; free runner disk before building.
-      - name: Free disk space
-        run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
-          df -h /
+        with:
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Resolve image tags
         id: tags
@@ -65,14 +71,21 @@ jobs:
             echo "::error::'${tag}' is not a valid image tag"; exit 1
           fi
           if [ "${tag}" = "latest" ]; then
-            echo "::error::'latest' is only published automatically for plain release tags"; exit 1
+            echo "::error::'latest' is only published automatically for the highest release tag"; exit 1
           fi
           tags="${IMAGE_NAME}:${tag}"
-          # 'latest' only for a release tag pushed to the repository, and only plain X.Y.Z (no pre-release suffix).
+          # 'latest' moves only for a plain X.Y.Z release tag that is also the HIGHEST such tag in the
+          # repository, so a maintenance release (1.4.9 after 2.0.0) never downgrades `docker pull`.
           if [ "${GITHUB_REF_TYPE}" = "tag" ] && [ -z "${INPUT_TAG}" ] && printf '%s' "${tag}" | grep -Eq '^v?[0-9]+\.[0-9]+\.[0-9]+$'; then
-            tags="${tags},${IMAGE_NAME}:latest"
+            highest="$(git tag --list | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' | sed 's/^v//' | sort -V | tail -n 1)"
+            if [ "${tag#v}" = "${highest}" ]; then
+              tags="${tags},${IMAGE_NAME}:latest"
+            else
+              echo "Not moving 'latest': ${tag} is not the highest release tag (${highest})."
+            fi
           fi
           echo "tags=${tags}" >> "$GITHUB_OUTPUT"
+          echo "primary=${tag}" >> "$GITHUB_OUTPUT"
           echo "Will tag: ${tags}"
 
           want_push=false
@@ -88,22 +101,108 @@ jobs:
           echo "push=${want_push}" >> "$GITHUB_OUTPUT"
           echo "Push: ${want_push}"
 
-      - uses: docker/setup-qemu-action@v3
+  build:
+    needs: prepare
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    env:
+      DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      PUSH: ${{ needs.prepare.outputs.push }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # torch + the CUDA wheels make this a multi-GB image; free runner disk before building.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
       - uses: docker/setup-buildx-action@v3
 
       - name: Log in to Docker Hub
-        if: steps.tags.outputs.push == 'true'
+        if: needs.prepare.outputs.push == 'true'
         uses: docker/login-action@v3
         with:
           username: ${{ env.DOCKERHUB_USERNAME }}
           password: ${{ env.DOCKERHUB_TOKEN }}
 
       # No build cache: a tag run cannot read another tag's cache, and exporting the multi-GB torch/CUDA
-      # layers for two architectures would eat the repository's 10 GB cache quota used by CI.
-      - name: Build and push
+      # layers would eat the repository's 10 GB cache quota used by CI. Pushed by digest only; the merge
+      # job below creates the tags.
+      - name: Build (and push by digest)
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
-          push: ${{ steps.tags.outputs.push == 'true' }}
-          tags: ${{ steps.tags.outputs.tags }}
+          platforms: ${{ matrix.platform }}
+          outputs: ${{ needs.prepare.outputs.push == 'true' && format('type=image,name={0},push-by-digest=true,name-canonical=true,push=true', env.IMAGE_NAME) || '' }}
+
+      - name: Export digest
+        if: needs.prepare.outputs.push == 'true'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p "${RUNNER_TEMP}/digests"
+          touch "${RUNNER_TEMP}/digests/${DIGEST#sha256:}"
+
+      - name: Upload digest
+        if: needs.prepare.outputs.push == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    needs: [prepare, build]
+    if: needs.prepare.outputs.push == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      TAGS: ${{ needs.prepare.outputs.tags }}
+      PRIMARY: ${{ needs.prepare.outputs.primary }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ env.DOCKERHUB_TOKEN }}
+
+      - name: Create the multi-arch manifest
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          digests=(*)
+          if [ "${#digests[@]}" -ne 2 ]; then
+            echo "::error::expected 2 digests (amd64, arm64), found ${#digests[@]}"; exit 1
+          fi
+          tag_args=()
+          IFS=',' read -r -a tag_list <<< "${TAGS}"
+          for t in "${tag_list[@]}"; do tag_args+=(-t "${t}"); done
+          sources=()
+          for digest in "${digests[@]}"; do sources+=("${IMAGE_NAME}@sha256:${digest}"); done
+          docker buildx imagetools create "${tag_args[@]}" "${sources[@]}"
+
+      - name: Inspect the result
+        run: docker buildx imagetools inspect "${IMAGE_NAME}:${PRIMARY}"

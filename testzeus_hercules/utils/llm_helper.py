@@ -176,9 +176,30 @@ def resolve_provider_settings(model_config: Dict[str, Any], model_name: str) -> 
     }
 
 
-def keyless_api_key() -> str:
-    """API key to send to a local endpoint that does not check it: the environment's key if there is one."""
+def keyless_api_key(settings: Dict[str, Any]) -> str:
+    """API key to send to a local endpoint that does not check it.
+
+    Ollama hosts get a placeholder: they ignore the key, and the host may be another machine on the network,
+    so a real key must never be sent to it. An explicit local proxy (LiteLLM, a gateway on loopback) may be
+    key-protected, so it gets the environment's OPENAI_API_KEY when there is one.
+    """
+    if settings.get("api_type") == "ollama":
+        return _KEYLESS_PLACEHOLDER_API_KEY
     return os.getenv("OPENAI_API_KEY") or _KEYLESS_PLACEHOLDER_API_KEY
+
+
+def resolve_api_key(model_config: Dict[str, Any], settings: Dict[str, Any]) -> Optional[str]:
+    """The API key for ``model_config``, resolved identically for every agent (planner and navigation agents).
+
+    Order: ``api_key`` / ``model_api_key`` in the config, ``MODEL_API_KEY``, ``AZURE_OPENAI_API_KEY`` (Azure
+    only), then the keyless handling for local endpoints. ``None`` means "no key configured".
+    """
+    key = model_config.get("api_key") or model_config.get("model_api_key") or os.getenv("MODEL_API_KEY")
+    if not key and settings["azure"]:
+        key = os.getenv("AZURE_OPENAI_API_KEY")
+    if not key and settings["keyless"]:
+        key = keyless_api_key(settings)
+    return key or None
 
 
 def build_chat_client(kwargs: Dict[str, Any], settings: Dict[str, Any]) -> BaseChatModel:
@@ -189,7 +210,8 @@ def build_chat_client(kwargs: Dict[str, Any], settings: Dict[str, Any]) -> BaseC
         # azure_endpoint=None lets the client fall back to AZURE_OPENAI_ENDPOINT.
         if not settings["base_url"] and not os.getenv("AZURE_OPENAI_ENDPOINT"):
             raise ValueError("Azure OpenAI needs the resource endpoint: set model_base_url (https://<resource>.openai.azure.com/) or AZURE_OPENAI_ENDPOINT.")
-        return AzureChatOpenAI(azure_endpoint=settings["base_url"], api_version=settings["api_version"], azure_deployment=kwargs.get("model"), **kwargs)
+        # base_url=None keeps OPENAI_BASE_URL / OPENAI_API_BASE (a gateway for the other agents) out of the Azure client.
+        return AzureChatOpenAI(azure_endpoint=settings["base_url"], api_version=settings["api_version"], azure_deployment=kwargs.get("model"), base_url=None, **kwargs)
     if settings["base_url"]:
         kwargs["base_url"] = settings["base_url"]
     return ChatOpenAI(**kwargs)
@@ -205,11 +227,7 @@ def create_chat_model(
     adapted = adapt_llm_params_for_model(model_name, dict(llm_config_params))
 
     settings = resolve_provider_settings(model_config, model_name)
-    api_key = model_config.get("api_key") or model_config.get("model_api_key") or os.getenv("MODEL_API_KEY")
-    if not api_key and settings["azure"]:
-        api_key = os.getenv("AZURE_OPENAI_API_KEY")
-    if not api_key and settings["keyless"]:
-        api_key = keyless_api_key()  # local servers (Ollama, llama.cpp, ...) do not check the key
+    api_key = resolve_api_key(model_config, settings)
     if not api_key:
         raise ValueError("LLM API key is missing. Set MODEL_API_KEY or model_api_key in config.")
 

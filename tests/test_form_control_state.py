@@ -11,7 +11,7 @@ import os
 from pathlib import Path
 
 import pytest
-from testzeus_hercules.core.tools.get_interactive_elements import compact_interactive_node, flatten_elements
+from testzeus_hercules.core.tools.get_interactive_elements import compact_interactive_node, flatten_elements, is_form_field_node
 
 # ── flattening ───────────────────────────────────────────────────────────────
 
@@ -56,6 +56,28 @@ def test_form_field_name_is_exposed_separately() -> None:
     assert node["name"] == "Red" and node["field_name"] == "colour" and node["checked"] is True
 
 
+def test_input_fields_lists_aria_form_widgets_that_are_not_form_tags() -> None:
+    # get_input_fields shares the flattener: a <div role=switch> is a form control even though 'div' is not a form tag
+    tree = _tree({"md": "9", "tag": "div", "role": "switch", "name": "Dark mode", "checked": True}, {"md": "10", "tag": "div", "name": "Just text"})
+
+    assert [e["md"] for e in flatten_elements(tree, include=is_form_field_node, compact=False)] == ["9"]
+
+
+def test_input_fields_keep_the_full_node_while_interactive_elements_are_compacted() -> None:
+    node = {"md": "2", "tag": "input", "role": "textbox", "name": "Email", "data-testid": "email-input"}
+
+    assert flatten_elements(_tree(node), include=is_form_field_node, compact=False)[0]["data-testid"] == "email-input"
+    assert "data-testid" not in flatten_elements(_tree(node))[0]
+
+
+def test_input_fields_tool_uses_the_shared_flattener() -> None:
+    import importlib
+
+    module = importlib.import_module("testzeus_hercules.core.tools.get_input_fields")  # the package re-exports the tool function under this name
+
+    assert module.flatten_elements is flatten_elements  # no second copy to keep in sync
+
+
 # ── real browser ─────────────────────────────────────────────────────────────
 
 FORM = """<form>
@@ -68,7 +90,11 @@ FORM = """<form>
 <div role=switch aria-checked=true tabindex=0>Dark mode</div>
 <div role=checkbox aria-checked=mixed tabindex=0>Select all</div>
 <ul role=listbox><li role=option aria-selected=true tabindex=0>Small</li><li role=option aria-selected=false tabindex=0>Large</li></ul>
-<label>Email <input id=email type=email></label>
+<label>Email <input id=email type=email name=user_email></label>
+<label>Country <select id=country name=country><option>US</option><option>Canada</option><option>Mexico</option></select></label>
+<label><select id=lang name=lang><option>EN</option><option>FR</option></select> Language</label>
+<label><input type=checkbox role=switch id=dm name=dm> Night mode</label>
+<fieldset disabled><label><input type=checkbox id=fs> Opt in</label></fieldset>
 <button id=go type=button>Go</button><label for=go>Button label</label>
 </form>"""
 
@@ -120,7 +146,15 @@ async def _check_real_tree(tmp_path: Path) -> None:
                 assert by_name["Select all"]["checked"] == "mixed"
                 assert by_name["Locked"]["disabled"] is True
                 assert by_name["Small"]["selected"] is True and by_name["Large"]["selected"] is False
-                assert any(c.get("name") == "Email" and c.get("role") == "textbox" for c in before)
+                # the label is the name for every control type; the HTML name attribute moves to field_name
+                email = next(c for c in before if c.get("tag_type") == "email")
+                assert email["name"] == "Email" and email["field_name"] == "user_email"
+                assert by_name["Night mode"]["role"] == "switch" and by_name["Night mode"]["field_name"] == "dm"
+                # a label wrapping a <select> names the control by its label text, not by the options
+                selects = {c.get("name") for c in before if c.get("tag") == "select"}
+                assert selects == {"Country", "Language"}
+                # a control disabled through <fieldset disabled> is reported as disabled
+                assert by_name["Opt in"]["disabled"] is True
                 # an unlabelled checkbox is named after its form field, never after its value ("on")
                 assert "on" not in {c.get("name") for c in before if c.get("role") == "checkbox"}
                 assert any(c.get("name") == "remember" and c.get("role") == "checkbox" for c in before)

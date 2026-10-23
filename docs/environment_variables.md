@@ -165,8 +165,10 @@ gateway) is not replaced by a provider's public endpoint.
 
 With neither a type nor a base URL, `gemini-*` and `claude-*` model names are routed to Google and Anthropic
 (skipped when `OPENAI_BASE_URL` / `OPENAI_API_BASE` is set). A missing API key is accepted only for Ollama and
-for loopback `model_base_url`s; for those, `OPENAI_API_KEY` is used when set (a key-protected local proxy), else
-a placeholder. The `anthropic_bedrock` and `anthropicvert` entries in
+for loopback `model_base_url`s. Ollama always gets a placeholder key (the host may be another machine, so a real key is never
+sent to it); an explicit local proxy gets `OPENAI_API_KEY` when it is set (a key-protected LiteLLM), else a placeholder.
+The planner and the navigation agents resolve the endpoint and the key (`api_key`, `MODEL_API_KEY`, `AZURE_OPENAI_API_KEY`)
+the same way. The `anthropic_bedrock` and `anthropicvert` entries in
 `agents_llm_config-example.json` need AWS/Google SDK clients that this runtime does not use: put an
 OpenAI-compatible gateway (for example LiteLLM) in front and point `model_base_url` at it.
 

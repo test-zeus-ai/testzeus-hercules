@@ -1,7 +1,7 @@
 import json
 import os
 import time
-from typing import Annotated, Any, Dict, List, Union
+from typing import Annotated, Any, Callable, Dict, List, Union
 
 from playwright.async_api import Page
 from testzeus_hercules.config import get_global_conf
@@ -16,11 +16,8 @@ from testzeus_hercules.utils.get_detailed_accessibility_tree import (
 )
 from testzeus_hercules.utils.logger import logger
 
-
-# Flatten the hierarchy into a list of elements
-def flatten_elements(node: dict, parent_name: str = "", parent_title: str = "") -> list[dict]:
-    elements = []
-    interactive_roles = {
+INTERACTIVE_ROLES = frozenset(
+    {
         "button",
         "link",
         "checkbox",
@@ -38,6 +35,36 @@ def flatten_elements(node: dict, parent_name: str = "", parent_title: str = "") 
         "tab",
         "treeitem",
     }
+)
+INTERACTIVE_TAGS = frozenset({"a", "button", "input", "select", "textarea"})
+# get_input_fields: HTML form elements, plus ARIA widgets that act as form controls without being
+# one (<div role="switch">, <div role="checkbox">, custom comboboxes ...).
+FORM_FIELD_TAGS = frozenset({"input", "label", "select", "textarea", "button", "fieldset", "legend", "datalist", "output", "option", "optgroup"})
+FORM_FIELD_ROLES = frozenset({"checkbox", "radio", "switch", "textbox", "searchbox", "combobox", "listbox", "slider", "spinbutton", "option", "menuitemcheckbox", "menuitemradio"})
+
+
+def _node_role(node: dict) -> str:
+    # The role arrives under the full "role" key, or the short "r" key after key shortening.
+    return str(node.get("role") or node.get("r") or "").lower()
+
+
+def is_interactive_node(node: dict) -> bool:
+    """Elements get_interactive_elements lists: interactive roles or tags, or clickable/focusable nodes."""
+    return _node_role(node) in INTERACTIVE_ROLES or str(node.get("tag", "")).lower() in INTERACTIVE_TAGS or bool(node.get("clickable", False)) or bool(node.get("focusable", False))
+
+
+def is_form_field_node(node: dict) -> bool:
+    """Elements get_input_fields lists: HTML form elements and ARIA form widgets."""
+    return str(node.get("tag", "")).lower() in FORM_FIELD_TAGS or _node_role(node) in FORM_FIELD_ROLES
+
+
+def flatten_elements(node: dict, parent_name: str = "", parent_title: str = "", *, include: Callable[[dict], bool] = is_interactive_node, compact: bool = True) -> list[dict]:
+    """Flatten the tree into the list of elements ``include`` selects (children before parents).
+
+    A child without a name/title inherits its parent's. ``compact`` trims each node to the keys an agent
+    needs; get_input_fields keeps the full node (it also reports ids and test attributes).
+    """
+    elements: list[dict] = []
 
     if "children" in node:
         # Get current node's name and title for passing to children
@@ -50,18 +77,12 @@ def flatten_elements(node: dict, parent_name: str = "", parent_title: str = "") 
                 child["name"] = current_name
             if "title" not in child and current_title:
                 child["title"] = current_title
-            elements.extend(flatten_elements(child, current_name, current_title))
+            elements.extend(flatten_elements(child, current_name, current_title, include=include, compact=compact))
 
-    # Include elements with interactive roles or clickable/focusable elements
-    if "md" in node and (
-        (node.get("role") or node.get("r") or "").lower() in interactive_roles
-        or node.get("tag", "").lower() in {"a", "button", "input", "select", "textarea"}
-        or node.get("clickable", False)
-        or node.get("focusable", False)
-    ):
+    if "md" in node and include(node):
         new_node = node.copy()
         new_node.pop("children", None)
-        elements.append(compact_interactive_node(new_node))
+        elements.append(compact_interactive_node(new_node) if compact else new_node)
     return elements
 
 

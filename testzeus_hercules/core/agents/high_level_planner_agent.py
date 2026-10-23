@@ -6,7 +6,7 @@ from testzeus_hercules.utils.llm_helper import (
     build_chat_client,
     get_llm_max_retries,
     get_llm_request_timeout_seconds,
-    keyless_api_key,
+    resolve_api_key,
     resolve_provider_settings,
 )
 from testzeus_hercules.utils.logger import logger
@@ -51,9 +51,11 @@ class PlannerAgent:
             safe_llm_params["timeout"] = get_llm_request_timeout_seconds()
         if "max_retries" not in filtered and safe_llm_params.get("max_retries") is None:
             safe_llm_params["max_retries"] = get_llm_max_retries()
+        # Same provider and credential resolution as create_chat_model (and so as the navigation agents).
         settings = resolve_provider_settings(normalized, str(filtered.get("model") or "gpt-4o"))
-        if not filtered.get("api_key") and settings["keyless"]:
-            filtered["api_key"] = keyless_api_key()  # local servers (Ollama, llama.cpp, ...) do not check the key
+        api_key = resolve_api_key(normalized, settings)
+        if api_key:
+            filtered["api_key"] = api_key
         self.llm = build_chat_client({**filtered, **safe_llm_params}, settings)
 
     _json_instruction = """CRITICAL INSTRUCTION: You MUST respond ONLY with a valid JSON object. No preamble, no explanation, no markdown. Your entire response must be parseable JSON.

@@ -509,13 +509,14 @@ async def __fetch_dom_info(page: Page, accessibility_tree: dict[str, Any], only_
                     del node["keyshortcuts"]  # remove keyshortcuts since it is not needed
 
                 node["md"] = md
+                label_text = node.pop("label_text", None)  # transient: see the label handling below
 
                 # Update the node with fetched information
                 if element_attributes:
-                    # For checkboxes and radios the HTML `name` attribute is the form-group name
-                    # ("r", "newsletter"), not what the user sees. Keep the label-derived accessible
-                    # name and expose the form name separately as `field_name`.
-                    if node.get("name") and node.get("role") in ("checkbox", "radio") and element_attributes.get("name") and element_attributes["name"] != node["name"]:
+                    # A control's <label> is what the user sees; the HTML `name` attribute (user_email, colour,
+                    # dm) is the form-field name. Keep the label as the name and expose the field name separately
+                    # (the DOM-attribute merge below would otherwise overwrite the label with it).
+                    if label_text and element_attributes.get("name") and element_attributes["name"] != label_text:
                         element_attributes = {**element_attributes, "field_name": element_attributes["name"]}
                         del element_attributes["name"]
                     node.update(element_attributes)
@@ -1052,6 +1053,22 @@ async def do_get_accessibility_info(page: Page, only_input_fields: bool = False)
                         );
                     }
 
+                    // Text of the <label>(s) of a form control, without the content of any control inside the
+                    // label: a label wrapping <select>/<textarea> must not turn into "Country US Canada ...".
+                    function getLabelText(element) {
+                        if (!element.labels || !element.labels.length) return '';
+                        return Array.from(element.labels)
+                            .map((label) => {
+                                const clone = label.cloneNode(true);
+                                clone
+                                    .querySelectorAll('select, textarea, input, button, output, meter, progress, [role=listbox], [role=combobox], [role=textbox], [contenteditable]')
+                                    .forEach((control) => control.remove());
+                                return (clone.textContent || '').replace(/\s+/g, ' ').trim();
+                            })
+                            .filter(Boolean)
+                            .join(' ');
+                    }
+
                     function getAccessibleName(element) {
                         try {
                             // Chromium-based accessibility API
@@ -1064,6 +1081,16 @@ async def do_get_accessibility_info(page: Page, only_input_fields: bool = False)
                             }
                         } catch (error) {
                             console.warn("Chromium accessibility API failed, falling back to manual method:", error);
+                        }
+
+                        // A <label> element is named by its own text, not by the content of the controls it wraps.
+                        if (element.tagName.toLowerCase() === 'label') {
+                            const clone = element.cloneNode(true);
+                            clone
+                                .querySelectorAll('select, textarea, input, button, output, meter, progress, [role=listbox], [role=combobox], [role=textbox], [contenteditable]')
+                                .forEach((control) => control.remove());
+                            const ownText = (clone.textContent || '').replace(/\s+/g, ' ').trim();
+                            if (ownText) return cleanName(ownText);
                         }
 
                         // Existing manual accessibility extraction
@@ -1083,11 +1110,8 @@ async def do_get_accessibility_info(page: Page, only_input_fields: bool = False)
                         const typeLower = tagLower === 'input' ? (element.type || '').toLowerCase() : '';
                         const isButtonLike = tagLower === 'button' || ['button', 'submit', 'reset', 'image'].includes(typeLower);
                         const isCheckable = typeLower === 'checkbox' || typeLower === 'radio';
-                        if (!isButtonLike && element.labels && element.labels.length) {
-                            const labelText = Array.from(element.labels)
-                                .map((label) => (label.innerText || label.textContent || '').trim())
-                                .filter(Boolean)
-                                .join(' ');
+                        if (!isButtonLike) {
+                            const labelText = getLabelText(element);
                             if (labelText) return cleanName(labelText);
                         }
 
@@ -1197,7 +1221,12 @@ async def do_get_accessibility_info(page: Page, only_input_fields: bool = False)
                             if (ariaSelected !== null) state.selected = ariaSelected === 'true';
                         }
 
-                        if (element.disabled === true || element.getAttribute('aria-disabled') === 'true') {
+                        let isDisabled = element.disabled === true;
+                        try {
+                            // :disabled also covers controls inside <fieldset disabled>, which `.disabled` misses.
+                            isDisabled = isDisabled || element.matches(':disabled');
+                        } catch (e) {}
+                        if (isDisabled || element.getAttribute('aria-disabled') === 'true') {
                             state.disabled = true;
                         }
                         const ariaExpanded = element.getAttribute('aria-expanded');
@@ -1225,6 +1254,14 @@ async def do_get_accessibility_info(page: Page, only_input_fields: bool = False)
 
                         const name = getAccessibleName(element);
                         if (name) node.name = name;
+                        // Kept apart from `name`: the DOM-attribute merge would overwrite `name` with the HTML
+                        // name attribute (user_email), and the label is what the user sees.
+                        const tagForLabel = element.tagName.toLowerCase();
+                        const typeForLabel = tagForLabel === 'input' ? (element.type || '').toLowerCase() : '';
+                        if (!(tagForLabel === 'button' || ['button', 'submit', 'reset', 'image'].includes(typeForLabel))) {
+                            const labelText = getLabelText(element);
+                            if (labelText) node.label_text = cleanName(labelText);
+                        }
 
                         Object.assign(node, getControlState(element, role));
 
