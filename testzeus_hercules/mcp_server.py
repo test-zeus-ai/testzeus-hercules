@@ -94,6 +94,7 @@ from testzeus_hercules.utils.http_security import (
 )
 from testzeus_hercules.utils.litellm_helper import get_litellm_chat_model
 from testzeus_hercules.utils.path_guard import ForbiddenFileError, PathOutsideRootsError, check_prd_document, resolve_within
+from testzeus_hercules.utils.redact import REDACTED_PLACEHOLDER, redact_text_urls
 
 # ── configuration ─────────────────────────────────────────────────────────────
 
@@ -187,6 +188,11 @@ def _prd_url_credentials_error(url: str) -> str | None:
     return None
 
 
+_REDACTED_PRD_URL_MESSAGE = (
+    "The PRD URL stored in this session had its secret query/fragment values redacted when it was saved (they are never persisted), so it cannot be fetched. Pass prd_path with the full URL again."
+)
+
+
 def _display_prd(value: str) -> str:
     """Echo form of a prd_path: URLs lose userinfo and sensitive query values, local paths are shown root-relative."""
     if not value:
@@ -225,11 +231,29 @@ def _scrub_paths(text: str) -> str:
     except OSError:
         pass
     for root in sorted((item for item in root_variants if item and item != os.sep), key=len, reverse=True):
-        out = out.replace(root + os.sep, "").replace(root, ".")
+        out = _replace_path_prefix(out, root, "")
+        out = _replace_path_prefix(out, root, ".", keep_sep=False)
     home = os.path.expanduser("~")
     if home and home != os.sep:
-        out = out.replace(home + os.sep, "~" + os.sep).replace(home, "~")
+        out = _replace_path_prefix(out, home, "~" + os.sep)
+        out = _replace_path_prefix(out, home, "~", keep_sep=False)
     return out
+
+
+def _replace_path_prefix(text: str, prefix: str, replacement: str, *, keep_sep: bool = True) -> str:
+    """Replace ``prefix`` in ``text`` only where it is a whole path prefix.
+
+    ``keep_sep`` True: match ``prefix + os.sep`` (the separator is consumed, ``replacement`` stands for both).
+    ``keep_sep`` False: match ``prefix`` followed by a non-path character or the end of text.
+    The match must not start in the middle of a path component, so root ``/app`` does not garble ``/application/x``
+    or ``/home/u/app/x``.
+    """
+    left = r"(?<![\w\-~.])"
+    if keep_sep:
+        pattern = left + re.escape(prefix + os.sep)
+    else:
+        pattern = left + re.escape(prefix) + r"(?![\w\-~]|\.\w)"
+    return re.sub(pattern, lambda _match: replacement, text)
 
 
 def _display_optional(path: str | Path | None) -> str | None:
@@ -294,7 +318,7 @@ def _mcp_path() -> str:
 
 def _error(message: str, **extra: Any) -> dict:
     """Build a uniform error dict returned by tools instead of raising."""
-    return {"error": _scrub_paths(message), **extra}
+    return {"error": redact_text_urls(_scrub_paths(message)), **extra}
 
 
 # ── run-safety constants & helpers ────────────────────────────────────────────
@@ -473,6 +497,8 @@ async def _build_standard_prd(state: SessionState, prd_path: str) -> tuple[Norma
         credentials_error = _prd_url_credentials_error(source)
         if credentials_error:
             raise ValueError(credentials_error)
+        if REDACTED_PLACEHOLDER in source:
+            raise ValueError(_REDACTED_PRD_URL_MESSAGE)
     else:
         # Local PRD sources are read and sent to the LLM: confine them (realpath) to the
         # allowed roots plus this session's project_path. URLs go through the SSRF guard in prd_parser.

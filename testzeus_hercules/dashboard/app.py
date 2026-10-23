@@ -238,21 +238,34 @@ def _resolve_artifact_file(path_value: str | None, child_names: tuple[str, ...] 
 
     Artifact paths come from JUnit XML properties (attacker/tool-controlled
     data), so when ``root`` is given a path that does not resolve (symlinks
-    followed) inside it is ignored, never opened: the same containment the
-    /artifact route enforces.
+    followed) inside it is ignored, never opened, and neither is anything the
+    /artifact route would refuse to serve (``_is_sensitive_artifact``: env/key
+    files, databases, session stores, dotfiles and dot-directories): the same
+    containment and sensitive-file filter that route enforces.
     """
     if not path_value:
         return None
     if root is not None and not is_within(path_value, root):
         return None
     if os.path.isfile(path_value):
-        return path_value
+        return path_value if _artifact_readable(path_value, root) else None
     if os.path.isdir(path_value):
         for name in child_names:
             candidate = os.path.join(path_value, name)
-            if os.path.isfile(candidate) and (root is None or is_within(candidate, root)):
+            if os.path.isfile(candidate) and (root is None or is_within(candidate, root)) and _artifact_readable(candidate, root):
                 return candidate
     return None
+
+
+def _artifact_readable(path_value: str, root: str | None) -> bool:
+    """True when ``path_value`` may be read for rendering (always, without a root; else not a sensitive artifact)."""
+    if root is None:
+        return True
+    try:
+        real_root = os.path.realpath(root)
+        return not _is_sensitive_artifact(path_value, os.path.realpath(path_value), real_root)
+    except (ValueError, OSError):
+        return False
 
 
 def _parse_network_entries(path_value: str | None, limit: int = NETWORK_ENTRY_LIMIT) -> list[dict]:

@@ -222,6 +222,74 @@ def test_terminate_live_children_kills_registered_group() -> None:
             proc.kill()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX process groups")
+def test_terminate_process_tree_kills_term_ignoring_grandchild_after_leader_exits(tmp_path) -> None:
+    """The leader exits on SIGTERM (and is reaped) but a descendant ignores it: the group SIGKILL must still fire."""
+    from testzeus_hercules.orchestrator import run_manager
+
+    pid_file = tmp_path / "gc.pid"
+    script = f'(trap "" TERM; exec sleep 300) & echo $! > {pid_file}; trap "exit 0" TERM; while true; do sleep 0.2; done'
+
+    async def scenario() -> int:
+        proc = await asyncio.create_subprocess_exec("sh", "-c", script, start_new_session=True)
+        for _ in range(100):
+            if pid_file.exists() and pid_file.read_text().strip():
+                break
+            await asyncio.sleep(0.05)
+        grandchild = int(pid_file.read_text())
+        await run_manager._terminate_process_tree(proc, grace_s=0.5)
+        return grandchild
+
+    grandchild = asyncio.run(scenario())
+    try:
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and _alive(grandchild):
+            time.sleep(0.1)
+        assert not _alive(grandchild), "TERM-ignoring grandchild survived the group kill"
+    finally:
+        if _alive(grandchild):
+            os.kill(grandchild, signal.SIGKILL)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX process groups")
+def test_second_cancel_during_grace_still_kills_the_group_and_keeps_it_registered(tmp_path) -> None:
+    """A second signal cancels the graceful shutdown mid-grace: the SIGKILL must not be skipped."""
+    from testzeus_hercules.orchestrator import run_manager
+
+    pid_file = tmp_path / "child.pid"
+    script = f'trap "" TERM; echo $$ > {pid_file}; while true; do sleep 0.2; done'
+
+    async def scenario() -> tuple[int, bool]:
+        proc = await asyncio.create_subprocess_exec("sh", "-c", script, start_new_session=True)
+        run_manager._LIVE_GROUPS.add(proc.pid)
+        for _ in range(100):
+            if pid_file.exists() and pid_file.read_text().strip():
+                break
+            await asyncio.sleep(0.05)
+        task = asyncio.ensure_future(run_manager._terminate_process_tree(proc, grace_s=30.0))
+        await asyncio.sleep(0.3)  # inside the grace period, SIGTERM already ignored
+        task.cancel()  # the second signal
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        await asyncio.sleep(0.3)
+        return proc.pid, proc.pid in run_manager._LIVE_GROUPS
+
+    try:
+        pid, registered = asyncio.run(scenario())
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and _alive(pid):
+            time.sleep(0.1)
+        assert not _alive(pid), "TERM-ignoring child survived the second signal"
+        assert registered, "pid must stay in _LIVE_GROUPS until the run_cli safety net confirms the group is gone"
+    finally:
+        run_manager._LIVE_GROUPS.clear()
+        if pid_file.exists():
+            try:
+                os.killpg(int(pid_file.read_text()), signal.SIGKILL)
+            except (OSError, ValueError):
+                pass
+
+
 # ── 3. webhook errors never log the secret URL ────────────────────────────────
 
 SLACK = "https://hooks.slack.com/services/T0001/B0002/SECRETSECRET?token=querysecret"
@@ -447,6 +515,103 @@ def test_runner_bridge_error_names_only_the_basename(workspace, monkeypatch) -> 
     monkeypatch.setattr(hercules_main, "sequential_process", exits)
     outcome = run(runner_bridge.execute_feature_file(str(tmp_path / "opt" / "input" / "x.feature")))
     assert "x.feature" in outcome.error and str(tmp_path) not in outcome.error
+
+
+# ── review follow-ups: PRD fetch errors, redact_url coverage, dashboard filter, path scrub ──
+
+
+def test_prd_fetch_failure_message_has_no_url_token(monkeypatch) -> None:
+    from testzeus_hercules.intelligence import prd_parser
+
+    original = url_guard.fetch_text
+
+    def failing(url, **kwargs):
+        return original(url, transport=httpx.MockTransport(lambda request: httpx.Response(401, text="no")), resolver=lambda host, port: ["93.184.216.34"], **kwargs)
+
+    monkeypatch.setattr(prd_parser, "fetch_text", failing)
+    with pytest.raises(ValueError) as caught:
+        prd_parser._fetch_url_text("https://example.com/prd.md?token=SEKRET123&x=1", {})
+    message = str(caught.value)
+    assert "SEKRET123" not in message and "93.184.216.34" not in message
+    assert "401" in message
+
+
+def test_prd_fetch_transport_error_message_has_no_url_token(monkeypatch) -> None:
+    from testzeus_hercules.intelligence import prd_parser
+
+    def failing(url, **kwargs):
+        raise httpx.ConnectError(f"connect failed for {url}?token=SEKRET123")
+
+    monkeypatch.setattr(prd_parser, "fetch_text", failing)
+    with pytest.raises(ValueError) as caught:
+        prd_parser._fetch_url_text("https://example.com/prd.md?token=SEKRET123", {})
+    assert "SEKRET123" not in str(caught.value)
+    assert "ConnectError" in str(caught.value)
+
+
+@pytest.mark.parametrize(
+    "url,secret",
+    [
+        ("https://h/f?X-Amz-Signature=SECRETVAL&ok=1", "SECRETVAL"),
+        ("https://h/f?X-Amz-Credential=SECRETVAL", "SECRETVAL"),
+        ("https://h/f?X-Amz-Security-Token=SECRETVAL", "SECRETVAL"),
+        ("https://h/f?jwt=SECRETVAL", "SECRETVAL"),
+        ("https://h/f?sig=SECRETVAL", "SECRETVAL"),
+        ("https://h/f?access_key=SECRETVAL", "SECRETVAL"),
+        ("https://h/f?pwd=SECRETVAL", "SECRETVAL"),
+        ("https://h/f?sid=SECRETVAL&a=1", "SECRETVAL"),
+        ("https://h/f?session=SECRETVAL", "SECRETVAL"),
+        ("https://h/cb#access_token=SECRETVAL&state=1", "SECRETVAL"),
+        ("https://h/f;token=SECRETVAL/x?a=1", "SECRETVAL"),
+        ("https://h/f?a=1;token=SECRETVAL", "SECRETVAL"),
+        ("https://u:p@[::1/f?token=SECRETVAL#access_token=SECRETVAL", "SECRETVAL"),
+    ],
+)
+def test_redact_url_covers_signed_url_session_fragment_and_matrix_secrets(url, secret) -> None:
+    from testzeus_hercules.utils.redact import redact_url
+
+    assert secret not in redact_url(url)
+
+
+def test_redact_url_keeps_non_secret_parts() -> None:
+    from testzeus_hercules.utils.redact import redact_url
+
+    assert redact_url("https://h/f?monitor=1&keyword=k#section-2") == "https://h/f?monitor=1&keyword=k#section-2"
+
+
+def test_reloaded_redacted_prd_url_asks_for_the_url_again(workspace) -> None:
+    _tmp, manager = workspace
+    state = manager.create_session("https://app.example.com")
+    state.prd_path = "https://docs.example.com/prd.md?token=[REDACTED]&page=1"  # what sessions.json holds after a restart
+    result = run(mcp_server.hercules_generate_standardized_prd(session_id=state.session_id))
+    assert "pass prd_path" in result["error"].lower()
+    assert "redacted" in result["error"].lower()
+
+
+def test_dashboard_artifact_resolver_applies_the_sensitive_file_filter(tmp_path) -> None:
+    from testzeus_hercules.dashboard import app as dashboard
+
+    root = tmp_path / "proj"
+    (root / ".hercules").mkdir(parents=True)
+    (root / "proofs").mkdir()
+    (root / ".env").write_text("API_KEY=sekret")
+    (root / ".hercules" / "sessions.json").write_text("{}")
+    (root / "proofs" / "planner_thoughts.txt").write_text("fine")
+    (root / "proofs" / ".planner_thoughts.txt").write_text("dotfile")
+    for sensitive in (root / ".env", root / ".hercules" / "sessions.json", root / "proofs" / ".planner_thoughts.txt"):
+        assert dashboard._resolve_artifact_file(str(sensitive), (), str(root)) is None
+        assert dashboard._planner_text({"artifacts": [{"kind": "log", "path": str(sensitive)}]}, str(root)) is None
+    assert dashboard._planner_text({"artifacts": [{"kind": "log", "path": str(root / "proofs" / "planner_thoughts.txt")}]}, str(root)) == "fine"
+    assert dashboard._resolve_artifact_file(str(root / "proofs" / "planner_thoughts.txt"), (), str(root))
+
+
+def test_scrub_paths_only_replaces_whole_path_prefixes(workspace, monkeypatch) -> None:
+    monkeypatch.setenv("TESTZEUS_ROOT", "/app")
+    scrubbed = mcp_server._scrub_paths("see /app/opt/x, /application/x, /home/u/app/x and /app.")
+    assert "opt/x" in scrubbed and "/application/x" in scrubbed and "/home/u/app/x" in scrubbed
+    assert "/app/opt" not in scrubbed
+    assert scrubbed.endswith(" and ..")
+    assert mcp_server._scrub_paths("root is /app") == "root is ."
 
 
 # ── 8. url_guard: total deadline, NAT64 ───────────────────────────────────────

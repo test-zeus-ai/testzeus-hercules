@@ -194,6 +194,42 @@ def test_extract_and_schema_report_truncation_as_error(proof_env) -> None:
     assert validated["assertion"] == "ERROR" and "truncated" in validated["reason"].lower()
 
 
+def _truncated_error_result() -> str:
+    return api_calls._bounded_payload({"status_code": 404, "status_type": "failure", "headers": {"x-id": "7"}, "error_detail": "x" * 200_000}, 0.1)
+
+
+@requires_jsonpath_ng
+def test_assertions_on_intact_fields_of_a_truncated_result_still_evaluate(proof_env) -> None:
+    truncated = _truncated_error_result()
+    assert json.loads(truncated)["error_detail_truncated"] is True
+    assert json.loads(_run(assert_json_path(truncated, "$.status_code", "eq", 404)))["assertion"] == "PASSED"
+    assert json.loads(_run(assert_json_path(truncated, "$.status_code", "eq", 200)))["assertion"] == "FAILED"
+    assert json.loads(_run(assert_json_path(truncated, "$.headers.x-id", "exists")))["assertion"] == "PASSED"
+    captured = json.loads(_run(extract_from_response(truncated, "$.status_code", "code")))
+    assert captured["assertion"] == "PASSED" and captured["value"] == 404
+    validated = json.loads(_run(validate_response_schema(truncated, {"type": "integer"}, path="$.status_code")))
+    assert validated["assertion"] == "PASSED"
+
+
+@requires_jsonpath_ng
+def test_truncated_result_still_errors_when_the_verdict_depends_on_the_cut_part(proof_env) -> None:
+    truncated = _truncated_error_result()
+    for path in ("$.error_detail", "$.error_detail.code", "$.missing"):
+        verdict = json.loads(_run(assert_json_path(truncated, path, "exists")))
+        assert verdict["assertion"] == "ERROR" and "truncated" in verdict["reason"].lower(), path
+    assert json.loads(_run(assert_json_path(truncated, "$.nothing", "not_exists")))["assertion"] == "ERROR"
+    assert json.loads(_run(extract_from_response(truncated, "$.error_detail.id", "x")))["assertion"] == "ERROR"
+    whole = json.loads(_run(validate_response_schema(truncated, {"type": "object"})))
+    assert whole["assertion"] == "ERROR" and "truncated" in whole["reason"].lower()
+
+
+@pytest.mark.parametrize("auth_type", ["none", "None", "NONE", "", None, "  "])
+def test_none_like_auth_type_is_no_auth_not_an_error(wire, auth_type) -> None:
+    result = json.loads(_run(generic_http_api("GET", "https://api.test/x", auth_type=auth_type, auth_value=None)))
+    assert "error" not in result
+    assert "authorization" not in wire[0].headers and "x-api-key" not in wire[0].headers
+
+
 # ── 7. extract_from_response as_name validation ─────────────────────────────
 
 
@@ -240,6 +276,26 @@ def test_hurl_redaction_covers_verbose_and_mid_line_headers(line) -> None:
     xml = hurl_calls._redact_output(f'<failure message="{line.replace(chr(34), chr(39))}">{line}</failure>', [], xml=True)
     assert SECRET not in xml, xml
     assert xml.endswith("</failure>")
+
+
+@pytest.mark.parametrize(
+    "payload",
+    ["token" * 200_000, "a-" * 500_000, "x: " + " " * 1_000_000, "token:[REDACTED]" * 60_000, ("Authorization: a" + "b" * 60 + "\n") * 15_000],
+    ids=["unbroken-token", "dashes", "whitespace", "redacted-colons", "many-headers"],
+)
+def test_redaction_is_linear_on_pathological_input(payload) -> None:
+    import time
+
+    for xml in (False, True):
+        started = time.monotonic()
+        api_calls.redact_tool_output(payload, xml=xml)
+        assert time.monotonic() - started < 3.0, "redaction must not be quadratic"
+
+
+@pytest.mark.parametrize("name", ["X-Auth-Tok\u200ben", "Author\u200dization", "Coo\x00kie", "X-Api-\u00adKey", "Authori\ufeffzation"])
+def test_invisible_characters_inside_a_header_name_do_not_evade_redaction(name) -> None:
+    redacted = api_calls.redact_tool_output(f"> {name}: {SECRET}")
+    assert SECRET not in redacted
 
 
 def test_hurl_redaction_keeps_closing_quote_of_quoted_header() -> None:

@@ -37,7 +37,9 @@ def redact_url(url: str) -> str:
     except ValueError:
         return _redact_url_fallback(url)
     redacted_query = _redact_query(parsed.query)
-    if parsed.username is None and parsed.password is None and redacted_query == parsed.query:
+    redacted_path = _redact_path(parsed.path)
+    redacted_fragment = _redact_fragment(parsed.fragment)
+    if parsed.username is None and parsed.password is None and redacted_query == parsed.query and redacted_path == parsed.path and redacted_fragment == parsed.fragment:
         return url
     host = parsed.hostname or ""
     try:
@@ -50,7 +52,7 @@ def redact_url(url: str) -> str:
         netloc = host
     if port is not None:
         netloc = f"{netloc}:{port}"
-    return urllib.parse.urlunsplit((parsed.scheme, netloc, parsed.path, redacted_query, parsed.fragment))
+    return urllib.parse.urlunsplit((parsed.scheme, netloc, redacted_path, redacted_query, redacted_fragment))
 
 
 def redact_webhook_url(url: str) -> str:
@@ -104,7 +106,40 @@ def redact_webhook_text(text: str, url: str = "") -> str:
 # short names (so a non-secret like "monitor" or "keyword" is kept), and by the
 # secret-name fragments of `is_sensitive_name` ("client_secret",
 # "refresh_token", "id_token", ...).
-REDACTED_QUERY_PARAM_NAMES = frozenset(("token", "access_token", "api_key", "apikey", "key", "secret", "password", "passwd", "sig", "signature", "auth"))
+REDACTED_QUERY_PARAM_NAMES = frozenset(
+    (
+        "token",
+        "access_token",
+        "api_key",
+        "apikey",
+        "key",
+        "secret",
+        "password",
+        "passwd",
+        "pwd",
+        "sig",
+        "signature",
+        "auth",
+        "jwt",
+        "access_key",
+        "accesskey",
+        "session",
+        "sessionid",
+        "session_id",
+        "sid",
+        "x-amz-signature",
+        "x-amz-credential",
+        "x-amz-security-token",
+    )
+)
+# Name suffixes that mark signed-URL / key parameters (X-Goog-Signature, client_key, x-api-key, ...).
+_SENSITIVE_QUERY_NAME_SUFFIXES = ("signature", "_sig", "-sig", "_key", "-key", "_session", "-session")
+_QUERY_SEPARATOR_RE = re.compile(r"([&;])")
+
+
+def _is_sensitive_query_name(name: str) -> bool:
+    lowered = name.lower().strip()
+    return lowered in REDACTED_QUERY_PARAM_NAMES or lowered.endswith(_SENSITIVE_QUERY_NAME_SUFFIXES) or is_sensitive_name(lowered)
 
 
 def _redact_query_pair(pair: str) -> str:
@@ -116,20 +151,38 @@ def _redact_query_pair(pair: str) -> str:
         decoded_name = urllib.parse.unquote_plus(name)
     except Exception:
         decoded_name = name
-    if decoded_name.lower() in REDACTED_QUERY_PARAM_NAMES or is_sensitive_name(decoded_name):
+    if _is_sensitive_query_name(decoded_name):
         return f"{name}={REDACTED_PLACEHOLDER}"
     return pair
 
 
 def _redact_query(query: str) -> str:
-    """Redact sensitive query parameter values; every other character is kept verbatim."""
+    """Redact sensitive query parameter values ("&" and ";" separated); every other character is kept verbatim."""
     if not query:
         return query
-    pairs = query.split("&")
-    redacted = [_redact_query_pair(pair) for pair in pairs]
-    if redacted == pairs:
-        return query
-    return "&".join(redacted)
+    parts = _QUERY_SEPARATOR_RE.split(query)  # separators sit at odd indexes and are preserved
+    return "".join(part if index % 2 else _redact_query_pair(part) for index, part in enumerate(parts))
+
+
+def _redact_path(path: str) -> str:
+    """Redact ``;name=value`` matrix parameters of every path segment (``/a;token=x/b``)."""
+    if ";" not in path:
+        return path
+    segments = []
+    for segment in path.split("/"):
+        head, *params = segment.split(";")
+        segments.append(";".join([head, *(_redact_query_pair(param) for param in params)]))
+    return "/".join(segments)
+
+
+def _redact_fragment(fragment: str) -> str:
+    """Redact ``#access_token=...`` style (OAuth implicit flow) and ``#/route?token=...`` fragments."""
+    if not fragment or "=" not in fragment:
+        return fragment
+    head, qmark, query = fragment.partition("?")
+    if qmark:
+        return head + "?" + _redact_query(query)
+    return _redact_query(fragment)
 
 
 def _redact_url_fallback(url: str) -> str:
@@ -146,10 +199,24 @@ def _redact_url_fallback(url: str) -> str:
         if not sep:
             return "[unparsable-url]"
         redacted = f"{scheme}://[unparsable]"
-    head, qmark, query = redacted.partition("?")
-    if qmark:
-        return head + "?" + _redact_query(query)
-    return redacted
+    body, hash_mark, fragment = redacted.partition("#")
+    head, qmark, query = body.partition("?")
+    head = _redact_path(head)
+    out = head + ("?" + _redact_query(query) if qmark else "")
+    if hash_mark:
+        out += "#" + _redact_fragment(fragment)
+    return out
+
+
+_URL_TEXT_RE = re.compile(r"[a-zA-Z][a-zA-Z0-9+.\-]*://[^\s'\"<>]+")
+
+
+def redact_text_urls(text: str) -> str:
+    """Run :func:`redact_url` over every URL embedded in ``text`` (e.g. an exception message); never raises."""
+    try:
+        return _URL_TEXT_RE.sub(lambda match: redact_url(match.group(0)), str(text))
+    except Exception:
+        return "[redacted]"
 
 
 # Header keys whose values must never reach the network logs. Matched as
@@ -321,7 +388,7 @@ def redact_value(value: Any, key_hint: str = "", secret_values: Iterable[str] = 
         if isinstance(value, str):
             text = scrub_secret_values(value, secrets)
             if "://" in text:
-                text = re.sub(r"[a-zA-Z][a-zA-Z0-9+.\-]*://[^\s'\"<>]+", lambda match: redact_url(match.group(0)), text)
+                text = redact_text_urls(text)
             return text
         return value
     except Exception:

@@ -8,6 +8,7 @@ from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
+from testzeus_hercules.utils.redact import redact_text_urls, redact_url
 from unstructured.partition.pdf import partition_pdf
 
 # Maximum number of bytes streamed into the downloaded PDF file; a bigger
@@ -47,12 +48,12 @@ async def extract_text_from_pdf(
 
         return "Text found in the PDF:\n" + extracted_text
     except httpx.HTTPStatusError as e:
-        logger.error(f"An error occurred while downloading the PDF from {pdf_url}: {str(e)}")
-        return f"An error occurred while downloading the PDF: {str(e)}"
+        logger.error(f"An error occurred while downloading the PDF from {redact_url(pdf_url)}: {redact_text_urls(str(e))}")
+        return f"An error occurred while downloading the PDF: {redact_text_urls(str(e))}"
     except Exception as e:
 
-        logger.error(f"An error occurred while extracting text from the PDF that was downloaded from {pdf_url}: {str(e)}", exc_info=True)
-        return f"An error occurred while extracting text: {str(e)}"
+        logger.error(f"An error occurred while extracting text from the PDF that was downloaded from {redact_url(pdf_url)}: {redact_text_urls(str(e))}", exc_info=True)
+        return f"An error occurred while extracting text: {redact_text_urls(str(e))}"
     finally:
         # Cleanup: Ensure the downloaded file is removed
         cleanup_temp_files(file_path)

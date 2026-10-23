@@ -24,6 +24,7 @@ from testzeus_hercules.core.tools.api_calls import (
     parse_json_payload,
     sensitive_variable_values,
     stringify_interpolated_value,
+    truncation_blocks_path,
     truncation_reason,
 )
 from testzeus_hercules.core.tools.tool_registry import (
@@ -430,10 +431,6 @@ def _evaluate_with_operator(response_json: Any, path: str, operator: str, expect
         document = parse_json_payload(response_json)
     except ValueError as e:
         return _payload(assertion="ERROR", reason=truncation_reason(response_json) or f"Response is not valid JSON: {e}")
-    truncated = truncation_reason(response_json, document)
-    if truncated:
-        # A truncated body is cut text: every verdict (incl. "matched nothing"/not_exists) would be misleading.
-        return _payload(assertion="ERROR", reason=truncated)
 
     try:
         matches = find_json_path(document, path)
@@ -441,6 +438,11 @@ def _evaluate_with_operator(response_json: Any, path: str, operator: str, expect
         return _payload(assertion="ERROR", reason=str(e))
     except Exception as e:
         return _payload(assertion="ERROR", reason=f"Invalid JSONPath '{path}': {e}")
+    truncated = truncation_blocks_path(response_json, document, path, matches)
+    if truncated:
+        # Only a verdict the cut could change is refused ("matched nothing"/not_exists, or a path into the cut field);
+        # assertions on intact fields (status_code, headers, ...) evaluate normally.
+        return _payload(assertion="ERROR", reason=truncated)
 
     if operator == "not_exists":
         verdict = "PASSED" if not matches else "FAILED"

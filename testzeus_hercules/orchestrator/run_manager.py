@@ -224,19 +224,24 @@ def _kill_process_tree(proc: asyncio.subprocess.Process) -> None:
     """Kill the child's whole process group, falling back to the direct child.
 
     Subprocesses are launched with ``start_new_session=True``, so the child
-    leads its own process group: killing the group also takes down descendants
-    (the Playwright node driver and chromium) that a bare ``proc.kill()`` would
-    orphan. Grandchildren inherit the stdout/stderr pipes, so orphaning them
-    would stall pipe reaping long after the per-scenario deadline.
+    leads its own process group (``pgid == pid``): killing the group also takes
+    down descendants (the Playwright node driver and chromium) that a bare
+    ``proc.kill()`` would orphan. Grandchildren inherit the stdout/stderr pipes,
+    so orphaning them would stall pipe reaping long after the per-scenario
+    deadline.
+
+    The group is addressed by ``proc.pid`` directly, never via ``os.getpgid``:
+    once the leader has been reaped ``getpgid`` raises ESRCH even though
+    descendants (e.g. one that ignores SIGTERM) keep the group alive.
     """
-    # os.killpg/getpgid do not exist on Windows: guard like
+    # os.killpg does not exist on Windows: guard like
     # core/tools/execute_python_sandbox._kill_process_tree so the AttributeError
     # cannot skip the direct-kill fallback and leave the child running.
-    if hasattr(os, "killpg") and hasattr(os, "getpgid"):
+    if hasattr(os, "killpg"):
         try:
-            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            os.killpg(proc.pid, signal.SIGKILL)
         except OSError:
-            pass  # child already reaped / ungroupable; the direct kill still runs
+            pass  # group already gone; the direct kill still runs
     try:
         proc.kill()
     except OSError:
@@ -283,14 +288,27 @@ def terminate_live_children(grace_s: float = TERMINATE_GRACE_S) -> int:
 
 
 async def _terminate_process_tree(proc: asyncio.subprocess.Process, grace_s: float = TERMINATE_GRACE_S) -> None:
-    """Graceful tree shutdown for a cancelled run: SIGTERM the group, wait, then SIGKILL it."""
-    if hasattr(os, "killpg"):
-        _signal_group(proc.pid, signal.SIGTERM)
-        try:
-            await asyncio.wait_for(asyncio.shield(proc.wait()), timeout=grace_s)
-        except (asyncio.TimeoutError, Exception):  # noqa: BLE001 - escalate to SIGKILL below
-            pass
-    _kill_process_tree(proc)
+    """Graceful tree shutdown for a cancelled run: SIGTERM the group, wait, then SIGKILL it.
+
+    The SIGKILL is unconditional (``finally``): it runs after the grace period
+    even when the leader already exited (a descendant ignoring SIGTERM keeps
+    the group alive) and even when a second signal cancels this coroutine
+    mid-grace.
+    """
+    try:
+        if hasattr(os, "killpg"):
+            _signal_group(proc.pid, signal.SIGTERM)
+            deadline = time.monotonic() + max(0.0, grace_s)
+            try:
+                await asyncio.wait_for(asyncio.shield(proc.wait()), timeout=grace_s)
+            except (asyncio.TimeoutError, Exception):  # noqa: BLE001 - escalate to SIGKILL below
+                pass
+            # The leader may be gone while descendants still hold the group:
+            # give them the rest of the grace period, then fall through to KILL.
+            while time.monotonic() < deadline and _signal_group(proc.pid, 0):
+                await asyncio.sleep(0.05)
+    finally:
+        _kill_process_tree(proc)
     try:
         await asyncio.wait_for(proc.wait(), timeout=REAP_TIMEOUT_S)
     except Exception:  # noqa: BLE001 - reaping a dead child must never raise
@@ -433,7 +451,11 @@ async def run_feature_isolated(feature_path: str, workroot: str, env_extra: dict
             stdout, stderr = b"", b""
         error = f"Timed out after {timeout_s:g}s; process killed."
     finally:
-        _LIVE_GROUPS.discard(proc.pid)
+        # Keep the pid registered while any member of the group is alive so the
+        # run_cli safety net can still reap it (e.g. a second signal cut the
+        # graceful shutdown short).
+        if not _signal_group(proc.pid, 0):
+            _LIVE_GROUPS.discard(proc.pid)
 
     duration = time.monotonic() - start
     junit_xml = _find_junit_xml(workspace)

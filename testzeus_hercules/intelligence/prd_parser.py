@@ -19,7 +19,7 @@ import httpx
 from testzeus_hercules.intelligence.normalized_prd import NormalizedPRD, PRDRequirement
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.path_guard import ForbiddenFileError, check_prd_document
-from testzeus_hercules.utils.redact import redact_url
+from testzeus_hercules.utils.redact import REDACTED_PLACEHOLDER, redact_text_urls, redact_url
 from testzeus_hercules.utils.url_guard import UnsafeURLError, fetch_text
 
 _HTML_ENTITY_RE = re.compile(r"&(#\d+|#x[0-9a-fA-F]+|[a-zA-Z]+);")
@@ -335,12 +335,17 @@ def _fetch_url_text(url: str, metadata: dict[str, Any]) -> str:
     Set ``PRD_FETCH_ALLOW_PRIVATE_HOSTS=true`` to allow internal/loopback hosts (e.g. an intranet wiki).
     """
     allow_private = os.getenv("PRD_FETCH_ALLOW_PRIVATE_HOSTS", "").strip().lower() in ("1", "true", "yes", "on")
+    if REDACTED_PLACEHOLDER in url:
+        raise ValueError("The PRD source URL contains a redacted placeholder (secret values are not persisted); pass the full URL again.")
     try:
         result = fetch_text(url, allow_private=allow_private)
     except UnsafeURLError as exc:
-        raise ValueError(f"Refusing to fetch PRD source URL {redact_url(url)}: {exc}") from exc
+        raise ValueError(f"Refusing to fetch PRD source URL {redact_url(url)}: {redact_text_urls(str(exc))}") from exc
     except httpx.HTTPError as exc:
-        raise ValueError(f"Failed to fetch PRD source URL {redact_url(url)}: {exc}") from exc
+        # httpx messages embed the full (pinned) request URL, query token included: report only the class and status.
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+        detail = f"HTTP {status}" if status is not None else type(exc).__name__
+        raise ValueError(f"Failed to fetch PRD source URL {redact_url(url)}: {detail} ({type(exc).__name__})") from None
     # Never persist credentials: userinfo and token-like query values are redacted.
     metadata["url"] = redact_url(url)
     metadata["http_status_code"] = result.status_code

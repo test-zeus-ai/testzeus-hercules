@@ -169,16 +169,95 @@ def remote_ref_error(exc: BaseException) -> Optional[RemoteSchemaRefError]:
 # ------------------------------------------------------------------------------
 
 # A secret-bearing header name: any name containing one of the redactor's header
-# fragments (authorization, cookie, token, api-key, ...). The surrounding name
-# characters are bounded so a huge unbroken token cannot cause quadratic scans.
-_SECRET_HEADER_NAME = r"[A-Za-z0-9_-]{0,64}(?:" + "|".join(re.escape(part) for part in REDACTED_HEADER_PATTERNS) + r")[A-Za-z0-9_-]{0,64}"
-# `'Authorization: Bearer x'` / `"Cookie: a=b"`: the value stops at the matching quote.
-_QUOTED_SECRET_HEADER_RE = re.compile(r"(?i)(?P<q>['\"])(?P<head>\s*" + _SECRET_HEADER_NAME + r"\s*:\s*)[^\r\n]*?(?P=q)")
-# Anywhere on a line (verbose `> Authorization: ...`, `* Cookie: ...`, mid-sentence): redacted to the end of the line.
-_SECRET_HEADER_ANYWHERE_RE = re.compile(r"(?i)(" + _SECRET_HEADER_NAME + r"\s*:(?!\s*\[REDACTED\])\s*)[^\r\n]+")
-# XML-safe variant (JUnit report copy): the value stops at markup/quotes, so redaction never swallows a closing tag or attribute quote.
-_SECRET_HEADER_XML_RE = re.compile(r"(?i)(" + _SECRET_HEADER_NAME + r"\s*:(?!\s*\[REDACTED\])\s*)[^<\"'\r\n]+")
+# fragments (authorization, cookie, token, api-key, ...), with at most
+# _NAME_CONTEXT_CHARS further name characters after the fragment. Matching is a
+# single linear pass over the lines that mention a fragment (no regex
+# backtracking), so a megabyte of "tokentoken..." or a wall of spaces costs
+# milliseconds, not seconds.
+_NAME_CONTEXT_CHARS = 64
+_NAME_CHARS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-")
+_HEADER_FRAGMENTS = tuple(sorted(set(REDACTED_HEADER_PATTERNS), key=len, reverse=True))
+_MAX_FRAGMENT_LEN = max(len(fragment) for fragment in _HEADER_FRAGMENTS)
+# Invisible characters an attacker (or a sloppy server) could insert inside a header name to dodge the match:
+# NUL, soft hyphen, Arabic letter mark, Mongolian vowel separator, zero-width/bidi marks, word joiners, BOM.
+_INVISIBLE_CHARS = dict.fromkeys([0x00, 0xAD, 0x061C, 0x180E, *range(0x200B, 0x2010), *range(0x202A, 0x202F), *range(0x2060, 0x2065), 0xFEFF])
 _URL_TOKEN_RE = re.compile(r"https?://[^\s'\"<>]+")
+_QUOTES = "'\""
+_REDACTED_MARK = REDACTED_PLACEHOLDER
+
+
+def _secret_name_before(line: str, colon: int) -> Optional[int]:
+    """Start index of the (possibly quote-prefixed) secret header name ending right before ``line[colon]``, else None.
+
+    Whitespace between the name and the colon is allowed. The name must contain a header fragment that ends within
+    _NAME_CONTEXT_CHARS of the colon (the same bound the old regex used).
+    """
+    end = colon
+    while end > 0 and line[end - 1] in " \t\f\v":
+        end -= 1
+    start = end
+    limit = max(0, end - (_NAME_CONTEXT_CHARS + _MAX_FRAGMENT_LEN))
+    while start > limit and line[start - 1] in _NAME_CHARS:
+        start -= 1
+    if start == end:
+        return None
+    window = line[start:end].lower()
+    cutoff = len(window) - _NAME_CONTEXT_CHARS
+    for fragment in _HEADER_FRAGMENTS:
+        index = window.rfind(fragment)
+        if index != -1 and index + len(fragment) >= cutoff:
+            return start
+    return None
+
+
+def _redact_header_values_in_line(line: str, xml: bool) -> str:
+    """Redact the value of every secret-named ``Name: value`` header in one line."""
+    lowered = line.lower()
+    if ":" not in line or not any(fragment in lowered for fragment in _HEADER_FRAGMENTS):
+        return line
+    out: List[str] = []
+    cursor = 0
+    colon = line.find(":")
+    while colon != -1:
+        name_start = _secret_name_before(line, colon)
+        if name_start is None:
+            colon = line.find(":", colon + 1)
+            continue
+        value_start = colon + 1
+        while value_start < len(line) and line[value_start] in " \t\f\v":
+            value_start += 1
+        if line.startswith(_REDACTED_MARK, value_start):
+            colon = line.find(":", value_start + len(_REDACTED_MARK))
+            continue
+        # Value end: markup/quote boundary in the XML copy; the matching quote when the header sits inside a quoted
+        # argument ('Authorization: Bearer x'); else the end of the line (a trailing "\r" is kept out of the value).
+        eol = len(line.rstrip("\r\n"))
+        value_end = eol
+        opened_by = line[name_start - 1] if name_start > 0 and line[name_start - 1] in _QUOTES else None
+        if opened_by is None:
+            before = name_start
+            while before > 0 and line[before - 1] in " \t\f\v":
+                before -= 1
+            if before > 0 and line[before - 1] in _QUOTES:
+                opened_by = line[before - 1]
+        quoted_end = line.find(opened_by, value_start) if opened_by else -1
+        if xml:
+            boundary = min((index for index in (line.find(char, value_start) for char in ("<", '"', "'")) if index != -1), default=eol)
+            value_end = min(boundary, eol)
+            if value_end <= value_start:
+                colon = line.find(":", colon + 1)
+                continue
+        elif quoted_end != -1 and quoted_end <= eol:
+            value_end = quoted_end
+        elif value_end <= value_start:
+            colon = line.find(":", colon + 1)
+            continue
+        out.append(line[cursor:value_start])
+        out.append(_REDACTED_MARK)
+        cursor = value_end
+        colon = line.find(":", value_end)
+    out.append(line[cursor:])
+    return "".join(out)
 
 
 def redact_tool_output(text: str, secret_values: Iterable[str] = (), xml: bool = False) -> str:
@@ -187,13 +266,14 @@ def redact_tool_output(text: str, secret_values: Iterable[str] = (), xml: bool =
     credential/cookie/token header values wherever they appear on a line
     (verbose `> `/`* ` prefixes, quoted `--header '...'` arguments, mid-line
     mentions in failure messages) and URL credentials / secret query values.
+
+    Linear time on any input. Invisible characters (NUL, zero-width and bidi
+    marks, soft hyphens) are stripped first so inserting one inside a header
+    name cannot evade the match.
     """
-    text = scrub_secret_values(text, secret_values)
-    if xml:
-        text = _SECRET_HEADER_XML_RE.sub(lambda match: match.group(1) + REDACTED_PLACEHOLDER, text)
-    else:
-        text = _QUOTED_SECRET_HEADER_RE.sub(lambda match: f"{match.group('q')}{match.group('head')}{REDACTED_PLACEHOLDER}{match.group('q')}", text)
-        text = _SECRET_HEADER_ANYWHERE_RE.sub(lambda match: match.group(1) + REDACTED_PLACEHOLDER, text)
+    text = scrub_secret_values(str(text), secret_values).translate(_INVISIBLE_CHARS)
+    lines = text.split("\n")
+    text = "\n".join(_redact_header_values_in_line(line, xml) for line in lines)
     return _URL_TOKEN_RE.sub(lambda match: redact_url(match.group(0)), text)
 
 
@@ -445,6 +525,34 @@ def truncation_reason(response_json: Any, document: Any = None) -> Optional[str]
     return None
 
 
+_TRUNCATABLE_FIELDS = ("body", "error_detail")
+
+
+def truncation_blocks_path(response_json: Any, document: Any, path: str, matches: Any) -> Optional[str]:
+    """
+    Reason a truncated payload makes the verdict for ``path`` unreliable, else None.
+
+    A payload shortened by generic_http_api only loses text inside one field
+    (``body`` or ``error_detail``); the rest (``status_code``, ``headers``, ...)
+    is intact and assertions on it must keep working. The verdict is blocked
+    only when it could be wrong because of the cut: the whole payload is a
+    truncated string, the path matched nothing (it may live in the cut-off part),
+    or the path targets a truncated field (or uses a recursive/wildcard step that
+    could read it).
+    """
+    reason = truncation_reason(response_json, document)
+    if reason is None:
+        return None
+    if not isinstance(document, dict) or not matches:
+        return reason
+    for field in _TRUNCATABLE_FIELDS:
+        value = document.get(field)
+        if isinstance(value, str) and _TRUNCATION_TAIL_RE.search(value):
+            if re.search(r"(?<![A-Za-z0-9_])" + field + r"(?![A-Za-z0-9_])", path) or re.match(r"\s*\$\s*(?:\.\.|\.\*|\[\s*\*)", path):
+                return reason
+    return None
+
+
 def _resolve_body_mode(body: Any, body_mode: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
     """
     Return (mode, error) for a request body.
@@ -617,13 +725,16 @@ def _auth_headers(auth_type: Optional[str], auth_value: Any) -> Tuple[Dict[str, 
     """
     Return (headers, error) for an auth_type/auth_value pair (auth_value already interpolated).
 
-    No auth_type means no auth. An unknown type, a missing value or a
-    malformed basic pair is an error: silently sending a request without (or
-    with garbage) credentials would show up as a confusing 401.
+    No auth_type (None, "" or "none", any case) means no auth, as it always
+    did. An unknown type, a missing value or a malformed basic pair is an
+    error: silently sending a request without (or with garbage) credentials
+    would show up as a confusing 401.
     """
     if not auth_type:
         return {}, None
     kind = str(auth_type).strip().lower()
+    if kind in ("", "none"):
+        return {}, None
     if kind not in AUTH_TYPES:
         return {}, f"Unknown auth_type '{auth_type}'. Valid types: {', '.join(AUTH_TYPES)}."
     if auth_value is None or (isinstance(auth_value, str) and not auth_value.strip()):
@@ -742,16 +853,15 @@ async def extract_from_response(
     except ValueError as e:
         truncated = truncation_reason(response_json)
         return json.dumps({"assertion": "ERROR", "path": path, "as_name": as_name, "reason": truncated or f"Response is not valid JSON: {e}"}, separators=(",", ":"))
-    truncated = truncation_reason(response_json, document)
-    if truncated:
-        return json.dumps({"assertion": "ERROR", "path": path, "as_name": as_name, "reason": truncated}, separators=(",", ":"))
-
     try:
         matches = find_json_path(document, path)
     except ImportError as e:
         return json.dumps({"assertion": "ERROR", "path": path, "as_name": as_name, "reason": str(e)}, separators=(",", ":"))
     except Exception as e:
         return json.dumps({"assertion": "ERROR", "path": path, "as_name": as_name, "reason": f"Invalid JSONPath: {e}"}, separators=(",", ":"))
+    truncated = truncation_blocks_path(response_json, document, path, matches)
+    if truncated:
+        return json.dumps({"assertion": "ERROR", "path": path, "as_name": as_name, "reason": truncated}, separators=(",", ":"))
 
     if not matches:
         result: Dict[str, Any] = {"assertion": "FAILED", "path": path, "as_name": as_name, "reason": "Path matched nothing; nothing was captured."}
@@ -808,7 +918,8 @@ async def validate_response_schema(
     except ValueError as e:
         return json.dumps({"assertion": "ERROR", "reason": truncation_reason(response_json) or f"Response is not valid JSON: {e}"}, separators=(",", ":"))
     truncated = truncation_reason(response_json, document)
-    if truncated:
+    if truncated and not path:
+        # Whole-body validation of a cut-off payload is meaningless; a JSONPath into an intact field is judged below.
         return json.dumps({"assertion": "ERROR", "reason": truncated}, separators=(",", ":"))
     try:
         schema = parse_json_payload(json_schema)
@@ -823,6 +934,9 @@ async def validate_response_schema(
             return json.dumps({"assertion": "ERROR", "reason": str(e)}, separators=(",", ":"))
         except Exception as e:
             return json.dumps({"assertion": "ERROR", "path": path, "reason": f"Invalid JSONPath: {e}"}, separators=(",", ":"))
+        blocked = truncation_blocks_path(response_json, document, path, matches)
+        if blocked:
+            return json.dumps({"assertion": "ERROR", "path": path, "reason": blocked}, separators=(",", ":"))
         if not matches:
             return json.dumps({"assertion": "FAILED", "path": path, "reason": "Path matched nothing in the response body."}, separators=(",", ":"))
         document = matches[0]
