@@ -24,6 +24,7 @@ from typing import Annotated, Any, Dict, List, Optional
 from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.tools.api_calls import (
     interpolate_value,
+    redact_tool_output,
     sensitive_variable_values,
     stringify_interpolated_value,
     truncate_for_log,
@@ -31,12 +32,7 @@ from testzeus_hercules.core.tools.api_calls import (
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.path_guard import PathConfinementError, resolve_in_roots
-from testzeus_hercules.utils.redact import (
-    REDACTED_PLACEHOLDER,
-    is_sensitive_name,
-    redact_url,
-    scrub_secret_values,
-)
+from testzeus_hercules.utils.redact import is_sensitive_name
 
 HURL_BINARY = "hurl"
 
@@ -84,13 +80,6 @@ def _hurl_environment(variables: Dict[str, str]) -> Dict[str, str]:
     return env
 
 
-_SECRET_HEADER_NAMES = r"(?:authorization|proxy-authorization|cookie|set-cookie|x-api-key|api-key|x-form-login)"
-_SECRET_HEADER_LINE_RE = re.compile(r"(?im)^(\s*" + _SECRET_HEADER_NAMES + r"\s*:\s*).+$")
-# XML-safe variant for the JUnit report copy: the value stops at markup/quotes,
-# so redaction never swallows a closing tag or attribute quote.
-_SECRET_HEADER_XML_RE = re.compile(r"(?i)(\b" + _SECRET_HEADER_NAMES + r"\s*:\s*)[^<\"'\r\n]+")
-_URL_TOKEN_RE = re.compile(r"https?://[^\s'\"<>]+")
-
 # Characters of hurl's raw stdout/stderr echoed back in the result payload.
 MAX_OUTPUT_EXCERPT_CHARS = 8 * 1024
 
@@ -107,11 +96,8 @@ def _minified(payload: Dict[str, Any]) -> str:
 
 
 def _redact_output(text: str, secret_values: List[str], xml: bool = False) -> str:
-    """Scrub secrets from raw hurl output: sensitive variable values, auth/cookie header lines and URL credentials."""
-    text = scrub_secret_values(text, secret_values)
-    header_re = _SECRET_HEADER_XML_RE if xml else _SECRET_HEADER_LINE_RE
-    text = header_re.sub(lambda match: match.group(1) + REDACTED_PLACEHOLDER, text)
-    return _URL_TOKEN_RE.sub(lambda match: redact_url(match.group(0)), text)
+    """Scrub secrets from raw hurl output: sensitive variable values, credential headers (anywhere on a line) and URL credentials."""
+    return redact_tool_output(text, secret_values, xml=xml)
 
 
 def _secret_variable_values(process_env: Dict[str, str]) -> List[str]:

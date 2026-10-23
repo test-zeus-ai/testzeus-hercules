@@ -10,6 +10,7 @@ from typing import Annotated, Any, List, Optional, Tuple
 import httpx
 from inflection import parameterize
 from testzeus_hercules.config import get_global_conf
+from testzeus_hercules.core.tools.api_calls import redact_tool_output
 from testzeus_hercules.core.tools.tool_registry import sec_logger as file_logger
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
@@ -145,6 +146,15 @@ def redact_command_for_log(command: List[str]) -> str:
     return " ".join(parts)
 
 
+def _header_secrets(headers: Optional[List[Tuple[str, str]]]) -> List[str]:
+    """Header values passed to nuclei plus the bare credential after a scheme ("Bearer <token>")."""
+    secrets: List[str] = []
+    for _name, value in headers or []:
+        secrets.append(value)
+        secrets.extend(value.split(" ", 1)[1:])
+    return secrets
+
+
 async def run_nuclei_command(
     is_open_api_spec: bool,
     open_api_spec_path: Optional[str],
@@ -208,8 +218,12 @@ async def run_nuclei_command(
     )
     stdout, stderr = await process.communicate()
 
-    stdout_decoded = stdout.decode()
-    stderr_decoded = stderr.decode()
+    # Nuclei -v echoes requests: redact before anything is logged or returned.
+    # The auth header values passed in (and the bare tokens inside them) are
+    # scrubbed wherever they show up, not only on `Header: value` lines.
+    secret_values = _header_secrets(headers)
+    stdout_decoded = redact_tool_output(stdout.decode(errors="replace"), secret_values)
+    stderr_decoded = redact_tool_output(stderr.decode(errors="replace"), secret_values)
 
     file_logger(f"Nuclei command stdout: {stdout_decoded}")
     file_logger(f"Nuclei command stderr: {stderr_decoded}")
@@ -312,7 +326,7 @@ for tag, explanation in security_terms_explanation.items():
                     return {"error": error_message}, duration
 
                 with open(output_file, "r", encoding="utf-8") as f:
-                    content = f.read()
+                    content = redact_tool_output(f.read(), _header_secrets(headers))
 
                 logger.info("Nuclei command completed successfully.")
                 file_logger("Nuclei command completed successfully.")
