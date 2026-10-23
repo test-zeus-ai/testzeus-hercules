@@ -1232,6 +1232,7 @@ async def do_get_accessibility_info(page: Page, only_input_fields: bool = False)
                         }
                         const ariaExpanded = element.getAttribute('aria-expanded');
                         if (ariaExpanded !== null) state.expanded = ariaExpanded === 'true';
+                        if (element.ownerDocument.activeElement === element) state.focused = true;
                         return state;
                     }
 

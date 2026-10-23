@@ -224,6 +224,16 @@ LLM Parameters:
   - Default: `false`
   - Implementation: Controls browser cleanup behavior
 
+- `HERCULES_MAX_ROLE_ITEMS`: Bound on large ARIA lists in `get_interactive_elements` / `get_input_fields`
+  - Values: integer, `0` = unlimited
+  - Default: `50`
+  - Usage: a container (listbox, tree, tablist, menu, native `ul`/`select`, ...) with more than this many
+    `option` / `treeitem` / `tab` / `menuitem` items lists the first ones plus every selected, checked or focused
+    item, followed by `{"role": "truncated", "count": <omitted>, "note": ...}` so the agent knows the rest exists
+    (a Salesforce-style listbox of 2,000 options would otherwise flood the agent's context). Each container is
+    bounded on its own.
+  - Implementation: `get_max_role_items()` in `core/tools/get_interactive_elements.py`
+
 - `BROWSER_COOKIES`: Set cookies for the browser context
   - Format: JSON array of cookie objects
   - Example: `[{"name": "session", "value": "123456", "domain": "example.com", "path": "/"}]`

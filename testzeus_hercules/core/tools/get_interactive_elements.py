@@ -37,6 +37,15 @@ INTERACTIVE_ROLES = frozenset(
     }
 )
 INTERACTIVE_TAGS = frozenset({"a", "button", "input", "select", "textarea"})
+
+# Large ARIA widgets (a Lightning listbox of 2,000 options, a big tree) would otherwise return one element per
+# row and blow up the agent context. Per container, at most HERCULES_MAX_ROLE_ITEMS items of these roles are listed.
+DEFAULT_MAX_ROLE_ITEMS = 50
+BOUNDED_ROLES = frozenset({"option", "treeitem", "tab", "menuitem"})
+# Nodes that own the bounded items below them; items outside any of them are bounded together under the document.
+ITEM_CONTAINER_ROLES = frozenset({"listbox", "combobox", "tree", "treegrid", "tablist", "menu", "menubar", "list", "group", "grid", "radiogroup"})
+ITEM_CONTAINER_TAGS = frozenset({"ul", "ol", "menu", "select", "datalist", "tbody"})
+TRUNCATED_ROLE = "truncated"
 # get_input_fields: HTML form elements, plus ARIA widgets that act as form controls without being
 # one (<div role="switch">, <div role="checkbox">, custom comboboxes ...).
 FORM_FIELD_TAGS = frozenset({"input", "label", "select", "textarea", "button", "fieldset", "legend", "datalist", "output", "option", "optgroup"})
@@ -58,13 +67,68 @@ def is_form_field_node(node: dict) -> bool:
     return str(node.get("tag", "")).lower() in FORM_FIELD_TAGS or _node_role(node) in FORM_FIELD_ROLES
 
 
-def flatten_elements(node: dict, parent_name: str = "", parent_title: str = "", *, include: Callable[[dict], bool] = is_interactive_node, compact: bool = True) -> list[dict]:
-    """Flatten the tree into the list of elements ``include`` selects (children before parents).
+def get_max_role_items() -> int:
+    """HERCULES_MAX_ROLE_ITEMS: items of option/treeitem/tab/menuitem roles listed per container (0 = unlimited)."""
+    raw = os.getenv("HERCULES_MAX_ROLE_ITEMS", "").strip()
+    if not raw:
+        return DEFAULT_MAX_ROLE_ITEMS
+    try:
+        return max(int(raw), 0)
+    except ValueError:
+        logger.warning("Invalid HERCULES_MAX_ROLE_ITEMS=%r; using default %d.", raw, DEFAULT_MAX_ROLE_ITEMS)
+        return DEFAULT_MAX_ROLE_ITEMS
 
-    A child without a name/title inherits its parent's. ``compact`` trims each node to the keys an agent
-    needs; get_input_fields keeps the full node (it also reports ids and test attributes).
-    """
-    elements: list[dict] = []
+
+def _is_active_item(element: dict) -> bool:
+    """Selected, checked or focused items are always kept: they are the state an agent needs to read."""
+    return element.get("selected") is True or element.get("checked") in (True, "mixed") or element.get("focused") is True
+
+
+def _truncation_marker(omitted: int, kept: int) -> dict:
+    return {
+        "role": TRUNCATED_ROLE,
+        "count": omitted,
+        "note": f"{omitted} more option/treeitem/tab/menuitem items are not listed ({kept} shown; selected, checked and focused ones are always shown). "
+        "Narrow the list (type in its search field, filter it, or scroll/expand it) to reach the others.",
+    }
+
+
+def _bound_role_items(entries: list[tuple[dict, int]], limit: int) -> list[dict]:
+    """Keep the first ``limit`` bounded-role items of every container (plus the active ones) and mark what was cut."""
+    if limit <= 0:
+        return [element for element, _ in entries]
+    totals: dict[int, int] = {}
+    for element, owner in entries:
+        if _node_role(element) in BOUNDED_ROLES:
+            totals[owner] = totals.get(owner, 0) + 1
+    if not any(total > limit for total in totals.values()):
+        return [element for element, _ in entries]
+
+    result: list[dict] = []
+    seen: dict[int, int] = {}
+    omitted: dict[int, int] = {}
+    last_index: dict[int, int] = {}  # where the marker of each truncated container goes: after its last listed item
+    for element, owner in entries:
+        if _node_role(element) in BOUNDED_ROLES and totals[owner] > limit:
+            seen[owner] = seen.get(owner, 0) + 1
+            if seen[owner] > limit and not _is_active_item(element):
+                omitted[owner] = omitted.get(owner, 0) + 1
+                continue
+            result.append(element)
+            last_index[owner] = len(result)
+        else:
+            result.append(element)
+    # insert markers back to front so earlier indexes stay valid
+    for owner, index in sorted(last_index.items(), key=lambda item: item[1], reverse=True):
+        if omitted.get(owner):
+            result.insert(index, _truncation_marker(omitted[owner], limit))
+    return result
+
+
+def _collect_elements(node: dict, parent_name: str, parent_title: str, include: Callable[[dict], bool], compact: bool, owner: int) -> list[tuple[dict, int]]:
+    entries: list[tuple[dict, int]] = []
+    if _node_role(node) in ITEM_CONTAINER_ROLES or str(node.get("tag", "")).lower() in ITEM_CONTAINER_TAGS:
+        owner = id(node)
 
     if "children" in node:
         # Get current node's name and title for passing to children
@@ -77,13 +141,24 @@ def flatten_elements(node: dict, parent_name: str = "", parent_title: str = "", 
                 child["name"] = current_name
             if "title" not in child and current_title:
                 child["title"] = current_title
-            elements.extend(flatten_elements(child, current_name, current_title, include=include, compact=compact))
+            entries.extend(_collect_elements(child, current_name, current_title, include, compact, owner))
 
     if "md" in node and include(node):
         new_node = node.copy()
         new_node.pop("children", None)
-        elements.append(compact_interactive_node(new_node) if compact else new_node)
-    return elements
+        entries.append((compact_interactive_node(new_node) if compact else new_node, owner))
+    return entries
+
+
+def flatten_elements(node: dict, parent_name: str = "", parent_title: str = "", *, include: Callable[[dict], bool] = is_interactive_node, compact: bool = True) -> list[dict]:
+    """Flatten the tree into the list of elements ``include`` selects (children before parents).
+
+    A child without a name/title inherits its parent's. ``compact`` trims each node to the keys an agent
+    needs; get_input_fields keeps the full node (it also reports ids and test attributes). A container holding
+    more than HERCULES_MAX_ROLE_ITEMS option/treeitem/tab/menuitem items lists the first ones (and every
+    selected/checked/focused one) followed by a ``{"role": "truncated", "count": n}`` marker.
+    """
+    return _bound_role_items(_collect_elements(node, parent_name, parent_title, include, compact, id(node)), get_max_role_items())
 
 
 def compact_value(value: Any) -> Any:
@@ -119,6 +194,7 @@ def compact_interactive_node(node: dict) -> dict:
         "focusable",
         "checked",
         "selected",
+        "focused",
         "field_name",
         "disabled",
         "expanded",
