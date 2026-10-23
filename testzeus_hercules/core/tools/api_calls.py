@@ -21,6 +21,7 @@ from testzeus_hercules.utils.redact import (
     _redact_post_data,
     _redact_sensitive_headers,
     is_sensitive_name,
+    redact_text_urls,
     redact_url,
     scrub_secret_values,
 )
@@ -181,9 +182,12 @@ _MAX_FRAGMENT_LEN = max(len(fragment) for fragment in _HEADER_FRAGMENTS)
 # Invisible characters an attacker (or a sloppy server) could insert inside a header name to dodge the match:
 # NUL, soft hyphen, Arabic letter mark, Mongolian vowel separator, zero-width/bidi marks, word joiners, BOM.
 _INVISIBLE_CHARS = dict.fromkeys([0x00, 0xAD, 0x061C, 0x180E, *range(0x200B, 0x2010), *range(0x202A, 0x202F), *range(0x2060, 0x2065), 0xFEFF])
-_URL_TOKEN_RE = re.compile(r"https?://[^\s'\"<>]+")
 _QUOTES = "'\""
 _REDACTED_MARK = REDACTED_PLACEHOLDER
+# A header name only counts as a header when it stands alone as a token: at the start of the line or right after
+# whitespace, a quote or one of these separators. Anything else (the "[" of a nuclei "[jwt-token-exposure:bearer]"
+# finding, the "/" of a URL path "/token:") is a template id / path / free text that merely contains the word.
+_HEADER_NAME_LEADERS = frozenset(" \t\f\v\r'\"(,=>*")
 
 
 def _secret_name_before(line: str, colon: int) -> Optional[int]:
@@ -201,6 +205,9 @@ def _secret_name_before(line: str, colon: int) -> Optional[int]:
         start -= 1
     if start == end:
         return None
+    # (a name longer than the scan window was cut short by the bound: its real start is unknown, so no leader check)
+    if limit < start and line[start - 1] not in _HEADER_NAME_LEADERS:
+        return None
     window = line[start:end].lower()
     cutoff = len(window) - _NAME_CONTEXT_CHARS
     for fragment in _HEADER_FRAGMENTS:
@@ -210,11 +217,32 @@ def _secret_name_before(line: str, colon: int) -> Optional[int]:
     return None
 
 
+class _ForwardFinder:
+    """``line.find(char, start)`` for non-decreasing ``start`` values, scanning each character's tail at most once.
+
+    A plain ``find`` per match rescans to the end of the line whenever the character does not occur again, which
+    makes a long line with many matches quadratic. Callers must never pass a ``start`` smaller than an earlier one.
+    """
+
+    def __init__(self, line: str) -> None:
+        self._line = line
+        self._next: Dict[str, int] = {}
+
+    def find(self, char: str, start: int) -> int:
+        cached = self._next.get(char)
+        if cached is None or (cached != -1 and cached < start):
+            cached = self._line.find(char, start)
+            self._next[char] = cached
+        return cached
+
+
 def _redact_header_values_in_line(line: str, xml: bool) -> str:
-    """Redact the value of every secret-named ``Name: value`` header in one line."""
+    """Redact the value of every secret-named ``Name: value`` header in one line (linear in the line length)."""
     lowered = line.lower()
     if ":" not in line or not any(fragment in lowered for fragment in _HEADER_FRAGMENTS):
         return line
+    eol = len(line.rstrip("\r\n"))  # a trailing "\r" is kept out of the value; computed once, not per match
+    finder = _ForwardFinder(line)
     out: List[str] = []
     cursor = 0
     colon = line.find(":")
@@ -231,7 +259,6 @@ def _redact_header_values_in_line(line: str, xml: bool) -> str:
             continue
         # Value end: markup/quote boundary in the XML copy; the matching quote when the header sits inside a quoted
         # argument ('Authorization: Bearer x'); else the end of the line (a trailing "\r" is kept out of the value).
-        eol = len(line.rstrip("\r\n"))
         value_end = eol
         opened_by = line[name_start - 1] if name_start > 0 and line[name_start - 1] in _QUOTES else None
         if opened_by is None:
@@ -240,9 +267,9 @@ def _redact_header_values_in_line(line: str, xml: bool) -> str:
                 before -= 1
             if before > 0 and line[before - 1] in _QUOTES:
                 opened_by = line[before - 1]
-        quoted_end = line.find(opened_by, value_start) if opened_by else -1
+        quoted_end = finder.find(opened_by, value_start) if opened_by else -1
         if xml:
-            boundary = min((index for index in (line.find(char, value_start) for char in ("<", '"', "'")) if index != -1), default=eol)
+            boundary = min((index for index in (finder.find(char, value_start) for char in ("<", '"', "'")) if index != -1), default=eol)
             value_end = min(boundary, eol)
             if value_end <= value_start:
                 colon = line.find(":", colon + 1)
@@ -274,7 +301,7 @@ def redact_tool_output(text: str, secret_values: Iterable[str] = (), xml: bool =
     text = scrub_secret_values(str(text), secret_values).translate(_INVISIBLE_CHARS)
     lines = text.split("\n")
     text = "\n".join(_redact_header_values_in_line(line, xml) for line in lines)
-    return _URL_TOKEN_RE.sub(lambda match: redact_url(match.group(0)), text)
+    return redact_text_urls(text)
 
 
 # ------------------------------------------------------------------------------
@@ -386,12 +413,9 @@ def determine_status_type(status_code: int) -> str:
     return "unknown"
 
 
-_URL_IN_TEXT_RE = re.compile(r"[a-zA-Z][a-zA-Z0-9+.\-]*://[^\s'\"<>]+")
-
-
 def _redacted_error_text(error: BaseException) -> str:
     """str(error) with every URL in it passed through redact_url (httpx messages embed the full request URL)."""
-    return _URL_IN_TEXT_RE.sub(lambda match: redact_url(match.group(0)), str(error))
+    return redact_text_urls(str(error))
 
 
 async def handle_error_response(e: httpx.HTTPStatusError) -> dict:

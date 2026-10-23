@@ -292,6 +292,41 @@ def test_redaction_is_linear_on_pathological_input(payload) -> None:
         assert time.monotonic() - started < 3.0, "redaction must not be quadratic"
 
 
+NUCLEI_FINDINGS = [
+    '[jwt-token-exposure:bearer] [http] [high] https://api.example.com/v1/users ["eyJhbGciOiJIUzI1NiJ9.e30.abc"]',
+    "[cookies-without-secure:cookie] [http] [info] https://api.example.com/login",
+    "[exposed-api-secret:regex] [http] [medium] https://api.example.com:8443/v2/token:refresh",
+    "[generic-secret-detect] [http] [low] https://api.example.com/",
+]
+
+
+@pytest.mark.parametrize("line", NUCLEI_FINDINGS)
+def test_nuclei_finding_lines_with_token_like_template_ids_keep_severity_and_url(line) -> None:
+    # A template/matcher id that merely contains "token"/"secret"/"cookie" is not a header: the severity,
+    # the affected endpoint and the extracted evidence must survive redaction.
+    assert api_calls.redact_tool_output(line) == line
+    assert api_calls.redact_tool_output(line, xml=True) == line
+
+
+def test_header_values_are_still_redacted_next_to_a_nuclei_style_line() -> None:
+    text = f"[jwt-token-exposure:bearer] [http] [high] https://api.example.com/v1\n> Authorization: Bearer {SECRET}\nfailed: sent Authorization: Bearer {SECRET} to target"
+    redacted = api_calls.redact_tool_output(text)
+    assert SECRET not in redacted
+    assert redacted.splitlines()[0] == text.splitlines()[0]
+
+
+def test_xml_redaction_is_linear_on_a_long_line_with_many_matches() -> None:
+    import time
+
+    # One long line, many header-shaped matches, and no "<" after them (a large captured response body in a
+    # hurl JUnit report): the next-"<" lookup used to rescan to the end of the line for every match.
+    payload = 'token:x" ' * 250_000
+    started = time.monotonic()
+    redacted = api_calls.redact_tool_output(payload, xml=True)
+    assert time.monotonic() - started < 2.0, "xml-mode redaction must not be quadratic"
+    assert "token:[REDACTED]" in redacted and "token:x" not in redacted
+
+
 @pytest.mark.parametrize("name", ["X-Auth-Tok\u200ben", "Author\u200dization", "Coo\x00kie", "X-Api-\u00adKey", "Authori\ufeffzation"])
 def test_invisible_characters_inside_a_header_name_do_not_evade_redaction(name) -> None:
     redacted = api_calls.redact_tool_output(f"> {name}: {SECRET}")

@@ -324,3 +324,24 @@ def test_deep_mode_budget_never_skips_the_default_levels(monkeypatch) -> None:
     body = json.dumps({"x": {"password": "lvl1"}, "y": [{"api_key": "lvl1b"}]})
     redacted = _redact_post_data(body, "application/json", redact.API_LOG_REDACTION_MAX_DEPTH)
     assert "lvl1" not in redacted and "lvl1b" not in redacted
+
+
+def test_one_url_in_text_helper_serves_api_sql_and_webhook_scrubbers() -> None:
+    import time
+
+    from testzeus_hercules.core.tools import api_calls, sql_calls
+    from testzeus_hercules.utils import redact
+
+    text = 'connect failed postgresql://user:pw@db.internal:5432/app?token=abc, retry https://svc/x?sid=1 "ok" <http://h/p>'
+    expected = redact.redact_text_urls(text)
+    assert "pw" not in expected and "abc" not in expected
+    assert api_calls._redacted_error_text(Exception(text)) == expected
+    assert "pw" not in sql_calls._scrub_error(Exception(text))
+    assert not hasattr(redact, "_URL_TEXT_RE") and not hasattr(api_calls, "_URL_IN_TEXT_RE") and not hasattr(sql_calls, "_URL_TOKEN_RE")
+    # a long run of scheme-like characters without "://" must stay linear
+    started = time.monotonic()
+    assert redact.redact_text_urls("a-" * 500_000) == "a-" * 500_000
+    assert time.monotonic() - started < 2.0
+    # scheme boundaries: leading digits/dashes are not part of the scheme
+    assert redact.redact_text_urls("1-https://u:p@h/x") == "1-https://h/x"
+    assert redact.redact_webhook_text("boom at https://hooks.slack.com/services/T/B/SECRET now").endswith("https://hooks.slack.com/[REDACTED] now")

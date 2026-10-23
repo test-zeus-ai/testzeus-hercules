@@ -10,7 +10,7 @@ can be imported from anywhere, including orchestrator.session.
 import json
 import re
 import urllib.parse
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from testzeus_hercules.utils.logger import logger
 
@@ -18,6 +18,39 @@ from testzeus_hercules.utils.logger import logger
 # NFKC-host forms, ...): everything from "//" up to and including the next "@"
 # (before any "/", "@") is dropped, so credentials can never survive.
 _USERINFO_RE = re.compile(r"//[^/@\s]*@")
+
+# The one "URL embedded in free text" pattern: the "://" and the URL body up to a
+# delimiter. The scheme before it is found by a bounded backwards scan in
+# _map_urls_in_text, NOT by a leading "[a-zA-Z][a-zA-Z0-9+.-]*" in the regex,
+# which backtracks quadratically on a long run of scheme-like characters
+# ("a-a-a-..." with no "://"). A future change to the URL boundary (stop at ")"
+# or ">", ...) is made here and reaches every caller: redact_text_urls,
+# redact_webhook_text and the API / SQL tool error scrubbers.
+_URL_IN_TEXT_RE = re.compile(r"://[^\s'\"<>]+")
+_SCHEME_CHARS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+.-")
+_SCHEME_START_CHARS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
+_MAX_SCHEME_LEN = 32
+
+
+def _map_urls_in_text(text: str, rewrite: Callable[[str], str]) -> str:
+    """Replace every ``scheme://body`` URL embedded in ``text`` with ``rewrite(url)``; linear in len(text)."""
+    pieces: List[str] = []
+    cursor = 0
+    for match in _URL_IN_TEXT_RE.finditer(text):
+        scheme_end = match.start()
+        begin = scheme_end
+        floor = max(cursor, scheme_end - _MAX_SCHEME_LEN)
+        while begin > floor and text[begin - 1] in _SCHEME_CHARS:
+            begin -= 1
+        while begin < scheme_end and text[begin] not in _SCHEME_START_CHARS:  # a scheme starts with a letter
+            begin += 1
+        if begin == scheme_end:
+            continue
+        pieces.append(text[cursor:begin])
+        pieces.append(rewrite(text[begin : match.end()]))
+        cursor = match.end()
+    pieces.append(text[cursor:])
+    return "".join(pieces)
 
 
 def redact_url(url: str) -> str:
@@ -83,9 +116,6 @@ def redact_webhook_url(url: str) -> str:
         return "[unparsable-url]"
 
 
-_URL_IN_TEXT_RE = re.compile(r"[a-zA-Z][a-zA-Z0-9+.\-]*://[^\s'\"<>]+")
-
-
 def redact_webhook_text(text: str, url: str = "") -> str:
     """Mask every URL inside ``text`` (e.g. an httpx error message) with :func:`redact_webhook_url`.
 
@@ -96,7 +126,7 @@ def redact_webhook_text(text: str, url: str = "") -> str:
         out = str(text)
         if url:
             out = out.replace(url, redact_webhook_url(url))
-        return _URL_IN_TEXT_RE.sub(lambda match: redact_webhook_url(match.group(0)), out)
+        return _map_urls_in_text(out, redact_webhook_url)
     except Exception:
         return "[redacted]"
 
@@ -208,13 +238,10 @@ def _redact_url_fallback(url: str) -> str:
     return out
 
 
-_URL_TEXT_RE = re.compile(r"[a-zA-Z][a-zA-Z0-9+.\-]*://[^\s'\"<>]+")
-
-
 def redact_text_urls(text: str) -> str:
     """Run :func:`redact_url` over every URL embedded in ``text`` (e.g. an exception message); never raises."""
     try:
-        return _URL_TEXT_RE.sub(lambda match: redact_url(match.group(0)), str(text))
+        return _map_urls_in_text(str(text), redact_url)
     except Exception:
         return "[redacted]"
 

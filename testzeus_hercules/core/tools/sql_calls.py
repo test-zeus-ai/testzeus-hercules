@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_en
 from sqlalchemy.sql import text
 from testzeus_hercules.core.tools.tool_registry import tool, tool_registry
 from testzeus_hercules.utils.logger import logger
-from testzeus_hercules.utils.redact import redact_url
+from testzeus_hercules.utils.redact import redact_text_urls
 
 # Maximum number of rows materialized into the tool result. Anything beyond this
 # is dropped and flagged with a truncation notice (an unbounded SELECT * on a
@@ -27,9 +27,8 @@ MAX_STATEMENT_SECONDS = 30
 _DESTRUCTIVE_KEYWORD_RE = re.compile(r"\b(INSERT|UPDATE|DELETE|MERGE|TRUNCATE|ALTER|DROP|CREATE|GRANT|REVOKE)\b", re.IGNORECASE)
 
 # URL-shaped tokens in driver error text (DSNs usually appear embedded in the
-# message, not as the whole message) get redact_url applied; password-like
+# message, not as the whole message) get redact_text_urls applied; password-like
 # key=value / key: value assignments are stripped as well.
-_URL_TOKEN_RE = re.compile(r"[a-zA-Z][a-zA-Z0-9+.\-]*://[^\s'\"]+")
 _SECRET_ASSIGNMENT_RE = re.compile(r"(?i)\b(password|passwd|pwd)\s*[=:]\s*(?!\[REDACTED\])\S+")
 
 
@@ -40,7 +39,7 @@ def _scrub_error(error: Exception) -> str:
     that text would otherwise flow straight into the LLM context.
     """
     message = str(error)
-    message = _URL_TOKEN_RE.sub(lambda match: redact_url(match.group(0)), message)
+    message = redact_text_urls(message)
     return _SECRET_ASSIGNMENT_RE.sub(lambda match: f"{match.group(1)}=[REDACTED]", message)
 
 
