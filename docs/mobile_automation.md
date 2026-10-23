@@ -222,14 +222,23 @@ from the environment, from a `.env` file, or from a `--config` YAML/JSON file
   server that accepts the connection and never answers therefore yields
   `Appium did not respond within Ns ...` instead of a hang. A thread already
   blocked in a driver call cannot be cancelled by asyncio, which is why the
-  socket timeout exists as well.
+  socket timeout exists as well. If `create_session` times out while the server is
+  still starting the session, a done-callback on the worker quits the driver when
+  it finally comes back (it is never adopted), so the device is not left locked
+  to a session nobody owns until `newCommandTimeout`.
 - **Close.** `close_mobile_session` stops the recording (best effort, the video
   path is returned) and quits the driver.
 - **Exit hooks.** On the first successful session Hercules registers an `atexit`
   hook and `SIGTERM`/`SIGINT` handlers (main thread only). They quit every active
-  session synchronously, each driver call limited to 5 s, then chain to the
-  previously installed handler (for example telemetry's) or re-raise the default
-  action. `BaseRunner.shutdown` also calls `AppiumManager.close_all_instances()`
+  session, each driver call limited to 5 s, then chain to the previously
+  installed handler (for example telemetry's) or re-raise the default action.
+  The signal handler does not make the HTTP calls on the interrupted main thread:
+  it runs the cleanup on a short-lived daemon thread and waits at most 15 s for it
+  before chaining on. Teardown first waits up to 3 s for a driver command that is
+  still running on a worker thread (a tap or read in flight), then quits anyway.
+  The first signal always ends the device session, even if the application would
+  have handled `KeyboardInterrupt` itself (a later `close_mobile_session` finds no
+  session and is a no-op). `BaseRunner.shutdown` also calls `AppiumManager.close_all_instances()`
   so an aborted scenario cannot leak the session or its worker pool.
 - **Orphaned sessions.** Verified with a session created with
   `newCommandTimeout: 10`: after a normal exit and after `SIGTERM` the server

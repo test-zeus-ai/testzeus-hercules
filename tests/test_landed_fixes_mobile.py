@@ -137,6 +137,59 @@ def test_run_in_ui_thread_explicit_timeout_raises_timeout_error(fake_manager) ->
         release.set()
 
 
+def test_session_that_finishes_starting_after_the_timeout_is_quit(monkeypatch, clean_manager_state, tmp_path) -> None:
+    """asyncio cannot stop the executor thread: a driver that comes back late must be quit, not leaked."""
+    monkeypatch.setenv("APPIUM_SESSION_START_TIMEOUT_SECONDS", "0.2")
+    late = FakeDriver(session_id="late-session")
+    release = threading.Event()
+    quit_seen = threading.Event()
+    original_quit = late.quit
+
+    def quit_and_signal() -> None:
+        original_quit()
+        quit_seen.set()
+
+    late.quit = quit_and_signal
+
+    def slow_factory():
+        release.wait(10)
+        return late
+
+    manager = am.AppiumManager(stake_id="late", _driver_factory=slow_factory)
+    manager._record_video = False
+    manager._video_dir = str(tmp_path / "v")
+    manager._screenshots_dir = str(tmp_path / "s")
+    try:
+        with pytest.raises(am.AppiumTimeoutError):
+            _bounded(manager.create_session({"platformName": "Android"}))
+        assert manager.driver is None and late.quit_called == 0  # still creating
+        release.set()  # the server finally answers
+        assert quit_seen.wait(5), "the late session was leaked: nothing quit it"
+        assert late.quit_called == 1
+        assert manager.driver is None  # and it was never adopted
+    finally:
+        release.set()
+        manager.shutdown_pool()
+
+
+def test_late_factory_failure_after_the_timeout_is_swallowed(monkeypatch, clean_manager_state, tmp_path) -> None:
+    monkeypatch.setenv("APPIUM_SESSION_START_TIMEOUT_SECONDS", "0.2")
+    release = threading.Event()
+
+    def failing_factory():
+        release.wait(10)
+        raise RuntimeError("server gave up")
+
+    manager = am.AppiumManager(stake_id="latefail", _driver_factory=failing_factory)
+    try:
+        with pytest.raises(am.AppiumTimeoutError):
+            _bounded(manager.create_session({"platformName": "Android"}))
+        release.set()
+        manager.shutdown_pool(wait=True)  # drains the worker: the callback ran without raising
+    finally:
+        release.set()
+
+
 def test_session_creation_sets_client_timeouts_on_real_client_config(monkeypatch, clean_manager_state, tmp_path) -> None:
     pytest.importorskip("appium")
     import appium.webdriver as appium_webdriver
@@ -252,6 +305,93 @@ def test_signal_handler_cleans_up_then_calls_previous_handler(fake_manager, monk
     am._handle_exit_signal(signal.SIGTERM, None)
     assert driver.quit_called == 1
     assert received == [signal.SIGTERM]
+
+
+def _run_handler_in_thread(signum, seconds: float) -> bool:
+    """Run the signal handler on a helper thread; True when it returned within ``seconds``."""
+    handler = threading.Thread(target=am._handle_exit_signal, args=(signum, None), daemon=True)
+    handler.start()
+    handler.join(seconds)
+    return not handler.is_alive()
+
+
+def test_signal_handler_is_bounded_when_the_driver_quit_hangs(fake_manager, monkeypatch, clean_exit_hooks) -> None:
+    manager, driver = fake_manager
+    manager._record_video = False
+    release = threading.Event()
+    driver.quit = lambda: release.wait(30)
+    received = []
+    monkeypatch.setitem(am._previous_signal_handlers, signal.SIGTERM, lambda signum, frame: received.append(signum))
+    monkeypatch.setattr(am, "SIGNAL_CLEANUP_JOIN_SECONDS", 0.5)
+    try:
+        started = time.time()
+        assert _run_handler_in_thread(signal.SIGTERM, 5.0), "the handler must not wait on a hung driver forever"
+        assert time.time() - started < 4
+        assert received == [signal.SIGTERM]  # still chained to the previous handler
+    finally:
+        release.set()
+
+
+def test_signal_handler_runs_the_driver_calls_off_the_calling_thread(fake_manager, monkeypatch, clean_exit_hooks) -> None:
+    manager, driver = fake_manager
+    manager._record_video = False
+    quit_threads = []
+    driver.quit = lambda: quit_threads.append(threading.current_thread())
+    monkeypatch.setitem(am._previous_signal_handlers, signal.SIGTERM, lambda signum, frame: None)
+    am._handle_exit_signal(signal.SIGTERM, None)
+    assert len(quit_threads) == 1 and quit_threads[0] is not threading.current_thread()
+    assert quit_threads[0].daemon
+
+
+def test_teardown_waits_for_an_in_flight_command_before_quitting(fake_manager) -> None:
+    manager, driver = fake_manager
+    manager._record_video = False
+    events = []
+    release = threading.Event()
+    started = threading.Event()
+
+    def slow_command():
+        started.set()
+        release.wait(10)
+        events.append("command-finished")
+        return {"width": 1, "height": 1}
+
+    driver.get_window_size = slow_command
+    driver.quit = lambda: events.append("quit")
+
+    async def scenario():
+        command = asyncio.ensure_future(manager._run_in_ui_thread(lambda: driver.get_window_size(), "slow"))
+        await asyncio.get_running_loop().run_in_executor(None, started.wait, 5)
+        threading.Timer(0.4, release.set).start()
+        await asyncio.get_running_loop().run_in_executor(None, am._cleanup_all_sessions)
+        await command
+
+    _bounded(scenario())
+    assert events == ["command-finished", "quit"], "quit must not race the command still in flight"
+
+
+def test_teardown_gives_up_on_a_wedged_command_after_a_bounded_wait(fake_manager, monkeypatch) -> None:
+    manager, driver = fake_manager
+    manager._record_video = False
+    monkeypatch.setattr(am, "EXIT_INFLIGHT_WAIT_SECONDS", 0.2)
+    release = threading.Event()
+    started = threading.Event()
+    driver.get_window_size = lambda: (started.set(), release.wait(10))
+    try:
+
+        async def scenario():
+            command = asyncio.ensure_future(manager._run_in_ui_thread(lambda: driver.get_window_size(), "wedged", timeout=0.1))
+            await asyncio.get_running_loop().run_in_executor(None, started.wait, 5)
+            with pytest.raises(am.AppiumTimeoutError):
+                await command
+
+        _bounded(scenario())
+        began = time.time()
+        am._cleanup_all_sessions()
+        assert time.time() - began < 3
+        assert driver.quit_called == 1
+    finally:
+        release.set()
 
 
 def test_create_session_registers_exit_hooks(monkeypatch, clean_manager_state, tmp_path, clean_exit_hooks) -> None:
