@@ -661,16 +661,17 @@ def test_open_dashboard_returns_report_url(synthetic_runs) -> None:
     _tmp_path, _manager, _old, new = synthetic_runs
     result = run(mcp_server.hercules_open_dashboard())
     assert result["dashboard"] == "not_running"
-    expected = f"opt/output/{new.name}/Hercules_Test_Report.md"
-    assert result["report_url"] == expected
-    assert result["report_path"] == expected
+    # report_url keeps its file:// URI contract; report_path is the portable root-relative form.
+    assert result["report_path"] == f"opt/output/{new.name}/Hercules_Test_Report.md"
+    assert result["report_url"] == (new / "Hercules_Test_Report.md").absolute().as_uri()
+    assert result["report_url"].startswith("file:///")
     assert "hercules-dashboard" in result["hint"]
 
 
 def test_open_dashboard_without_runs(workspace) -> None:
     result = run(mcp_server.hercules_open_dashboard())
     assert result["dashboard"] == "not_running"
-    assert result["report_url"] is None
+    assert result["report_url"] is None and result["report_path"] is None
 
 
 # ── hercules_check_config ─────────────────────────────────────────────────────

@@ -314,7 +314,7 @@ checks are process-wide.
 | `hercules_generate_test_plan` | `session_id`, `prd_path`, `cases_per_requirement` (default 3) | `test_plan_path`, `case_count`, `coverage` (requirement matrix totals), `test_cases` (`{id, title, category, priority, tags}`), `next_action` |
 | `hercules_generate_and_execute` | `session_id`, `test_ids` (plan subset), `gherkin`, `description`, `additional_instructions`, `approve_plan` (required to run a PRD-derived plan) | `success`, `duration_s`, `summaries`, `run_report_md`, `bundles_count`, `progress_events` (last 20), `steps_completed`, `feature_file`, `source` (`gherkin`/`description`/`test_plan`), optional `error`, `next_action`, and `additional_instructions_note` (set when `additional_instructions` were appended as Gherkin comments). With a `description`, Gherkin generation has a separate fixed 120-second deadline (`_GHERKIN_GENERATION_TIMEOUT_S`, not configurable); on timeout the tool returns an error dict before execution starts |
 | `hercules_get_run_results` | `session_id`, `run_id` (omit for newest run), `result_id` (select one result inside the run folder; see below) | `run_id`, `result_id`, optional `other_results`, `junit_xml`, `total`/`passed`/`failed`/`errors`, `report_md`, `html`, `bundles`, `test_cases` (`{name, status, time, failure_message?}`) |
-| `hercules_open_dashboard` | `session_id` | `dashboard: "not_running"`, `report_path` (root-relative path of the newest markdown/HTML report; also returned as `report_url` for compatibility, it is no longer a `file://` URI so the host layout is not leaked), `hint` (start `hercules-dashboard`) |
+| `hercules_open_dashboard` | `session_id` | `dashboard: "not_running"`, `report_path` (root-relative path of the newest markdown/HTML report: the portable form) and `report_url` (the same report as a `file://` URI, unchanged from earlier versions; it contains the absolute local path by design, because the server runs on the machine that holds the report), `hint` (start `hercules-dashboard`) |
 | `hercules_check_config` | `session_id`, `ping_model` (send a tiny prompt and report latency) | `ok`, `checks`: `llm_config`, `litellm_model`, `playwright`, optional `model_ping` |
 | `hercules_rerun` | `session_id`, `test_ids`, `approve_plan` | Same shape as `hercules_generate_and_execute`; prefers the session test-plan subset, falls back to the last executed feature file |
 
@@ -528,7 +528,7 @@ File paths in tool results (`project_path`, `prd_path`, `llm_config.path`, `repo
 `html`, `bundles`, and the paths inside `summaries`) are reported relative to
 the Hercules root (`TESTZEUS_ROOT` or the working directory), or as a bare file
 name when they lie outside it, so remote clients never see the host's directory
-layout. Absolute Hercules-root paths inside error messages and JUnit
+layout. The one deliberate exception is `hercules_open_dashboard.report_url`, a `file://` URI kept for client compatibility (use `report_path` for the portable form). Absolute Hercules-root paths inside error messages and JUnit
 `failure_message` text are rewritten the same way (home directory becomes `~`).
 
 `prd_path` URLs must not embed credentials (`user:pass@host` is rejected).

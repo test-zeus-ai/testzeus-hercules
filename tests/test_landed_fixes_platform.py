@@ -93,7 +93,8 @@ def test_open_dashboard_html_follows_newest_xml(workspace) -> None:
     tmp_path, _ = workspace
     _shared_run_dir(tmp_path)
     result = run(mcp_server.hercules_open_dashboard())
-    assert result["report_url"].endswith("zzz_result.html")
+    assert result["report_url"].startswith("file://") and result["report_url"].endswith("zzz_result.html")
+    assert result["report_path"].endswith("zzz_result.html") and not result["report_path"].startswith("/")
 
 
 # ── 2. orphan-proof signal handling ───────────────────────────────────────────

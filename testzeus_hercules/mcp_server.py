@@ -1034,34 +1034,38 @@ async def hercules_get_run_results(session_id: str = "", run_id: str = "", resul
 async def hercules_open_dashboard(session_id: str = "") -> dict:
     """Locate the latest Hercules test report (the web dashboard arrives in a later phase).
 
-    Returns the root-relative path of the newest Hercules_Test_Report.md (or the
-    run's HTML report) plus a hint for serving the web dashboard.
+    Returns the newest Hercules_Test_Report.md (or the run's HTML report) as a
+    ``file://`` URI (``report_url``, as before) and as a root-relative path
+    (``report_path``, the portable form), plus a hint for serving the web dashboard.
+    ``report_url`` contains the absolute local path by design: this server runs on the
+    machine that holds the report, so a local client can open it directly.
 
     Args:
         session_id: Kept for symmetry; the report is located under opt/output.
 
     Returns:
-        {"dashboard": "not_running", "report_path": <root-relative path> | None, "report_url": (same), "hint"}.
+        {"dashboard": "not_running", "report_path": <root-relative path> | None, "report_url": file://... | None, "hint"}.
     """
-    report_path: str | None = None
+    report_file: Path | None = None
     output_dir = _result_dir()
     for run_dir in _sorted_newest_first(_list_subdirs(output_dir)):
         report_md = run_dir / "Hercules_Test_Report.md"
         try:
             if report_md.exists():
-                report_path = _display_path(report_md)
+                report_file = report_md
                 break
             xml_files = _sorted_newest_first(list(run_dir.glob("*_result.xml")))
             html_files = [xml.with_suffix(".html") for xml in xml_files[:1] if xml.with_suffix(".html").is_file()] or _sorted_newest_first(list(run_dir.glob("*.html")))
         except OSError:
             continue  # run vanished mid-enumeration
         if html_files:
-            report_path = _display_path(html_files[0])
+            report_file = html_files[0]
             break
     return {
         "dashboard": "not_running",
-        "report_path": report_path,
-        "report_url": report_path,  # same value, kept for compatibility; paths are root-relative, never absolute host paths
+        "report_path": _display_path(report_file) if report_file else None,
+        # file:// URI as on main (the key's type must not change under clients); report_path is the portable form.
+        "report_url": Path(os.path.abspath(report_file)).as_uri() if report_file else None,
         "hint": "start `hercules-dashboard` to serve the web dashboard",
     }
 
