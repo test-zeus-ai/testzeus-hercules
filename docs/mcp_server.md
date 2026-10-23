@@ -499,7 +499,7 @@ Host check and token are all fine.
 Session state (including artifacts) is stored under the project root:
 
 - `.hercules/sessions.json` — session registry, written atomically with mode 0600;
-  `app_url` userinfo is redacted and credentials are never stored. It does hold
+  `app_url` is persisted in its redacted form (userinfo removed, secret query/fragment values masked) and credentials are never stored; the real value lives in memory only, so after an MCP server restart a session whose URL had secrets holds a `[REDACTED]` URL and `SessionState.require_app_url()` refuses to hand it out (call `hercules_configure_session` again). Nothing in a run reads `app_url` today (the Gherkin carries the URL). It does hold
   **absolute** paths (`project_path`, `prd_path`, artifact paths, recorded
   `feature_file`), so treat the file as operator-private.
 - `.hercules/<session_id>/code_summary.json` — code scan output.
@@ -554,7 +554,7 @@ secret-scrubbed).
 
 | Where | Rule |
 | --- | --- |
-| `app_url` in tool results and `sessions.json` | userinfo removed; secret-looking query values, `;name=value` path parameters and fragment values replaced with `[REDACTED]` (names such as `token`, `api_key`, `key`, `secret`, `password`, `sig`, `signature`, `jwt`, `session`, `sid`, `*_key`, AWS `x-amz-*`) |
+| `app_url` in tool results and `sessions.json` | userinfo removed; secret-looking query values, `;name=value` path parameters and fragment values replaced with `[REDACTED]` (names such as `token`, `api_key`, `key`, `secret`, `password`, `sig`, `signature`, `jwt`, `session`, `sid`, `*_key` except the well-known non-secret `sort_key`, `primary_key`, `foreign_key`, `partition_key`, `order_key`, `cache_key`, AWS `x-amz-*`) |
 | PRD URL | same as above; credentials in the URL are rejected outright; fetch errors report the exception class and HTTP status only, not the request URL |
 | `credentials` argument | ignored, never stored, never echoed (a warning is returned) |
 | File paths in results | root-relative, or basename when outside the root |

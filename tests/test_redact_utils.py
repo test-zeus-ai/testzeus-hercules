@@ -345,3 +345,11 @@ def test_one_url_in_text_helper_serves_api_sql_and_webhook_scrubbers() -> None:
     # scheme boundaries: leading digits/dashes are not part of the scheme
     assert redact.redact_text_urls("1-https://u:p@h/x") == "1-https://h/x"
     assert redact.redact_webhook_text("boom at https://hooks.slack.com/services/T/B/SECRET now").endswith("https://hooks.slack.com/[REDACTED] now")
+
+
+def test_non_secret_key_names_stay_readable_but_other_key_names_are_masked() -> None:
+    from testzeus_hercules.utils.redact import redact_url
+
+    assert redact_url("https://h/x?sort_key=name&primary_key=id&cache_key=v1") == "https://h/x?sort_key=name&primary_key=id&cache_key=v1"
+    masked = redact_url("https://h/x?client_key=c1&api_key=k1&key=k2&sort_key=name")
+    assert "c1" not in masked and "k1" not in masked and "k2" not in masked and "sort_key=name" in masked

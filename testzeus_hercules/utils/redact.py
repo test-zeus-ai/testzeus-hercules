@@ -164,11 +164,18 @@ REDACTED_QUERY_PARAM_NAMES = frozenset(
 )
 # Name suffixes that mark signed-URL / key parameters (X-Goog-Signature, client_key, x-api-key, ...).
 _SENSITIVE_QUERY_NAME_SUFFIXES = ("signature", "_sig", "-sig", "_key", "-key", "_session", "-session")
+# Well-known non-secret "*_key" names (database/API ordering keys, not credentials): kept readable in logs
+# even though the "_key" suffix rule would mask them. Exact names only; any other "*_key" stays masked.
+_BENIGN_KEY_QUERY_NAMES = frozenset(
+    ("sort_key", "sort-key", "order_key", "order-key", "primary_key", "primary-key", "foreign_key", "foreign-key", "partition_key", "partition-key", "cache_key", "cache-key")
+)
 _QUERY_SEPARATOR_RE = re.compile(r"([&;])")
 
 
 def _is_sensitive_query_name(name: str) -> bool:
     lowered = name.lower().strip()
+    if lowered in _BENIGN_KEY_QUERY_NAMES:
+        return False
     return lowered in REDACTED_QUERY_PARAM_NAMES or lowered.endswith(_SENSITIVE_QUERY_NAME_SUFFIXES) or is_sensitive_name(lowered)
 
 

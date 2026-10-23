@@ -19,7 +19,7 @@ import secrets
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from testzeus_hercules.utils.redact import redact_url
+from testzeus_hercules.utils.redact import REDACTED_PLACEHOLDER, redact_url
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -65,6 +65,12 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+REDACTED_APP_URL_MESSAGE = (
+    "The app_url stored in this session had secret query/fragment values redacted when it was saved (they are never persisted), "
+    "so it cannot be used as is. Call hercules_configure_session again with the full app_url."
+)
+
+
 @dataclass
 class SessionState:
     """State of one MCP testing session."""
@@ -86,6 +92,22 @@ class SessionState:
     plan_approved_sha256: str = ""
     last_run_summaries: list = field(default_factory=list)
     app_url_reachable: bool | None = None
+
+    @property
+    def app_url_is_redacted(self) -> bool:
+        """True when ``app_url`` came back from sessions.json with its secret values masked (it is not the real URL)."""
+        return REDACTED_PLACEHOLDER in (self.app_url or "")
+
+    def require_app_url(self) -> str:
+        """The real app URL, or a clear error when only the redacted persisted form is available.
+
+        ``to_dict`` persists ``redact_url(app_url)``, so a session restored after a restart can hold e.g.
+        ``https://app/#/home?sid=[REDACTED]``. Navigating to that would silently hit the wrong URL; any code that
+        needs the URL itself (not just an echo) must call this instead of reading ``app_url``.
+        """
+        if self.app_url_is_redacted:
+            raise ValueError(REDACTED_APP_URL_MESSAGE)
+        return self.app_url
 
     def __repr__(self) -> str:  # keep credentials out of logs/repr
         return (
