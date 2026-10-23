@@ -8,15 +8,24 @@ name: Publish Docker image
 # image installs torch/CUDA wheels and Playwright browsers), pushed by digest, and a final job
 # merges the two digests into the tags.
 #
-# Pushing happens only for release tags (and for a manual run from the default branch with
-# "push" ticked). Every other run builds both architectures without pushing, so a manual run from
-# a feature branch is a safe build check. Needs the DOCKERHUB_USERNAME repository variable and the
-# DOCKERHUB_TOKEN secret; without them the images are built but not pushed.
+# Pushing happens only for release tags (X.Y.Z or vX.Y.Z; pre-release or scratch tags such as
+# 1.5.0rc1 or ci-test never trigger this workflow) and for a manual run from the default branch with
+# "push" ticked. A manual push may not use a release-looking tag (X.Y.Z / vX.Y.Z) or the name of any
+# existing git tag, so it can never overwrite a published release. Every other run builds both
+# architectures without pushing, so a manual run from a feature branch is a safe build check.
+#
+# Relation to release.yml: both workflows start on the same release tag. The image is built in
+# parallel with the PyPI release (it is built from the tagged source, not from PyPI), but the final
+# job only creates the Docker Hub tags once release.yml has finished successfully for the same commit
+# (polled for up to 30 minutes); if that release failed, no image tag is published. Needs the
+# DOCKERHUB_USERNAME repository variable and the DOCKERHUB_TOKEN secret; without them the images are
+# built but not pushed.
 
 on:
   push:
     tags:
-      - '*'
+      - '[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+'
   workflow_dispatch:
     inputs:
       push:
@@ -90,8 +99,21 @@ jobs:
 
           want_push=false
           if [ "${GITHUB_REF_TYPE}" = "tag" ] && [ "${GITHUB_EVENT_NAME}" = "push" ]; then
-            want_push=true
+            # The trigger filter already limits this to release tags; re-check so a changed filter cannot publish a scratch tag.
+            if printf '%s' "${GITHUB_REF_NAME}" | grep -Eq '^v?[0-9]+\.[0-9]+\.[0-9]+$'; then
+              want_push=true
+            else
+              echo "::warning::'${GITHUB_REF_NAME}' is not a release tag (X.Y.Z / vX.Y.Z); not pushing."
+            fi
           elif [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && [ "${INPUT_PUSH}" = "true" ] && [ "${GITHUB_REF_NAME}" = "${DEFAULT_BRANCH}" ]; then
+            # A manual push builds the default branch, so it must not take the name of a release (X.Y.Z / vX.Y.Z)
+            # or of any existing git tag: users pinned to that tag would silently get different code.
+            if printf '%s' "${tag}" | grep -Eq '^v?[0-9]+\.[0-9]+\.[0-9]+$'; then
+              echo "::error::'${tag}' looks like a release version; manual pushes may not use release tags"; exit 1
+            fi
+            if git tag --list | grep -Fxq -e "${tag}" -e "${INPUT_TAG:-${GITHUB_REF_NAME}}"; then
+              echo "::error::'${tag}' is an existing git tag; manual pushes may not overwrite a published release"; exit 1
+            fi
             want_push=true
           fi
           if [ "${want_push}" = "true" ] && { [ -z "${DOCKERHUB_USERNAME}" ] || [ -z "${DOCKERHUB_TOKEN}" ]; }; then
@@ -169,13 +191,35 @@ jobs:
     needs: [prepare, build]
     if: needs.prepare.outputs.push == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
     env:
       DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
       TAGS: ${{ needs.prepare.outputs.tags }}
       PRIMARY: ${{ needs.prepare.outputs.primary }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
     steps:
+      # Release tags only: the image tags are created after release.yml (GitHub release + PyPI upload) has
+      # succeeded for this commit. A failed release leaves the already-pushed digests untagged, so nothing
+      # points users at an image whose PyPI release does not exist. Manual runs have no release to wait for.
+      - name: Wait for the release workflow
+        if: github.event_name == 'push'
+        run: |
+          for attempt in $(seq 1 60); do
+            read -r status conclusion < <(gh run list --workflow release.yml --commit "${GITHUB_SHA}" --event push --limit 1 --json status,conclusion --jq '.[0] | "\(.status // "none") \(.conclusion // "none")"' || echo "none none")
+            echo "release.yml for ${GITHUB_SHA}: status=${status} conclusion=${conclusion} (check ${attempt}/60)"
+            if [ "${status}" = "completed" ]; then
+              if [ "${conclusion}" = "success" ]; then exit 0; fi
+              echo "::error::release.yml finished with '${conclusion}'; not publishing the Docker image tags"; exit 1
+            fi
+            sleep 30
+          done
+          echo "::error::release.yml did not finish within 30 minutes; not publishing the Docker image tags (re-run this job once it has)"; exit 1
+
       - uses: actions/download-artifact@v4
         with:
           path: ${{ runner.temp }}/digests
