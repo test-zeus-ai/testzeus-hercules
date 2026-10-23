@@ -64,14 +64,4 @@ jobs:
         run: |
           make build
           make publish
-      # - name: Log in to Docker Hub
-      #   uses: docker/login-action@v3
-      #   with:
-      #     username: ${{ vars.DOCKERHUB_USERNAME }}
-      #     password: ${{ secrets.DOCKERHUB_TOKEN }}
-      # - name: Build and push Docker image
-      #   uses: docker/build-push-action@v4
-      #   with:
-      #     context: .
-      #     push: true
-      #     tags: testzeus/hercules:${{ github.ref_name }}
+      # The Docker image (linux/amd64 + linux/arm64) is published by .github/workflows/docker-publish.yml.

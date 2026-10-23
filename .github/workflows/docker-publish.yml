@@ -1,0 +1,252 @@
+name: Publish Docker image
+
+# Publishes testzeus/hercules for linux/amd64 and linux/arm64 to Docker Hub as one multi-arch tag.
+# The published image used to be arm64-only (Intel/AMD hosts could not run it) and was last
+# pushed in May 2025; this replaces the commented-out publish step in release.yml.
+#
+# Each architecture is built on a native runner (arm64 under QEMU emulation would not finish: the
+# image installs torch/CUDA wheels and Playwright browsers), pushed by digest, and a final job
+# merges the two digests into the tags.
+#
+# Pushing happens only for release tags (X.Y.Z or vX.Y.Z; pre-release or scratch tags such as
+# 1.5.0rc1 or ci-test never trigger this workflow) and for a manual run from the default branch with
+# "push" ticked. A manual push may not use a release-looking tag (X.Y.Z / vX.Y.Z) or the name of any
+# existing git tag, so it can never overwrite a published release. Every other run builds both
+# architectures without pushing, so a manual run from a feature branch is a safe build check.
+#
+# Relation to release.yml: both workflows start on the same release tag. The image is built in
+# parallel with the PyPI release (it is built from the tagged source, not from PyPI), but the final
+# job only creates the Docker Hub tags once release.yml has finished successfully for the same commit
+# (polled for up to 30 minutes); if that release failed, no image tag is published. Needs the
+# DOCKERHUB_USERNAME repository variable and the DOCKERHUB_TOKEN secret; without them the images are
+# built but not pushed.
+
+on:
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
+    inputs:
+      push:
+        description: "Push the image (only honoured when run from the default branch)"
+        required: false
+        default: false
+        type: boolean
+      tag:
+        description: "Image tag for a manual run (defaults to the ref name; 'latest' is not allowed)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+# One queue per ref: every release tag gets its own run, so tags pushed close together are never
+# dropped (a single shared group keeps only one pending run and would cancel the ones in between).
+concurrency:
+  group: docker-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE_NAME: testzeus/hercules
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      tags: ${{ steps.tags.outputs.tags }}
+      primary: ${{ steps.tags.outputs.primary }}
+      push: ${{ steps.tags.outputs.push }}
+    env:
+      DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      INPUT_TAG: ${{ inputs.tag }}
+      INPUT_PUSH: ${{ inputs.push }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Resolve image tags
+        id: tags
+        run: |
+          tag="${INPUT_TAG:-${GITHUB_REF_NAME}}"
+          # Image tags may not contain '/' (branch names on manual runs).
+          tag="${tag//\//-}"
+          if ! printf '%s' "${tag}" | grep -Eq '^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$'; then
+            echo "::error::'${tag}' is not a valid image tag"; exit 1
+          fi
+          if [ "${tag}" = "latest" ]; then
+            echo "::error::'latest' is only published automatically for the highest release tag"; exit 1
+          fi
+          tags="${IMAGE_NAME}:${tag}"
+          # 'latest' moves only for a plain X.Y.Z release tag that is also the HIGHEST such tag in the
+          # repository, so a maintenance release (1.4.9 after 2.0.0) never downgrades `docker pull`.
+          if [ "${GITHUB_REF_TYPE}" = "tag" ] && [ -z "${INPUT_TAG}" ] && printf '%s' "${tag}" | grep -Eq '^v?[0-9]+\.[0-9]+\.[0-9]+$'; then
+            highest="$(git tag --list | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' | sed 's/^v//' | sort -V | tail -n 1)"
+            if [ "${tag#v}" = "${highest}" ]; then
+              tags="${tags},${IMAGE_NAME}:latest"
+            else
+              echo "Not moving 'latest': ${tag} is not the highest release tag (${highest})."
+            fi
+          fi
+          echo "tags=${tags}" >> "$GITHUB_OUTPUT"
+          echo "primary=${tag}" >> "$GITHUB_OUTPUT"
+          echo "Will tag: ${tags}"
+
+          want_push=false
+          if [ "${GITHUB_REF_TYPE}" = "tag" ] && [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            # The trigger filter already limits this to release tags; re-check so a changed filter cannot publish a scratch tag.
+            if printf '%s' "${GITHUB_REF_NAME}" | grep -Eq '^v?[0-9]+\.[0-9]+\.[0-9]+$'; then
+              want_push=true
+            else
+              echo "::warning::'${GITHUB_REF_NAME}' is not a release tag (X.Y.Z / vX.Y.Z); not pushing."
+            fi
+          elif [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && [ "${INPUT_PUSH}" = "true" ] && [ "${GITHUB_REF_NAME}" = "${DEFAULT_BRANCH}" ]; then
+            # A manual push builds the default branch, so it must not take the name of a release (X.Y.Z / vX.Y.Z)
+            # or of any existing git tag: users pinned to that tag would silently get different code.
+            if printf '%s' "${tag}" | grep -Eq '^v?[0-9]+\.[0-9]+\.[0-9]+$'; then
+              echo "::error::'${tag}' looks like a release version; manual pushes may not use release tags"; exit 1
+            fi
+            if git tag --list | grep -Fxq -e "${tag}" -e "${INPUT_TAG:-${GITHUB_REF_NAME}}"; then
+              echo "::error::'${tag}' is an existing git tag; manual pushes may not overwrite a published release"; exit 1
+            fi
+            want_push=true
+          fi
+          if [ "${want_push}" = "true" ] && { [ -z "${DOCKERHUB_USERNAME}" ] || [ -z "${DOCKERHUB_TOKEN}" ]; }; then
+            echo "::warning::DOCKERHUB_USERNAME / DOCKERHUB_TOKEN not set; building both architectures without pushing."
+            want_push=false
+          fi
+          echo "push=${want_push}" >> "$GITHUB_OUTPUT"
+          echo "Push: ${want_push}"
+
+  build:
+    needs: prepare
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    env:
+      DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      PUSH: ${{ needs.prepare.outputs.push }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # torch + the CUDA wheels make this a multi-GB image; free runner disk before building.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        if: needs.prepare.outputs.push == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ env.DOCKERHUB_TOKEN }}
+
+      # No build cache: a tag run cannot read another tag's cache, and exporting the multi-GB torch/CUDA
+      # layers would eat the repository's 10 GB cache quota used by CI. Pushed by digest only; the merge
+      # job below creates the tags.
+      - name: Build (and push by digest)
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          outputs: ${{ needs.prepare.outputs.push == 'true' && format('type=image,name={0},push-by-digest=true,name-canonical=true,push=true', env.IMAGE_NAME) || '' }}
+
+      - name: Export digest
+        if: needs.prepare.outputs.push == 'true'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p "${RUNNER_TEMP}/digests"
+          touch "${RUNNER_TEMP}/digests/${DIGEST#sha256:}"
+
+      - name: Upload digest
+        if: needs.prepare.outputs.push == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    needs: [prepare, build]
+    if: needs.prepare.outputs.push == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
+    env:
+      DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      TAGS: ${{ needs.prepare.outputs.tags }}
+      PRIMARY: ${{ needs.prepare.outputs.primary }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      # Release tags only: the image tags are created after release.yml (GitHub release + PyPI upload) has
+      # succeeded for this commit. A failed release leaves the already-pushed digests untagged, so nothing
+      # points users at an image whose PyPI release does not exist. Manual runs have no release to wait for.
+      - name: Wait for the release workflow
+        if: github.event_name == 'push'
+        run: |
+          for attempt in $(seq 1 60); do
+            read -r status conclusion < <(gh run list --workflow release.yml --commit "${GITHUB_SHA}" --event push --limit 1 --json status,conclusion --jq '.[0] | "\(.status // "none") \(.conclusion // "none")"' || echo "none none")
+            echo "release.yml for ${GITHUB_SHA}: status=${status} conclusion=${conclusion} (check ${attempt}/60)"
+            if [ "${status}" = "completed" ]; then
+              if [ "${conclusion}" = "success" ]; then exit 0; fi
+              echo "::error::release.yml finished with '${conclusion}'; not publishing the Docker image tags"; exit 1
+            fi
+            sleep 30
+          done
+          echo "::error::release.yml did not finish within 30 minutes; not publishing the Docker image tags (re-run this job once it has)"; exit 1
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ env.DOCKERHUB_TOKEN }}
+
+      - name: Create the multi-arch manifest
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          digests=(*)
+          if [ "${#digests[@]}" -ne 2 ]; then
+            echo "::error::expected 2 digests (amd64, arm64), found ${#digests[@]}"; exit 1
+          fi
+          tag_args=()
+          IFS=',' read -r -a tag_list <<< "${TAGS}"
+          for t in "${tag_list[@]}"; do tag_args+=(-t "${t}"); done
+          sources=()
+          for digest in "${digests[@]}"; do sources+=("${IMAGE_NAME}@sha256:${digest}"); done
+          docker buildx imagetools create "${tag_args[@]}" "${sources[@]}"
+
+      - name: Inspect the result
+        run: docker buildx imagetools inspect "${IMAGE_NAME}:${PRIMARY}"

@@ -160,6 +160,31 @@ Model Configuration:
 - `model_native_tool_calls`: Enable native tool calls
 - `model_hide_tools`: Tool hiding behavior
 
+How `model_api_type` is used. Every model is called through an OpenAI-style client, so the type
+chooses the endpoint and (for Azure) the client class. An explicit `model_base_url` always wins, and an
+OpenAI endpoint configured through the environment (`OPENAI_BASE_URL` / `OPENAI_API_BASE`, e.g. a corporate
+gateway) is not replaced by a provider's public endpoint.
+
+| `model_api_type` | What Hercules does |
+|---|---|
+| `openai` / unset | Plain OpenAI client; `model_base_url` points it at any OpenAI-compatible server (vLLM, llama.cpp, LiteLLM, an enterprise gateway...). |
+| `azure` (also `azure_openai`, `azure-openai`) | With `model_api_version` set: Azure OpenAI client. `model_base_url` is the resource endpoint (only scheme and host are used, the client adds `/openai/deployments/<name>/...`; `AZURE_OPENAI_ENDPOINT` also works) and `model_name` is the deployment name. Without `model_api_version`, or when `model_base_url` is the Azure v1 endpoint (`https://<resource>.openai.azure.com/openai/v1/`): plain client against that URL. For both client styles the key may come from `AZURE_OPENAI_API_KEY`; with no key, `AZURE_OPENAI_AD_TOKEN` (a Microsoft Entra ID bearer token) is used instead (`azure_ad_token` on the Azure client, the bearer token on the v1 endpoint). The token is read once at start-up, so it must still be valid for the whole run. |
+| `ollama` | `model_client_host` (default `http://localhost:11434`; a missing `http://` is added) + `/v1`. No API key needed. |
+| `google` / `gemini`, `groq`, `mistral`, `deepseek`, `anthropic` | The provider's OpenAI-compatible endpoint (Gemini `.../v1beta/openai/`, Groq `.../openai/v1`, Mistral `.../v1`, DeepSeek `https://api.deepseek.com`, Anthropic `https://api.anthropic.com/v1/`). |
+
+With neither a type nor a base URL, `gemini-*` and `claude-*` model names are routed to Google and Anthropic
+(skipped when `OPENAI_BASE_URL` / `OPENAI_API_BASE` is set). A missing API key is accepted only for Ollama and
+for local `model_base_url`s: `localhost`, `*.localhost`, `*.local`, `0.0.0.0`, `host.docker.internal`,
+`host.containers.internal`, loopback, RFC1918 private (`10/8`, `172.16/12`, `192.168/16`), link-local and IPv6
+unique-local addresses. Any other (public) host still needs a key. Ollama always gets a placeholder key, whatever
+`api_key`, `MODEL_API_KEY` or `OPENAI_API_KEY` hold (the host may be another machine, so a real key is never
+sent to it); any other local endpoint uses the configured key, else `OPENAI_API_KEY` (a key-protected LiteLLM),
+else a placeholder.
+The planner and the navigation agents resolve the endpoint and the key (`api_key`, `MODEL_API_KEY`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_AD_TOKEN`)
+the same way. The `anthropic_bedrock` and `anthropicvert` entries in
+`agents_llm_config-example.json` need AWS/Google SDK clients that this runtime does not use: put an
+OpenAI-compatible gateway (for example LiteLLM) in front and point `model_base_url` at it.
+
 LLM Parameters:
 - `temperature`: Controls randomness in responses (0.0 to 1.0)
 - `seed`: Random seed for reproducibility
@@ -207,6 +232,16 @@ LLM Parameters:
   - Values: `true`, `false`
   - Default: `false`
   - Implementation: Controls browser cleanup behavior
+
+- `HERCULES_MAX_ROLE_ITEMS`: Bound on large ARIA lists in `get_interactive_elements` / `get_input_fields`
+  - Values: integer, `0` = unlimited
+  - Default: `50`
+  - Usage: a container (listbox, tree, tablist, menu, native `ul`/`select`, ...) with more than this many
+    `option` / `treeitem` / `tab` / `menuitem` items lists the first ones plus every selected, checked or focused
+    item, followed by `{"role": "truncated", "count": <omitted>, "note": ...}` so the agent knows the rest exists
+    (a Salesforce-style listbox of 2,000 options would otherwise flood the agent's context). Each container is
+    bounded on its own.
+  - Implementation: `get_max_role_items()` in `core/tools/get_interactive_elements.py`
 
 - `BROWSER_COOKIES`: Set cookies for the browser context
   - Format: JSON array of cookie objects

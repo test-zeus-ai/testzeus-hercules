@@ -1,11 +1,13 @@
 from string import Template
 from typing import Any
 
-from langchain_openai import ChatOpenAI
 from testzeus_hercules.core.memory.static_ltm import get_user_ltm
 from testzeus_hercules.utils.llm_helper import (
+    build_chat_client,
     get_llm_max_retries,
     get_llm_request_timeout_seconds,
+    resolve_api_key,
+    resolve_provider_settings,
 )
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.model_utils import adapt_llm_params_for_model
@@ -49,7 +51,12 @@ class PlannerAgent:
             safe_llm_params["timeout"] = get_llm_request_timeout_seconds()
         if "max_retries" not in filtered and safe_llm_params.get("max_retries") is None:
             safe_llm_params["max_retries"] = get_llm_max_retries()
-        self.llm = ChatOpenAI(**filtered, **safe_llm_params)
+        # Same provider and credential resolution as create_chat_model (and so as the navigation agents).
+        settings = resolve_provider_settings(normalized, str(filtered.get("model") or "gpt-4o"))
+        api_key = resolve_api_key(normalized, settings)
+        if api_key:
+            filtered["api_key"] = api_key
+        self.llm = build_chat_client({**filtered, **safe_llm_params}, settings)
 
     _json_instruction = """CRITICAL INSTRUCTION: You MUST respond ONLY with a valid JSON object. No preamble, no explanation, no markdown. Your entire response must be parseable JSON.
 
