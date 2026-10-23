@@ -5,7 +5,7 @@ import re
 import time
 import urllib.parse
 from collections import defaultdict
-from typing import Annotated, Any, Dict, List, Optional, Tuple
+from typing import Annotated, Any, Dict, Iterable, List, Optional, Tuple
 
 import httpx
 from testzeus_hercules.config import get_global_conf
@@ -16,10 +16,14 @@ from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.path_guard import resolve_in_roots
 from testzeus_hercules.utils.redact import (
     API_LOG_REDACTION_MAX_DEPTH,
+    REDACTED_HEADER_PATTERNS,
+    REDACTED_PLACEHOLDER,
     _redact_post_data,
     _redact_sensitive_headers,
     is_sensitive_name,
+    redact_text_urls,
     redact_url,
+    scrub_secret_values,
 )
 
 # Maximum response body bytes the log hook captures. Without the cap a multi-GB
@@ -162,6 +166,145 @@ def remote_ref_error(exc: BaseException) -> Optional[RemoteSchemaRefError]:
 
 
 # ------------------------------------------------------------------------------
+# Free-text redaction (tool stdout/stderr, hurl output, failure messages)
+# ------------------------------------------------------------------------------
+
+# A secret-bearing header name: any name containing one of the redactor's header
+# fragments (authorization, cookie, token, api-key, ...), with at most
+# _NAME_CONTEXT_CHARS further name characters after the fragment. Matching is a
+# single linear pass over the lines that mention a fragment (no regex
+# backtracking), so a megabyte of "tokentoken..." or a wall of spaces costs
+# milliseconds, not seconds.
+_NAME_CONTEXT_CHARS = 64
+_NAME_CHARS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-")
+_HEADER_FRAGMENTS = tuple(sorted(set(REDACTED_HEADER_PATTERNS), key=len, reverse=True))
+_MAX_FRAGMENT_LEN = max(len(fragment) for fragment in _HEADER_FRAGMENTS)
+# Invisible characters an attacker (or a sloppy server) could insert inside a header name to dodge the match:
+# NUL, soft hyphen, Arabic letter mark, Mongolian vowel separator, zero-width/bidi marks, word joiners, BOM.
+_INVISIBLE_CHARS = dict.fromkeys([0x00, 0xAD, 0x061C, 0x180E, *range(0x200B, 0x2010), *range(0x202A, 0x202F), *range(0x2060, 0x2065), 0xFEFF])
+_QUOTES = "'\""
+_REDACTED_MARK = REDACTED_PLACEHOLDER
+# A header name only counts as a header when it stands alone as a token: at the start of the line or right after
+# whitespace, a quote or one of these separators. Anything else (the "[" of a nuclei "[jwt-token-exposure:bearer]"
+# finding, the "/" of a URL path "/token:") is a template id / path / free text that merely contains the word.
+_HEADER_NAME_LEADERS = frozenset(" \t\f\v\r'\"(,=>*")
+
+
+def _secret_name_before(line: str, colon: int) -> Optional[int]:
+    """Start index of the (possibly quote-prefixed) secret header name ending right before ``line[colon]``, else None.
+
+    Whitespace between the name and the colon is allowed. The name must contain a header fragment that ends within
+    _NAME_CONTEXT_CHARS of the colon (the same bound the old regex used).
+    """
+    end = colon
+    while end > 0 and line[end - 1] in " \t\f\v":
+        end -= 1
+    start = end
+    limit = max(0, end - (_NAME_CONTEXT_CHARS + _MAX_FRAGMENT_LEN))
+    while start > limit and line[start - 1] in _NAME_CHARS:
+        start -= 1
+    if start == end:
+        return None
+    # (a name longer than the scan window was cut short by the bound: its real start is unknown, so no leader check)
+    if limit < start and line[start - 1] not in _HEADER_NAME_LEADERS:
+        return None
+    window = line[start:end].lower()
+    cutoff = len(window) - _NAME_CONTEXT_CHARS
+    for fragment in _HEADER_FRAGMENTS:
+        index = window.rfind(fragment)
+        if index != -1 and index + len(fragment) >= cutoff:
+            return start
+    return None
+
+
+class _ForwardFinder:
+    """``line.find(char, start)`` for non-decreasing ``start`` values, scanning each character's tail at most once.
+
+    A plain ``find`` per match rescans to the end of the line whenever the character does not occur again, which
+    makes a long line with many matches quadratic. Callers must never pass a ``start`` smaller than an earlier one.
+    """
+
+    def __init__(self, line: str) -> None:
+        self._line = line
+        self._next: Dict[str, int] = {}
+
+    def find(self, char: str, start: int) -> int:
+        cached = self._next.get(char)
+        if cached is None or (cached != -1 and cached < start):
+            cached = self._line.find(char, start)
+            self._next[char] = cached
+        return cached
+
+
+def _redact_header_values_in_line(line: str, xml: bool) -> str:
+    """Redact the value of every secret-named ``Name: value`` header in one line (linear in the line length)."""
+    lowered = line.lower()
+    if ":" not in line or not any(fragment in lowered for fragment in _HEADER_FRAGMENTS):
+        return line
+    eol = len(line.rstrip("\r\n"))  # a trailing "\r" is kept out of the value; computed once, not per match
+    finder = _ForwardFinder(line)
+    out: List[str] = []
+    cursor = 0
+    colon = line.find(":")
+    while colon != -1:
+        name_start = _secret_name_before(line, colon)
+        if name_start is None:
+            colon = line.find(":", colon + 1)
+            continue
+        value_start = colon + 1
+        while value_start < len(line) and line[value_start] in " \t\f\v":
+            value_start += 1
+        if line.startswith(_REDACTED_MARK, value_start):
+            colon = line.find(":", value_start + len(_REDACTED_MARK))
+            continue
+        # Value end: markup/quote boundary in the XML copy; the matching quote when the header sits inside a quoted
+        # argument ('Authorization: Bearer x'); else the end of the line (a trailing "\r" is kept out of the value).
+        value_end = eol
+        opened_by = line[name_start - 1] if name_start > 0 and line[name_start - 1] in _QUOTES else None
+        if opened_by is None:
+            before = name_start
+            while before > 0 and line[before - 1] in " \t\f\v":
+                before -= 1
+            if before > 0 and line[before - 1] in _QUOTES:
+                opened_by = line[before - 1]
+        quoted_end = finder.find(opened_by, value_start) if opened_by else -1
+        if xml:
+            boundary = min((index for index in (finder.find(char, value_start) for char in ("<", '"', "'")) if index != -1), default=eol)
+            value_end = min(boundary, eol)
+            if value_end <= value_start:
+                colon = line.find(":", colon + 1)
+                continue
+        elif quoted_end != -1 and quoted_end <= eol:
+            value_end = quoted_end
+        elif value_end <= value_start:
+            colon = line.find(":", colon + 1)
+            continue
+        out.append(line[cursor:value_start])
+        out.append(_REDACTED_MARK)
+        cursor = value_end
+        colon = line.find(":", value_end)
+    out.append(line[cursor:])
+    return "".join(out)
+
+
+def redact_tool_output(text: str, secret_values: Iterable[str] = (), xml: bool = False) -> str:
+    """
+    Scrub secrets from raw tool output (hurl, nuclei): known secret values,
+    credential/cookie/token header values wherever they appear on a line
+    (verbose `> `/`* ` prefixes, quoted `--header '...'` arguments, mid-line
+    mentions in failure messages) and URL credentials / secret query values.
+
+    Linear time on any input. Invisible characters (NUL, zero-width and bidi
+    marks, soft hyphens) are stripped first so inserting one inside a header
+    name cannot evade the match.
+    """
+    text = scrub_secret_values(str(text), secret_values).translate(_INVISIBLE_CHARS)
+    lines = text.split("\n")
+    text = "\n".join(_redact_header_values_in_line(line, xml) for line in lines)
+    return redact_text_urls(text)
+
+
+# ------------------------------------------------------------------------------
 # Logging and Utility Functions
 # ------------------------------------------------------------------------------
 
@@ -270,12 +413,9 @@ def determine_status_type(status_code: int) -> str:
     return "unknown"
 
 
-_URL_IN_TEXT_RE = re.compile(r"[a-zA-Z][a-zA-Z0-9+.\-]*://[^\s'\"<>]+")
-
-
 def _redacted_error_text(error: BaseException) -> str:
     """str(error) with every URL in it passed through redact_url (httpx messages embed the full request URL)."""
-    return _URL_IN_TEXT_RE.sub(lambda match: redact_url(match.group(0)), str(error))
+    return redact_text_urls(str(error))
 
 
 async def handle_error_response(e: httpx.HTTPStatusError) -> dict:
@@ -379,6 +519,120 @@ def _bounded_payload(result: Dict[str, Any], duration: float) -> str:
     )
 
 
+BODY_MODES = ("multipart", "urlencoded", "raw", "binary", "json")
+
+# Marker _bounded_payload appends to a shortened body/error_detail.
+_TRUNCATION_TAIL_RE = re.compile(r"\.\.\.\[truncated: response exceeded \d+ characters\]\s*$")
+
+
+def truncation_reason(response_json: Any, document: Any = None) -> Optional[str]:
+    """
+    Explain why a payload cannot be asserted on when it is a truncated tool result, else None.
+
+    generic_http_api shortens a response larger than MAX_RESULT_CHARS into a
+    plain string ending in a marker (flagging body_truncated /
+    error_detail_truncated on the result). Evaluating JSONPath or a schema
+    against that string would report a misleading "matched nothing"/FAILED.
+    `response_json` is the raw argument (a result document, a JSON string, or
+    the bare truncated body text); `document` is its parsed form, if any.
+    """
+    candidates: List[Any] = [response_json]
+    if isinstance(document, dict):
+        candidates.extend(document.get(key) for key in ("body", "error_detail"))
+    elif document is not None:
+        candidates.append(document)
+    for candidate in candidates:
+        if isinstance(candidate, str) and _TRUNCATION_TAIL_RE.search(candidate):
+            return (
+                f"The response was truncated by generic_http_api (over {MAX_RESULT_CHARS} characters), so it cannot be evaluated reliably. Narrow the request (filters, pagination, fields) and retry."
+            )
+    return None
+
+
+_TRUNCATABLE_FIELDS = ("body", "error_detail")
+
+
+def truncation_blocks_path(response_json: Any, document: Any, path: str, matches: Any) -> Optional[str]:
+    """
+    Reason a truncated payload makes the verdict for ``path`` unreliable, else None.
+
+    A payload shortened by generic_http_api only loses text inside one field
+    (``body`` or ``error_detail``); the rest (``status_code``, ``headers``, ...)
+    is intact and assertions on it must keep working. The verdict is blocked
+    only when it could be wrong because of the cut: the whole payload is a
+    truncated string, the path matched nothing (it may live in the cut-off part),
+    or the path targets a truncated field (or uses a recursive/wildcard step that
+    could read it).
+    """
+    reason = truncation_reason(response_json, document)
+    if reason is None:
+        return None
+    if not isinstance(document, dict) or not matches:
+        return reason
+    for field in _TRUNCATABLE_FIELDS:
+        value = document.get(field)
+        if isinstance(value, str) and _TRUNCATION_TAIL_RE.search(value):
+            if re.search(r"(?<![A-Za-z0-9_])" + field + r"(?![A-Za-z0-9_])", path) or re.match(r"\s*\$\s*(?:\.\.|\.\*|\[\s*\*)", path):
+                return reason
+    return None
+
+
+def _resolve_body_mode(body: Any, body_mode: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Return (mode, error) for a request body.
+
+    Names are case-insensitive. Without a body the mode is irrelevant (None).
+    A body with no mode defaults to json for dict/list/number/bool, raw for
+    text (see _default_text_content_type for its Content-Type) and binary for
+    bytes; an unknown mode is an error rather than a silently dropped body.
+    """
+    if body is None:
+        return None, None
+    mode = str(body_mode).strip().lower() if body_mode is not None else ""
+    if not mode:
+        if isinstance(body, str):
+            return "raw", None
+        if isinstance(body, (bytes, bytearray)):
+            return "binary", None
+        return "json", None
+    if mode not in BODY_MODES:
+        return None, f"Unknown body_mode '{body_mode}'. Valid modes: {', '.join(BODY_MODES)} (omit it to send a dict/list as json and text as raw)."
+    return mode, None
+
+
+def _has_header(headers: Dict[str, str], name: str) -> bool:
+    lowered = name.lower()
+    return any(str(key).lower() == lowered for key in headers)
+
+
+def _default_text_content_type(body: str) -> str:
+    """Content-Type for a str body sent without a body_mode: JSON objects/arrays are application/json, other text text/plain.
+
+    LLM callers typically pass a JSON document as a string (``body='{"name": "x"}'``); sent untyped, most JSON APIs
+    answer 415 or parse an empty object. Only objects and arrays count as JSON, so a text body such as ``42`` or
+    ``true`` is not mislabelled.
+    """
+    stripped = body.lstrip()
+    if stripped[:1] in ("{", "["):
+        try:
+            if isinstance(json.loads(body), (dict, list)):
+                return "application/json"
+        except ValueError:
+            pass
+    return "text/plain"
+
+
+def _flatten_query(explicit_query: Dict[str, Any]) -> List[Tuple[str, Any]]:
+    """Explicit query params as pairs; a list/tuple value becomes repeated keys (k=a&k=b)."""
+    pairs: List[Tuple[str, Any]] = []
+    for key, value in explicit_query.items():
+        if isinstance(value, (list, tuple)):
+            pairs.extend((key, item) for item in value)
+        else:
+            pairs.append((key, value))
+    return pairs
+
+
 async def _send_request(
     method: str,
     url: str,
@@ -395,10 +649,15 @@ async def _send_request(
       - "multipart": Encodes a dict as multipart/form-data (see
         build_multipart_fields for how field values map to parts).
       - "urlencoded": Encodes a dict as application/x-www-form-urlencoded.
-      - "raw": Sends the body as a raw string (caller must set Content-Type).
+      - "raw": Sends the body as a raw string (caller must set Content-Type; a str
+        body with no body_mode at all is typed application/json when it is a JSON
+        object/array, else text/plain, unless a Content-Type header is given).
       - "binary": Sends the body as raw bytes (defaults to application/octet-stream).
       - "json": Encodes the body as JSON.
-      - None: No body is sent.
+      - None: With no body nothing is sent. A body without a mode is sent as
+        json (dict/list/number/bool), raw (str, with the Content-Type described
+        above) or binary (bytes).
+      Mode names are case-insensitive; an unknown mode is an error.
 
     Returns the JSON-encoded result payload as a single string (the executor
     str()s tool results, so returning a tuple would double-encode it). The
@@ -417,8 +676,13 @@ async def _send_request(
         inline_query = []
     explicit_query = query_params or {}
     merged_query: List[Tuple[str, Any]] = [(key, value) for key, value in inline_query if key not in explicit_query]
-    merged_query.extend(explicit_query.items())
+    merged_query.extend(_flatten_query(explicit_query))
     req_kwargs = {"params": merged_query if merged_query else None}
+
+    body_mode_was_defaulted = body is not None and not (body_mode is not None and str(body_mode).strip())
+    body_mode, body_mode_error = _resolve_body_mode(body, body_mode)
+    if body_mode_error:
+        return _bounded_payload({"error": body_mode_error, "status_code": None, "status_type": "failure"}, 0.0)
 
     if body_mode == "multipart" and body is not None:
         try:
@@ -436,6 +700,10 @@ async def _send_request(
         req_kwargs["data"] = body
 
     elif body_mode == "raw" and body is not None:
+        if body_mode_was_defaulted and isinstance(body, str) and not _has_header(headers, "Content-Type"):
+            # Only the implicit text default is typed for the caller; an explicit body_mode="raw" stays untyped
+            # (the caller owns the Content-Type), and a Content-Type the caller set is never overridden.
+            headers["Content-Type"] = _default_text_content_type(body)
         req_kwargs["content"] = body
 
     elif body_mode == "binary" and body is not None:
@@ -504,6 +772,42 @@ async def _send_request(
 # ------------------------------------------------------------------------------
 
 
+AUTH_TYPES = ("basic", "jwt", "form_login", "bearer", "api_key")
+
+
+def _auth_headers(auth_type: Optional[str], auth_value: Any) -> Tuple[Dict[str, str], Optional[str]]:
+    """
+    Return (headers, error) for an auth_type/auth_value pair (auth_value already interpolated).
+
+    No auth_type (None, "" or "none", any case) means no auth, as it always
+    did. An unknown type, a missing value or a malformed basic pair is an
+    error: silently sending a request without (or with garbage) credentials
+    would show up as a confusing 401.
+    """
+    if not auth_type:
+        return {}, None
+    kind = str(auth_type).strip().lower()
+    if kind in ("", "none"):
+        return {}, None
+    if kind not in AUTH_TYPES:
+        return {}, f"Unknown auth_type '{auth_type}'. Valid types: {', '.join(AUTH_TYPES)}."
+    if auth_value is None or (isinstance(auth_value, str) and not auth_value.strip()):
+        return {}, f"auth_type '{kind}' needs an auth_value, but none was given."
+    if kind == "basic":
+        if not (isinstance(auth_value, (list, tuple)) and len(auth_value) == 2):
+            return {}, "auth_type 'basic' needs auth_value as [username, password]."
+        token = base64.b64encode(f"{auth_value[0]}:{auth_value[1]}".encode()).decode()
+        return {"Authorization": f"Basic {token}"}, None
+    text = stringify_interpolated_value(auth_value)
+    if kind == "jwt":
+        return {"Authorization": f"JWT {text}"}, None
+    if kind == "bearer":
+        return {"Authorization": f"Bearer {text}"}, None
+    if kind == "form_login":
+        return {"X-Form-Login": text}, None
+    return {"x-api-key": text}, None
+
+
 @tool(
     agent_names=["api_nav_agent"],
     name="generic_http_api",
@@ -517,7 +821,8 @@ async def _send_request(
         "  - auth_value: For 'basic', pass [username, password]; for others, a string.\n"
         "  - query_params: URL query parameters (dict).\n"
         "  - body: Request payload.\n"
-        "  - body_mode: How to encode the body. Options: multipart, urlencoded, raw, binary, json.\n"
+        "  - body_mode: How to encode the body. Options: multipart, urlencoded, raw, binary, json (case-insensitive). Omit it to send a dict/list as json and a string as raw.\n"
+        "  - query_params list values are sent as repeated keys (k=a&k=b).\n"
         "  - headers: Additional HTTP headers (dict).\n"
         "This single function can generate any combination supported by _send_request."
     ),
@@ -537,7 +842,7 @@ async def generic_http_api(
     body: Annotated[Any, "Request payload."] = None,
     body_mode: Annotated[
         str,
-        "Body mode: multipart, urlencoded, raw, binary, or json. (Optional)",
+        "Body mode: multipart, urlencoded, raw, binary, or json. Defaults to json for dict/list bodies and raw for string bodies. (Optional)",
     ] = None,
     headers: Annotated[Optional[Dict[str, str]], "Additional HTTP headers."] = None,
 ) -> Annotated[str, "Minified JSON response ({status_code, status_type, body, duration_seconds}); the call duration is the duration_seconds field."]:
@@ -550,20 +855,10 @@ async def generic_http_api(
     request_body = _interpolate_tree(body) if body is not None else body
 
     # Set authentication headers based on auth_type.
-    if auth_type:
-        auth_type = auth_type.lower()
-        if auth_type == "basic" and isinstance(auth_value, list) and len(auth_value) == 2:
-            creds = f"{auth_value[0]}:{auth_value[1]}"
-            token = base64.b64encode(creds.encode()).decode()
-            request_headers["Authorization"] = f"Basic {token}"
-        elif auth_type == "jwt":
-            request_headers["Authorization"] = f"JWT {auth_value}"
-        elif auth_type == "form_login":
-            request_headers["X-Form-Login"] = auth_value
-        elif auth_type == "bearer":
-            request_headers["Authorization"] = f"Bearer {auth_value}"
-        elif auth_type == "api_key":
-            request_headers["x-api-key"] = auth_value
+    auth_headers, auth_error = _auth_headers(auth_type, _interpolate_tree(auth_value))
+    if auth_error:
+        return _bounded_payload({"error": auth_error, "status_code": None, "status_type": "failure"}, 0.0)
+    request_headers.update(auth_headers)
 
     return await _send_request(
         method,
@@ -580,6 +875,15 @@ async def generic_http_api(
 # ------------------------------------------------------------------------------
 
 
+def _variable_name_error(as_name: Any) -> Optional[str]:
+    """Why `as_name` cannot be referenced later as ${as_name}, or None when it can."""
+    if not isinstance(as_name, str) or not as_name.strip():
+        return "as_name must be a non-empty string; it is the name later referenced as ${as_name}."
+    if as_name != as_name.strip() or "{" in as_name or "}" in as_name:
+        return f"as_name {as_name!r} cannot be referenced as a ${{name}} placeholder: use no surrounding whitespace and no braces."
+    return None
+
+
 @tool(
     agent_names=["api_nav_agent"],
     name="extract_from_response",
@@ -594,17 +898,24 @@ async def extract_from_response(
     path: Annotated[str, "JSONPath expression pointing at the value to capture, e.g. $.body.items[0].id."],
     as_name: Annotated[str, "Name to store the value under; reference it later as ${as_name}."],
 ) -> Annotated[str, "Minified JSON with the capture verdict and the stored value."]:
+    name_error = _variable_name_error(as_name)
+    if name_error:
+        return json.dumps({"assertion": "ERROR", "path": path, "as_name": as_name, "reason": name_error}, separators=(",", ":"))
+
     try:
         document = parse_json_payload(response_json)
     except ValueError as e:
-        return json.dumps({"assertion": "ERROR", "path": path, "as_name": as_name, "reason": f"Response is not valid JSON: {e}"}, separators=(",", ":"))
-
+        truncated = truncation_reason(response_json)
+        return json.dumps({"assertion": "ERROR", "path": path, "as_name": as_name, "reason": truncated or f"Response is not valid JSON: {e}"}, separators=(",", ":"))
     try:
         matches = find_json_path(document, path)
     except ImportError as e:
         return json.dumps({"assertion": "ERROR", "path": path, "as_name": as_name, "reason": str(e)}, separators=(",", ":"))
     except Exception as e:
         return json.dumps({"assertion": "ERROR", "path": path, "as_name": as_name, "reason": f"Invalid JSONPath: {e}"}, separators=(",", ":"))
+    truncated = truncation_blocks_path(response_json, document, path, matches)
+    if truncated:
+        return json.dumps({"assertion": "ERROR", "path": path, "as_name": as_name, "reason": truncated}, separators=(",", ":"))
 
     if not matches:
         result: Dict[str, Any] = {"assertion": "FAILED", "path": path, "as_name": as_name, "reason": "Path matched nothing; nothing was captured."}
@@ -659,7 +970,11 @@ async def validate_response_schema(
     try:
         document = parse_json_payload(response_json)
     except ValueError as e:
-        return json.dumps({"assertion": "ERROR", "reason": f"Response is not valid JSON: {e}"}, separators=(",", ":"))
+        return json.dumps({"assertion": "ERROR", "reason": truncation_reason(response_json) or f"Response is not valid JSON: {e}"}, separators=(",", ":"))
+    truncated = truncation_reason(response_json, document)
+    if truncated and not path:
+        # Whole-body validation of a cut-off payload is meaningless; a JSONPath into an intact field is judged below.
+        return json.dumps({"assertion": "ERROR", "reason": truncated}, separators=(",", ":"))
     try:
         schema = parse_json_payload(json_schema)
     except ValueError as e:
@@ -673,6 +988,9 @@ async def validate_response_schema(
             return json.dumps({"assertion": "ERROR", "reason": str(e)}, separators=(",", ":"))
         except Exception as e:
             return json.dumps({"assertion": "ERROR", "path": path, "reason": f"Invalid JSONPath: {e}"}, separators=(",", ":"))
+        blocked = truncation_blocks_path(response_json, document, path, matches)
+        if blocked:
+            return json.dumps({"assertion": "ERROR", "path": path, "reason": blocked}, separators=(",", ":"))
         if not matches:
             return json.dumps({"assertion": "FAILED", "path": path, "reason": "Path matched nothing in the response body."}, separators=(",", ":"))
         document = matches[0]

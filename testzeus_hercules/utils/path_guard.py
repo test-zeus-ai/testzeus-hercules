@@ -70,6 +70,8 @@ def check_prd_document(path: str, label: str = "prd_path") -> None:
     Raises:
         ForbiddenFileError: unsupported extension or a sensitive file name.
     """
+    if "\x00" in str(path):
+        raise ForbiddenFileError(f"{label} contains an invalid character.")
     for candidate in (path, _real(path)):
         if is_sensitive_name(candidate):
             raise ForbiddenFileError(f"{label} {os.path.basename(path.rstrip(os.sep)) or path!r} is not an allowed PRD document.")
@@ -92,11 +94,11 @@ def _real(path: str) -> str:
 
 def is_within(path: str, root: str) -> bool:
     """True when ``path`` (after symlink resolution) is ``root`` or inside it."""
-    real_root = _real(root)
-    real_path = _real(path)
     try:
+        real_root = _real(root)
+        real_path = _real(path)
         return os.path.commonpath([real_path, real_root]) == real_root
-    except ValueError:  # e.g. different drives on Windows
+    except (ValueError, OSError):  # NUL byte / name too long / different drives on Windows
         return False
 
 
@@ -122,6 +124,8 @@ def resolve_within(path: str, roots: Iterable[str], label: str = "path") -> str:
         candidates.append(root)
     if not path:
         raise PathOutsideRootsError(f"{label} is empty")
+    if "\x00" in str(path):
+        raise PathOutsideRootsError(f"{label} contains an invalid character")
     for root in candidates:
         if is_within(path, root):
             return _real(path)

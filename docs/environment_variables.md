@@ -112,6 +112,15 @@ LLM_MODEL_PRICING=<pricing>
     `MODEL_API_KEY`; if that is also unset, model creation fails with
     "LLM API key is missing. Set MODEL_API_KEY or model_api_key in config."
 
+- `LLM_REQUEST_TIMEOUT`: hard per-request LLM timeout in seconds
+  - Default: `60` (falls back to `PORTKEY_TIMEOUT` when that is set)
+  - Usage: a hung or slow provider fails the request after this long; the
+    scenario then ends as failed instead of hanging
+
+- `LLM_MAX_RETRIES`: provider retries for an LLM call
+  - Default: `1`
+  - Usage: set `0` to fail fast (useful in tests against a mock server)
+
 ### LLM Configuration File Structure
 The `agents_llm_config.json` supports multiple providers and agent configurations. Each provider can have different configurations for different agents:
 
@@ -226,11 +235,16 @@ LLM Parameters:
   - Default: `false`
   - Implementation: Used in test runners for batch processing
 
-- `EXIT_CODE_COMPAT`: Legacy always-exit-0 behavior
-  - Values: `1` to enable; any other value leaves CI gating active
-  - Default: unset (Hercules exits `1` when any scenario fails or errors)
-  - Usage: When set to `1`, the CLI and the orchestrators (`run_manager`, `hercules-suite`, `hercules-monitor`) exit `0` even on failures
-  - Implementation: Checked in `testzeus_hercules/__main__.py` and `orchestrator/run_manager.py`, `orchestrator/suites.py`, `orchestrator/scheduler.py`
+- `STRICT_EXIT_CODE`: Make the `testzeus-hercules` CLI exit `1` when a scenario fails or errors
+  - Values: `true`/`1`/`yes`/`on` to enable
+  - Default: off — the CLI exits `0` regardless of scenario results (failures are only logged and written to the reports)
+  - Implementation: `_finalize_exit_code` in `testzeus_hercules/__main__.py`, `strict_exit_code_enabled` in `testzeus_hercules/utils/env_flags.py`
+
+- `EXIT_CODE_COMPAT`: Force exit code `0` (legacy behavior)
+  - Values: `1` to enable; any other value has no effect
+  - Default: unset
+  - Usage: With `testzeus-hercules` it overrides `STRICT_EXIT_CODE` (exit `0` even when strict mode is set). The orchestrator CLIs (`hercules-run-manager`, `hercules-suite`, `hercules-monitor --once`) exit `1` when any scenario failed or errored **without** needing `STRICT_EXIT_CODE`; `EXIT_CODE_COMPAT=1` makes them exit `0` instead. Scenario subprocesses started by the orchestrators always run with `STRICT_EXIT_CODE=true` and without `EXIT_CODE_COMPAT`, so their own verdict is reliable.
+  - Implementation: Checked in `testzeus_hercules/utils/env_flags.py` (CLI) and `orchestrator/run_manager.py`, `orchestrator/suites.py`, `orchestrator/scheduler.py`
 
 ### Test Evidence
 - `RECORD_VIDEO`: Record test execution videos
@@ -545,9 +559,16 @@ The optional mobile (Appium) and healing hooks are inert unless `DEVICE_MANAGER=
 set and the Appium client is installed.
 The mobile settings (`DEVICE_MANAGER`, `DEVICE_OS`, `APPIUM_SERVER_URL`, `APPIUM_SERVER_PORT`,
 `DEVICE_NAME`, `APP_PATH`, `APPIUM_APK_PATH`, `APPIUM_DEVICE_UUID`,
-`APPIUM_PLATFORM_VERSION`, `APPIUM_CAPABILITIES`) are described in
+`APPIUM_PLATFORM_VERSION`, `APPIUM_CAPABILITIES`, `APPIUM_COMMAND_TIMEOUT_SECONDS`,
+`APPIUM_SESSION_START_TIMEOUT_SECONDS`) are described in
 [mobile_automation.md](mobile_automation.md); install the client with the `mobile` extra
-(`pip install "testzeus-hercules[mobile]"`) and run an Appium 2.x server yourself.
+(`pip install "testzeus-hercules[mobile]"`) and run an Appium 2.x server yourself. Two timeouts
+bound calls to an unresponsive Appium server: `APPIUM_COMMAND_TIMEOUT_SECONDS` (one driver command,
+default `120`) and `APPIUM_SESSION_START_TIMEOUT_SECONDS` (session creation, default `180`); both
+must be positive numbers of seconds, otherwise the default applies. `DEVICE_OS` accepts `android`
+or `ios` (case-insensitive, `ios*` prefixes allowed) and anything else is a configuration error at
+session start; `APPIUM_SERVER_PORT` must be 1-65535; an `APPIUM_SERVER_URL` without a scheme gets
+`http://` prefixed.
 
 ## Configuration Priority
 

@@ -97,8 +97,11 @@ def _validator_for_spec(spec: Dict[str, Any]):
 def _declared_response(responses: Dict[Any, Any], status_code: int) -> Optional[Dict[str, Any]]:
     """Pick the response object for a status: exact code, then the OpenAPI range key (2XX/2xx), then default."""
     # YAML parses a bare `200:` response key as an int, so probe both key forms.
-    range_digit = str(status_code)[:1]
-    for key in (str(status_code), status_code, f"{range_digit}XX", f"{range_digit}xx", "default"):
+    # The status may itself arrive as text ("200"), so normalise it to both forms.
+    code_text = str(status_code).strip()
+    code_number = int(code_text) if code_text.isdigit() else status_code
+    range_digit = code_text[:1]
+    for key in (code_text, code_number, f"{range_digit}XX", f"{range_digit}xx", "default"):
         if key in responses and responses[key] is not None:
             return responses[key]
     return None

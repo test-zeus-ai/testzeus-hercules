@@ -19,13 +19,16 @@ Design notes (deliberate departures from the classic implementation):
 """
 
 import asyncio
+import atexit
 import base64
 import importlib.util
 import os
 import re
+import signal
+import threading
 import time
 import xml.etree.ElementTree as ET
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from multiprocessing import cpu_count
 from typing import Any, Callable, Dict, List, Optional
 
@@ -44,10 +47,14 @@ from testzeus_hercules.core.mobile.settings import (
     get_appium_capabilities,
     get_appium_server_url,
     get_automation_name,
+    get_command_timeout_seconds,
     get_device_name,
     get_device_os,
     get_device_uuid,
     get_platform_version,
+    get_session_start_timeout_seconds,
+    reconcile_platform_name,
+    validate_mobile_settings,
     warn_if_platform_name_set,
 )
 from testzeus_hercules.utils.logger import logger
@@ -153,6 +160,137 @@ class MobileEnvironmentError(RuntimeError):
 
 class AppiumClientMissingError(MobileEnvironmentError):
     """Raised when the Appium client package is not importable."""
+
+
+class AppiumTimeoutError(MobileEnvironmentError):
+    """Raised when the Appium server does not answer within the configured timeout."""
+
+
+# Seconds each driver call may take while sessions are torn down at process
+# exit / on SIGTERM: a hung server must not block the shutdown.
+EXIT_TEARDOWN_TIMEOUT_SECONDS = 5.0
+# How long teardown waits for a driver command that is still in flight on a worker thread before it quits the
+# session anyway (selenium's HTTP client is thread-safe, so the late quit only makes that command fail).
+EXIT_INFLIGHT_WAIT_SECONDS = 3.0
+# Upper bound on how long the SIGTERM/SIGINT handler waits for the cleanup thread before chaining on, so a
+# wedged driver (or a lock held by the interrupted main thread) can never hold the signal hostage.
+SIGNAL_CLEANUP_JOIN_SECONDS = 15.0
+
+_exit_hooks_lock = threading.Lock()
+_atexit_registered = False
+_previous_signal_handlers: Dict[int, Any] = {}
+
+
+def _is_connectivity_error(error: BaseException) -> bool:
+    """True for transport-level failures (refused / reset / HTTP-client errors), not Appium command errors."""
+    if isinstance(error, (ConnectionError, TimeoutError)):
+        return True
+    return type(error).__module__.split(".")[0] == "urllib3"
+
+
+def _set_driver_client_timeout(driver: Any, seconds: float) -> None:
+    """Best-effort: change the HTTP client timeout of a live driver (read per request by selenium)."""
+    try:
+        driver.command_executor._client_config.timeout = seconds
+    except Exception:
+        pass
+
+
+def _quit_late_driver(driver: Any) -> None:
+    """Quit a driver that finished connecting after its create_session call had already given up (never raises)."""
+    session_id = str(getattr(driver, "session_id", "") or "")
+    _set_driver_client_timeout(driver, EXIT_TEARDOWN_TIMEOUT_SECONDS)
+    try:
+        driver.quit()  # DELETE /session/<id>: frees the device for the retry
+        logger.warning("Quit the Appium session (%s) that finished starting after create_session timed out", session_id or "no session id")
+    except Exception as e:
+        logger.warning("Could not quit the Appium session (%s) that finished starting after create_session timed out: %s", session_id or "no session id", e)
+
+
+def _dispose_late_result(future: "Future[Any]", handler: Callable[[Any], None], identifier: str) -> None:
+    """Hand the eventual result of a timed-out executor call to ``handler`` once (and if) it completes."""
+
+    def _on_done(done: "Future[Any]") -> None:
+        if done.cancelled():
+            return  # never started: nothing was created
+        error = done.exception()
+        if error is not None:
+            logger.debug("Timed-out %s finished with an error: %s", identifier, error)
+            return
+        try:
+            handler(done.result())
+        except Exception as e:  # pragma: no cover - handlers are best-effort and log themselves
+            logger.debug("Error disposing of the late result of %s: %s", identifier, e)
+
+    future.add_done_callback(_on_done)
+
+
+def _cleanup_all_sessions() -> None:
+    """Quit every active Appium session synchronously (atexit / signal path). Never raises."""
+    try:
+        instances = list({id(inst): inst for inst in AppiumManager._instances.values()}.values())
+    except Exception:  # pragma: no cover - defensive
+        return
+    for instance in instances:
+        try:
+            instance._teardown_session_sync(client_timeout=EXIT_TEARDOWN_TIMEOUT_SECONDS)
+        except Exception as e:  # pragma: no cover - teardown already swallows
+            logger.debug("Error tearing down Appium session at exit: %s", e)
+
+
+def _cleanup_all_sessions_bounded(join_timeout: Optional[float] = None) -> None:
+    """Run :func:`_cleanup_all_sessions` on a short-lived daemon thread and wait for it at most ``join_timeout`` seconds.
+
+    A signal handler runs on the main thread, in the middle of whatever it was doing. Making the blocking driver
+    HTTP calls there would stall the event loop with no upper bound and could deadlock on a lock the interrupted
+    code holds (the logging lock, ...); on a helper thread the worst case is the join timeout.
+    """
+    limit = SIGNAL_CLEANUP_JOIN_SECONDS if join_timeout is None else join_timeout
+    worker = threading.Thread(target=_cleanup_all_sessions, name="AppiumSignalCleanup", daemon=True)
+    worker.start()
+    worker.join(limit)
+    if worker.is_alive():
+        logger.warning("Appium session cleanup did not finish within %gs; continuing with the signal", limit)
+
+
+def _handle_exit_signal(signum: int, frame: Any) -> None:
+    """End device sessions (off the main thread, bounded), then hand the signal to the previously installed handler."""
+    previous = _previous_signal_handlers.get(signum)
+    if previous == signal.SIG_IGN:
+        return
+    _cleanup_all_sessions_bounded()
+    if callable(previous):
+        previous(signum, frame)
+    else:
+        signal.signal(signum, signal.SIG_DFL)
+        os.kill(os.getpid(), signum)
+
+
+def register_exit_hooks() -> None:
+    """Make sure device sessions are ended on interpreter exit and on SIGTERM/SIGINT. Idempotent.
+
+    An unhandled SIGTERM kills Python without running ``atexit``, so SIGTERM
+    and SIGINT get a handler that quits the sessions and then chains to the
+    previously installed handler (telemetry's, or the default). SIGKILL cannot
+    be caught: a session orphaned that way is reclaimed by the Appium server
+    only after ``newCommandTimeout`` (300 s by default) expires.
+    """
+    global _atexit_registered
+    with _exit_hooks_lock:
+        if not _atexit_registered:
+            atexit.register(_cleanup_all_sessions)
+            _atexit_registered = True
+        if threading.current_thread() is not threading.main_thread():
+            return  # signal.signal only works on the main thread; atexit still covers normal exit
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            if sig in _previous_signal_handlers:
+                continue
+            try:
+                previous = signal.signal(sig, _handle_exit_signal)
+            except (ValueError, OSError) as e:  # pragma: no cover - restricted environments
+                logger.debug("Could not install %s handler for Appium cleanup: %s", sig, e)
+                continue
+            _previous_signal_handlers[sig] = previous if previous is not None else signal.SIG_DFL
 
 
 def _appium_client_available() -> bool:
@@ -367,6 +505,10 @@ class AppiumManager:
         self._thread_pool: Optional[ThreadPoolExecutor] = None
         self._create_lock: Optional[asyncio.Lock] = None
         self._create_lock_loop: Optional[asyncio.AbstractEventLoop] = None
+        # Driver commands currently running on worker threads; teardown waits (bounded) for them to drain
+        # instead of racing quit() against a tap/read in flight.
+        self._inflight = 0
+        self._inflight_cond = threading.Condition()
 
         self._record_video = get_global_conf().should_record_video()
         self._take_screenshots = get_global_conf().should_take_screenshots()
@@ -402,10 +544,58 @@ class AppiumManager:
             self._thread_pool = ThreadPoolExecutor(max_workers=worker_count, thread_name_prefix="AppiumUI")
         return self._thread_pool
 
-    async def _run_in_ui_thread(self, func: Callable[[], Any], identifier: str) -> Any:
+    def _run_tracked(self, func: Callable[[], Any]) -> Any:
+        """Worker-thread body: run ``func`` while counting it as an in-flight driver call."""
+        with self._inflight_cond:
+            self._inflight += 1
+        try:
+            return func()
+        finally:
+            with self._inflight_cond:
+                self._inflight -= 1
+                self._inflight_cond.notify_all()
+
+    def _wait_for_idle(self, timeout: float) -> bool:
+        """Wait up to ``timeout`` seconds for in-flight driver calls to finish; True when none is left."""
+        with self._inflight_cond:
+            return self._inflight_cond.wait_for(lambda: self._inflight == 0, timeout=timeout)
+
+    async def _run_in_ui_thread(
+        self,
+        func: Callable[[], Any],
+        identifier: str,
+        timeout: Optional[float] = None,
+        on_late_result: Optional[Callable[[Any], None]] = None,
+    ) -> Any:
+        """Run a blocking driver call off the event loop, bounded by a timeout.
+
+        ``asyncio`` cannot cancel an executor thread, so the HTTP client also
+        carries the same timeout (see ``create_session``); this wait is what
+        guarantees the caller gets control back with a clear error.
+
+        When the wait times out the call is still running. ``on_late_result``
+        (called on the worker thread with the call's return value) is how the
+        caller disposes of a result nobody is waiting for any more, e.g. a
+        driver that finishes connecting after the caller gave up.
+        """
         start_time = time.time()
-        loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(self._get_thread_pool(), func)
+        limit = timeout if timeout is not None else get_command_timeout_seconds()
+        future = self._get_thread_pool().submit(self._run_tracked, func)
+        try:
+            result = await asyncio.wait_for(asyncio.wrap_future(future), timeout=limit)
+        except asyncio.TimeoutError:
+            if on_late_result is not None:
+                _dispose_late_result(future, on_late_result, identifier)
+            raise AppiumTimeoutError(
+                f"Appium did not respond within {limit:g}s for {identifier}. Check that the Appium server at APPIUM_SERVER_URL ({get_appium_server_url()}) is running and responsive "
+                "(timeouts: APPIUM_COMMAND_TIMEOUT_SECONDS / APPIUM_SESSION_START_TIMEOUT_SECONDS)."
+            ) from None
+        except MobileEnvironmentError:
+            raise
+        except Exception as e:
+            if _is_connectivity_error(e):
+                raise MobileEnvironmentError(f"Could not reach the Appium server at APPIUM_SERVER_URL ({get_appium_server_url()}) for {identifier}: {e}") from e
+            raise
         logger.info(f"[APPIUM_DRIVER_TIMING] Completed driver interaction: {identifier} in {time.time() - start_time:.2f} seconds")
         return result
 
@@ -431,7 +621,7 @@ class AppiumManager:
             app=get_app_path() or get_apk_path(),
             platform_version=get_platform_version(),
             udid=get_device_uuid(),
-            extra=get_appium_capabilities(),
+            extra=reconcile_platform_name(get_appium_capabilities()),
         )
 
     def _get_create_lock(self) -> asyncio.Lock:
@@ -456,7 +646,14 @@ class AppiumManager:
                 logger.info("Appium session already active for stake_id %s; reusing it", self.stake_id)
                 return {"session_id": str(getattr(self.driver, "session_id", "")), "capabilities": self._session_capabilities, "reused": True}
 
+            problems = validate_mobile_settings()
+            if problems:
+                raise MobileEnvironmentError("Invalid mobile configuration: " + "; ".join(problems))
+
             caps = capabilities if capabilities is not None else self.build_default_capabilities()
+            server_url = get_appium_server_url()
+            start_timeout = get_session_start_timeout_seconds()
+            command_timeout = get_command_timeout_seconds()
 
             def _connect() -> Any:
                 if self._driver_factory is not None:
@@ -472,9 +669,27 @@ class AppiumManager:
                     # (processArguments, otherApps, ...) must stay JSON
                     # structures. A None value unsets the capability.
                     options.set_capability(cap_name, cap_value)
-                return webdriver.Remote(command_executor=get_appium_server_url(), options=options)
+                remote_kwargs: Dict[str, Any] = {"command_executor": server_url, "options": options}
+                try:
+                    from appium.webdriver.client_config import AppiumClientConfig
 
-            driver = await self._run_in_ui_thread(_connect, "create_session")
+                    # The client socket timeout is the only thing that can stop
+                    # a call to a server that accepted the connection and never
+                    # replies; it covers session creation and is lowered to the
+                    # command timeout once the session exists.
+                    remote_kwargs["client_config"] = AppiumClientConfig(remote_server_addr=server_url, timeout=start_timeout)
+                except ImportError:
+                    logger.warning("This Appium client has no client_config support; relying on the asyncio timeout only")
+                driver = webdriver.Remote(**remote_kwargs)
+                _set_driver_client_timeout(driver, command_timeout)
+                return driver
+
+            try:
+                driver = await self._run_in_ui_thread(_connect, "create_session", timeout=start_timeout, on_late_result=_quit_late_driver)
+            except MobileEnvironmentError:
+                raise
+            except Exception as e:
+                raise MobileEnvironmentError(f"Could not start an Appium session at APPIUM_SERVER_URL ({server_url}): {e}") from e
             session_id = str(getattr(driver, "session_id", "") or "")
             if not session_id:
                 # Do not leak a half-open session: end it before reporting.
@@ -490,6 +705,7 @@ class AppiumManager:
 
             os.makedirs(self._screenshots_dir, exist_ok=True)
             os.makedirs(self._video_dir, exist_ok=True)
+            register_exit_hooks()
 
             # Auto-start screen recording for the run (gated + best-effort).
             await self.start_screen_recording()
@@ -515,7 +731,7 @@ class AppiumManager:
         self._session_capabilities = {}
         self._accessibility_tree_cache = None
 
-    def _teardown_session_sync(self) -> None:
+    def _teardown_session_sync(self, client_timeout: Optional[float] = None) -> None:
         """Best-effort synchronous session teardown for the shutdown path.
 
         ``quit_session`` is async and only reached through the close tool, so
@@ -523,11 +739,16 @@ class AppiumManager:
         recording) alive until ``newCommandTimeout`` expires. This runs the
         driver calls directly on the caller's thread: recording is stopped and
         saved best-effort, then the driver is quit. Every failure is logged
-        and never raised.
+        and never raised. ``client_timeout`` (seconds) bounds each driver call so
+        a hung server cannot block process exit.
         """
         driver = self.driver
         if driver is None:
             return
+        if not self._wait_for_idle(EXIT_INFLIGHT_WAIT_SECONDS):
+            logger.debug("Appium command still in flight after %gs; ending the session anyway", EXIT_INFLIGHT_WAIT_SECONDS)
+        if client_timeout is not None:
+            _set_driver_client_timeout(driver, client_timeout)
         if self._record_video:
             try:
                 recording_data = driver.stop_recording_screen()
@@ -551,17 +772,20 @@ class AppiumManager:
     # Screen recording (Appium built-in API)
     # ------------------------------------------------------------------
 
-    async def start_screen_recording(self) -> None:
+    async def start_screen_recording(self) -> bool:
+        """Start recording. Returns True only when the device actually started recording."""
         if not self._record_video:
             logger.debug("Screen recording is disabled by configuration (RECORD_VIDEO); skipping start")
-            return
+            return False
         if not self.driver:
             logger.warning("Cannot start screen recording without an active Appium session")
-            return
+            return False
         try:
             await self._run_in_ui_thread(lambda: self.driver.start_recording_screen(), "start_screen_recording")
         except Exception as e:
             logger.warning("Failed to start screen recording: %s", e)
+            return False
+        return True
 
     async def stop_screen_recording(self) -> Optional[str]:
         """Stop recording and write the video under ``<proof>/videos/``.
@@ -911,6 +1135,10 @@ class AppiumManager:
         return render_screen_legend(tree)
 
     async def take_screenshot(self, name: Optional[str] = None) -> Optional[str]:
+        """Capture a screenshot under ``<proof>/screenshots/``; ``None`` when TAKE_SCREENSHOTS=false."""
+        if not self._take_screenshots:
+            logger.debug("Screenshots are disabled by configuration (TAKE_SCREENSHOTS); skipping capture")
+            return None
         driver = self._require_driver()
         os.makedirs(self._screenshots_dir, exist_ok=True)
         safe_name = re.sub(r"[^A-Za-z0-9_.-]+", "_", name or "mobile_screenshot")

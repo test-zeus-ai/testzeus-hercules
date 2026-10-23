@@ -10,7 +10,7 @@ can be imported from anywhere, including orchestrator.session.
 import json
 import re
 import urllib.parse
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from testzeus_hercules.utils.logger import logger
 
@@ -18,6 +18,39 @@ from testzeus_hercules.utils.logger import logger
 # NFKC-host forms, ...): everything from "//" up to and including the next "@"
 # (before any "/", "@") is dropped, so credentials can never survive.
 _USERINFO_RE = re.compile(r"//[^/@\s]*@")
+
+# The one "URL embedded in free text" pattern: the "://" and the URL body up to a
+# delimiter. The scheme before it is found by a bounded backwards scan in
+# _map_urls_in_text, NOT by a leading "[a-zA-Z][a-zA-Z0-9+.-]*" in the regex,
+# which backtracks quadratically on a long run of scheme-like characters
+# ("a-a-a-..." with no "://"). A future change to the URL boundary (stop at ")"
+# or ">", ...) is made here and reaches every caller: redact_text_urls,
+# redact_webhook_text and the API / SQL tool error scrubbers.
+_URL_IN_TEXT_RE = re.compile(r"://[^\s'\"<>]+")
+_SCHEME_CHARS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+.-")
+_SCHEME_START_CHARS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
+_MAX_SCHEME_LEN = 32
+
+
+def _map_urls_in_text(text: str, rewrite: Callable[[str], str]) -> str:
+    """Replace every ``scheme://body`` URL embedded in ``text`` with ``rewrite(url)``; linear in len(text)."""
+    pieces: List[str] = []
+    cursor = 0
+    for match in _URL_IN_TEXT_RE.finditer(text):
+        scheme_end = match.start()
+        begin = scheme_end
+        floor = max(cursor, scheme_end - _MAX_SCHEME_LEN)
+        while begin > floor and text[begin - 1] in _SCHEME_CHARS:
+            begin -= 1
+        while begin < scheme_end and text[begin] not in _SCHEME_START_CHARS:  # a scheme starts with a letter
+            begin += 1
+        if begin == scheme_end:
+            continue
+        pieces.append(text[cursor:begin])
+        pieces.append(rewrite(text[begin : match.end()]))
+        cursor = match.end()
+    pieces.append(text[cursor:])
+    return "".join(pieces)
 
 
 def redact_url(url: str) -> str:
@@ -37,7 +70,9 @@ def redact_url(url: str) -> str:
     except ValueError:
         return _redact_url_fallback(url)
     redacted_query = _redact_query(parsed.query)
-    if parsed.username is None and parsed.password is None and redacted_query == parsed.query:
+    redacted_path = _redact_path(parsed.path)
+    redacted_fragment = _redact_fragment(parsed.fragment)
+    if parsed.username is None and parsed.password is None and redacted_query == parsed.query and redacted_path == parsed.path and redacted_fragment == parsed.fragment:
         return url
     host = parsed.hostname or ""
     try:
@@ -50,7 +85,50 @@ def redact_url(url: str) -> str:
         netloc = host
     if port is not None:
         netloc = f"{netloc}:{port}"
-    return urllib.parse.urlunsplit((parsed.scheme, netloc, parsed.path, redacted_query, parsed.fragment))
+    return urllib.parse.urlunsplit((parsed.scheme, netloc, redacted_path, redacted_query, redacted_fragment))
+
+
+def redact_webhook_url(url: str) -> str:
+    """Log-safe form of a webhook URL: ``scheme://host[:port]`` plus a masked path; never raises.
+
+    Webhook URLs carry their secret in the path (Slack ``/services/T/B/SECRET``,
+    Discord ``/api/webhooks/<id>/<token>``) or the query (``?token=...``), so
+    only the origin survives. Userinfo, path segments, query and fragment are
+    dropped; a non-empty path becomes ``/[REDACTED]``.
+    """
+    if not url:
+        return url
+    try:
+        parsed = urllib.parse.urlsplit(str(url).strip())
+        host = parsed.hostname or ""
+        if not parsed.scheme or not host:
+            return "[unparsable-url]"
+        netloc = f"[{host}]" if ":" in host else host
+        try:
+            port = parsed.port
+        except ValueError:
+            port = None
+        if port is not None:
+            netloc = f"{netloc}:{port}"
+        path = f"/{REDACTED_PLACEHOLDER}" if parsed.path.strip("/") else ""
+        return f"{parsed.scheme}://{netloc}{path}"
+    except Exception:
+        return "[unparsable-url]"
+
+
+def redact_webhook_text(text: str, url: str = "") -> str:
+    """Mask every URL inside ``text`` (e.g. an httpx error message) with :func:`redact_webhook_url`.
+
+    The exact ``url`` is replaced first so URLs the regex would cut short
+    (spaces, quotes) cannot leak either.
+    """
+    try:
+        out = str(text)
+        if url:
+            out = out.replace(url, redact_webhook_url(url))
+        return _map_urls_in_text(out, redact_webhook_url)
+    except Exception:
+        return "[redacted]"
 
 
 # Query parameter names whose values must never reach log output. Matched
@@ -58,7 +136,47 @@ def redact_url(url: str) -> str:
 # short names (so a non-secret like "monitor" or "keyword" is kept), and by the
 # secret-name fragments of `is_sensitive_name` ("client_secret",
 # "refresh_token", "id_token", ...).
-REDACTED_QUERY_PARAM_NAMES = frozenset(("token", "access_token", "api_key", "apikey", "key", "secret", "password", "passwd", "sig", "signature", "auth"))
+REDACTED_QUERY_PARAM_NAMES = frozenset(
+    (
+        "token",
+        "access_token",
+        "api_key",
+        "apikey",
+        "key",
+        "secret",
+        "password",
+        "passwd",
+        "pwd",
+        "sig",
+        "signature",
+        "auth",
+        "jwt",
+        "access_key",
+        "accesskey",
+        "session",
+        "sessionid",
+        "session_id",
+        "sid",
+        "x-amz-signature",
+        "x-amz-credential",
+        "x-amz-security-token",
+    )
+)
+# Name suffixes that mark signed-URL / key parameters (X-Goog-Signature, client_key, x-api-key, ...).
+_SENSITIVE_QUERY_NAME_SUFFIXES = ("signature", "_sig", "-sig", "_key", "-key", "_session", "-session")
+# Well-known non-secret "*_key" names (database/API ordering keys, not credentials): kept readable in logs
+# even though the "_key" suffix rule would mask them. Exact names only; any other "*_key" stays masked.
+_BENIGN_KEY_QUERY_NAMES = frozenset(
+    ("sort_key", "sort-key", "order_key", "order-key", "primary_key", "primary-key", "foreign_key", "foreign-key", "partition_key", "partition-key", "cache_key", "cache-key")
+)
+_QUERY_SEPARATOR_RE = re.compile(r"([&;])")
+
+
+def _is_sensitive_query_name(name: str) -> bool:
+    lowered = name.lower().strip()
+    if lowered in _BENIGN_KEY_QUERY_NAMES:
+        return False
+    return lowered in REDACTED_QUERY_PARAM_NAMES or lowered.endswith(_SENSITIVE_QUERY_NAME_SUFFIXES) or is_sensitive_name(lowered)
 
 
 def _redact_query_pair(pair: str) -> str:
@@ -70,20 +188,38 @@ def _redact_query_pair(pair: str) -> str:
         decoded_name = urllib.parse.unquote_plus(name)
     except Exception:
         decoded_name = name
-    if decoded_name.lower() in REDACTED_QUERY_PARAM_NAMES or is_sensitive_name(decoded_name):
+    if _is_sensitive_query_name(decoded_name):
         return f"{name}={REDACTED_PLACEHOLDER}"
     return pair
 
 
 def _redact_query(query: str) -> str:
-    """Redact sensitive query parameter values; every other character is kept verbatim."""
+    """Redact sensitive query parameter values ("&" and ";" separated); every other character is kept verbatim."""
     if not query:
         return query
-    pairs = query.split("&")
-    redacted = [_redact_query_pair(pair) for pair in pairs]
-    if redacted == pairs:
-        return query
-    return "&".join(redacted)
+    parts = _QUERY_SEPARATOR_RE.split(query)  # separators sit at odd indexes and are preserved
+    return "".join(part if index % 2 else _redact_query_pair(part) for index, part in enumerate(parts))
+
+
+def _redact_path(path: str) -> str:
+    """Redact ``;name=value`` matrix parameters of every path segment (``/a;token=x/b``)."""
+    if ";" not in path:
+        return path
+    segments = []
+    for segment in path.split("/"):
+        head, *params = segment.split(";")
+        segments.append(";".join([head, *(_redact_query_pair(param) for param in params)]))
+    return "/".join(segments)
+
+
+def _redact_fragment(fragment: str) -> str:
+    """Redact ``#access_token=...`` style (OAuth implicit flow) and ``#/route?token=...`` fragments."""
+    if not fragment or "=" not in fragment:
+        return fragment
+    head, qmark, query = fragment.partition("?")
+    if qmark:
+        return head + "?" + _redact_query(query)
+    return _redact_query(fragment)
 
 
 def _redact_url_fallback(url: str) -> str:
@@ -100,10 +236,21 @@ def _redact_url_fallback(url: str) -> str:
         if not sep:
             return "[unparsable-url]"
         redacted = f"{scheme}://[unparsable]"
-    head, qmark, query = redacted.partition("?")
-    if qmark:
-        return head + "?" + _redact_query(query)
-    return redacted
+    body, hash_mark, fragment = redacted.partition("#")
+    head, qmark, query = body.partition("?")
+    head = _redact_path(head)
+    out = head + ("?" + _redact_query(query) if qmark else "")
+    if hash_mark:
+        out += "#" + _redact_fragment(fragment)
+    return out
+
+
+def redact_text_urls(text: str) -> str:
+    """Run :func:`redact_url` over every URL embedded in ``text`` (e.g. an exception message); never raises."""
+    try:
+        return _map_urls_in_text(str(text), redact_url)
+    except Exception:
+        return "[redacted]"
 
 
 # Header keys whose values must never reach the network logs. Matched as
@@ -275,7 +422,7 @@ def redact_value(value: Any, key_hint: str = "", secret_values: Iterable[str] = 
         if isinstance(value, str):
             text = scrub_secret_values(value, secrets)
             if "://" in text:
-                text = re.sub(r"[a-zA-Z][a-zA-Z0-9+.\-]*://[^\s'\"<>]+", lambda match: redact_url(match.group(0)), text)
+                text = redact_text_urls(text)
             return text
         return value
     except Exception:

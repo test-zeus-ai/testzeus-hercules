@@ -61,7 +61,7 @@ def test_create_session_passes_structured_capabilities_through_real_appium_optio
         def quit(self) -> None:
             pass
 
-    def fake_remote(command_executor=None, options=None):
+    def fake_remote(command_executor=None, options=None, client_config=None):
         captured["caps"] = options.to_capabilities()
         return _Driver()
 

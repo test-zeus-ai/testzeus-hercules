@@ -326,7 +326,7 @@ def test_check_config_anchors_llm_config_at_hercules_root(workspace, monkeypatch
 
     result = run(mcp_server.hercules_check_config(ping_model=False))
 
-    assert result["checks"]["llm_config"]["path"] == str(tmp_path / "agents_llm_config.json")
+    assert result["checks"]["llm_config"]["path"] == "agents_llm_config.json"
     assert result["checks"]["llm_config"]["exists"] is False
 
 
@@ -338,5 +338,26 @@ def test_check_config_honors_llm_config_env_override(workspace, monkeypatch) -> 
 
     result = run(mcp_server.hercules_check_config(ping_model=False))
 
-    assert result["checks"]["llm_config"]["path"] == str(custom)
+    assert result["checks"]["llm_config"]["path"] == "custom_llm_config.json"
     assert result["checks"]["llm_config"]["exists"] is True
+
+
+def test_restored_session_with_redacted_app_url_refuses_to_hand_it_out(workspace) -> None:
+    """sessions.json stores a redacted app_url; a restored session must say so instead of exposing '[REDACTED]' as a URL."""
+    _tmp_path, manager = workspace
+    state = manager.create_session("https://app.example.com/#/home?sid=abc123&sort_key=name")
+    manager.save_session_state(state)
+    persisted = (Path(os.getcwd()) / ".hercules" / "sessions.json").read_text()
+    assert "abc123" not in persisted
+
+    # in memory the real value is kept and usable
+    assert state.require_app_url() == "https://app.example.com/#/home?sid=abc123&sort_key=name"
+
+    restored = SessionManager().get_session(state.session_id)
+    assert restored.app_url_is_redacted
+    with pytest.raises(ValueError, match="hercules_configure_session"):
+        restored.require_app_url()
+    # a URL without secrets round-trips and stays usable
+    plain = manager.create_session("https://app.example.com/home?tab=1")
+    manager.save_session_state(plain)
+    assert SessionManager().get_session(plain.session_id).require_app_url() == "https://app.example.com/home?tab=1"
