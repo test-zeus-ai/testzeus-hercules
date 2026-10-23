@@ -118,6 +118,36 @@ def test_str_body_without_mode_defaults_to_raw(wire) -> None:
     assert wire[0].content == b"plain text"
 
 
+def test_json_string_body_without_mode_is_sent_as_json_verbatim(wire) -> None:
+    body = '{"name":  "x"}'
+    _run(generic_http_api("POST", "https://api.test/x", body=body))
+    assert wire[0].headers["content-type"] == "application/json"
+    assert wire[0].content == body.encode()
+
+
+def test_json_array_string_body_without_mode_is_typed_json(wire) -> None:
+    _run(generic_http_api("POST", "https://api.test/x", body="[1, 2]"))
+    assert wire[0].headers["content-type"] == "application/json"
+
+
+@pytest.mark.parametrize("body", ["plain text", "42", "true", "{not json", ""])
+def test_other_string_bodies_without_mode_are_text_plain(wire, body) -> None:
+    _run(generic_http_api("POST", "https://api.test/x", body=body))
+    assert wire[0].headers["content-type"] == "text/plain"
+    assert wire[0].content == body.encode()
+
+
+@pytest.mark.parametrize("body", ['{"a": 1}', "hello"])
+def test_caller_content_type_is_never_overridden_for_string_bodies(wire, body) -> None:
+    _run(generic_http_api("POST", "https://api.test/x", body=body, headers={"content-type": "application/vnd.api+json"}))
+    assert wire[0].headers["content-type"] == "application/vnd.api+json"
+
+
+def test_explicit_raw_mode_stays_untyped(wire) -> None:
+    _run(generic_http_api("POST", "https://api.test/x", body='{"a": 1}', body_mode="raw"))
+    assert "content-type" not in wire[0].headers
+
+
 def test_body_mode_names_are_case_insensitive(wire) -> None:
     _run(generic_http_api("POST", "https://api.test/x", body={"a": 1}, body_mode=" JSON "))
     assert json.loads(wire[0].content) == {"a": 1}

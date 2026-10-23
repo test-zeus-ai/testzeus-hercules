@@ -583,8 +583,8 @@ def _resolve_body_mode(body: Any, body_mode: Optional[str]) -> Tuple[Optional[st
 
     Names are case-insensitive. Without a body the mode is irrelevant (None).
     A body with no mode defaults to json for dict/list/number/bool, raw for
-    text and binary for bytes; an unknown mode is an error rather than a
-    silently dropped body.
+    text (see _default_text_content_type for its Content-Type) and binary for
+    bytes; an unknown mode is an error rather than a silently dropped body.
     """
     if body is None:
         return None, None
@@ -598,6 +598,28 @@ def _resolve_body_mode(body: Any, body_mode: Optional[str]) -> Tuple[Optional[st
     if mode not in BODY_MODES:
         return None, f"Unknown body_mode '{body_mode}'. Valid modes: {', '.join(BODY_MODES)} (omit it to send a dict/list as json and text as raw)."
     return mode, None
+
+
+def _has_header(headers: Dict[str, str], name: str) -> bool:
+    lowered = name.lower()
+    return any(str(key).lower() == lowered for key in headers)
+
+
+def _default_text_content_type(body: str) -> str:
+    """Content-Type for a str body sent without a body_mode: JSON objects/arrays are application/json, other text text/plain.
+
+    LLM callers typically pass a JSON document as a string (``body='{"name": "x"}'``); sent untyped, most JSON APIs
+    answer 415 or parse an empty object. Only objects and arrays count as JSON, so a text body such as ``42`` or
+    ``true`` is not mislabelled.
+    """
+    stripped = body.lstrip()
+    if stripped[:1] in ("{", "["):
+        try:
+            if isinstance(json.loads(body), (dict, list)):
+                return "application/json"
+        except ValueError:
+            pass
+    return "text/plain"
 
 
 def _flatten_query(explicit_query: Dict[str, Any]) -> List[Tuple[str, Any]]:
@@ -627,11 +649,14 @@ async def _send_request(
       - "multipart": Encodes a dict as multipart/form-data (see
         build_multipart_fields for how field values map to parts).
       - "urlencoded": Encodes a dict as application/x-www-form-urlencoded.
-      - "raw": Sends the body as a raw string (caller must set Content-Type).
+      - "raw": Sends the body as a raw string (caller must set Content-Type; a str
+        body with no body_mode at all is typed application/json when it is a JSON
+        object/array, else text/plain, unless a Content-Type header is given).
       - "binary": Sends the body as raw bytes (defaults to application/octet-stream).
       - "json": Encodes the body as JSON.
       - None: With no body nothing is sent. A body without a mode is sent as
-        json (dict/list/number/bool), raw (str) or binary (bytes).
+        json (dict/list/number/bool), raw (str, with the Content-Type described
+        above) or binary (bytes).
       Mode names are case-insensitive; an unknown mode is an error.
 
     Returns the JSON-encoded result payload as a single string (the executor
@@ -654,6 +679,7 @@ async def _send_request(
     merged_query.extend(_flatten_query(explicit_query))
     req_kwargs = {"params": merged_query if merged_query else None}
 
+    body_mode_was_defaulted = body is not None and not (body_mode is not None and str(body_mode).strip())
     body_mode, body_mode_error = _resolve_body_mode(body, body_mode)
     if body_mode_error:
         return _bounded_payload({"error": body_mode_error, "status_code": None, "status_type": "failure"}, 0.0)
@@ -674,6 +700,10 @@ async def _send_request(
         req_kwargs["data"] = body
 
     elif body_mode == "raw" and body is not None:
+        if body_mode_was_defaulted and isinstance(body, str) and not _has_header(headers, "Content-Type"):
+            # Only the implicit text default is typed for the caller; an explicit body_mode="raw" stays untyped
+            # (the caller owns the Content-Type), and a Content-Type the caller set is never overridden.
+            headers["Content-Type"] = _default_text_content_type(body)
         req_kwargs["content"] = body
 
     elif body_mode == "binary" and body is not None:
