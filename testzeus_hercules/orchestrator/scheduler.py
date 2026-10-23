@@ -34,15 +34,16 @@ import itertools
 import json
 import os
 import shutil
+import sys
 import time
 from contextlib import suppress
 from typing import Any
 
 import yaml
-from testzeus_hercules.orchestrator import suites
+from testzeus_hercules.orchestrator import run_manager, suites
 from testzeus_hercules.orchestrator.suites import resolve_config_path
 from testzeus_hercules.utils.logger import logger
-from testzeus_hercules.utils.redact import redact_url
+from testzeus_hercules.utils.redact import redact_webhook_text, redact_webhook_url
 
 DEFAULT_CONFIG_PATH = ".hercules/monitor.yaml"
 DEFAULT_SUITES_CONFIG = suites.DEFAULT_SUITES_PATH
@@ -361,9 +362,10 @@ async def run_monitor_once(cfg: dict, state: dict) -> dict:
         try:
             await _post_webhook(webhook_url, {"text": _format_summary(summary)})
             summary["notified"] = True
-            logger.info("Webhook notification sent to %s", redact_url(webhook_url))
+            logger.info("Webhook notification sent to %s", redact_webhook_url(webhook_url))
         except Exception as exc:  # a broken webhook must never break monitoring
-            logger.warning("Webhook POST to %s failed: %s", redact_url(webhook_url), exc)
+            # httpx error text embeds the full request URL (token / Slack path secret).
+            logger.warning("Webhook POST to %s failed: %s: %s", redact_webhook_url(webhook_url), type(exc).__name__, redact_webhook_text(str(exc), webhook_url))
 
     logger.info("Monitor cycle %s done: %s", run_id, _format_summary(summary))
     return summary
@@ -403,13 +405,19 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args.once:
         try:
-            asyncio.run(monitor_loop(cfg))
-        except KeyboardInterrupt:
-            logger.info("Monitor stopped by user.")
+            run_manager.run_cli(monitor_loop(cfg))
+        except run_manager.CliInterrupted as exc:
+            # SIGINT/SIGTERM is the normal way to stop the daemon: running
+            # scenario process trees were already terminated, exit cleanly.
+            logger.info("Monitor stopped by signal %s.", exc.signum)
         return 0
 
     state = load_state(cfg["state_file"])
-    summary = asyncio.run(run_monitor_once(cfg, state))
+    try:
+        summary = run_manager.run_cli(run_monitor_once(cfg, state))
+    except run_manager.CliInterrupted as exc:
+        print(f"hercules-monitor: interrupted (signal {exc.signum}); scenario processes terminated.", file=sys.stderr)
+        return exc.exit_code
     print(_format_summary(summary))
     regression = summary.get("regression") or {}
     print(f"Regressed: {bool(regression.get('regressed'))}; new failures: {', '.join(regression.get('new_failures') or []) or 'none'}; fixed: {', '.join(regression.get('fixed') or []) or 'none'}")

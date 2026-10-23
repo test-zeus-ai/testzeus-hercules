@@ -24,6 +24,8 @@ from testzeus_hercules.core.tools.api_calls import (
     parse_json_payload,
     sensitive_variable_values,
     stringify_interpolated_value,
+    truncation_blocks_path,
+    truncation_reason,
 )
 from testzeus_hercules.core.tools.tool_registry import (
     assertion_logger,
@@ -345,9 +347,15 @@ def _evaluate(response_json: Any, path: str, operator: str, expected: Any = EXPE
     # ---- ${name} interpolation (runs once, upstream of every branch below —
     # in particular before the operator-swap reinterpretation, so a path that
     # contains placeholders is clean no matter which branch evaluates it) ----
+    # A literal: value is compared exactly as written, so it is detected on the
+    # raw text and never interpolated (a "${name}" in it stays "${name}").
+    literal = isinstance(expected, str) and expected.startswith(LITERAL_PREFIX)
+    if literal:
+        expected = expected[len(LITERAL_PREFIX) :]
     try:
         path = stringify_interpolated_value(interpolate_value(path))
-        expected = interpolate_value(expected)
+        if not literal:
+            expected = interpolate_value(expected)
     except Exception as e:
         return _payload(assertion="ERROR", reason=f"Interpolation failed: {type(e).__name__}: {e}")
 
@@ -365,10 +373,6 @@ def _evaluate(response_json: Any, path: str, operator: str, expected: Any = EXPE
                 f"Operator '{operator_name}' needs an 'expected' value, but none was given. " f"Only {', '.join(OPERATORS_WITHOUT_EXPECTED)} may omit it; pass null explicitly to compare against null."
             ),
         )
-
-    literal = isinstance(expected, str) and expected.startswith(LITERAL_PREFIX)
-    if literal:
-        expected = expected[len(LITERAL_PREFIX) :]
 
     lookalike = None if literal else _operator_lookalike(expected)
     if lookalike:
@@ -426,7 +430,7 @@ def _evaluate_with_operator(response_json: Any, path: str, operator: str, expect
     try:
         document = parse_json_payload(response_json)
     except ValueError as e:
-        return _payload(assertion="ERROR", reason=f"Response is not valid JSON: {e}")
+        return _payload(assertion="ERROR", reason=truncation_reason(response_json) or f"Response is not valid JSON: {e}")
 
     try:
         matches = find_json_path(document, path)
@@ -434,6 +438,11 @@ def _evaluate_with_operator(response_json: Any, path: str, operator: str, expect
         return _payload(assertion="ERROR", reason=str(e))
     except Exception as e:
         return _payload(assertion="ERROR", reason=f"Invalid JSONPath '{path}': {e}")
+    truncated = truncation_blocks_path(response_json, document, path, matches)
+    if truncated:
+        # Only a verdict the cut could change is refused ("matched nothing"/not_exists, or a path into the cut field);
+        # assertions on intact fields (status_code, headers, ...) evaluate normally.
+        return _payload(assertion="ERROR", reason=truncated)
 
     if operator == "not_exists":
         verdict = "PASSED" if not matches else "FAILED"

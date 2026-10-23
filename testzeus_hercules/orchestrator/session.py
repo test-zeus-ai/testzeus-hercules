@@ -19,7 +19,7 @@ import secrets
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from testzeus_hercules.utils.redact import redact_url
+from testzeus_hercules.utils.redact import REDACTED_PLACEHOLDER, redact_url
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -65,6 +65,12 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+REDACTED_APP_URL_MESSAGE = (
+    "The app_url stored in this session had secret query/fragment values redacted when it was saved (they are never persisted), "
+    "so it cannot be used as is. Call hercules_configure_session again with the full app_url."
+)
+
+
 @dataclass
 class SessionState:
     """State of one MCP testing session."""
@@ -87,12 +93,28 @@ class SessionState:
     last_run_summaries: list = field(default_factory=list)
     app_url_reachable: bool | None = None
 
+    @property
+    def app_url_is_redacted(self) -> bool:
+        """True when ``app_url`` came back from sessions.json with its secret values masked (it is not the real URL)."""
+        return REDACTED_PLACEHOLDER in (self.app_url or "")
+
+    def require_app_url(self) -> str:
+        """The real app URL, or a clear error when only the redacted persisted form is available.
+
+        ``to_dict`` persists ``redact_url(app_url)``, so a session restored after a restart can hold e.g.
+        ``https://app/#/home?sid=[REDACTED]``. Navigating to that would silently hit the wrong URL; any code that
+        needs the URL itself (not just an echo) must call this instead of reading ``app_url``.
+        """
+        if self.app_url_is_redacted:
+            raise ValueError(REDACTED_APP_URL_MESSAGE)
+        return self.app_url
+
     def __repr__(self) -> str:  # keep credentials out of logs/repr
         return (
             f"SessionState(session_id={self.session_id!r}, app_url={_redact_url(self.app_url)!r}, "
             f"project_path={self.project_path!r}, test_type={self.test_type!r}, "
             f"test_scope={self.test_scope!r}, credentials={'***' if self.credentials else '{}'!r}, "
-            f"prd_path={self.prd_path!r}, created_at={self.created_at!r}, "
+            f"prd_path={_redact_url(self.prd_path)!r}, created_at={self.created_at!r}, "
             f"code_summary_path={self.code_summary_path!r}, standard_prd_path={self.standard_prd_path!r}, "
             f"test_plan_path={self.test_plan_path!r}, "
             f"last_run_summaries={len(self.last_run_summaries)} run(s), "
@@ -115,7 +137,8 @@ class SessionState:
             "test_type": self.test_type,
             "test_scope": self.test_scope,
             "credentials": credentials,
-            "prd_path": self.prd_path,
+            # A PRD URL may carry a token in its query: persist it redacted (in-memory state keeps the real value).
+            "prd_path": _redact_url(self.prd_path) if self.prd_path.lower().startswith(("http://", "https://")) else self.prd_path,
             "created_at": self.created_at,
             "code_summary_path": self.code_summary_path,
             "standard_prd_path": self.standard_prd_path,

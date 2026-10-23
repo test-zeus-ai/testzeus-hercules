@@ -139,6 +139,7 @@ playwright install --with-deps
 ```
 
 For detailed information about project structure and running tests, please refer to our [Run Guide](docs/run_guide.md).
+For how the pieces fit together and which one to use, see [docs/architecture.md](docs/architecture.md). For the core agent loop, reliability flags, exit codes, and honest reporting, see [docs/core_loop_and_reliability.md](docs/core_loop_and_reliability.md).
 For migration-specific runtime behavior, see
 [docs/Migration/MIGRATION.md](docs/Migration/MIGRATION.md) and
 [docs/Migration/ARCHITECTURE.md](docs/Migration/ARCHITECTURE.md).
