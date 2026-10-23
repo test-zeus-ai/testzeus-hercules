@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import base64
+import ipaddress
 import json
 import os
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Union
+from urllib.parse import urlparse
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
+from langchain_openai import AzureChatOpenAI, ChatOpenAI
 from testzeus_hercules.core.agents_llm_config_manager import AgentsLLMConfigManager
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.model_utils import adapt_llm_params_for_model
@@ -68,9 +70,207 @@ def convert_model_config_to_langchain_format(
             "api_key": model_config.get("api_key") or model_config.get("model_api_key"),
             "base_url": model_config.get("base_url") or model_config.get("model_base_url"),
             "api_type": model_config.get("api_type") or model_config.get("model_api_type"),
+            "api_version": model_config.get("api_version") or model_config.get("model_api_version"),
+            "client_host": model_config.get("client_host") or model_config.get("model_client_host"),
         }.items()
         if v is not None
     }
+
+
+# OpenAI-compatible endpoints of the providers listed in agents_llm_config-example.json. Every model
+# is called through an OpenAI-style client, so `model_api_type` selects the endpoint when no explicit
+# base_url is configured.
+_PROVIDER_DEFAULT_BASE_URLS = {
+    "google": "https://generativelanguage.googleapis.com/v1beta/openai/",
+    "gemini": "https://generativelanguage.googleapis.com/v1beta/openai/",
+    "groq": "https://api.groq.com/openai/v1",
+    "mistral": "https://api.mistral.ai/v1",
+    "deepseek": "https://api.deepseek.com",
+    "anthropic": "https://api.anthropic.com/v1/",
+}
+DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434/v1"
+# With no api_type and no base_url, these model-name prefixes can only mean one provider.
+_MODEL_PREFIX_PROVIDERS = (("gemini", "google"), ("claude", "anthropic"))
+# Hostnames that always mean "this machine / the container host", plus suffixes of local-only names.
+_LOCAL_HOSTNAMES = {"localhost", "host.docker.internal", "host.containers.internal", "gateway.docker.internal"}
+_LOCAL_HOST_SUFFIXES = (".localhost", ".local")
+# 127/8 and ::1 (loopback), 0.0.0.0 and :: (unspecified), RFC1918, link-local and IPv6 unique-local ranges.
+_LOCAL_NETWORKS = tuple(
+    ipaddress.ip_network(net)
+    for net in (
+        "127.0.0.0/8",
+        "0.0.0.0/32",
+        "10.0.0.0/8",
+        "172.16.0.0/12",
+        "192.168.0.0/16",
+        "169.254.0.0/16",
+        "::1/128",
+        "::/128",
+        "fc00::/7",
+        "fe80::/10",
+    )
+)
+_KEYLESS_PLACEHOLDER_API_KEY = "not-needed"
+
+
+def _first_config_value(model_config: Dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        value = model_config.get(key)
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def _is_local_host(host: str) -> bool:
+    """True for loopback, container-host aliases, ``*.local`` names and private/link-local addresses.
+
+    Public hostnames and public IPs are never local, so they keep requiring an API key.
+    """
+    host = host.strip().strip("[]").rstrip(".").lower()
+    if not host:
+        return False
+    if host in _LOCAL_HOSTNAMES or host.endswith(_LOCAL_HOST_SUFFIXES):
+        return True
+    try:
+        address = ipaddress.ip_address(host.split("%", 1)[0])  # drop an IPv6 zone id (fe80::1%en0)
+    except ValueError:
+        return False
+    address = getattr(address, "ipv4_mapped", None) or address
+    return any(address in network for network in _LOCAL_NETWORKS if network.version == address.version)
+
+
+def _is_local_url(url: Optional[str]) -> bool:
+    try:
+        return bool(url) and _is_local_host(urlparse(str(url)).hostname or "")
+    except ValueError:
+        return False
+
+
+def _normalize_api_type(value: Any) -> str:
+    api_type = str(value or "").strip().lower().replace("-", "_")
+    return "azure" if api_type == "azure_openai" else api_type
+
+
+def _openai_endpoint_from_env() -> bool:
+    return bool(os.getenv("OPENAI_BASE_URL") or os.getenv("OPENAI_API_BASE"))
+
+
+def _azure_endpoint_or_v1(base_url: Optional[str]) -> tuple[Optional[str], bool]:
+    """Split an Azure URL into (``azure_endpoint``, ``is_v1``).
+
+    The Azure client builds ``<endpoint>/openai/deployments/<name>/...`` itself, so a configured URL that
+    already carries a path would be doubled; keep only scheme + host. A ``/openai/v1`` URL is the v1 API,
+    which needs no ``api-version`` and is served by the plain client (is_v1 = True).
+    """
+    if not base_url:
+        return None, False
+    parsed = urlparse(base_url)
+    if parsed.path.rstrip("/").endswith("/openai/v1"):
+        return base_url, True
+    if parsed.scheme and parsed.netloc:
+        return f"{parsed.scheme}://{parsed.netloc}", False
+    return base_url, False
+
+
+def resolve_provider_settings(model_config: Dict[str, Any], model_name: str) -> Dict[str, Any]:
+    """Work out how to reach the model from ``model_api_type`` / ``base_url`` / ``api_version`` / ``client_host``.
+
+    Returns ``{"api_type", "base_url", "api_version", "azure", "keyless"}``: ``azure`` selects the Azure OpenAI
+    client (needs ``api_version``), ``keyless`` means the endpoint is local so a missing API key is fine.
+    """
+    api_type = _normalize_api_type(_first_config_value(model_config, "api_type", "model_api_type"))
+    base_url = _first_config_value(model_config, "base_url", "model_base_url")
+    api_version = _first_config_value(model_config, "api_version", "model_api_version")
+    client_host = _first_config_value(model_config, "client_host", "model_client_host")
+    env_endpoint = _openai_endpoint_from_env()
+
+    if not api_type and not base_url and not env_endpoint:
+        for prefix, provider in _MODEL_PREFIX_PROVIDERS:
+            if model_name.lower().startswith(prefix):
+                api_type = provider
+                break
+
+    azure = api_type == "azure" and bool(api_version)
+    if azure:
+        base_url, is_v1 = _azure_endpoint_or_v1(str(base_url) if base_url else None)
+        azure = not is_v1
+    elif api_type == "ollama" and not base_url:
+        host = str(client_host).strip().rstrip("/") if client_host else ""
+        if host and "://" not in host:
+            host = f"http://{host}"
+        base_url = (host if host.endswith("/v1") else f"{host}/v1") if host else DEFAULT_OLLAMA_BASE_URL
+    elif not base_url and not env_endpoint:
+        # An OpenAI endpoint configured through the environment (a gateway/proxy) is not overridden by the
+        # provider's public endpoint.
+        base_url = _PROVIDER_DEFAULT_BASE_URLS.get(api_type)
+
+    return {
+        "api_type": api_type,
+        "base_url": str(base_url) if base_url else None,
+        "api_version": str(api_version) if api_version else None,
+        "azure": azure,
+        "keyless": api_type == "ollama" or _is_local_url(base_url),
+    }
+
+
+def keyless_api_key(settings: Dict[str, Any]) -> str:
+    """API key to send to a local endpoint that does not check it.
+
+    Ollama hosts get a placeholder: they ignore the key, and the host may be another machine on the network,
+    so a real key must never be sent to it. An explicit local proxy (LiteLLM, a gateway on loopback) may be
+    key-protected, so it gets the environment's OPENAI_API_KEY when there is one.
+    """
+    if settings.get("api_type") == "ollama":
+        return _KEYLESS_PLACEHOLDER_API_KEY
+    return os.getenv("OPENAI_API_KEY") or _KEYLESS_PLACEHOLDER_API_KEY
+
+
+def resolve_api_key(model_config: Dict[str, Any], settings: Dict[str, Any]) -> Optional[str]:
+    """The API key for ``model_config``, resolved identically for every agent (planner and navigation agents).
+
+    An Ollama host always gets the placeholder: it ignores the key and may be another machine on the network,
+    so no real key (config, ``MODEL_API_KEY``, ``OPENAI_API_KEY``) is ever sent to it. Otherwise the order is
+    ``api_key`` / ``model_api_key`` in the config, ``MODEL_API_KEY``, ``AZURE_OPENAI_API_KEY`` (any Azure
+    ``model_api_type``), then the keyless handling for local endpoints. ``None`` means "no key configured".
+    """
+    if settings["api_type"] == "ollama":
+        return keyless_api_key(settings)
+    key = model_config.get("api_key") or model_config.get("model_api_key") or os.getenv("MODEL_API_KEY")
+    if not key and settings["api_type"] == "azure":
+        key = os.getenv("AZURE_OPENAI_API_KEY")
+    if not key and settings["keyless"]:
+        key = keyless_api_key(settings)
+    return key or None
+
+
+def resolve_azure_ad_token(settings: Dict[str, Any]) -> Optional[str]:
+    """Microsoft Entra ID bearer token for Azure OpenAI (``AZURE_OPENAI_AD_TOKEN``), used when there is no API key."""
+    return (os.getenv("AZURE_OPENAI_AD_TOKEN") or None) if settings["api_type"] == "azure" else None
+
+
+def build_chat_client(kwargs: Dict[str, Any], settings: Dict[str, Any]) -> BaseChatModel:
+    """Instantiate the chat client for ``kwargs`` (model, api_key, timeout, ... ) and resolved ``settings``.
+
+    Without an ``api_key``, Azure falls back to the Entra ID token in ``AZURE_OPENAI_AD_TOKEN``: passed as
+    ``azure_ad_token`` to the Azure client, and as the bearer token of the plain client on the Azure v1 endpoint.
+    """
+    kwargs = dict(kwargs)
+    ad_token = None if kwargs.get("api_key") else resolve_azure_ad_token(settings)
+    if settings["azure"]:
+        kwargs.pop("base_url", None)
+        # azure_endpoint=None lets the client fall back to AZURE_OPENAI_ENDPOINT.
+        if not settings["base_url"] and not os.getenv("AZURE_OPENAI_ENDPOINT"):
+            raise ValueError("Azure OpenAI needs the resource endpoint: set model_base_url (https://<resource>.openai.azure.com/) or AZURE_OPENAI_ENDPOINT.")
+        if ad_token:
+            kwargs.pop("api_key", None)
+            kwargs["azure_ad_token"] = ad_token
+        # base_url=None keeps OPENAI_BASE_URL / OPENAI_API_BASE (a gateway for the other agents) out of the Azure client.
+        return AzureChatOpenAI(azure_endpoint=settings["base_url"], api_version=settings["api_version"], azure_deployment=kwargs.get("model"), base_url=None, **kwargs)
+    if settings["base_url"]:
+        kwargs["base_url"] = settings["base_url"]
+    if ad_token:
+        kwargs["api_key"] = ad_token
+    return ChatOpenAI(**kwargs)
 
 
 def create_chat_model(
@@ -82,24 +282,22 @@ def create_chat_model(
     model_name = model_config.get("model") or model_config.get("model_name") or DEFAULT_MODEL
     adapted = adapt_llm_params_for_model(model_name, dict(llm_config_params))
 
-    api_key = model_config.get("api_key") or model_config.get("model_api_key") or os.getenv("MODEL_API_KEY")
-    if not api_key:
+    settings = resolve_provider_settings(model_config, model_name)
+    api_key = resolve_api_key(model_config, settings)
+    if not api_key and not resolve_azure_ad_token(settings):
         raise ValueError("LLM API key is missing. Set MODEL_API_KEY or model_api_key in config.")
 
     kwargs: dict[str, Any] = {
         "model": model_name,
-        "api_key": api_key,
+        **({"api_key": api_key} if api_key else {}),
         **adapted,
     }
     if kwargs.get("timeout") is None:
         kwargs["timeout"] = get_llm_request_timeout_seconds()
     if kwargs.get("max_retries") is None:
         kwargs["max_retries"] = get_llm_max_retries()
-    base_url = model_config.get("base_url") or model_config.get("model_base_url")
-    if base_url:
-        kwargs["base_url"] = base_url
 
-    return ChatOpenAI(**kwargs)
+    return build_chat_client(kwargs, settings)
 
 
 def _encode_image_path(path: str) -> dict[str, Any]:
@@ -332,10 +530,17 @@ class GraphChatResult:
             return planner_summary
         # 2) A terminal helper answer (PASS/FAIL verdict or terminate marker)
         # preserves the real test outcome even when the planner's latest
-        # message is a non-terminal decision.
+        # message is a non-terminal decision, provided the graph itself ended
+        # (terminate == "yes"). When the run was cut short (terminate == "no":
+        # planner round limit, abort) a helper's SUCCESS says nothing about the
+        # test: the browser helper ends every successful step with "### Success:
+        # ... ##TERMINATE TASK##", so treating it as a verdict would turn an
+        # unfinished run into a pass. Only a failure verdict is trusted then.
         helper_result = parse_response(self.last_helper_response)
         if helper_result.get("terminate") == "yes":
-            return json.dumps(helper_result)
+            helper_failed = helper_result.get("is_assert") is True and helper_result.get("is_passed") is False
+            if self.terminate == "yes" or helper_failed:
+                return json.dumps(helper_result)
         # 3) Non-terminal planner response.
         if planner_summary:
             return planner_summary
