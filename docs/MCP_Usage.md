@@ -2,6 +2,15 @@
 
 This guide explains how to connect Hercules to an MCP server and execute tools, with Composio as a ready-to-use provider.
 
+There are two separate MCP features, easy to confuse:
+
+| Direction | What it is | Config | Document |
+| --- | --- | --- | --- |
+| Hercules as MCP **client** | The Hercules agent calls tools on *other* MCP servers during a test (mail, tickets, ...) | `mcp_servers.json`, `MCP_ENABLED`, `MCP_SERVERS`, `MCP_TIMEOUT` | this file, up to "Running Hercules as an MCP Server" |
+| Hercules as MCP **server** | A coding agent (Cursor, Claude Code, ...) drives Hercules sessions, plans and runs | `testzeus-hercules-mcp`, `MCP_HOST`, `MCP_PORT`, `MCP_AUTH_TOKEN`, ... | `docs/mcp_server.md` (architecture, security model, walkthroughs), `docs/test_intelligence.md` |
+
+The server-side settings (`MCP_*`, `HERCULES_MCP_*`) do not affect the client feature and vice versa.
+
 ## Overview
 - Hercules ships with an MCP Navigation Agent and MCP tooling.
 - Supports `stdio`, `sse`, and `streamable-http` transports.
@@ -123,7 +132,16 @@ Server environment variables (`docs/mcp_server.md` has the complete table):
   tooling)
 
 For a client configuration example (streamable-http), see
-`mcp_hercules.example.json`.
+`mcp_hercules.example.json`. With `MCP_AUTH_TOKEN` set, add
+`"headers": {"Authorization": "Bearer <token>"}` to that entry and pass an explicit
+`session_id` on every `hercules_*` call. The repository ships a smoke client,
+`.hercules/mcp_smoke_client.py`; `docs/mcp_server.md` has a full copy-pasteable client,
+the verified token-mode behaviour, and a troubleshooting table.
+
+Not to be used as a CI gate (results are JSON, not an exit code) or as a multi-tenant
+service (runs share one process and one privilege set); see "When not to use it" in
+`docs/mcp_server.md` and use `hercules-suite` / `hercules-run-manager`
+(`docs/orchestrator_and_dashboard.md`) for CI.
 
 ## Example Testcase (Simple)
 

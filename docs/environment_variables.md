@@ -112,6 +112,15 @@ LLM_MODEL_PRICING=<pricing>
     `MODEL_API_KEY`; if that is also unset, model creation fails with
     "LLM API key is missing. Set MODEL_API_KEY or model_api_key in config."
 
+- `LLM_REQUEST_TIMEOUT`: hard per-request LLM timeout in seconds
+  - Default: `60` (falls back to `PORTKEY_TIMEOUT` when that is set)
+  - Usage: a hung or slow provider fails the request after this long; the
+    scenario then ends as failed instead of hanging
+
+- `LLM_MAX_RETRIES`: provider retries for an LLM call
+  - Default: `1`
+  - Usage: set `0` to fail fast (useful in tests against a mock server)
+
 ### LLM Configuration File Structure
 The `agents_llm_config.json` supports multiple providers and agent configurations. Each provider can have different configurations for different agents:
 

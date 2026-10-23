@@ -513,6 +513,24 @@ AnchorBrowser supports connect_over_cdp, so video recording will work on the tes
 
 ## Orchestration: Parallel Runs, Suites, and Monitoring
 
+This section is the short reference. Architecture, trade-offs, threat model, verified
+walkthroughs and troubleshooting live in `docs/orchestrator_and_dashboard.md`; the MCP
+server and the PRD-to-plan pipeline are in `docs/mcp_server.md` and
+`docs/test_intelligence.md`.
+
+| You want | Command | Exit code on failures |
+| --- | --- | --- |
+| One run, one process | `testzeus-hercules` | `0` unless `STRICT_EXIT_CODE=true` (then `1`) |
+| One feature, scenarios in parallel | `hercules-run-manager <feature> --max-parallel N` | `1` |
+| A named, ordered group of features | `hercules-suite <name>` | `1` |
+| Scheduled runs with regression alerts | `hercules-monitor` (`--once` for cron/CI) | `--once`: `1` |
+| Browse history and evidence | `hercules-dashboard` | n/a |
+
+Do not use the parallel tools for scenarios that depend on each other (each scenario runs
+in its own process and workspace), and expect every scenario to pay process and browser
+start-up. Suites run **sequentially** (one subprocess per feature file) unless
+`max_parallel` is above 1.
+
 ### Parallel Scenario Execution
 
 Run one feature file as parallel per-scenario subprocesses (each scenario gets
@@ -529,7 +547,7 @@ default `<workroot>/merged`), and `--timeout` (per-scenario seconds, default
 inherited `EXIT_CODE_COMPAT` is dropped from its env) and only counts as passed
 when it exits 0 *and* its JUnit XML reports no failures/errors. The run manager
 itself exits 1 when any scenario failed or errored (`EXIT_CODE_COMPAT=1` forces
-0), and 2 when the feature file contains no scenarios.
+0), and 2 when the feature file is missing or contains no scenarios.
 
 ### Named Suites
 
@@ -649,6 +667,14 @@ root): the import button scans `<project-root>/output/*/`, and artifact URLs are
 restricted to files under it, so pointing it at `.` both breaks the import and
 widens what `/artifact` may serve.
 
+The dashboard only shows runs that were recorded (`ENABLE_RUN_HISTORY=true`) or imported.
+Import keeps **one run per output folder** (the first `*_result.xml` by file name) and stamps
+the import time as the run's start time; orchestrator scenario workspaces are outside
+`opt/output`, so record them with `ENABLE_RUN_HISTORY=true` and a shared `HERCULES_HISTORY_DB`
+instead (caveat: parallel children that start in the same second share a run id and overwrite
+each other's record, so the history can miss cases; the merged JUnit XML is complete). `POST /import` is the only route that writes to the database. Details and the verified
+status codes are in `docs/orchestrator_and_dashboard.md`.
+
 ## Viewing Results
 
 After test execution, results can be found in several locations:
@@ -688,6 +714,18 @@ enable them with environment variables. The GitHub Action
 (`.github/actions/run-tests`) sets `STRICT_EXIT_CODE` via `blocking: true` and the
 reporting flags via `reports: true` (both defaults).
 
+- **Exit codes at a glance:**
+
+  | Command | 0 | 1 | 2 | 130 / 143 |
+  | --- | --- | --- | --- | --- |
+  | `testzeus-hercules` | default, always (unless `STRICT_EXIT_CODE=true` and a scenario failed) | strict mode and a failure | | |
+  | `hercules-run-manager` | all passed | failed/errored scenario | missing file or no scenarios | SIGINT / SIGTERM |
+  | `hercules-suite` | all passed | failed, errored or skipped scenario | bad config, unknown suite, cycle | SIGINT / SIGTERM |
+  | `hercules-monitor --once` | no failures | failures, or an uncaught config error (traceback) | | SIGINT / SIGTERM |
+  | `hercules-monitor` daemon | stopped by SIGINT/SIGTERM | | | |
+
+  `EXIT_CODE_COMPAT=1` turns the result-based `1` of the orchestrators (and of strict
+  mode) into `0`; it never changes the `2` exits.
 - **Non-zero exit on failure (`STRICT_EXIT_CODE=true`):** Hercules exits with status `1` when any scenario fails or errors, so CI pipelines can gate on it. Without the flag the legacy exit code is kept; `EXIT_CODE_COMPAT=1` forces the legacy always-exit-0 behavior even when the flag is set. (`hercules-run-manager` and `hercules-suite` exit `1` on failures by default.)
 - **Markdown report (`ENABLE_RUN_REPORTING=true`):** writes `output/run_<timestamp>/Hercules_Test_Report.md`.
 - **Failure bundles (`ENABLE_FAILURE_BUNDLES=true`):** failed scenarios get a self-contained folder under `output/run_<timestamp>/bundles/` with a `bundle.md` summary plus video, screenshots, and logs for debugging.
@@ -709,6 +747,22 @@ testzeus-hercules --project-base=opt || test_status=$?
 ```
 
 ## Troubleshooting
+
+- **`hercules-suite: error: ...` and exit 2** — configuration problem (missing suites file,
+  unknown suite, missing `tests:` entry, dependency cycle). Paths in the YAML are tried relative
+  to the YAML's directory first, then the working directory.
+- **A suite reports `SKIPPED` features** — a `depends_on` suite failed; skipped features count as
+  errors. Fix the dependency or set `skip_on_dependency_failure: false`.
+- **`hercules-monitor` never alerts** — the first cycle has no baseline; `notify_on` defaults to
+  `regression`; changing `max_parallel` between cycles renames scenarios; a `state_file` that does
+  not exist yet is created relative to the working directory, so start the daemon from the same
+  directory (or use absolute paths).
+- **`hercules-monitor` prints a traceback for a bad `--config`** — a missing or invalid monitor
+  config is not caught (exit 1).
+- **Dashboard is empty** — nothing was recorded or imported; see "Run History Dashboard". Also
+  check that `--project-root` is the directory that contains `output/`.
+- **Scenario subprocesses left running after Ctrl-C** — use SIGINT/SIGTERM, which terminate the
+  whole scenario process group; `SIGKILL` of the orchestrator cannot be intercepted.
 
 - **Scenario fails with `[PLANNER_STALL]`** — the planner produced no
   executable progress 3 turns in a row (empty or already-completed steps) and
