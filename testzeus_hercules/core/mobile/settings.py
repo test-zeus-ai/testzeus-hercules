@@ -16,14 +16,19 @@ Variable                     Purpose                                       Defau
 ===========================  ============================================  ======================
 DEVICE_MANAGER               ``appium`` enables mobile automation          ``playwright``
 DEVICE_OS                    Target OS: ``android`` or ``ios``             ``android``
-APPIUM_SERVER_URL            Appium server base URL (remote server)        derived from port
-APPIUM_SERVER_PORT           Appium server port                            ``4723``
+                             (case-insensitive; ``ios*`` prefix accepted)
+APPIUM_SERVER_URL            Appium server base URL (``http://`` is        derived from port
+                             prefixed when the scheme is missing)
+APPIUM_SERVER_PORT           Appium server port (1-65535)                  ``4723``
+APPIUM_COMMAND_TIMEOUT_SECONDS        Max wait for one Appium command      ``120``
+APPIUM_SESSION_START_TIMEOUT_SECONDS  Max wait for session creation        ``180``
 DEVICE_NAME                  Capability ``deviceName``                     ``emulator-5554`` /
                                                                            ``iPhone Simulator``
 AUTOMATION_NAME              Capability ``automationName``                 ``UiAutomator2`` /
                                                                            ``XCUITest``
 APP_PATH                     Path/URL of the app under test                None
-APPIUM_APK_PATH              Android app package path (alias of APP_PATH)  None
+APPIUM_APK_PATH              Android app package path (``APP_PATH`` wins   None
+                             when both are set)
 APPIUM_DEVICE_UUID           Capability ``udid``                           None
 APPIUM_PLATFORM_VERSION      Capability ``platformVersion``                None
 APPIUM_CAPABILITIES          JSON object (or a mapping in a ``--config``   ``{}`` (on parse
@@ -32,7 +37,9 @@ ENABLE_UI_ASSERTIONS         ``true`` adds ``assert_ui`` / ``capture_ui_value`` 
                              guidance to the mobile agent prompt
 ===========================  ============================================  ======================
 
-The ``platformName`` capability is always derived from ``DEVICE_OS``. The former
+The ``platformName`` capability is always derived from ``DEVICE_OS`` (a
+``platformName`` inside ``APPIUM_CAPABILITIES`` that disagrees is ignored with a
+warning, see :func:`reconcile_platform_name`). The former
 ``PLATFORM_NAME`` knob is deprecated and ignored (a warning is logged when it is
 set).
 """
@@ -46,6 +53,19 @@ from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.utils.logger import logger
 
 DEFAULT_APPIUM_SERVER_PORT = 4723
+DEFAULT_COMMAND_TIMEOUT_SECONDS = 120.0
+DEFAULT_SESSION_START_TIMEOUT_SECONDS = 180.0
+
+_warned_messages: set = set()
+
+
+def _warn_once(message: str, *args: object) -> None:
+    """Log a warning once per distinct formatted message (settings are read on every call)."""
+    key = message % args if args else message
+    if key in _warned_messages:
+        return
+    _warned_messages.add(key)
+    logger.warning(key)
 
 
 def _raw_setting(key: str) -> object:
@@ -76,26 +96,94 @@ def get_device_manager() -> str:
     return _setting("DEVICE_MANAGER").lower() or "playwright"
 
 
+def _device_os_is_valid(value: str) -> bool:
+    return value == "android" or value.startswith("ios")
+
+
 def get_device_os() -> str:
-    """Return the target device OS: ``android`` (default) or ``ios``."""
+    """Return the target device OS: ``android`` (default) or ``ios``.
+
+    ``ios*`` prefixes (``iOS``, ``ios17``...) keep selecting iOS. An unknown
+    value still resolves to ``android`` here (this getter never raises) but is
+    logged, and :func:`validate_mobile_settings` turns it into a hard error
+    when a session is started.
+    """
     value = (_setting("DEVICE_OS") or "android").lower()
+    if not _device_os_is_valid(value):
+        _warn_once("Invalid DEVICE_OS %r; expected 'android' or 'ios'. Falling back to android.", value)
     return "ios" if value.startswith("ios") else "android"
 
 
 def get_appium_server_port() -> int:
     """Return the Appium server port (default 4723)."""
     raw = _setting("APPIUM_SERVER_PORT")
-    try:
-        return int(raw) if raw else DEFAULT_APPIUM_SERVER_PORT
-    except ValueError:
-        logger.warning("Invalid APPIUM_SERVER_PORT %r; falling back to %d", raw, DEFAULT_APPIUM_SERVER_PORT)
+    if not raw:
         return DEFAULT_APPIUM_SERVER_PORT
+    try:
+        port = int(raw)
+    except ValueError:
+        port = 0
+    if not 1 <= port <= 65535:
+        _warn_once("Invalid APPIUM_SERVER_PORT %r (must be an integer 1-65535); falling back to %d", raw, DEFAULT_APPIUM_SERVER_PORT)
+        return DEFAULT_APPIUM_SERVER_PORT
+    return port
 
 
 def get_appium_server_url() -> str:
-    """Return the Appium server URL, defaulting to ``http://127.0.0.1:<port>``."""
+    """Return the Appium server URL, defaulting to ``http://127.0.0.1:<port>``.
+
+    A configured URL without a scheme (``host:4723``) gets ``http://``
+    prefixed: the HTTP client cannot use a scheme-less address and the failure
+    it raises is obscure.
+    """
     url = _setting("APPIUM_SERVER_URL")
-    return url or f"http://127.0.0.1:{get_appium_server_port()}"
+    if not url:
+        return f"http://127.0.0.1:{get_appium_server_port()}"
+    if "://" not in url:
+        _warn_once("APPIUM_SERVER_URL %r has no scheme; using http://%s", url, url)
+        return f"http://{url}"
+    return url
+
+
+def _positive_float_setting(key: str, default: float) -> float:
+    raw = _setting(key)
+    if not raw:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        value = 0.0
+    if not value > 0 or value == float("inf"):
+        _warn_once("Invalid %s %r (must be a positive number of seconds); using %s", key, raw, default)
+        return default
+    return value
+
+
+def get_command_timeout_seconds() -> float:
+    """Return how long one Appium driver command may take (``APPIUM_COMMAND_TIMEOUT_SECONDS``, default 120)."""
+    return _positive_float_setting("APPIUM_COMMAND_TIMEOUT_SECONDS", DEFAULT_COMMAND_TIMEOUT_SECONDS)
+
+
+def get_session_start_timeout_seconds() -> float:
+    """Return how long session creation may take (``APPIUM_SESSION_START_TIMEOUT_SECONDS``, default 180)."""
+    return _positive_float_setting("APPIUM_SESSION_START_TIMEOUT_SECONDS", DEFAULT_SESSION_START_TIMEOUT_SECONDS)
+
+
+def validate_mobile_settings() -> "list[str]":
+    """Return human-readable problems with the mobile configuration (empty when valid)."""
+    problems = []
+    device_os = (_setting("DEVICE_OS") or "android").lower()
+    if not _device_os_is_valid(device_os):
+        problems.append(f"DEVICE_OS={device_os!r} is not valid; use 'android' or 'ios'")
+    raw_port = _setting("APPIUM_SERVER_PORT")
+    if raw_port:
+        try:
+            port_ok = 1 <= int(raw_port) <= 65535
+        except ValueError:
+            port_ok = False
+        if not port_ok:
+            problems.append(f"APPIUM_SERVER_PORT={raw_port!r} is not valid; use an integer from 1 to 65535")
+    return problems
 
 
 def get_platform_name() -> str:
@@ -113,6 +201,22 @@ def warn_if_platform_name_set() -> None:
     value = _setting("PLATFORM_NAME")
     if value:
         logger.warning("PLATFORM_NAME=%r is deprecated and ignored; the platform is taken from DEVICE_OS (%s).", value, get_device_os())
+
+
+def reconcile_platform_name(capabilities: dict) -> dict:
+    """Return ``capabilities`` with ``platformName`` forced to the ``DEVICE_OS``-derived value.
+
+    ``APPIUM_CAPABILITIES`` is merged last, so a ``platformName`` in it would
+    silently contradict ``DEVICE_OS`` (Hercules' element lookup, gestures and
+    prompt follow ``DEVICE_OS``). A disagreeing value is dropped with a warning;
+    one that agrees (case-insensitive) is left alone.
+    """
+    expected = get_platform_name()
+    for key in ("platformName", "appium:platformName"):
+        if key in capabilities and str(capabilities[key]).strip().lower() != expected.lower():
+            logger.warning("APPIUM_CAPABILITIES %s=%r conflicts with DEVICE_OS (%s); keeping platformName=%s", key, capabilities[key], get_device_os(), expected)
+            capabilities = {**capabilities, key: expected}
+    return capabilities
 
 
 def get_device_name() -> str:

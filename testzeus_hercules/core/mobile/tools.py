@@ -13,12 +13,15 @@ inside the manager.
 
 import asyncio
 import importlib.util
-from typing import Annotated, Optional
+import math
+import re
+from typing import Annotated, Any, Optional, Tuple
 
 from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.mobile.appium_manager import (
     APPIUM_INSTALL_HINT,
     AppiumManager,
+    MobileEnvironmentError,
 )
 from testzeus_hercules.core.mobile.settings import get_device_os, get_platform_name
 from testzeus_hercules.core.tools.tool_registry import tool
@@ -57,9 +60,66 @@ def _ensure_ready(manager: AppiumManager) -> Optional[str]:
     return None
 
 
+MAX_ERROR_CHARS = 500
+_STACKTRACE_MARKER = re.compile(r"\n?\s*Stacktrace:.*", re.DOTALL | re.IGNORECASE)
+# Failures that are part of normal UI automation (element not there yet, slow
+# screen, bad arguments): logged without a Python traceback.
+_EXPECTED_ERROR_NAMES = frozenset({"NoSuchElementException", "TimeoutException", "StaleElementReferenceException", "ElementNotInteractableException", "InvalidElementStateException"})
+
+
+def _clean_error_message(error: Exception) -> str:
+    """Return the error text without the Appium server stack trace, capped for the LLM."""
+    text = _STACKTRACE_MARKER.sub("", str(error)).strip()
+    text = re.sub(r"\s*\n\s*", " ", text)
+    if len(text) > MAX_ERROR_CHARS:
+        text = text[: MAX_ERROR_CHARS - 3].rstrip() + "..."
+    return text or type(error).__name__
+
+
+def _is_expected_error(error: Exception) -> bool:
+    return isinstance(error, (MobileEnvironmentError, ValueError, TimeoutError)) or type(error).__name__ in _EXPECTED_ERROR_NAMES
+
+
 def _format_error(action: str, error: Exception) -> str:
-    logger.error("Mobile tool %s failed: %s", action, error, exc_info=True)
-    return f"Error: {action} failed: {error}"
+    message = _clean_error_message(error)
+    if _is_expected_error(error):
+        logger.warning("Mobile tool %s failed: %s", action, message)
+    else:
+        logger.error("Mobile tool %s failed: %s", action, error, exc_info=True)
+    return f"Error: {action} failed: {message}"
+
+
+def _check_identifier(identifier: Any) -> Optional[str]:
+    """Reject empty / non-string element identifiers before touching the driver."""
+    if not isinstance(identifier, str) or not identifier.strip():
+        return "Error: accessibility_id must be a non-empty element identifier. Read the screen and copy an identifier exactly as shown in the legend."
+    return None
+
+
+def _to_int(name: str, value: Any) -> Tuple[Optional[int], Optional[str]]:
+    """Coerce a numeric tool argument to int, or return an error string."""
+    if isinstance(value, bool) or value is None:
+        return None, f"Error: {name} must be a number, got {value!r}."
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None, f"Error: {name} must be a number, got {value!r}."
+    if not math.isfinite(number):
+        return None, f"Error: {name} must be a finite number, got {value!r}."
+    return int(number), None
+
+
+def _to_non_negative(name: str, value: Any) -> Tuple[Optional[float], Optional[str]]:
+    """Coerce a duration argument to a float >= 0, or return an error string (negatives are rejected, not clamped)."""
+    if isinstance(value, bool) or value is None:
+        return None, f"Error: {name} must be a number, got {value!r}."
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None, f"Error: {name} must be a number, got {value!r}."
+    if not math.isfinite(number) or number < 0:
+        return None, f"Error: {name} must be zero or a positive number, got {value!r}."
+    return number, None
 
 
 def _validate_coordinates(viewport: dict, **coords: int) -> Optional[str]:
@@ -124,6 +184,12 @@ async def tap(
 ) -> Annotated[str, "Tap action result"]:
     add_event(EventType.INTERACTION, EventData(detail="tap"))
     try:
+        x, x_error = _to_int("x", x)
+        y, y_error = _to_int("y", y)
+        wait_before_action, wait_error = _to_non_negative("wait_before_action", wait_before_action)
+        invalid_args = x_error or y_error or wait_error
+        if invalid_args:
+            return invalid_args
         manager = _current_manager()
         ready_error = _ensure_ready(manager)
         if ready_error:
@@ -155,6 +221,15 @@ async def swipe(
 ) -> Annotated[str, "Swipe action result"]:
     add_event(EventType.INTERACTION, EventData(detail="swipe"))
     try:
+        start_x, error_a = _to_int("start_x", start_x)
+        start_y, error_b = _to_int("start_y", start_y)
+        end_x, error_c = _to_int("end_x", end_x)
+        end_y, error_d = _to_int("end_y", end_y)
+        duration_ms, error_e = _to_non_negative("duration_ms", duration_ms)
+        invalid_args = error_a or error_b or error_c or error_d or error_e
+        if invalid_args:
+            return invalid_args
+        duration_ms = int(duration_ms)
         manager = _current_manager()
         ready_error = _ensure_ready(manager)
         if ready_error:
@@ -219,6 +294,12 @@ async def long_press_element(
 ) -> Annotated[str, "Long press action result"]:
     add_event(EventType.INTERACTION, EventData(detail="long_press_element"))
     try:
+        invalid_args = _check_identifier(accessibility_id)
+        duration_ms, duration_error = _to_non_negative("duration_ms", duration_ms)
+        invalid_args = invalid_args or duration_error
+        if invalid_args:
+            return invalid_args
+        duration_ms = int(duration_ms)
         manager = _current_manager()
         ready_error = _ensure_ready(manager)
         if ready_error:
@@ -240,6 +321,9 @@ async def click_element(
 ) -> Annotated[str, "Click action result"]:
     add_event(EventType.INTERACTION, EventData(detail="click_element"))
     try:
+        invalid_args = _check_identifier(accessibility_id)
+        if invalid_args:
+            return invalid_args
         manager = _current_manager()
         ready_error = _ensure_ready(manager)
         if ready_error:
@@ -262,6 +346,9 @@ async def enter_text(
 ) -> Annotated[str, "Text entry result"]:
     add_event(EventType.INTERACTION, EventData(detail="enter_text"))
     try:
+        invalid_args = _check_identifier(accessibility_id)
+        if invalid_args:
+            return invalid_args
         manager = _current_manager()
         ready_error = _ensure_ready(manager)
         if ready_error:
@@ -283,6 +370,9 @@ async def clear_text(
 ) -> Annotated[str, "Text clearing result"]:
     add_event(EventType.INTERACTION, EventData(detail="clear_text"))
     try:
+        invalid_args = _check_identifier(accessibility_id)
+        if invalid_args:
+            return invalid_args
         manager = _current_manager()
         ready_error = _ensure_ready(manager)
         if ready_error:
@@ -423,7 +513,7 @@ async def take_mobile_screenshot(name: Annotated[str, "Descriptive name for the 
             return ready_error
         screenshot_path = await manager.take_screenshot(name)
         if screenshot_path is None:
-            return "Error: Unable to capture screenshot. Screenshot capture may be disabled via TAKE_SCREENSHOTS=false."
+            return "Error: Screenshot capture is disabled (TAKE_SCREENSHOTS=false); no screenshot was taken."
         return f"Successfully captured screenshot saved to: {screenshot_path}"
     except Exception as e:
         return _format_error("take_mobile_screenshot", e)
@@ -441,7 +531,8 @@ async def start_screen_recording() -> Annotated[str, "Recording start result"]:
         ready_error = _ensure_ready(manager)
         if ready_error:
             return ready_error
-        await manager.start_screen_recording()
+        if not await manager.start_screen_recording():
+            return "Error: Screen recording was not started. It is disabled when RECORD_VIDEO=false; otherwise see the logs for the device error."
         return "Successfully started screen recording."
     except Exception as e:
         return _format_error("start_screen_recording", e)

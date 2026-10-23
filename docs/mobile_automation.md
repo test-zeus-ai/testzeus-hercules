@@ -22,6 +22,37 @@ From a source checkout use `uv sync --extra mobile` (or `--all-extras`).
 > device/emulator (Android) or booted simulator (iOS). Hercules never spawns an
 > Appium server or boots an emulator.
 
+## Tested Android setup
+
+Verified end to end on a real Android emulator (Appium 2.15 with the
+`uiautomator2` 4.0 driver, an Android 35 `google_apis_playstore` arm64 AVD):
+
+```bash
+# prerequisites: a JDK and the Android SDK (platform-tools, emulator, a system image)
+export ANDROID_HOME="$HOME/Library/Android/sdk"          # your SDK location
+export PATH="$PATH:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator"
+
+npm install -g appium@2
+appium driver install uiautomator2
+
+# create (once) and boot an emulator, then wait until adb sees it
+avdmanager create avd -n test_hercules -k "system-images;android-35;google_apis_playstore;arm64-v8a"
+emulator -avd test_hercules -no-snapshot -no-audio &
+adb wait-for-device && adb shell getprop sys.boot_completed   # prints 1 when booted
+
+appium --port 4723 &                                        # started by you, not by Hercules
+
+export DEVICE_MANAGER=appium DEVICE_OS=android
+export APPIUM_SERVER_URL=http://127.0.0.1:4723
+export APPIUM_DEVICE_UUID=emulator-5554                     # from `adb devices`
+```
+
+**iOS was not verified in testing** (no simulator runtime was available), so
+the iOS code paths are covered by offline tests only. Running iOS needs macOS
+with Xcode and its licence accepted, a booted simulator or a device
+(`APPIUM_DEVICE_UUID`), `appium driver install xcuitest` and the
+WebDriverAgent build prerequisites; expect to debug first-run WDA issues.
+
 ## Quickstart
 
 1. Start an Appium server, e.g.:
@@ -51,20 +82,49 @@ no mobile agent is created, and behavior is unchanged.
 | Variable                 | Purpose                                              | Default                                        |
 | ------------------------ | ---------------------------------------------------- | ---------------------------------------------- |
 | `DEVICE_MANAGER`         | `appium` enables mobile automation                    | `playwright`                                   |
-| `DEVICE_OS`              | Target platform: `android` or `ios`                   | `android`                                      |
-| `APPIUM_SERVER_URL`      | Appium server base URL (a running server is required) | `http://127.0.0.1:<APPIUM_SERVER_PORT>`        |
-| `APPIUM_SERVER_PORT`     | Server port used for the default URL                  | `4723`                                         |
+| `DEVICE_OS`              | Target platform: `android` or `ios` (case-insensitive; an `ios*` prefix such as `ios17` also selects iOS). Any other value is a configuration error when the session starts | `android` |
+| `APPIUM_SERVER_URL`      | Appium server base URL (a running server is required); `http://` is prefixed when the scheme is missing | `http://127.0.0.1:<APPIUM_SERVER_PORT>` |
+| `APPIUM_SERVER_PORT`     | Server port used for the default URL (1-65535; an invalid value is reported and `4723` is used) | `4723`              |
+| `APPIUM_COMMAND_TIMEOUT_SECONDS` | Max seconds one Appium command may take before the tool returns an error | `120`                       |
+| `APPIUM_SESSION_START_TIMEOUT_SECONDS` | Max seconds session creation may take (emulator boot, app install) | `180`                  |
 | `DEVICE_NAME`            | `deviceName` capability                               | `emulator-5554` / `iPhone Simulator`           |
 | `AUTOMATION_NAME`        | `automationName` capability                           | `UiAutomator2` / `XCUITest`                    |
-| `APP_PATH`               | Path or URL of the app under test                     | unset                                          |
-| `APPIUM_APK_PATH`        | Android app package path (alternative to `APP_PATH`)  | unset                                          |
+| `APP_PATH`               | Path or URL of the app under test (the `app` capability) | unset                                       |
+| `APPIUM_APK_PATH`        | Android app package path; **`APP_PATH` wins** when both are set | unset                                |
 | `APPIUM_DEVICE_UUID`     | `udid` capability (specific device/simulator)         | unset                                          |
 | `APPIUM_PLATFORM_VERSION`| `platformVersion` capability                          | unset                                          |
 | `APPIUM_CAPABILITIES`    | JSON object merged over the built-in capabilities     | `{}`                                           |
 
 The `platformName` capability is always derived from `DEVICE_OS`. The former
 `PLATFORM_NAME` setting is deprecated and ignored: when it is set, a warning is
-logged at session start.
+logged at session start. A `platformName` inside `APPIUM_CAPABILITIES` that
+disagrees with `DEVICE_OS` is ignored with a warning (the element lookup,
+gestures and agent prompt all follow `DEVICE_OS`).
+
+## Launching a specific app
+
+Hercules does not have an "open app" tool: the app under test is chosen when
+the session is created, through capabilities.
+
+- **Install and launch an app file**: set `APP_PATH` (or, Android only,
+  `APPIUM_APK_PATH`; `APP_PATH` takes precedence when both are set) to a local
+  `.apk` / `.app` / `.ipa` path or URL.
+- **Launch an app that is already installed**, Android:
+
+  ```bash
+  export APPIUM_CAPABILITIES='{"appium:appPackage": "com.android.settings", "appium:appActivity": ".Settings"}'
+  ```
+
+- **Launch an app that is already installed**, iOS:
+
+  ```bash
+  export APPIUM_CAPABILITIES='{"appium:bundleId": "com.apple.Preferences"}'
+  ```
+
+Without any of these Appium starts the session on the device's current screen
+(home screen), and since there is no app-launch tool the agent can only reach an
+app by tapping its icon. There is also no page-source tool: the agent reads the
+screen through `read_mobile_screen` only.
 
 Settings are resolved **at use time** (not frozen at import) through the global
 configuration, with the process environment as fallback. A key therefore works
@@ -162,8 +222,40 @@ when the flag is on, so the agent is never told about tools it does not have.
 
 All tools return human-readable strings and never raise: without an active
 session they answer with a "No active Appium session" hint, and without the
-Appium client they answer with an install hint. Gesture coordinates are
-validated against the current viewport.
+Appium client they answer with an install hint. Arguments are validated before
+the device is touched: element tools reject an empty identifier, `tap`/`swipe`
+reject non-numeric coordinates, negative `duration_ms` / `wait_before_action`
+values are rejected (not clamped), and gesture coordinates are checked against
+the current viewport. Error text returned to the model has the Appium server
+stack trace removed and is capped at 500 characters; the full details stay in
+the Hercules log. `start_screen_recording` reports an error when
+`RECORD_VIDEO=false` and `take_mobile_screenshot` when `TAKE_SCREENSHOTS=false`
+instead of pretending to succeed.
+
+A custom navigation system prompt (`other_settings.system_prompt`) is appended
+to the mobile agent's prompt as "Additional instructions"; it never replaces
+the mobile tool rules.
+
+## Timeouts and unresponsive servers
+
+Every call to the Appium server is bounded. Session creation may take
+`APPIUM_SESSION_START_TIMEOUT_SECONDS` (default 180), every later command
+`APPIUM_COMMAND_TIMEOUT_SECONDS` (default 120). The same limit is applied to
+the HTTP client socket and to the wait in Hercules, so a server that accepts
+the connection and never answers produces a tool error naming
+`APPIUM_SERVER_URL` instead of hanging the run. Connection-refused and
+non-Appium replies produce errors that mention `APPIUM_SERVER_URL` too.
+
+## Orphaned sessions
+
+Active Appium sessions are quit synchronously (each call limited to 5 s) when
+the process exits normally and on `SIGTERM` / `SIGINT`; any previously
+installed signal handler (for example telemetry's) still runs afterwards, and
+the default termination still happens. `SIGKILL` and hard crashes cannot be
+intercepted: the Appium server then ends the orphaned session only after the
+`newCommandTimeout` capability expires (`300` seconds in the built-in
+capabilities; override it with `APPIUM_CAPABILITIES` if you want a shorter
+window).
 
 ## Recording and proof artifacts
 
@@ -198,6 +290,8 @@ scenario cannot leak the device session.
   `pip install "testzeus-hercules[mobile]"`, then re-run.
 - **No mobile tools / no mobile agent** — check that `DEVICE_MANAGER=appium`
   is exported in the environment of the framework process.
+- **"Appium did not respond within ..."** — the server is hung or unreachable;
+  check `APPIUM_SERVER_URL`, the Appium log and the two timeout variables.
 - **Session creation fails** — verify `APPIUM_SERVER_URL` points at a live
   Appium server (`curl http://127.0.0.1:4723/status`) and that the matching
   driver is installed (`appium driver list --installed`).

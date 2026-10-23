@@ -29,13 +29,33 @@ class MobileNavAgent(MultimodalBaseNavAgent):
     ) -> None:
         # The prompt is resolved at construction time so opt-in tool guidance
         # (UI assertions) reflects the configuration in effect for this run.
+        mobile_prompt = agent_prompt or get_mobile_nav_system_prompt()
+        # The shared nav system prompt (``other_settings.system_prompt``) is
+        # written for every nav agent. Passed to the base class it would
+        # REPLACE this prompt and drop the mobile tool rules, so it is
+        # appended as extra instructions instead.
+        custom_prompt = self._custom_prompt_text(system_prompt)
+        if custom_prompt:
+            mobile_prompt = f"{mobile_prompt}\n\n## Additional instructions\n{custom_prompt}"
         super().__init__(
             model_config,
             llm_config_params,
-            system_prompt,
+            None,
             agent_name=agent_name,
-            agent_prompt=agent_prompt or get_mobile_nav_system_prompt(),
+            agent_prompt=mobile_prompt,
         )
+        # The base class fills $basic_test_information only when long-term
+        # memory exists; otherwise the literal placeholder would reach the LLM.
+        message = getattr(self, "system_message", None)
+        if isinstance(message, str):
+            self.system_message = message.replace("${basic_test_information}", "").replace("$basic_test_information", "")
+
+    @staticmethod
+    def _custom_prompt_text(system_prompt: "str | list[str] | None") -> str:
+        if not system_prompt:
+            return ""
+        text = "\n".join(system_prompt) if isinstance(system_prompt, list) else str(system_prompt)
+        return text.strip()
 
     def register_tools(self) -> None:
         """
