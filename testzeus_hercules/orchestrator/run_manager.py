@@ -60,7 +60,11 @@ REAP_TIMEOUT_S = 10.0
 # with scenario subprocesses still alive (lets chromium close cleanly).
 TERMINATE_GRACE_S = 3.0
 # Process-group leaders (== pids; children are started with start_new_session=True)
-# of scenario subprocesses that are currently running.
+# of scenario subprocesses that are currently running. An entry lives exactly as long
+# as its scenario run: run_feature_isolated kills whatever is left in the group when
+# the run ends and drops the entry in the same step (_release_group), so a pgid is
+# never signalled after its group may have died and the number been handed to an
+# unrelated process.
 _LIVE_GROUPS: set[int] = set()
 
 
@@ -261,6 +265,22 @@ def _signal_group(pgid: int, sig: int) -> bool:
     return True
 
 
+def _release_group(proc: asyncio.subprocess.Process, group_already_killed: bool = False) -> None:
+    """End-of-run cleanup of a scenario's process group: SIGKILL what is left, then unregister it.
+
+    After a normal exit the leader has just been reaped, so the group exists only while a descendant (a lingering
+    chromium, a driver) is still in it, and the kernel does not reuse a pgid while it does. Killing right now, then
+    discarding the pid in the same step, means the registry can never keep a number whose group died later and was
+    recycled for an unrelated process. When the run was already ended with a group SIGKILL (timeout, cancellation)
+    the group is not signalled a second time, later, after the leader was reaped: only the entry is dropped.
+    """
+    try:
+        if not group_already_killed:
+            _kill_process_tree(proc)
+    finally:
+        _LIVE_GROUPS.discard(proc.pid)
+
+
 def terminate_live_children(grace_s: float = TERMINATE_GRACE_S) -> int:
     """SIGTERM every live scenario process group, wait ``grace_s``, then SIGKILL the rest.
 
@@ -283,7 +303,8 @@ def terminate_live_children(grace_s: float = TERMINATE_GRACE_S) -> int:
                 pass
         alive = [pgid for pgid in alive if _signal_group(pgid, 0)]
     for pgid in alive:
-        _signal_group(pgid, signal.SIGKILL)
+        if _signal_group(pgid, 0):  # re-confirm right before the kill: a group that just emptied is not signalled
+            _signal_group(pgid, signal.SIGKILL)
     return len(groups)
 
 
@@ -295,6 +316,7 @@ async def _terminate_process_tree(proc: asyncio.subprocess.Process, grace_s: flo
     the group alive) and even when a second signal cancels this coroutine
     mid-grace.
     """
+    group_gone = False
     try:
         if hasattr(os, "killpg"):
             _signal_group(proc.pid, signal.SIGTERM)
@@ -305,10 +327,14 @@ async def _terminate_process_tree(proc: asyncio.subprocess.Process, grace_s: flo
                 pass
             # The leader may be gone while descendants still hold the group:
             # give them the rest of the grace period, then fall through to KILL.
-            while time.monotonic() < deadline and _signal_group(proc.pid, 0):
+            while time.monotonic() < deadline:
+                if not _signal_group(proc.pid, 0):
+                    group_gone = True  # confirmed empty: its number may be reused, so it must not be signalled again
+                    break
                 await asyncio.sleep(0.05)
     finally:
-        _kill_process_tree(proc)
+        if not group_gone:
+            _kill_process_tree(proc)
     try:
         await asyncio.wait_for(proc.wait(), timeout=REAP_TIMEOUT_S)
     except Exception:  # noqa: BLE001 - reaping a dead child must never raise
@@ -430,16 +456,19 @@ async def run_feature_isolated(feature_path: str, workroot: str, env_extra: dict
         )
 
     _LIVE_GROUPS.add(proc.pid)
+    group_killed = False  # the group already got its final SIGKILL (timeout / cancellation)
     try:
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_s)
         exit_code = proc.returncode
     except asyncio.CancelledError:
         # The runner is being interrupted (SIGINT/SIGTERM or an outer cancel):
         # take the child's whole tree down instead of orphaning chromium.
+        group_killed = True
         await _terminate_process_tree(proc)
         raise
     except asyncio.TimeoutError:
         _kill_process_tree(proc)
+        group_killed = True
         try:
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=REAP_TIMEOUT_S)
         except asyncio.TimeoutError:
@@ -451,11 +480,9 @@ async def run_feature_isolated(feature_path: str, workroot: str, env_extra: dict
             stdout, stderr = b"", b""
         error = f"Timed out after {timeout_s:g}s; process killed."
     finally:
-        # Keep the pid registered while any member of the group is alive so the
-        # run_cli safety net can still reap it (e.g. a second signal cut the
-        # graceful shutdown short).
-        if not _signal_group(proc.pid, 0):
-            _LIVE_GROUPS.discard(proc.pid)
+        # The run is over (finished, timed out or cancelled): kill whatever is
+        # still in the group and unregister it in one step (see _release_group).
+        _release_group(proc, group_already_killed=group_killed)
 
     duration = time.monotonic() - start
     junit_xml = _find_junit_xml(workspace)

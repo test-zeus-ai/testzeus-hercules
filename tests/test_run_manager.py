@@ -778,3 +778,102 @@ def test_main_exit_code_compat_still_zero_on_timeout_scenario(workspace, monkeyp
     feature = _make_feature(workspace, scenarios=2)
 
     assert main([feature]) == 0  # the compat opt-out still forces exit 0
+
+
+# ── pgid registry: no stale entry, no signal to a number that may have been recycled ──
+
+
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX process groups")
+def test_normal_finish_with_lingering_grandchild_kills_group_and_empties_registry(workspace, monkeypatch) -> None:
+    pid_file = workspace / "grandchild.pid"
+    code = (
+        "import subprocess, sys; "
+        "p = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(300)'], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); "
+        f"open({str(pid_file)!r}, 'w').write(str(p.pid))"
+    )
+    monkeypatch.setattr(run_manager_module, "_subprocess_command", lambda ws: _command(code))
+    feature = _make_feature(workspace)
+    run_manager_module._LIVE_GROUPS.clear()
+
+    result = asyncio.run(run_feature_isolated(feature, str(workspace / "runs")))
+
+    grandchild = int(pid_file.read_text())
+    try:
+        assert result.ok is True  # the leader exited 0 by itself
+        assert not run_manager_module._LIVE_GROUPS, "a finished scenario must not leave its pgid registered"
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and _pid_alive(grandchild):
+            time.sleep(0.05)
+        assert not _pid_alive(grandchild), "the lingering grandchild must be killed with the scenario's group"
+
+        # A later safety-net sweep has nothing to signal: a recycled pgid is never hit.
+        signalled: list[tuple[int, int]] = []
+        monkeypatch.setattr(os, "killpg", lambda pgid, sig: signalled.append((pgid, sig)))
+        assert run_manager_module.terminate_live_children(grace_s=0.1) == 0
+        assert signalled == []
+    finally:
+        if _pid_alive(grandchild):
+            os.kill(grandchild, signal.SIGKILL)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX process groups")
+def test_registry_does_not_grow_across_scenarios(workspace, monkeypatch) -> None:
+    monkeypatch.setattr(run_manager_module, "_subprocess_command", lambda ws: _command("pass"))
+    run_manager_module._LIVE_GROUPS.clear()
+    items = _make_items(workspace, 3)
+    asyncio.run(run_scenarios_parallel(items, max_parallel=2, workroot=str(workspace / "runs")))
+    assert not run_manager_module._LIVE_GROUPS
+
+
+def test_terminate_process_tree_does_not_kill_a_group_it_saw_disappear(monkeypatch) -> None:
+    calls: list[tuple[int, int]] = []
+
+    def fake_killpg(pgid: int, sig: int) -> None:
+        calls.append((pgid, sig))
+        if sig == 0:
+            raise ProcessLookupError  # the group is gone (its number may be reused from now on)
+
+    monkeypatch.setattr(os, "killpg", fake_killpg)
+
+    class _GoneProc:
+        pid = 424242
+
+        async def wait(self):
+            return 0
+
+        def kill(self):
+            calls.append((self.pid, -1))
+
+    asyncio.run(run_manager_module._terminate_process_tree(_GoneProc(), grace_s=0.5))
+
+    assert (424242, signal.SIGKILL) not in calls, "SIGKILL must not go to a pgid after the group was seen gone"
+    assert (424242, -1) not in calls
+
+
+def test_release_group_skips_signal_when_group_already_killed(monkeypatch) -> None:
+    calls: list[tuple[int, int]] = []
+    monkeypatch.setattr(os, "killpg", lambda pgid, sig: calls.append((pgid, sig)))
+
+    class _Proc:
+        pid = 31337
+
+        def kill(self):
+            calls.append((self.pid, -1))
+
+    run_manager_module._LIVE_GROUPS.add(31337)
+    run_manager_module._release_group(_Proc(), group_already_killed=True)
+    assert calls == [] and 31337 not in run_manager_module._LIVE_GROUPS
+
+    run_manager_module._LIVE_GROUPS.add(31337)
+    run_manager_module._release_group(_Proc())
+    assert (31337, signal.SIGKILL) in calls and 31337 not in run_manager_module._LIVE_GROUPS

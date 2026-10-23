@@ -480,6 +480,9 @@ def test_tool_results_do_not_leak_absolute_paths(workspace, monkeypatch) -> None
     checked = run(mcp_server.hercules_check_config())
     _shared_run_dir(tmp_path)
     opened = run(mcp_server.hercules_open_dashboard())
+    # report_url is a file:// URI with the absolute local path by design (client compatibility); report_path is the portable form.
+    assert opened["report_url"].startswith("file://") and not opened["report_path"].startswith("/")
+    opened = {key: value for key, value in opened.items() if key != "report_url"}
     for result in (configured, checked, opened):
         assert str(tmp_path) not in json.dumps(result), result
     assert configured["project_path"] == "proj" and configured["prd_path"] == "prd.md"

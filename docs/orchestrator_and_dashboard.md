@@ -186,6 +186,14 @@ and a second SIGINT/SIGTERM during the grace period cannot skip it (code-level g
 from the review fixes; covered by `tests/test_landed_fixes_platform.py`, not re-run as a
 manual double-signal test here).
 
+A process-group id is only signalled while its scenario run is in progress. When a
+scenario ends (normal exit, timeout or cancellation) whatever is still in its group, for
+example a chromium that outlived the runner, is SIGKILLed right away and the group is
+dropped from the live-group registry in the same step. The registry therefore never
+holds a pgid whose group has died and whose number the OS may have given to an unrelated
+process, so the exit-time sweep (`terminate_live_children`) cannot hit a stranger. It
+also means the registry stays empty between scenarios in a long-running `hercules-monitor`.
+
 Verified on this branch (signal sent 25 s into a run whose scenario hangs on the LLM):
 
 | Command | Signal | Exit | Output |
