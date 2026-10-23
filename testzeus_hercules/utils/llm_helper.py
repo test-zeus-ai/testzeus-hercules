@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import ipaddress
 import json
 import os
 from dataclasses import dataclass, field
@@ -90,7 +91,25 @@ _PROVIDER_DEFAULT_BASE_URLS = {
 DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434/v1"
 # With no api_type and no base_url, these model-name prefixes can only mean one provider.
 _MODEL_PREFIX_PROVIDERS = (("gemini", "google"), ("claude", "anthropic"))
-_LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
+# Hostnames that always mean "this machine / the container host", plus suffixes of local-only names.
+_LOCAL_HOSTNAMES = {"localhost", "host.docker.internal", "host.containers.internal", "gateway.docker.internal"}
+_LOCAL_HOST_SUFFIXES = (".localhost", ".local")
+# 127/8 and ::1 (loopback), 0.0.0.0 and :: (unspecified), RFC1918, link-local and IPv6 unique-local ranges.
+_LOCAL_NETWORKS = tuple(
+    ipaddress.ip_network(net)
+    for net in (
+        "127.0.0.0/8",
+        "0.0.0.0/32",
+        "10.0.0.0/8",
+        "172.16.0.0/12",
+        "192.168.0.0/16",
+        "169.254.0.0/16",
+        "::1/128",
+        "::/128",
+        "fc00::/7",
+        "fe80::/10",
+    )
+)
 _KEYLESS_PLACEHOLDER_API_KEY = "not-needed"
 
 
@@ -102,9 +121,27 @@ def _first_config_value(model_config: Dict[str, Any], *keys: str) -> Any:
     return None
 
 
+def _is_local_host(host: str) -> bool:
+    """True for loopback, container-host aliases, ``*.local`` names and private/link-local addresses.
+
+    Public hostnames and public IPs are never local, so they keep requiring an API key.
+    """
+    host = host.strip().strip("[]").rstrip(".").lower()
+    if not host:
+        return False
+    if host in _LOCAL_HOSTNAMES or host.endswith(_LOCAL_HOST_SUFFIXES):
+        return True
+    try:
+        address = ipaddress.ip_address(host.split("%", 1)[0])  # drop an IPv6 zone id (fe80::1%en0)
+    except ValueError:
+        return False
+    address = getattr(address, "ipv4_mapped", None) or address
+    return any(address in network for network in _LOCAL_NETWORKS if network.version == address.version)
+
+
 def _is_local_url(url: Optional[str]) -> bool:
     try:
-        return bool(url) and (urlparse(str(url)).hostname or "").lower() in _LOCAL_HOSTS
+        return bool(url) and _is_local_host(urlparse(str(url)).hostname or "")
     except ValueError:
         return False
 
@@ -191,29 +228,48 @@ def keyless_api_key(settings: Dict[str, Any]) -> str:
 def resolve_api_key(model_config: Dict[str, Any], settings: Dict[str, Any]) -> Optional[str]:
     """The API key for ``model_config``, resolved identically for every agent (planner and navigation agents).
 
-    Order: ``api_key`` / ``model_api_key`` in the config, ``MODEL_API_KEY``, ``AZURE_OPENAI_API_KEY`` (Azure
-    only), then the keyless handling for local endpoints. ``None`` means "no key configured".
+    An Ollama host always gets the placeholder: it ignores the key and may be another machine on the network,
+    so no real key (config, ``MODEL_API_KEY``, ``OPENAI_API_KEY``) is ever sent to it. Otherwise the order is
+    ``api_key`` / ``model_api_key`` in the config, ``MODEL_API_KEY``, ``AZURE_OPENAI_API_KEY`` (any Azure
+    ``model_api_type``), then the keyless handling for local endpoints. ``None`` means "no key configured".
     """
+    if settings["api_type"] == "ollama":
+        return keyless_api_key(settings)
     key = model_config.get("api_key") or model_config.get("model_api_key") or os.getenv("MODEL_API_KEY")
-    if not key and settings["azure"]:
+    if not key and settings["api_type"] == "azure":
         key = os.getenv("AZURE_OPENAI_API_KEY")
     if not key and settings["keyless"]:
         key = keyless_api_key(settings)
     return key or None
 
 
+def resolve_azure_ad_token(settings: Dict[str, Any]) -> Optional[str]:
+    """Microsoft Entra ID bearer token for Azure OpenAI (``AZURE_OPENAI_AD_TOKEN``), used when there is no API key."""
+    return (os.getenv("AZURE_OPENAI_AD_TOKEN") or None) if settings["api_type"] == "azure" else None
+
+
 def build_chat_client(kwargs: Dict[str, Any], settings: Dict[str, Any]) -> BaseChatModel:
-    """Instantiate the chat client for ``kwargs`` (model, api_key, timeout, ... ) and resolved ``settings``."""
+    """Instantiate the chat client for ``kwargs`` (model, api_key, timeout, ... ) and resolved ``settings``.
+
+    Without an ``api_key``, Azure falls back to the Entra ID token in ``AZURE_OPENAI_AD_TOKEN``: passed as
+    ``azure_ad_token`` to the Azure client, and as the bearer token of the plain client on the Azure v1 endpoint.
+    """
     kwargs = dict(kwargs)
+    ad_token = None if kwargs.get("api_key") else resolve_azure_ad_token(settings)
     if settings["azure"]:
         kwargs.pop("base_url", None)
         # azure_endpoint=None lets the client fall back to AZURE_OPENAI_ENDPOINT.
         if not settings["base_url"] and not os.getenv("AZURE_OPENAI_ENDPOINT"):
             raise ValueError("Azure OpenAI needs the resource endpoint: set model_base_url (https://<resource>.openai.azure.com/) or AZURE_OPENAI_ENDPOINT.")
+        if ad_token:
+            kwargs.pop("api_key", None)
+            kwargs["azure_ad_token"] = ad_token
         # base_url=None keeps OPENAI_BASE_URL / OPENAI_API_BASE (a gateway for the other agents) out of the Azure client.
         return AzureChatOpenAI(azure_endpoint=settings["base_url"], api_version=settings["api_version"], azure_deployment=kwargs.get("model"), base_url=None, **kwargs)
     if settings["base_url"]:
         kwargs["base_url"] = settings["base_url"]
+    if ad_token:
+        kwargs["api_key"] = ad_token
     return ChatOpenAI(**kwargs)
 
 
@@ -228,12 +284,12 @@ def create_chat_model(
 
     settings = resolve_provider_settings(model_config, model_name)
     api_key = resolve_api_key(model_config, settings)
-    if not api_key:
+    if not api_key and not resolve_azure_ad_token(settings):
         raise ValueError("LLM API key is missing. Set MODEL_API_KEY or model_api_key in config.")
 
     kwargs: dict[str, Any] = {
         "model": model_name,
-        "api_key": api_key,
+        **({"api_key": api_key} if api_key else {}),
         **adapted,
     }
     if kwargs.get("timeout") is None:

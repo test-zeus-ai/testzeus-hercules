@@ -328,3 +328,142 @@ def test_azure_client_ignores_an_openai_gateway_in_the_environment(monkeypatch, 
 
     assert isinstance(model, AzureChatOpenAI)
     assert str(model.client._client.base_url) == "https://res.openai.azure.com/openai/deployments/gpt-4o/"
+
+
+# ── Ollama: the placeholder decision comes before any real key ──────────────────────────────────────────
+
+
+@pytest.mark.parametrize("env_name", ["MODEL_API_KEY", "OPENAI_API_KEY"])
+@pytest.mark.parametrize("config_key", [None, "sk-config-key"])
+def test_ollama_lan_host_never_receives_a_real_key(monkeypatch, env_name, config_key) -> None:
+    monkeypatch.setenv(env_name, "sk-real-secret")
+    config = {"model_name": "llama3", "model_api_type": "ollama", "model_client_host": "http://192.168.1.20:11434"}
+    if config_key:
+        config["model_api_key"] = config_key
+
+    assert create_chat_model(dict(config)).openai_api_key.get_secret_value() == "not-needed"
+    assert _planner_key(monkeypatch, dict(config)) == "not-needed"
+
+
+# ── Azure credentials: key for both client styles, Entra ID token when there is no key ───────────────────
+
+_AZURE_V1 = {"model_name": "gpt-4o", "model_api_type": "azure", "model_api_version": "2025-01-01", "model_base_url": "https://res.openai.azure.com/openai/v1/"}
+_AZURE_CLASSIC = {"model_name": "gpt-4o", "model_api_type": "azure", "model_api_version": "2024-05-01-preview", "model_base_url": "https://res.openai.azure.com/"}
+
+
+def test_azure_v1_endpoint_uses_azure_openai_api_key(monkeypatch) -> None:
+    monkeypatch.setenv("AZURE_OPENAI_API_KEY", "azure-env-key")
+
+    model = create_chat_model(dict(_AZURE_V1))
+
+    assert type(model) is ChatOpenAI and model.openai_api_key.get_secret_value() == "azure-env-key"
+    assert _planner_key(monkeypatch, dict(_AZURE_V1)) == "azure-env-key"
+
+
+def test_azure_v1_endpoint_without_api_version_uses_azure_openai_api_key(monkeypatch) -> None:
+    monkeypatch.setenv("AZURE_OPENAI_API_KEY", "azure-env-key")
+    config = {key: value for key, value in _AZURE_V1.items() if key != "model_api_version"}
+
+    assert create_chat_model(config).openai_api_key.get_secret_value() == "azure-env-key"
+
+
+def test_azure_entra_token_is_passed_to_the_azure_client(monkeypatch) -> None:
+    monkeypatch.setenv("AZURE_OPENAI_AD_TOKEN", "entra-token")
+
+    model = create_chat_model(dict(_AZURE_CLASSIC))
+
+    assert isinstance(model, AzureChatOpenAI) and model.azure_ad_token.get_secret_value() == "entra-token"
+    assert model.openai_api_key is None
+
+
+def test_azure_entra_token_is_the_bearer_token_on_the_v1_endpoint(monkeypatch) -> None:
+    monkeypatch.setenv("AZURE_OPENAI_AD_TOKEN", "entra-token")
+
+    model = create_chat_model(dict(_AZURE_V1))
+
+    assert type(model) is ChatOpenAI and model.openai_api_key.get_secret_value() == "entra-token"
+
+
+def test_planner_accepts_the_azure_entra_token(monkeypatch) -> None:
+    monkeypatch.setenv("AZURE_OPENAI_AD_TOKEN", "entra-token")
+    monkeypatch.setattr(high_level_planner_agent, "get_user_ltm", lambda: None)
+
+    agent = high_level_planner_agent.PlannerAgent(dict(_AZURE_CLASSIC), {})
+
+    assert isinstance(agent.llm, AzureChatOpenAI) and agent.llm.azure_ad_token.get_secret_value() == "entra-token"
+
+
+def test_azure_api_key_wins_over_the_entra_token(monkeypatch) -> None:
+    monkeypatch.setenv("AZURE_OPENAI_AD_TOKEN", "entra-token")
+    monkeypatch.setenv("AZURE_OPENAI_API_KEY", "azure-env-key")
+
+    model = create_chat_model(dict(_AZURE_CLASSIC))
+
+    assert model.openai_api_key.get_secret_value() == "azure-env-key"
+
+
+def test_azure_without_any_credential_is_still_rejected() -> None:
+    with pytest.raises(ValueError, match="API key"):
+        create_chat_model(dict(_AZURE_V1))
+
+
+def test_azure_entra_token_is_ignored_for_other_providers(monkeypatch) -> None:
+    monkeypatch.setenv("AZURE_OPENAI_AD_TOKEN", "entra-token")
+
+    with pytest.raises(ValueError, match="API key"):
+        create_chat_model({"model_name": "gpt-4o", "model_base_url": "https://api.example.com/v1"})
+
+
+# ── keyless detection: local servers reached by more than localhost ─────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "http://host.docker.internal:8000/v1",
+        "http://host.containers.internal:8000/v1",
+        "http://0.0.0.0:8000/v1",
+        "http://192.168.1.50:8000/v1",
+        "http://10.1.2.3:8000/v1",
+        "http://172.16.5.4:8000/v1",
+        "http://172.31.255.254:8000/v1",
+        "http://169.254.10.10:8000/v1",
+        "http://[fd12:3456:789a::1]:8000/v1",
+        "http://[fe80::1]:8000/v1",
+        "http://[::1]:8000/v1",
+        "http://gpu-box.local:8000/v1",
+        "http://vllm.localhost:8000/v1",
+        "http://LOCALHOST:8000/v1",
+    ],
+)
+def test_local_and_private_base_urls_need_no_api_key(base_url) -> None:
+    model = create_chat_model({"model_name": "qwen", "model_base_url": base_url})
+
+    assert model.openai_api_base == base_url and model.openai_api_key.get_secret_value() == "not-needed"
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "https://api.example.com/v1",
+        "http://vllm.mycorp.com:8000/v1",
+        "http://8.8.8.8:8000/v1",
+        "http://172.32.0.1:8000/v1",  # just outside 172.16.0.0/12
+        "http://192.169.1.1:8000/v1",
+        "http://[2001:4860::1]:8000/v1",
+        "https://notlocal.com/v1",
+        "https://localhost.example.com/v1",
+        "https://mylocal.example/v1",
+    ],
+)
+def test_public_base_urls_still_require_an_api_key(base_url) -> None:
+    with pytest.raises(ValueError, match="API key"):
+        create_chat_model({"model_name": "gpt-4o", "model_base_url": base_url})
+
+
+def test_private_base_url_keeps_an_explicit_api_key(monkeypatch) -> None:
+    monkeypatch.setenv("MODEL_API_KEY", "gateway-key")
+
+    model = create_chat_model({"model_name": "qwen", "model_base_url": "http://host.docker.internal:4000/v1"})
+
+    assert model.openai_api_key.get_secret_value() == "gateway-key"
