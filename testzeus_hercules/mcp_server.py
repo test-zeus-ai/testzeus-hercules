@@ -80,6 +80,7 @@ from testzeus_hercules.orchestrator.session import (
     SessionState,
     get_session_manager,
     redact_url,
+    explicit_session_id_required,
     set_require_explicit_session_id,
 )
 from testzeus_hercules.reporting.bundle import parse_junit_testcases
@@ -146,6 +147,30 @@ def _allowed_roots() -> list[str]:
 def _confine_path(path: str, label: str, extra_roots: tuple[str, ...] = ()) -> str:
     """Resolve a client-supplied local path inside the allowed roots (realpath + prefix check)."""
     return resolve_within(path, [*_allowed_roots(), *extra_roots], label=label)
+
+
+_STORED_PROJECT_PATH_MESSAGE = (
+    "The project_path stored in this session is outside the allowed roots (the session file may have been edited) and was not used. "
+    "Call hercules_configure_session again, or pass project_path inside the allowed roots."
+)
+
+
+def _session_project_path(state: SessionState) -> str:
+    """The session's stored ``project_path``, re-confined to the allowed roots at use time.
+
+    ``sessions.json`` is reloaded on start-up and is not validated there, so a stored path is
+    never trusted as is. Returns ``""`` when none is set.
+
+    Raises:
+        PathOutsideRootsError: the stored path is outside every allowed root; the message
+            deliberately does not echo the path.
+    """
+    if not state.project_path:
+        return ""
+    try:
+        return _confine_path(state.project_path, "project_path")
+    except PathOutsideRootsError:
+        raise PathOutsideRootsError(_STORED_PROJECT_PATH_MESSAGE) from None
 
 
 def _confine_prd_path(path: str, extra_roots: tuple[str, ...] = ()) -> str:
@@ -481,8 +506,9 @@ def _resolve_prd_source(state: SessionState, prd_path: str) -> str | None:
     source = _normalize_prd_source(prd_path) or _normalize_prd_source(state.prd_path)
     if source:
         return source
-    if state.project_path:
-        readme = os.path.join(state.project_path, "README.md")
+    project_path = _session_project_path(state)
+    if project_path:
+        readme = os.path.join(project_path, "README.md")
         if os.path.isfile(readme):
             return readme
     return None
@@ -502,7 +528,11 @@ async def _build_standard_prd(state: SessionState, prd_path: str) -> tuple[Norma
     else:
         # Local PRD sources are read and sent to the LLM: confine them (realpath) to the
         # allowed roots plus this session's project_path. URLs go through the SSRF guard in prd_parser.
-        source = _confine_prd_path(source, (state.project_path,) if state.project_path else ())
+        try:
+            project_root = _session_project_path(state)
+        except PathOutsideRootsError:
+            project_root = ""  # a tampered stored path never widens the allowed roots
+        source = _confine_prd_path(source, (project_root,) if project_root else ())
     prd = await build_normalized_prd(source)
     out_path = os.path.join(str(_session_state_dir(state)), "standard_prd.json")
     prd_to_json(prd, out_path)
@@ -621,7 +651,7 @@ async def hercules_configure_session(
     state.app_url_reachable = reachable
     get_session_manager().save_session_state(state)
 
-    next_action = "Call hercules_generate_code_summary to scan the project" if state.project_path else "Call hercules_generate_standardized_prd (pass prd_path) to normalize requirements"
+    next_action = "Call hercules_generate_code_summary to scan the project" if resolved_project else "Call hercules_generate_standardized_prd (pass prd_path) to normalize requirements"
     if reachable is False:
         # Redact userinfo here too: the warning may surface credentials otherwise.
         next_action += f" (warning: app_url was not reachable — verify {redact_url(app_url)!r} before executing tests)"
@@ -630,7 +660,7 @@ async def hercules_configure_session(
         # Echo the redacted URL; the raw URL stays on the in-memory session state.
         "app_url": redact_url(state.app_url),
         "app_url_reachable": reachable,
-        "project_path": _display_optional(state.project_path) or "",
+        "project_path": _display_optional(resolved_project) or "",  # the freshly confined value, never a stored one
         "test_type": state.test_type,
         "test_scope": state.test_scope,
         "prd_path": _display_prd(state.prd_path),
@@ -666,7 +696,7 @@ async def hercules_generate_code_summary(session_id: str = "", project_path: str
         return _error(str(exc))
 
     try:
-        path = _confine_path(project_path, "project_path") if project_path else state.project_path
+        path = _confine_path(project_path, "project_path") if project_path else _session_project_path(state)
     except PathOutsideRootsError as exc:
         return _error(str(exc))
     if not path or not os.path.isdir(path):
@@ -1205,23 +1235,29 @@ async def generate_gherkin(description: str) -> str:
 
 
 @mcp.tool()
-async def run_test(gherkin: str = "", description: str = "", additional_instructions: str = "") -> str:
+async def run_test(gherkin: str = "", description: str = "", additional_instructions: str = "", session_id: str = "") -> str:
     """DEPRECATED: use hercules_configure_session + hercules_generate_and_execute(gherkin=..., description=...).
 
     Thin wrapper: creates an ephemeral session when none exists (only when
     there is something to run, and it never becomes the "most recent" session),
     generates Gherkin from ``description`` when needed, executes it in-process
-    and returns a compact text summary.
+    and returns a compact text summary. When an auth token is enforced (remote/shared use)
+    ``session_id`` is required, exactly like the ``hercules_*`` session tools.
 
     Args:
         gherkin: Raw Gherkin feature content to run directly (highest priority).
         description: Plain-English description; Gherkin is generated from it via LLM.
         additional_instructions: Extra hints for the agent, appended as Gherkin comments in the feature file.
+        session_id: Session to run in. Optional on a loopback server without a token (defaults to the most recent session).
     """
     manager = get_session_manager()
     try:
-        session_id = manager.resolve_session().session_id
-    except (KeyError, ValueError):
+        session_id = manager.resolve_session(session_id).session_id
+    except KeyError as exc:  # explicit but unknown id: never fall back to another/synthetic session
+        return f"Error: {exc.args[0]}"
+    except ValueError as exc:
+        if explicit_session_id_required():
+            return f"Error: {exc}"
         if not gherkin.strip() and not description.strip():
             return "Error: No session. Call hercules_configure_session first."
         # Synthetic session for this one-off run; touch_recent=False keeps it

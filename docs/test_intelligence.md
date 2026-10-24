@@ -447,8 +447,6 @@ parallel orchestrators use.
 
 - Verified with a scripted mock LLM only; real-model plan quality, JSON conformance
   rate, and cost were not measured.
-- The code summary is not consumed by PRD or plan generation. Treat it as context for the
-  human or agent, not as an input to the pipeline.
 - `additional_instructions` are written to the feature file as `#` comments; whether
   the agents read Gherkin comments was not verified.
 - `data_refs` binding to real test data was not exercised.
@@ -458,3 +456,10 @@ parallel orchestrators use.
   ran as `hercules-suite planned` (4 total, 4 passed, exit 0).
 - `git_diff` and `enrich_with_llm` are library code with unit tests but no
   end-to-end consumer.
+
+### Design notes (intended behaviour, not defects)
+
+- The code summary is informational. It is stored on the session
+  (`code_summary_path`) and returned to the caller, and PRD and plan generation do not read
+  it (verified in the code: only `hercules_generate_code_summary` touches it). Use it as
+  context for the human or agent, not as an input to the pipeline.

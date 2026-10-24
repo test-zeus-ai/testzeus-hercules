@@ -56,6 +56,15 @@ def _summary(scenarios: list[tuple[str, bool]]) -> dict:
     return _suite_aggregate("s", scenarios)
 
 
+def _valid_suites_config(workspace) -> str:
+    """A real (tiny) suites file so the CLI's up-front configuration check passes."""
+    feature = workspace / "ok.feature"
+    feature.write_text("Feature: ok\n\n  Scenario: s\n    Given a step\n", encoding="utf-8")
+    suites_yaml = workspace / "suites_ok.yaml"
+    suites_yaml.write_text(f"smoke:\n  tests: [{feature}]\n", encoding="utf-8")
+    return str(suites_yaml)
+
+
 @pytest.fixture()
 def workspace(tmp_path, monkeypatch):
     """Isolate cwd so monitor state files land under tmp."""
@@ -76,7 +85,7 @@ def test_load_monitor_config_fills_defaults(workspace) -> None:
     assert cfg["notify_on"] == "regression"
     assert cfg["baseline"] == "last_run"
     assert cfg["webhook_url"] is None
-    # Missing default paths stay cwd-relative (run the daemon from the project root).
+    # Missing DEFAULT paths stay cwd-relative (run the daemon from the project root).
     assert cfg["config"] == ".hercules/suites.yaml"
     assert cfg["state_file"] == ".hercules/monitor_state.json"
 
@@ -104,6 +113,38 @@ def test_load_monitor_config_rejects_invalid(workspace) -> None:
     path = _write_yaml(workspace, "suites: [a]\ninterval_hours: later\n")
     with pytest.raises(ValueError, match="interval_hours"):
         load_monitor_config(path)
+
+
+def test_relative_state_file_is_anchored_to_the_config_directory(workspace, monkeypatch) -> None:
+    conf_dir = workspace / "conf"
+    conf_dir.mkdir()
+    elsewhere = workspace / "elsewhere"
+    elsewhere.mkdir()
+    path = _write_yaml(conf_dir, "suites: [a]\nstate_file: state/monitor_state.json\n")
+    monkeypatch.chdir(elsewhere)  # daemon started from another directory
+
+    cfg = load_monitor_config(path)
+
+    assert cfg["state_file"] == os.path.join(str(conf_dir), "state", "monitor_state.json")
+    save_state(cfg["state_file"], {"runs": {}})
+    assert (conf_dir / "state" / "monitor_state.json").is_file()
+    assert not (elsewhere / "state").exists()
+
+
+def test_absolute_state_file_is_unchanged(workspace) -> None:
+    absolute = str(workspace / "abs" / "state.json")
+    path = _write_yaml(workspace, f"suites: [a]\nstate_file: {absolute}\n")
+    assert load_monitor_config(path)["state_file"] == absolute
+
+
+def test_relative_state_file_existing_in_cwd_is_still_used(workspace, monkeypatch) -> None:
+    """State written by older versions (relative to the cwd) must keep being found."""
+    conf_dir = workspace / "conf"
+    conf_dir.mkdir()
+    legacy = workspace / "monitor_state.json"
+    legacy.write_text("{}", encoding="utf-8")
+    path = _write_yaml(conf_dir, "suites: [a]\nstate_file: monitor_state.json\n")
+    assert load_monitor_config(path)["state_file"] == str(legacy)
 
 
 # ── evaluate_regression ───────────────────────────────────────────────────────
@@ -589,7 +630,7 @@ def test_monitor_loop_survives_failing_cycles(workspace, monkeypatch) -> None:
 
 
 def test_scheduler_cli_once_exit_codes(workspace, monkeypatch, capsys) -> None:
-    cfg_path = _write_yaml(workspace, "suites: [smoke]\nstate_file: state.json\n")
+    cfg_path = _write_yaml(workspace, f"suites: [smoke]\nconfig: {_valid_suites_config(workspace)}\nstate_file: state.json\n")
 
     async def failing_once(cfg, state):
         return {
@@ -626,8 +667,43 @@ def test_scheduler_cli_once_exit_codes(workspace, monkeypatch, capsys) -> None:
     assert main(["--once", "--config", cfg_path]) == 0
 
 
+@pytest.mark.parametrize(
+    "content",
+    [None, "suites: [unclosed\n", "- just\n- a list\n", "notify_on: always\n", "suites: [a]\ninterval_hours: later\n"],
+    ids=["missing", "invalid-yaml", "not-a-mapping", "no-suites", "bad-interval"],
+)
+def test_scheduler_cli_bad_config_is_a_clean_error(workspace, capsys, content) -> None:
+    path = str(workspace / "missing.yaml") if content is None else _write_yaml(workspace, content)
+    for extra in ([], ["--once"]):
+        assert main(["--config", path, *extra]) == 2
+        err = capsys.readouterr().err
+        assert err.startswith("hercules-monitor: error:")
+        assert "Traceback" not in err
+        assert len(err.strip().splitlines()) == 1
+
+
+def test_scheduler_cli_unreadable_config_is_a_clean_error(workspace, capsys) -> None:
+    path = _write_yaml(workspace, "suites: [a]\n")
+    os.chmod(path, 0)
+    try:
+        if os.access(path, os.R_OK):
+            pytest.skip("running with privileges that ignore file modes")
+        assert main(["--config", path, "--once"]) == 2
+    finally:
+        os.chmod(path, 0o600)
+    err = capsys.readouterr().err
+    assert err.startswith("hercules-monitor: error:") and "Traceback" not in err
+
+
+def test_scheduler_cli_once_missing_suites_config_is_a_clean_error(workspace, capsys) -> None:
+    path = _write_yaml(workspace, "suites: [smoke]\nconfig: nope/suites.yaml\n")
+    assert main(["--once", "--config", path]) == 2
+    err = capsys.readouterr().err
+    assert err.startswith("hercules-monitor: error:") and "Traceback" not in err
+
+
 def test_scheduler_cli_once_overrides_interval(workspace, monkeypatch) -> None:
-    cfg_path = _write_yaml(workspace, "suites: [smoke]\ninterval_hours: 99\n")
+    cfg_path = _write_yaml(workspace, f"suites: [smoke]\nconfig: {_valid_suites_config(workspace)}\ninterval_hours: 99\n")
     captured: dict = {}
 
     async def fake_once(cfg, state):
@@ -637,3 +713,78 @@ def test_scheduler_cli_once_overrides_interval(workspace, monkeypatch) -> None:
     monkeypatch.setattr(scheduler_module, "run_monitor_once", fake_once)
     assert main(["--once", "--config", cfg_path, "--interval-hours", "2.5"]) == 0
     assert captured["interval_hours"] == 2.5
+
+
+# ── TES-1947 review follow-ups ────────────────────────────────────────────────
+
+REPO_ROOT = __import__("pathlib").Path(__file__).resolve().parents[1]
+
+
+def test_shipped_monitor_example_resolves_state_next_to_the_copied_config(workspace) -> None:
+    """Copying .hercules/monitor.example.yaml to .hercules/monitor.yaml must not nest .hercules/.hercules/."""
+    import shutil
+
+    conf_dir = workspace / ".hercules"
+    conf_dir.mkdir()
+    target = conf_dir / "monitor.yaml"
+    shutil.copy(REPO_ROOT / ".hercules" / "monitor.example.yaml", target)
+
+    cfg = load_monitor_config(str(target))
+
+    assert os.path.realpath(cfg["state_file"]) == os.path.realpath(conf_dir / "monitor_state.json")
+
+
+def test_state_file_naming_a_path_inside_the_config_dir_is_not_nested_again(workspace) -> None:
+    """The previous example shipped `.hercules/monitor_state.json` inside .hercules/monitor.yaml."""
+    conf_dir = workspace / ".hercules"
+    conf_dir.mkdir()
+    path = _write_yaml(conf_dir, "suites: [a]\nstate_file: .hercules/monitor_state.json\n")
+
+    cfg = load_monitor_config(path)
+
+    assert os.path.realpath(cfg["state_file"]) == os.path.realpath(conf_dir / "monitor_state.json")
+
+
+def test_scheduler_cli_once_unreadable_suites_config_is_a_clean_error(workspace, capsys) -> None:
+    suites_yaml = workspace / "suites.yaml"
+    suites_yaml.write_text("smoke:\n  tests: [a.feature]\n", encoding="utf-8")
+    path = _write_yaml(workspace, f"suites: [smoke]\nconfig: {suites_yaml}\n")
+    os.chmod(suites_yaml, 0)
+    try:
+        if os.access(suites_yaml, os.R_OK):
+            pytest.skip("running with privileges that ignore file modes")
+        assert main(["--once", "--config", path]) == 2
+    finally:
+        os.chmod(suites_yaml, 0o600)
+    err = capsys.readouterr().err
+    assert err.startswith("hercules-monitor: error:") and "Traceback" not in err
+
+
+def test_scheduler_cli_once_dependency_cycle_is_a_clean_error(workspace, capsys) -> None:
+    feature = workspace / "a.feature"
+    feature.write_text("Feature: a\n\n  Scenario: s\n    Given a step\n", encoding="utf-8")
+    suites_yaml = workspace / "suites.yaml"
+    suites_yaml.write_text(f"a:\n  tests: [{feature}]\n  depends_on: [b]\nb:\n  tests: [{feature}]\n  depends_on: [a]\n", encoding="utf-8")
+    path = _write_yaml(workspace, f"suites: [a]\nconfig: {suites_yaml}\n")
+
+    assert main(["--once", "--config", path]) == 2
+    err = capsys.readouterr().err
+    assert "cycle" in err and "Traceback" not in err
+
+
+def test_scheduler_cli_once_runtime_failure_is_not_reported_as_a_config_error(workspace, monkeypatch, capsys) -> None:
+    """A bug or I/O failure inside the cycle must surface with its traceback, not as exit 2 'config error'."""
+    feature = workspace / "a.feature"
+    feature.write_text("Feature: a\n\n  Scenario: s\n    Given a step\n", encoding="utf-8")
+    suites_yaml = workspace / "suites.yaml"
+    suites_yaml.write_text(f"smoke:\n  tests: [{feature}]\n", encoding="utf-8")
+    path = _write_yaml(workspace, f"suites: [smoke]\nconfig: {suites_yaml}\n")
+
+    async def boom(cfg, state):
+        raise ValueError("bug in the cycle")
+
+    monkeypatch.setattr(scheduler_module, "run_monitor_once", boom)
+
+    with pytest.raises(ValueError, match="bug in the cycle"):
+        main(["--once", "--config", path])
+    assert "hercules-monitor: error:" not in capsys.readouterr().err

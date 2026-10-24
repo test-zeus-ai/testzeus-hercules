@@ -109,7 +109,7 @@ flowchart TB
 | --- | --- |
 | `session_id` | `sess_` + 16 hex chars (`secrets.token_hex(8)`, 64 random bits) |
 | `app_url` | App under test; recorded and probed for reachability only (the URL a run visits comes from the Gherkin) |
-| `project_path` | Resolved, confined source tree (absolute in state) |
+| `project_path` | Resolved, confined source tree (absolute in state; re-confined on every use) |
 | `test_type`, `test_scope` | Informational label; `codebase` is the only scope |
 | `prd_path` | Confined local file or URL |
 | `code_summary_path`, `standard_prd_path`, `test_plan_path` | Artifact paths under `.hercules/<session_id>/` |
@@ -170,10 +170,10 @@ Hercules run.
 | --- | --- | --- |
 | Remote caller on a network-exposed bind | Non-loopback `MCP_HOST` refused unless `MCP_AUTH_TOKEN` (>= 16 chars); token enforced on every request including loopback; constant-time compare | Tokens are plain bearer tokens over HTTP: terminate TLS in front. Any holder of the token has full tool access |
 | DNS rebinding against a loopback server | FastMCP transport security: `Host` (421) and `Origin` (403) must be loopback names (plus `MCP_ALLOWED_HOSTS`); wildcard bind with no allowlist skips the Host check and relies on the token | Not a substitute for the token on shared hosts |
-| Client reads arbitrary files via `project_path` / `prd_path` | `resolve_within`: realpath inside the Hercules root, `PROJECT_SOURCE_ROOT`, `TEST_DATA_PATH` or `HERCULES_MCP_ALLOWED_ROOTS`; `/` and `$HOME` are never accepted as roots; PRD files must be document types with non-secret names | Stored session state is not re-checked: a `project_path` edited into `sessions.json` is used as-is (see 10) |
+| Client reads arbitrary files via `project_path` / `prd_path` | `resolve_within`: realpath inside the Hercules root, `PROJECT_SOURCE_ROOT`, `TEST_DATA_PATH` or `HERCULES_MCP_ALLOWED_ROOTS`; `/` and `$HOME` are never accepted as roots; PRD files must be document types with non-secret names | The `project_path` stored in a session is re-confined every time it is used (code summary, README fallback, PRD root); one edited into `sessions.json` to point outside the allowed roots is refused with an error that does not echo the path. Anyone who can edit `.hercules/sessions.json` still controls the host |
 | SSRF through `prd_path` URL | `url_guard` (public addresses only, redirects re-checked, IP pinned, bounded) | The `app_url` probe and the URLs test steps visit are intentionally not guarded; they must reach local apps |
 | Running an LLM-generated plan unreviewed | Approval gate bound to the plan's SHA-256 | A careless reviewer; `HERCULES_MCP_AUTO_APPROVE_PLAN=true` |
-| One client driving another client's session | With a token, `session_id` is mandatory for every `hercules_*` tool; unknown ids reveal nothing | The legacy `run_test` alias (and `get_test_results`/`generate_gherkin`) still work without a `session_id` in token mode: `run_test` runs the Gherkin in a synthetic session. Verified on this branch. Do not expose the legacy aliases to less-trusted clients; there is no switch to disable them |
+| One client driving another client's session | With a token, `session_id` is mandatory for the session tools (`hercules_generate_code_summary`, `_generate_standardized_prd`, `_generate_test_plan`, `_generate_and_execute`, `_rerun`) and for the legacy `run_test` alias; unknown ids reveal nothing | `hercules_get_run_results`, `hercules_open_dashboard`, `hercules_check_config`, `get_test_results` and `generate_gherkin` never read session state and take no session; results are read from the shared `opt/output` folder |
 | Host path leakage to remote clients | Tool results use root-relative paths or bare names; errors and JUnit failure text are scrubbed | `sessions.json` and the artifact files on disk hold absolute paths (the file is mode 0600) |
 | Credential leakage via session state | `credentials` is ignored; `app_url` and PRD URL secrets are redacted before persisting | Anything you put into Gherkin text is written verbatim to `opt/input/*.feature` and kept |
 | Hung run pinning the server | `HERCULES_MCP_EXEC_TIMEOUT`; Gherkin generation capped at 120 s | Queued callers wait without a bound |
@@ -329,7 +329,7 @@ Legacy tools are still registered for backwards compatibility but are
 deprecated:
 
 - `generate_gherkin(description)` — use `hercules_generate_and_execute(description=...)`.
-- `run_test(gherkin, description)` — use `hercules_configure_session` + `hercules_generate_and_execute`.
+- `run_test(gherkin, description, additional_instructions, session_id)` — use `hercules_configure_session` + `hercules_generate_and_execute`.
 - `get_test_results(run_id)` — use `hercules_get_run_results`.
 
 ### Results semantics
@@ -602,8 +602,11 @@ your deployment around them rather than assuming they are mitigated.
   (the dashboard refuses to serve history databases, selector/session stores and
   dotfiles, but anything else under the project root is downloadable by whoever can
   reach it).
-- **Legacy aliases ignore the explicit-session rule.** In token mode `run_test`,
-  `generate_gherkin` and `get_test_results` still work without a `session_id`.
+- **Legacy `run_test` follows the explicit-session rule.** In token mode it needs a
+  `session_id` (it has an optional `session_id` argument now) and answers
+  `Error: session_id is required when MCP_AUTH_TOKEN is set ...` without it; an
+  unknown id answers `Error: Unknown session_id ...`. `generate_gherkin` and
+  `get_test_results` do not read session state, like `hercules_get_run_results`.
 - **PRD and Gherkin content are persisted as written.** See section 7.
 
 ## 9. Troubleshooting
@@ -617,6 +620,7 @@ your deployment around them rather than assuming they are mitigated.
 | `No session. Call hercules_configure_session first.` | Fresh server, no sessions in memory or in `.hercules/sessions.json` | Configure a session; check the server runs from the same root |
 | `session_id is required when MCP_AUTH_TOKEN is set` | Token mode | Pass the id returned by `hercules_configure_session` |
 | `Unknown session_id '...'` | Id from another server root, evicted (100-session cap) or mistyped | Configure a new session |
+| `The project_path stored in this session is outside the allowed roots ...` | `sessions.json` was edited, or the allowed roots changed since the session was created | `hercules_configure_session` again, or pass `project_path` inside the roots |
 | `project_path '...' is outside the allowed roots` | Path outside root / `PROJECT_SOURCE_ROOT` / `TEST_DATA_PATH` / allowed roots | Move it, or set `HERCULES_MCP_ALLOWED_ROOTS`; `/` and `$HOME` do not count as roots |
 | `prd_path '...' is not an allowed PRD document` | Dotfile, secret/config name or wrong extension | Use `.md/.markdown/.txt/.rst/.pdf/.docx` with a plain name |
 | `LiteLLM is required. Set AGENTS_LLM_CONFIG_FILE ...` | LLM-backed tool without a litellm-profile config | `AGENTS_LLM_CONFIG_FILE` + `AGENTS_LLM_CONFIG_FILE_REF_KEY=litellm` (see 3) |
@@ -643,15 +647,6 @@ your deployment around them rather than assuming they are mitigated.
   paths do not apply to this server.
 - Windows paths and process semantics were not verified (path confinement uses
   `realpath`/`commonpath`; the orchestrators use POSIX process groups).
-- Legacy `run_test` does not honor token-mode session binding (verified): it runs
-  without a `session_id` in a synthetic session.
-- A `project_path` already stored in `sessions.json` is not re-confined when it is
-  used later: only the value passed to `hercules_configure_session` (or
-  `hercules_generate_code_summary(project_path=...)`) is checked. Verified: after editing
-  a stored `project_path` to a directory outside every allowed root and restarting,
-  `hercules_generate_code_summary(session_id)` scanned it, while passing the same path
-  explicitly was refused. Anyone who can edit `.hercules/sessions.json` already controls
-  the host, but the file is trusted.
 - `app_url` is not used to drive runs; the Gherkin carries the URL.
 - Whether agents read `additional_instructions` comments was not verified.
 - SIGINT/SIGTERM during an in-flight run: the server shut down gracefully within 1 to 2 s
