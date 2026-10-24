@@ -608,6 +608,5 @@ was not verified.
 - The dashboard displays absolute artifact paths on case pages; do not expose it to
   people who should not see the host layout.
 - `HERCULES_SUITE_STATE_FILE` is exported but not consumed by anything in this repository.
-- Stored `project_path` values in MCP sessions are not re-confined (`docs/mcp_server.md`).
 - There are no `start/status/stop/resume` subcommands on `hercules-run-manager`: it runs
   one feature file to completion in the foreground.

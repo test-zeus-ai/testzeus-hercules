@@ -148,6 +148,59 @@ def test_code_summary_rejects_project_path_outside_roots(workspace) -> None:
     assert "outside the allowed roots" in result["error"]
 
 
+def _reloaded_session_with_stored_project(root, manager, project) -> tuple:
+    """Session whose stored project_path was edited in sessions.json (bypassing configure_session), then reloaded."""
+    import json
+
+    state = manager.create_session("https://app.example.com")
+    path = root / ".hercules" / "sessions.json"
+    payload = json.loads(path.read_text())
+    payload[state.session_id]["project_path"] = str(project)
+    path.write_text(json.dumps(payload))
+    reloaded = SessionManager()
+    return reloaded, reloaded.get_session(state.session_id)
+
+
+def test_code_summary_refuses_stored_project_path_outside_roots(workspace, monkeypatch) -> None:
+    root, manager = workspace
+    outside = root.parent / "outside"
+    outside.mkdir()
+    (outside / "secret.py").write_text("print('x')\n")
+    reloaded, state = _reloaded_session_with_stored_project(root, manager, outside)
+    monkeypatch.setattr(mcp_server, "get_session_manager", lambda: reloaded)
+    result = run(mcp_server.hercules_generate_code_summary(session_id=state.session_id))
+    assert "outside the allowed roots" in result["error"]
+    assert str(outside) not in result["error"] and str(root) not in result["error"]  # no host path echoed
+    assert not state.code_summary_path
+
+
+def test_stored_project_path_inside_roots_still_scans(workspace, monkeypatch) -> None:
+    root, manager = workspace
+    project = root / "proj"
+    project.mkdir()
+    (project / "app.py").write_text("print('x')\n")
+    reloaded, state = _reloaded_session_with_stored_project(root, manager, project)
+    monkeypatch.setattr(mcp_server, "get_session_manager", lambda: reloaded)
+    result = run(mcp_server.hercules_generate_code_summary(session_id=state.session_id))
+    assert "error" not in result and result["total_files"] == 1
+
+
+def test_stored_project_path_outside_roots_blocks_readme_fallback_and_root_widening(workspace, monkeypatch) -> None:
+    root, manager = workspace
+    outside = root.parent / "outside"
+    outside.mkdir()
+    (outside / "README.md").write_text("# Secret PRD\n")
+    (outside / "notes.md").write_text("# notes\n")
+    reloaded, state = _reloaded_session_with_stored_project(root, manager, outside)
+    monkeypatch.setattr(mcp_server, "get_session_manager", lambda: reloaded)
+    # README.md under the tampered path must not be picked up as the PRD
+    result = run(mcp_server.hercules_generate_standardized_prd(session_id=state.session_id))
+    assert "outside the allowed roots" in result["error"]
+    # ... and the tampered path must not become an extra root for prd_path either
+    result = run(mcp_server.hercules_generate_standardized_prd(session_id=state.session_id, prd_path=str(outside / "notes.md")))
+    assert "outside the allowed roots" in result["error"]
+
+
 # ── PRD-derived plan must be approved before execution ───────────────────────
 
 
