@@ -487,12 +487,13 @@ Import behaviour to know (all verified):
 - The orchestrators' scenario workspaces live under `.hercules/...`, not under
   `opt/output`, so import does not see them. `ENABLE_RUN_HISTORY=true` with a shared
   `HERCULES_HISTORY_DB` (the orchestrators inject one into the children when you have not
-  set it) records them, **with a caveat found in verification**: each child names its run
-  `run_<YYYYMMDD_HHMMSS>` and recording an already-known run id *replaces* the earlier record,
-  so scenarios of one parallel batch that start in the same second overwrite each other.
-  Running `hercules-run-manager features/smoke/b.feature --max-parallel 2` with history on
-  produced one run row with one case (`b two`); `b one` was lost. Do not rely on the dashboard
-  for per-scenario completeness of parallel runs; the merged JUnit XML is complete.
+  set it) records them. Each child names its run after its output folder
+  (`run_<YYYYMMDD_HHMMSS>`), so children that start in the same second get the same name; the
+  history keeps every one of them (the later records get a free `_1`, `_2`, ... suffix) and
+  only re-recording the very same result file replaces its own earlier record. Children also
+  tolerate the first-use race on a brand-new history DB file (they retry the schema setup
+  instead of failing with "database is locked"). Verified with
+  `hercules-run-manager --max-parallel 2` on a two-scenario feature: two runs, two cases.
 - A case whose artifacts list shows `<root>/None` for `video` simply had no recording.
 
 Token and remote access (verified):
@@ -576,7 +577,6 @@ was not verified.
 | `hercules-monitor: error: ...` (exit 2) | Missing, unreadable or invalid monitor YAML | Fix the config; use `--config` with an existing file |
 | Dashboard shows no runs | Runs were not recorded and nothing was imported | `ENABLE_RUN_HISTORY=true`, or click "Import from output folders" with `--project-root` pointing at the directory that contains `output/` |
 | Imported run has fewer cases than the XML files hold | Import takes the first result file per output folder | Run each result in its own folder, or record with `ENABLE_RUN_HISTORY=true` |
-| Recorded parallel batch shows fewer cases than ran | Children started in the same second share a run id; the later record replaces the earlier | Use the merged JUnit XML as the source of truth; record sequentially (`max_parallel: 1`) if the dashboard must be complete |
 | Dashboard exits at start with `Refusing to bind ...` | Non-loopback host without `DASHBOARD_AUTH_TOKEN` | Set the token (>= 16 chars) or use `--host 127.0.0.1` |
 | 421 `Invalid Host header` | Accessed by a name not in the allowlist | `DASHBOARD_ALLOWED_HOSTS=name` |
 | `import rejected: send an Origin/Sec-Fetch-Site header ...` | `curl -X POST /import` without browser headers and without a token | Use the button, add `-H "Origin: http://127.0.0.1:8001"`, or configure a token |
@@ -599,8 +599,6 @@ was not verified.
   own sessions and cannot be signalled by the dead parent). Stop with SIGINT/SIGTERM.
 - `hercules-suite` and `hercules-monitor` have no per-scenario timeout flag.
 - Dashboard import keeps one run per output folder and stamps import time (verified).
-- Parallel children that start in the same second collide on the run id in the shared history
-  DB and overwrite each other's record (verified: 2 scenarios, 1 recorded case).
 - The dashboard displays absolute artifact paths on case pages; do not expose it to
   people who should not see the host layout.
 - `HERCULES_SUITE_STATE_FILE` is exported but not consumed by anything in this repository.

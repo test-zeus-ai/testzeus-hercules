@@ -485,6 +485,146 @@ def test_record_run_summary_is_idempotent_on_duplicate_run_id(tmp_path) -> None:
     assert passed_case["artifacts"] == []
 
 
+def _scenario_junit(tmp_path, workspace: str, folder: str, case_name: str):
+    """A junit file in ``<workspace>/opt/output/<folder>/`` holding one case (like a parallel scenario child)."""
+    junit_path = tmp_path / workspace / "opt" / "output" / folder / "final_result.xml"
+    junit_path.parent.mkdir(parents=True)
+    junit_path.write_text(
+        f'<testsuites><testsuite name="Feature: F" tests="1" failures="0" skipped="0" time="1.0">'
+        f'<testcase name="{case_name}" classname="Feature: F" time="1.0"><system-out>Final Response: ok</system-out></testcase>'
+        f"</testsuite></testsuites>",
+        encoding="utf-8",
+    )
+    return junit_path
+
+
+def _one_case_summary(junit_path) -> dict:
+    return {"total": 1, "passed": 1, "failed": 0, "errors": 0, "junit_xml": str(junit_path)}
+
+
+def test_parallel_scenarios_with_the_same_output_folder_name_keep_separate_runs(tmp_path) -> None:
+    """Two scenario children that start in the same second share the run_<timestamp> folder name."""
+    db = _make_db(tmp_path)
+    first_junit = _scenario_junit(tmp_path, "scenario_0", "run_20260102_120000", "Scenario: first")
+    second_junit = _scenario_junit(tmp_path, "scenario_1", "run_20260102_120000", "Scenario: second")
+
+    first = record_run_summary(_one_case_summary(first_junit), db=db)
+    second = record_run_summary(_one_case_summary(second_junit), db=db)
+
+    assert first == "run_20260102_120000"
+    assert second != first and second.startswith("run_20260102_120000")
+    assert sorted(entry["run_id"] for entry in db.list_runs()) == sorted([first, second])
+    assert [case["case_key"] for case in db.get_run(first)["cases"]] == ["Scenario: first"]
+    assert [case["case_key"] for case in db.get_run(second)["cases"]] == ["Scenario: second"]
+    # Re-recording either one stays idempotent (same junit file): no third run appears.
+    assert record_run_summary(_one_case_summary(first_junit), db=db) == first
+    assert record_run_summary(_one_case_summary(second_junit), db=db) == second
+    assert len(db.list_runs()) == 2
+
+
+def test_concurrent_scenario_children_with_the_same_folder_name_record_both(tmp_path) -> None:
+    db = _make_db(tmp_path)
+    junits = [_scenario_junit(tmp_path, f"scenario_{i}", "run_20260102_120000", f"Scenario: s{i}") for i in range(4)]
+    barrier = threading.Barrier(len(junits))
+    ids: list[str] = []
+    errors: list[BaseException] = []
+
+    def record(junit_path) -> None:
+        try:
+            barrier.wait()
+            ids.append(record_run_summary(_one_case_summary(junit_path), db=db))
+        except BaseException as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    threads = [threading.Thread(target=record, args=(junit,)) for junit in junits]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert not errors
+    assert len(set(ids)) == 4
+    names = sorted(case["case_key"] for run_id in ids for case in db.get_run(run_id)["cases"])
+    assert names == ["Scenario: s0", "Scenario: s1", "Scenario: s2", "Scenario: s3"]
+
+
+def test_start_run_retries_when_the_chosen_id_is_taken_concurrently(tmp_path, monkeypatch) -> None:
+    """Another process inserting the same id between the existence check and our insert must not lose the run."""
+    db = _make_db(tmp_path)
+    db.start_run(run_id="run_taken")
+    calls = {"n": 0}
+
+    def stale_generate(session, base=None):
+        calls["n"] += 1
+        return "run_taken"  # what the check "saw" as free, but is already inserted
+
+    monkeypatch.setattr(RunHistory, "_generate_run_id", staticmethod(stale_generate))
+    run_id = db.start_run(run_id="run_taken")
+
+    assert calls["n"] == 1
+    assert run_id.startswith("run_taken_") and run_id != "run_taken"
+    assert sorted(entry["run_id"] for entry in db.list_runs()) == sorted(["run_taken", run_id])
+
+
+_CHILD_RECORDER = """
+import sys, time
+db_path, junit_path, start = sys.argv[1], sys.argv[2], float(sys.argv[3])
+from testzeus_hercules.reporting.run_db import record_run_summary
+while time.time() < start:
+    pass
+try:
+    print(record_run_summary({"total": 1, "passed": 1, "failed": 0, "errors": 0, "junit_xml": junit_path}, db=None))
+except Exception as exc:
+    print("ERR", type(exc).__name__, str(exc)[:200])
+"""
+
+
+def test_parallel_scenario_processes_all_record_into_a_fresh_history_db(tmp_path) -> None:
+    """Scenario children of ``hercules-run-manager`` share one NEW history DB and the same run_<timestamp> folder name.
+
+    Before the fix they raced on first use ("database is locked" / "table runs already exists") or
+    overwrote each other's run, so N scenarios left fewer than N recorded cases.
+    """
+    import subprocess
+    import sys
+    import time
+
+    db_path = tmp_path / "shared" / "history.db"
+    db_path.parent.mkdir()
+    count = 5
+    junits = [_scenario_junit(tmp_path, f"scenario_{i}", "run_20260102_120000", f"Scenario: s{i}") for i in range(count)]
+    env = {**os.environ, "HERCULES_HISTORY_DB": str(db_path)}
+    start = time.time() + 5  # children import first, then spin until the shared start time
+    procs = [subprocess.Popen([sys.executable, "-c", _CHILD_RECORDER, str(db_path), str(junit), str(start)], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) for junit in junits]
+    outputs = [proc.communicate(timeout=120)[0].strip() for proc in procs]
+
+    assert not [out for out in outputs if out.startswith("ERR")], outputs
+    assert len(set(outputs)) == count
+    db = RunHistory(db_url=f"sqlite:///{db_path}")
+    assert len(db.list_runs()) == count
+    cases = sorted(case["case_key"] for entry in db.list_runs() for case in db.get_run(entry["run_id"])["cases"])
+    assert cases == [f"Scenario: s{i}" for i in range(count)]
+
+
+def test_sqlite_first_use_retries_contention_errors(monkeypatch) -> None:
+    attempts = {"n": 0}
+
+    def flaky():
+        attempts["n"] += 1
+        if attempts["n"] < 3:
+            raise run_db.OperationalError("CREATE TABLE runs", {}, Exception("table runs already exists"))
+        return "done"
+
+    monkeypatch.setattr(run_db.time, "sleep", lambda _s: None)
+    assert run_db._retry_on_sqlite_contention(flaky) == "done" and attempts["n"] == 3
+
+    def broken():
+        raise run_db.OperationalError("SELECT 1", {}, Exception("no such table: nope"))
+
+    with pytest.raises(run_db.OperationalError):
+        run_db._retry_on_sqlite_contention(broken)  # non-contention errors are not retried
+
+
 def test_recorded_paths_are_stored_absolute(tmp_path) -> None:
     """Relative paths from junit properties must not become dead pointers in the DB."""
     db = _make_db(tmp_path)

@@ -671,8 +671,8 @@ The dashboard only shows runs that were recorded (`ENABLE_RUN_HISTORY=true`) or 
 Import keeps **one run per output folder** (the first `*_result.xml` by file name) and stamps
 the import time as the run's start time; orchestrator scenario workspaces are outside
 `opt/output`, so record them with `ENABLE_RUN_HISTORY=true` and a shared `HERCULES_HISTORY_DB`
-instead (caveat: parallel children that start in the same second share a run id and overwrite
-each other's record, so the history can miss cases; the merged JUnit XML is complete). `POST /import` is the only route that writes to the database. Details and the verified
+instead (parallel children that start in the same second get distinct ids: `run_<timestamp>`,
+`run_<timestamp>_1`, ...). `POST /import` is the only route that writes to the database. Details and the verified
 status codes are in `docs/orchestrator_and_dashboard.md`.
 
 ## Viewing Results
