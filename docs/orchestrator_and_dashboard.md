@@ -355,7 +355,7 @@ Dependency gating (a suite `after` that `depends_on` a suite `broken` whose feat
 Suite 'after' totals: 2 total, 0 passed, 1 failed, 1 errors, 0 retries
 ```
 
-exit 1. Configuration errors, exit 2, one line each:
+exit 1. Configuration errors, exit 2, one line each (the suite request is validated before anything runs: file, suite name, `depends_on` cycles and empty suites; failures while running, such as a full disk, keep their traceback):
 
 ```text
 hercules-suite: error: Unknown suite 'nope'. Known suites: after, broken, planned, regression, smoke.
@@ -413,7 +413,9 @@ POST bodies) and a one-scenario suite `flip`:
    the three cycle ids (the newest 10 are kept).
 5. A missing, unreadable or invalid config file (`hercules-monitor --config nope.yaml --once`)
    prints `hercules-monitor: error: <reason>` to stderr and exits 2, like `hercules-run-manager`
-   and `hercules-suite`.
+   and `hercules-suite`. With `--once` the suites file the monitor points at is checked the
+   same way before the cycle starts (unreadable, invalid, unknown suite, dependency cycle);
+   an exception raised while the cycle itself runs is not turned into a config error.
 
 Notification rules: `always` posts every cycle; `failure` posts when any scenario
 failed/errored; `regression` (default) posts only when a scenario that passed in the
@@ -427,7 +429,7 @@ results come from the per-cycle map, so `[smoke, regression]` with
 `config` is looked up in the monitor YAML's directory first, then the cwd. A relative
 `state_file` is anchored to the monitor YAML's directory, so the baseline does not move when
 you start the daemon from another directory; a state file that already exists in the cwd
-(written by an older version) is still picked up. The default (no `state_file` key) is
+(written by an older version) is still picked up, and an entry that already names a path inside the YAML's directory when read from the cwd (such as `.hercules/monitor_state.json` in `.hercules/monitor.yaml`) is used as written, not nested a second time. `.hercules/monitor.example.yaml` ships `state_file: monitor_state.json`. The default (no `state_file` key) is
 `.hercules/monitor_state.json` relative to the cwd. Absolute paths are used as given.
 
 Retention: before every cycle, `.hercules/suite_runs/*` and `.hercules/parallel_*` older

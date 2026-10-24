@@ -651,7 +651,7 @@ async def hercules_configure_session(
     state.app_url_reachable = reachable
     get_session_manager().save_session_state(state)
 
-    next_action = "Call hercules_generate_code_summary to scan the project" if state.project_path else "Call hercules_generate_standardized_prd (pass prd_path) to normalize requirements"
+    next_action = "Call hercules_generate_code_summary to scan the project" if resolved_project else "Call hercules_generate_standardized_prd (pass prd_path) to normalize requirements"
     if reachable is False:
         # Redact userinfo here too: the warning may surface credentials otherwise.
         next_action += f" (warning: app_url was not reachable — verify {redact_url(app_url)!r} before executing tests)"
@@ -660,7 +660,7 @@ async def hercules_configure_session(
         # Echo the redacted URL; the raw URL stays on the in-memory session state.
         "app_url": redact_url(state.app_url),
         "app_url_reachable": reachable,
-        "project_path": _display_optional(state.project_path) or "",
+        "project_path": _display_optional(resolved_project) or "",  # the freshly confined value, never a stored one
         "test_type": state.test_type,
         "test_scope": state.test_scope,
         "prd_path": _display_prd(state.prd_path),

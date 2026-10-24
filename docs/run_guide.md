@@ -758,7 +758,9 @@ testzeus-hercules --project-base=opt || test_status=$?
   (key not set) is relative to the working directory, so start the daemon from the same directory
   or set `state_file` (a relative value is anchored to the monitor YAML's directory).
 - **`hercules-monitor: error: ...` / `hercules-suite: error: ...` (exit 2)** — the config file is
-  missing, unreadable or invalid; fix it (no traceback is printed).
+  missing, unreadable or invalid, or the suite request does not resolve (unknown suite,
+  dependency cycle, no features); fix it (no traceback is printed). A failure while the suites
+  run, such as a full disk, is not reported this way and keeps its traceback.
 - **Dashboard is empty** — nothing was recorded or imported; see "Run History Dashboard". Also
   check that `--project-root` is the directory that contains `output/`.
 - **Scenario subprocesses left running after Ctrl-C** — use SIGINT/SIGTERM, which terminate the
