@@ -165,8 +165,8 @@ scenario exits 1). A subprocess that never produced JUnit is folded into the tot
 | --- | --- |
 | `hercules-run-manager` | `0` all passed; `1` any failed/errored; `2` feature file missing or without scenarios; `130` SIGINT; `143` SIGTERM |
 | `hercules-suite` | `0` all passed; `1` any failed/errored (including `SKIPPED`); `2` configuration problem (missing/invalid suites file, unknown suite, dependency cycle, empty suite); `130`/`143` signals |
-| `hercules-monitor --once` | `0` no failures/errors; `1` failures/errors **or an uncaught config error (traceback)**; `130`/`143` signals |
-| `hercules-monitor` (daemon) | runs until stopped; SIGINT/SIGTERM exit `0`; a failing cycle is logged and the loop continues |
+| `hercules-monitor --once` | `0` no failures/errors; `1` failures/errors; `2` missing/unreadable/invalid monitor or suites config (one line on stderr); `130`/`143` signals |
+| `hercules-monitor` (daemon) | runs until stopped; SIGINT/SIGTERM exit `0`; `2` for a bad monitor config; a failing cycle is logged and the loop continues |
 | `hercules-dashboard` | runs until stopped; `1` with a one-line message when a non-loopback bind has no (or a too short) `DASHBOARD_AUTH_TOKEN` |
 | `testzeus-hercules` (single run) | `0` regardless of results **unless** `STRICT_EXIT_CODE=true` (then `1` on failures); `EXIT_CODE_COMPAT=1` forces `0` |
 
@@ -411,9 +411,9 @@ POST bodies) and a one-scenario suite `flip`:
    There is no retry.
 4. The state file then held `last_results`, `last_run_id`, `updated_at` and `runs` with
    the three cycle ids (the newest 10 are kept).
-5. A missing config file is **not** handled gracefully: `hercules-monitor --config nope.yaml --once`
-   ends in a `FileNotFoundError` traceback with exit 1 (the orchestrators `run-manager`
-   and `suite` print one line and exit 2).
+5. A missing, unreadable or invalid config file (`hercules-monitor --config nope.yaml --once`)
+   prints `hercules-monitor: error: <reason>` to stderr and exits 2, like `hercules-run-manager`
+   and `hercules-suite`.
 
 Notification rules: `always` posts every cycle; `failure` posts when any scenario
 failed/errored; `regression` (default) posts only when a scenario that passed in the
@@ -424,11 +424,11 @@ Within a cycle, suites run in listed order and each runs its own features; depen
 results come from the per-cycle map, so `[smoke, regression]` with
 `regression.depends_on: [smoke]` executes smoke once.
 
-`state_file` and `config` are resolved relative to the monitor YAML's directory **only if
-the target already exists**; a state file that does not exist yet is created relative
-to the **cwd** (verified: `monitor_flip_state.json` appeared next to where the command ran,
-not next to `.hercules/monitor_flip.yaml`). Pin both to absolute paths for a daemon, or the
-baseline silently resets when you start it from another directory.
+`config` is looked up in the monitor YAML's directory first, then the cwd. A relative
+`state_file` is anchored to the monitor YAML's directory, so the baseline does not move when
+you start the daemon from another directory; a state file that already exists in the cwd
+(written by an older version) is still picked up. The default (no `state_file` key) is
+`.hercules/monitor_state.json` relative to the cwd. Absolute paths are used as given.
 
 Retention: before every cycle, `.hercules/suite_runs/*` and `.hercules/parallel_*` older
 than `HERCULES_RUN_RETENTION_HOURS` (default 72, never less than 1 hour) are removed.
@@ -571,9 +571,9 @@ was not verified.
 | `[SKIPPED] ... skipped: dependency 'x' failed` | Dependency gating | Fix the dependency, or `skip_on_dependency_failure: false` |
 | Exit 1 but every printed line is `ok` | `EXIT_CODE_COMPAT` is not set; check `errors` in the totals (skips and timeouts count as errors) | Read the totals line and the merged XML |
 | Scenario shows `error` with `Timed out after Ns; process killed.` | Scenario exceeded the 1800 s limit (`--timeout` on run-manager) | Raise `--timeout`; suites and the monitor have no flag |
-| Monitor never reports a regression | First cycle (no baseline); `notify_on` not `regression`; `max_parallel` changed between cycles (names differ); pinned baseline pruned; state file path differs per cwd | Keep `max_parallel` stable, pin `state_file` absolutely, check logs for `baseline_missing` |
+| Monitor never reports a regression | First cycle (no baseline); `notify_on` not `regression`; `max_parallel` changed between cycles (names differ); pinned baseline pruned; the default (unset) `state_file` resolves against a different cwd | Keep `max_parallel` stable, pin `state_file` absolutely, check logs for `baseline_missing` |
 | Monitor webhook not received | Wrong URL, non-2xx answer (logged as a warning, no retry), `notify_on` filtered it out | Read the `Webhook POST ... failed` line; secrets are masked as `[REDACTED]` |
-| `hercules-monitor` traceback on start | Missing/invalid config is not caught | Fix the config; use `--config` with an existing file |
+| `hercules-monitor: error: ...` (exit 2) | Missing, unreadable or invalid monitor YAML | Fix the config; use `--config` with an existing file |
 | Dashboard shows no runs | Runs were not recorded and nothing was imported | `ENABLE_RUN_HISTORY=true`, or click "Import from output folders" with `--project-root` pointing at the directory that contains `output/` |
 | Imported run has fewer cases than the XML files hold | Import takes the first result file per output folder | Run each result in its own folder, or record with `ENABLE_RUN_HISTORY=true` |
 | Recorded parallel batch shows fewer cases than ran | Children started in the same second share a run id; the later record replaces the earlier | Use the merged JUnit XML as the source of truth; record sequentially (`max_parallel: 1`) if the dashboard must be complete |
@@ -597,10 +597,6 @@ was not verified.
   signal behaviour were not verified.
 - `SIGKILL` of an orchestrator leaves its scenario processes running (verified: after `kill -KILL` on `hercules-run-manager` the scenario `python -m testzeus_hercules` process was reparented to pid 1; they live in their
   own sessions and cannot be signalled by the dead parent). Stop with SIGINT/SIGTERM.
-- A relative `state_file` that does not exist yet is created relative to the cwd, not to
-  the monitor YAML (verified); `config` behaves the same way.
-- `hercules-monitor` has no clean error path for a missing or invalid config file
-  (traceback, exit 1).
 - `hercules-suite` and `hercules-monitor` have no per-scenario timeout flag.
 - Dashboard import keeps one run per output folder and stamps import time (verified).
 - Parallel children that start in the same second collide on the run id in the shared history

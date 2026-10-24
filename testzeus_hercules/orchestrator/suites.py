@@ -649,8 +649,8 @@ def main(argv: list[str] | None = None) -> int:
     except run_manager.CliInterrupted as exc:
         print(f"hercules-suite: interrupted (signal {exc.signum}); scenario processes terminated.", file=sys.stderr)
         return exc.exit_code
-    except (FileNotFoundError, ValueError, yaml.YAMLError) as exc:
-        # Configuration problems (missing/invalid suites file, unknown suite,
+    except (OSError, ValueError, yaml.YAMLError) as exc:
+        # Configuration problems (missing/unreadable/invalid suites file, unknown suite,
         # dependency cycle, empty suite): one clear line, not a traceback.
         print(f"hercules-suite: error: {exc}", file=sys.stderr)
         return 2

@@ -9,7 +9,7 @@ Config lives in ``.hercules/monitor.yaml`` (see
     webhook_url: https://hooks.example.com/services/...
     notify_on: regression   # always | failure | regression
     baseline: last_run      # rolling, or a specific run_id
-    state_file: .hercules/monitor_state.json
+    state_file: monitor_state.json   # relative paths are anchored to this YAML's directory
 
 State (``{"last_results": ..., "runs": {run_id: summary}, ...}``) is a plain
 JSON file, written atomically: the previous cycle's per-scenario ok-set is the
@@ -62,6 +62,24 @@ RETENTION_HOURS_ENV = "HERCULES_RUN_RETENTION_HOURS"
 MIN_RETENTION_HOURS = 1
 
 
+def _resolve_state_file(data: dict, config_dir: str) -> str:
+    """Resolve the ``state_file`` entry: absolute as-is, relative to the monitor YAML's directory.
+
+    A relative state file that already exists in the YAML's directory, or (for state written by
+    older versions) in the cwd, keeps being used. One that exists nowhere is created next to
+    the YAML, never wherever the daemon happened to be started from. The default
+    (no ``state_file`` key) stays relative to the cwd, i.e. the project root.
+    """
+    entry = data.get("state_file")
+    if entry is None:
+        return resolve_config_path(DEFAULT_STATE_FILE, config_dir)
+    entry = str(entry)
+    resolved = resolve_config_path(entry, config_dir)
+    if os.path.isabs(resolved):
+        return resolved
+    return os.path.normpath(os.path.join(config_dir, entry))
+
+
 def load_monitor_config(path: str = DEFAULT_CONFIG_PATH) -> dict:
     """Load and validate a monitor YAML file; returns a normalized config dict."""
     if not os.path.isfile(path):
@@ -103,7 +121,7 @@ def load_monitor_config(path: str = DEFAULT_CONFIG_PATH) -> dict:
         "webhook_url": webhook_url,
         "notify_on": notify_on,
         "baseline": baseline,
-        "state_file": resolve_config_path(str(data.get("state_file", DEFAULT_STATE_FILE)), config_dir),
+        "state_file": _resolve_state_file(data, config_dir),
         "config_path": os.path.abspath(path),
     }
 
@@ -389,6 +407,11 @@ async def monitor_loop(cfg: dict) -> None:
         await asyncio.sleep(interval_s)
 
 
+def _one_line(exc: BaseException) -> str:
+    """Collapse an exception message (YAML errors span several lines) to a single line."""
+    return " ".join(str(exc).split())
+
+
 def main(argv: list[str] | None = None) -> int:
     """CLI entry (``hercules-monitor``): run the daemon or a single cycle."""
     parser = argparse.ArgumentParser(prog="hercules-monitor", description="Run Hercules suites on a schedule with regression monitoring.")
@@ -397,7 +420,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--interval-hours", type=float, default=None, help="Override interval_hours from the config.")
     args = parser.parse_args(argv)
 
-    cfg = load_monitor_config(args.config)
+    try:
+        cfg = load_monitor_config(args.config)
+    except (OSError, ValueError, yaml.YAMLError) as exc:
+        # Missing/unreadable/invalid config: one clear line, not a traceback (same contract as hercules-suite).
+        print(f"hercules-monitor: error: {_one_line(exc)}", file=sys.stderr)
+        return 2
     if args.interval_hours is not None:
         if args.interval_hours <= 0:
             parser.error("--interval-hours must be positive.")
@@ -418,6 +446,10 @@ def main(argv: list[str] | None = None) -> int:
     except run_manager.CliInterrupted as exc:
         print(f"hercules-monitor: interrupted (signal {exc.signum}); scenario processes terminated.", file=sys.stderr)
         return exc.exit_code
+    except (FileNotFoundError, ValueError, yaml.YAMLError) as exc:
+        # e.g. the suites config the monitor points at is missing or invalid.
+        print(f"hercules-monitor: error: {_one_line(exc)}", file=sys.stderr)
+        return 2
     print(_format_summary(summary))
     regression = summary.get("regression") or {}
     print(f"Regressed: {bool(regression.get('regressed'))}; new failures: {', '.join(regression.get('new_failures') or []) or 'none'}; fixed: {', '.join(regression.get('fixed') or []) or 'none'}")

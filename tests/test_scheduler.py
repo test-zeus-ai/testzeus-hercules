@@ -76,7 +76,7 @@ def test_load_monitor_config_fills_defaults(workspace) -> None:
     assert cfg["notify_on"] == "regression"
     assert cfg["baseline"] == "last_run"
     assert cfg["webhook_url"] is None
-    # Missing default paths stay cwd-relative (run the daemon from the project root).
+    # Missing DEFAULT paths stay cwd-relative (run the daemon from the project root).
     assert cfg["config"] == ".hercules/suites.yaml"
     assert cfg["state_file"] == ".hercules/monitor_state.json"
 
@@ -104,6 +104,38 @@ def test_load_monitor_config_rejects_invalid(workspace) -> None:
     path = _write_yaml(workspace, "suites: [a]\ninterval_hours: later\n")
     with pytest.raises(ValueError, match="interval_hours"):
         load_monitor_config(path)
+
+
+def test_relative_state_file_is_anchored_to_the_config_directory(workspace, monkeypatch) -> None:
+    conf_dir = workspace / "conf"
+    conf_dir.mkdir()
+    elsewhere = workspace / "elsewhere"
+    elsewhere.mkdir()
+    path = _write_yaml(conf_dir, "suites: [a]\nstate_file: state/monitor_state.json\n")
+    monkeypatch.chdir(elsewhere)  # daemon started from another directory
+
+    cfg = load_monitor_config(path)
+
+    assert cfg["state_file"] == os.path.join(str(conf_dir), "state", "monitor_state.json")
+    save_state(cfg["state_file"], {"runs": {}})
+    assert (conf_dir / "state" / "monitor_state.json").is_file()
+    assert not (elsewhere / "state").exists()
+
+
+def test_absolute_state_file_is_unchanged(workspace) -> None:
+    absolute = str(workspace / "abs" / "state.json")
+    path = _write_yaml(workspace, f"suites: [a]\nstate_file: {absolute}\n")
+    assert load_monitor_config(path)["state_file"] == absolute
+
+
+def test_relative_state_file_existing_in_cwd_is_still_used(workspace, monkeypatch) -> None:
+    """State written by older versions (relative to the cwd) must keep being found."""
+    conf_dir = workspace / "conf"
+    conf_dir.mkdir()
+    legacy = workspace / "monitor_state.json"
+    legacy.write_text("{}", encoding="utf-8")
+    path = _write_yaml(conf_dir, "suites: [a]\nstate_file: monitor_state.json\n")
+    assert load_monitor_config(path)["state_file"] == str(legacy)
 
 
 # ── evaluate_regression ───────────────────────────────────────────────────────
@@ -624,6 +656,41 @@ def test_scheduler_cli_once_exit_codes(workspace, monkeypatch, capsys) -> None:
 
     monkeypatch.setattr(scheduler_module, "run_monitor_once", green_once)
     assert main(["--once", "--config", cfg_path]) == 0
+
+
+@pytest.mark.parametrize(
+    "content",
+    [None, "suites: [unclosed\n", "- just\n- a list\n", "notify_on: always\n", "suites: [a]\ninterval_hours: later\n"],
+    ids=["missing", "invalid-yaml", "not-a-mapping", "no-suites", "bad-interval"],
+)
+def test_scheduler_cli_bad_config_is_a_clean_error(workspace, capsys, content) -> None:
+    path = str(workspace / "missing.yaml") if content is None else _write_yaml(workspace, content)
+    for extra in ([], ["--once"]):
+        assert main(["--config", path, *extra]) == 2
+        err = capsys.readouterr().err
+        assert err.startswith("hercules-monitor: error:")
+        assert "Traceback" not in err
+        assert len(err.strip().splitlines()) == 1
+
+
+def test_scheduler_cli_unreadable_config_is_a_clean_error(workspace, capsys) -> None:
+    path = _write_yaml(workspace, "suites: [a]\n")
+    os.chmod(path, 0)
+    try:
+        if os.access(path, os.R_OK):
+            pytest.skip("running with privileges that ignore file modes")
+        assert main(["--config", path, "--once"]) == 2
+    finally:
+        os.chmod(path, 0o600)
+    err = capsys.readouterr().err
+    assert err.startswith("hercules-monitor: error:") and "Traceback" not in err
+
+
+def test_scheduler_cli_once_missing_suites_config_is_a_clean_error(workspace, capsys) -> None:
+    path = _write_yaml(workspace, "suites: [smoke]\nconfig: nope/suites.yaml\n")
+    assert main(["--once", "--config", path]) == 2
+    err = capsys.readouterr().err
+    assert err.startswith("hercules-monitor: error:") and "Traceback" not in err
 
 
 def test_scheduler_cli_once_overrides_interval(workspace, monkeypatch) -> None:

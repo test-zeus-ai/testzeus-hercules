@@ -604,7 +604,7 @@ Key settings: `suites` (required), `interval_hours` (default 24, fractional
 OK), `webhook_url` (receives `{"text": "<summary>"}`), `notify_on`
 (`always`, `failure`, or `regression` — default `regression`), `baseline`
 (`last_run` or a pinned run id), and `state_file` (default
-`.hercules/monitor_state.json`). The first cycle has no baseline, so nothing
+`.hercules/monitor_state.json`; a relative value is anchored to the YAML's directory). The first cycle has no baseline, so nothing
 counts as a regression yet; use `notify_on: failure` to also alert on plain
 failures.
 
@@ -721,8 +721,8 @@ reporting flags via `reports: true` (both defaults).
   | `testzeus-hercules` | default, always (unless `STRICT_EXIT_CODE=true` and a scenario failed) | strict mode and a failure | | |
   | `hercules-run-manager` | all passed | failed/errored scenario | missing file or no scenarios | SIGINT / SIGTERM |
   | `hercules-suite` | all passed | failed, errored or skipped scenario | bad config, unknown suite, cycle | SIGINT / SIGTERM |
-  | `hercules-monitor --once` | no failures | failures, or an uncaught config error (traceback) | | SIGINT / SIGTERM |
-  | `hercules-monitor` daemon | stopped by SIGINT/SIGTERM | | | |
+  | `hercules-monitor --once` | no failures | failures | bad monitor/suites config | SIGINT / SIGTERM |
+  | `hercules-monitor` daemon | stopped by SIGINT/SIGTERM | | bad monitor config | |
 
   `EXIT_CODE_COMPAT=1` turns the result-based `1` of the orchestrators (and of strict
   mode) into `0`; it never changes the `2` exits.
@@ -754,11 +754,11 @@ testzeus-hercules --project-base=opt || test_status=$?
 - **A suite reports `SKIPPED` features** — a `depends_on` suite failed; skipped features count as
   errors. Fix the dependency or set `skip_on_dependency_failure: false`.
 - **`hercules-monitor` never alerts** — the first cycle has no baseline; `notify_on` defaults to
-  `regression`; changing `max_parallel` between cycles renames scenarios; a `state_file` that does
-  not exist yet is created relative to the working directory, so start the daemon from the same
-  directory (or use absolute paths).
-- **`hercules-monitor` prints a traceback for a bad `--config`** — a missing or invalid monitor
-  config is not caught (exit 1).
+  `regression`; changing `max_parallel` between cycles renames scenarios; the default `state_file`
+  (key not set) is relative to the working directory, so start the daemon from the same directory
+  or set `state_file` (a relative value is anchored to the monitor YAML's directory).
+- **`hercules-monitor: error: ...` / `hercules-suite: error: ...` (exit 2)** — the config file is
+  missing, unreadable or invalid; fix it (no traceback is printed).
 - **Dashboard is empty** — nothing was recorded or imported; see "Run History Dashboard". Also
   check that `--project-root` is the directory that contains `output/`.
 - **Scenario subprocesses left running after Ctrl-C** — use SIGINT/SIGTERM, which terminate the

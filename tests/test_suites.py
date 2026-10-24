@@ -906,3 +906,19 @@ def test_main_cli_invalid_yaml_is_a_clean_error(tmp_path, capsys) -> None:
     config.write_text("smoke: [unclosed\n", encoding="utf-8")
     assert main(["smoke", "--config", str(config)]) == 2
     assert "hercules-suite: error:" in capsys.readouterr().err
+
+
+def test_main_cli_unreadable_config_is_a_clean_error(tmp_path, capsys) -> None:
+    import os
+
+    config = tmp_path / "suites.yaml"
+    config.write_text("smoke:\n  tests: [a.feature]\n", encoding="utf-8")
+    os.chmod(config, 0)
+    try:
+        if os.access(config, os.R_OK):
+            pytest.skip("running with privileges that ignore file modes")
+        assert main(["smoke", "--config", str(config)]) == 2
+    finally:
+        os.chmod(config, 0o600)
+    err = capsys.readouterr().err
+    assert err.startswith("hercules-suite: error:") and "Traceback" not in err
