@@ -440,6 +440,10 @@ class RunHistory:
                         if "duplicate column name" not in str(exc).lower():
                             raise
                         logger.info("Column %s.%s was added concurrently; continuing", table.name, column.name)
+            # find_run_id_by_junit runs on every record; keep it an index lookup. Created here (not via
+            # index=True on the Text column) after the column migration, so existing databases get it
+            # too and non-sqlite backends are left alone.
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_runs_junit_xml ON runs (junit_xml)"))
 
     @contextmanager
     def _session(self) -> Iterator[Session]:

@@ -842,3 +842,22 @@ def test_list_runs_includes_total_cost(tmp_path) -> None:
     assert entries["run_costed"]["total_cost"] == pytest.approx(0.42)
     assert entries["run_uncosted"]["total_cost"] is None
     assert set(entries["run_uncosted"]) >= {"run_id", "started_at", "status", "duration_s", "total", "passed", "failed", "errors", "case_count", "pass_rate", "total_cost"}
+
+
+def test_junit_lookup_is_indexed_for_new_and_existing_databases(tmp_path) -> None:
+    """find_run_id_by_junit runs on every record: it must be an index lookup, also on pre-existing DBs."""
+    db_path = tmp_path / "history.db"
+
+    def indexes() -> set[str]:
+        with sqlite3.connect(db_path) as connection:
+            return {row[1] for row in connection.execute("PRAGMA index_list(runs)")}
+
+    RunHistory(db_url=f"sqlite:///{db_path}")
+    assert "ix_runs_junit_xml" in indexes()
+
+    with sqlite3.connect(db_path) as connection:  # a database created before the index existed
+        connection.execute("DROP INDEX ix_runs_junit_xml")
+    assert "ix_runs_junit_xml" not in indexes()
+
+    RunHistory(db_url=f"sqlite:///{db_path}")
+    assert "ix_runs_junit_xml" in indexes()
