@@ -55,6 +55,11 @@ def _explicit_session_id_required() -> bool:
     return bool((os.environ.get("MCP_AUTH_TOKEN") or "").strip())
 
 
+def explicit_session_id_required() -> bool:
+    """True when callers must pass an explicit session_id (an auth token is enforced / configured)."""
+    return _explicit_session_id_required()
+
+
 def _sessions_file_path() -> str:
     """Absolute path of the sessions persistence file (cwd or TESTZEUS_ROOT based)."""
     root = os.environ.get("TESTZEUS_ROOT", os.getcwd())

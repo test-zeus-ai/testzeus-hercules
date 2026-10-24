@@ -194,6 +194,29 @@ def _compile_suite_plan(name: str, plan_path: str, compiled_dirs: list[str] | No
     return out_path
 
 
+def check_suite_config(name: str, path: str = DEFAULT_SUITES_PATH) -> None:
+    """Validate a suite request up front, before anything is executed.
+
+    Loads the suites YAML and resolves ``name`` (including ``depends_on`` suites) the way
+    :func:`run_suite` will, so a missing/unreadable/invalid file, an unknown suite, a
+    dependency cycle or a suite without features fails here. The CLIs call this inside their
+    "configuration error" handler, which keeps that handler away from runtime failures
+    (spawning scenarios, writing results) whose traceback must not be swallowed.
+
+    Raises:
+        OSError, ValueError, yaml.YAMLError: the configuration is unusable.
+    """
+    suites = load_suites(path)
+    if name not in suites:
+        raise ValueError(f"Unknown suite '{name}'. Known suites: {', '.join(sorted(suites)) or '(none)'}.")
+    compiled_dirs: list[str] = []
+    try:
+        if not resolve_suite(name, suites, compiled_dirs=compiled_dirs):
+            raise ValueError(f"Suite '{name}' resolved to zero feature files.")
+    finally:
+        cleanup_compiled_plans(compiled_dirs)
+
+
 def cleanup_compiled_plans(compiled_dirs: list[str]) -> None:
     """Remove the temporary compiled-plan directories of a finished suite.
 
@@ -645,15 +668,19 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
+        check_suite_config(args.suite_name, args.config)
+    except (OSError, ValueError, yaml.YAMLError) as exc:
+        # Configuration problems (missing/unreadable/invalid suites file, unknown suite,
+        # dependency cycle, empty suite): one clear line, not a traceback.
+        logger.debug("Suite configuration check failed", exc_info=True)
+        print(f"hercules-suite: error: {' '.join(str(exc).split())}", file=sys.stderr)
+        return 2
+
+    try:
         summary = run_manager.run_cli(run_suite(args.suite_name, path=args.config, max_parallel_override=args.max_parallel, out_dir=args.out_dir))
     except run_manager.CliInterrupted as exc:
         print(f"hercules-suite: interrupted (signal {exc.signum}); scenario processes terminated.", file=sys.stderr)
         return exc.exit_code
-    except (FileNotFoundError, ValueError, yaml.YAMLError) as exc:
-        # Configuration problems (missing/invalid suites file, unknown suite,
-        # dependency cycle, empty suite): one clear line, not a traceback.
-        print(f"hercules-suite: error: {exc}", file=sys.stderr)
-        return 2
 
     for entry in summary.get("per_scenario", []):
         error_text = str(entry.get("error") or "")

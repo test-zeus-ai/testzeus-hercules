@@ -9,7 +9,7 @@ Config lives in ``.hercules/monitor.yaml`` (see
     webhook_url: https://hooks.example.com/services/...
     notify_on: regression   # always | failure | regression
     baseline: last_run      # rolling, or a specific run_id
-    state_file: .hercules/monitor_state.json
+    state_file: monitor_state.json   # relative paths are anchored to this YAML's directory
 
 State (``{"last_results": ..., "runs": {run_id: summary}, ...}``) is a plain
 JSON file, written atomically: the previous cycle's per-scenario ok-set is the
@@ -62,6 +62,30 @@ RETENTION_HOURS_ENV = "HERCULES_RUN_RETENTION_HOURS"
 MIN_RETENTION_HOURS = 1
 
 
+def _resolve_state_file(data: dict, config_dir: str) -> str:
+    """Resolve the ``state_file`` entry: absolute as-is, relative to the monitor YAML's directory.
+
+    A relative state file that already exists in the YAML's directory, or (for state written by
+    older versions) in the cwd, keeps being used. One that exists nowhere is created next to
+    the YAML, never wherever the daemon happened to be started from. The default
+    (no ``state_file`` key) stays relative to the cwd, i.e. the project root.
+    """
+    entry = data.get("state_file")
+    if entry is None:
+        return resolve_config_path(DEFAULT_STATE_FILE, config_dir)
+    entry = str(entry)
+    resolved = resolve_config_path(entry, config_dir)
+    if os.path.isabs(resolved):
+        return resolved
+    # An entry that already names a path inside the YAML's own directory when read from the cwd
+    # (the old shipped example: `.hercules/monitor_state.json` next to `.hercules/monitor.yaml`)
+    # must not be nested a second time under that directory.
+    from_cwd = os.path.abspath(entry)
+    if os.path.realpath(os.path.dirname(from_cwd)) == os.path.realpath(config_dir):
+        return from_cwd
+    return os.path.normpath(os.path.join(config_dir, entry))
+
+
 def load_monitor_config(path: str = DEFAULT_CONFIG_PATH) -> dict:
     """Load and validate a monitor YAML file; returns a normalized config dict."""
     if not os.path.isfile(path):
@@ -103,7 +127,7 @@ def load_monitor_config(path: str = DEFAULT_CONFIG_PATH) -> dict:
         "webhook_url": webhook_url,
         "notify_on": notify_on,
         "baseline": baseline,
-        "state_file": resolve_config_path(str(data.get("state_file", DEFAULT_STATE_FILE)), config_dir),
+        "state_file": _resolve_state_file(data, config_dir),
         "config_path": os.path.abspath(path),
     }
 
@@ -389,6 +413,11 @@ async def monitor_loop(cfg: dict) -> None:
         await asyncio.sleep(interval_s)
 
 
+def _one_line(exc: BaseException) -> str:
+    """Collapse an exception message (YAML errors span several lines) to a single line."""
+    return " ".join(str(exc).split())
+
+
 def main(argv: list[str] | None = None) -> int:
     """CLI entry (``hercules-monitor``): run the daemon or a single cycle."""
     parser = argparse.ArgumentParser(prog="hercules-monitor", description="Run Hercules suites on a schedule with regression monitoring.")
@@ -397,7 +426,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--interval-hours", type=float, default=None, help="Override interval_hours from the config.")
     args = parser.parse_args(argv)
 
-    cfg = load_monitor_config(args.config)
+    try:
+        cfg = load_monitor_config(args.config)
+    except (OSError, ValueError, yaml.YAMLError) as exc:
+        # Missing/unreadable/invalid config: one clear line, not a traceback (same contract as hercules-suite).
+        print(f"hercules-monitor: error: {_one_line(exc)}", file=sys.stderr)
+        return 2
     if args.interval_hours is not None:
         if args.interval_hours <= 0:
             parser.error("--interval-hours must be positive.")
@@ -411,6 +445,16 @@ def main(argv: list[str] | None = None) -> int:
             # scenario process trees were already terminated, exit cleanly.
             logger.info("Monitor stopped by signal %s.", exc.signum)
         return 0
+
+    try:
+        for suite_name in cfg["suites"]:
+            suites.check_suite_config(suite_name, cfg["config"])
+    except (OSError, ValueError, yaml.YAMLError) as exc:
+        # The suites config the monitor points at is missing, unreadable or invalid. Checked up
+        # front so this handler never hides a runtime failure of the cycle itself.
+        logger.debug("Suite configuration check failed", exc_info=True)
+        print(f"hercules-monitor: error: {_one_line(exc)}", file=sys.stderr)
+        return 2
 
     state = load_state(cfg["state_file"])
     try:

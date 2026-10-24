@@ -61,8 +61,8 @@ Related: `docs/run_guide.md` (single runs, CI exit codes), `docs/mcp_server.md`,
   `SKIPPED` and counted as errors (exit 1), unless `skip_on_dependency_failure: false`.
 - Dependency suites are folded into the invoking suite's run under **the invoking
   suite's** `retry`, `env` and `max_parallel`; a warning is logged when they differ.
-- `shared_state: true` only exports `HERCULES_SUITE_STATE_FILE`; nothing in this
-  repository reads that file (see 4.2).
+- `shared_state: true` exports `HERCULES_SUITE_STATE_FILE` to the scenario processes
+  (a hook for your own tooling; Hercules itself does not read it, see 4.2).
 - The dashboard is not purely read-only: `POST /import` writes into the history DB.
   It is also not static: pages render from the DB per request and `/live` polls.
 - Running Hercules does not populate the dashboard by itself. Runs are recorded only
@@ -165,8 +165,8 @@ scenario exits 1). A subprocess that never produced JUnit is folded into the tot
 | --- | --- |
 | `hercules-run-manager` | `0` all passed; `1` any failed/errored; `2` feature file missing or without scenarios; `130` SIGINT; `143` SIGTERM |
 | `hercules-suite` | `0` all passed; `1` any failed/errored (including `SKIPPED`); `2` configuration problem (missing/invalid suites file, unknown suite, dependency cycle, empty suite); `130`/`143` signals |
-| `hercules-monitor --once` | `0` no failures/errors; `1` failures/errors **or an uncaught config error (traceback)**; `130`/`143` signals |
-| `hercules-monitor` (daemon) | runs until stopped; SIGINT/SIGTERM exit `0`; a failing cycle is logged and the loop continues |
+| `hercules-monitor --once` | `0` no failures/errors; `1` failures/errors; `2` missing/unreadable/invalid monitor or suites config (one line on stderr); `130`/`143` signals |
+| `hercules-monitor` (daemon) | runs until stopped; SIGINT/SIGTERM exit `0`; `2` for a bad monitor config; a failing cycle is logged and the loop continues |
 | `hercules-dashboard` | runs until stopped; `1` with a one-line message when a non-loopback bind has no (or a too short) `DASHBOARD_AUTH_TOKEN` |
 | `testzeus-hercules` (single run) | `0` regardless of results **unless** `STRICT_EXIT_CODE=true` (then `1` on failures); `EXIT_CODE_COMPAT=1` forces `0` |
 
@@ -355,7 +355,7 @@ Dependency gating (a suite `after` that `depends_on` a suite `broken` whose feat
 Suite 'after' totals: 2 total, 0 passed, 1 failed, 1 errors, 0 retries
 ```
 
-exit 1. Configuration errors, exit 2, one line each:
+exit 1. Configuration errors, exit 2, one line each (the suite request is validated before anything runs: file, suite name, `depends_on` cycles and empty suites; failures while running, such as a full disk, keep their traceback):
 
 ```text
 hercules-suite: error: Unknown suite 'nope'. Known suites: after, broken, planned, regression, smoke.
@@ -411,9 +411,11 @@ POST bodies) and a one-scenario suite `flip`:
    There is no retry.
 4. The state file then held `last_results`, `last_run_id`, `updated_at` and `runs` with
    the three cycle ids (the newest 10 are kept).
-5. A missing config file is **not** handled gracefully: `hercules-monitor --config nope.yaml --once`
-   ends in a `FileNotFoundError` traceback with exit 1 (the orchestrators `run-manager`
-   and `suite` print one line and exit 2).
+5. A missing, unreadable or invalid config file (`hercules-monitor --config nope.yaml --once`)
+   prints `hercules-monitor: error: <reason>` to stderr and exits 2, like `hercules-run-manager`
+   and `hercules-suite`. With `--once` the suites file the monitor points at is checked the
+   same way before the cycle starts (unreadable, invalid, unknown suite, dependency cycle);
+   an exception raised while the cycle itself runs is not turned into a config error.
 
 Notification rules: `always` posts every cycle; `failure` posts when any scenario
 failed/errored; `regression` (default) posts only when a scenario that passed in the
@@ -424,11 +426,11 @@ Within a cycle, suites run in listed order and each runs its own features; depen
 results come from the per-cycle map, so `[smoke, regression]` with
 `regression.depends_on: [smoke]` executes smoke once.
 
-`state_file` and `config` are resolved relative to the monitor YAML's directory **only if
-the target already exists**; a state file that does not exist yet is created relative
-to the **cwd** (verified: `monitor_flip_state.json` appeared next to where the command ran,
-not next to `.hercules/monitor_flip.yaml`). Pin both to absolute paths for a daemon, or the
-baseline silently resets when you start it from another directory.
+`config` is looked up in the monitor YAML's directory first, then the cwd. A relative
+`state_file` is anchored to the monitor YAML's directory, so the baseline does not move when
+you start the daemon from another directory; a state file that already exists in the cwd
+(written by an older version) is still picked up, and an entry that already names a path inside the YAML's directory when read from the cwd (such as `.hercules/monitor_state.json` in `.hercules/monitor.yaml`) is used as written, not nested a second time. `.hercules/monitor.example.yaml` ships `state_file: monitor_state.json`. The default (no `state_file` key) is
+`.hercules/monitor_state.json` relative to the cwd. Absolute paths are used as given.
 
 Retention: before every cycle, `.hercules/suite_runs/*` and `.hercules/parallel_*` older
 than `HERCULES_RUN_RETENTION_HOURS` (default 72, never less than 1 hour) are removed.
@@ -487,12 +489,13 @@ Import behaviour to know (all verified):
 - The orchestrators' scenario workspaces live under `.hercules/...`, not under
   `opt/output`, so import does not see them. `ENABLE_RUN_HISTORY=true` with a shared
   `HERCULES_HISTORY_DB` (the orchestrators inject one into the children when you have not
-  set it) records them, **with a caveat found in verification**: each child names its run
-  `run_<YYYYMMDD_HHMMSS>` and recording an already-known run id *replaces* the earlier record,
-  so scenarios of one parallel batch that start in the same second overwrite each other.
-  Running `hercules-run-manager features/smoke/b.feature --max-parallel 2` with history on
-  produced one run row with one case (`b two`); `b one` was lost. Do not rely on the dashboard
-  for per-scenario completeness of parallel runs; the merged JUnit XML is complete.
+  set it) records them. Each child names its run after its output folder
+  (`run_<YYYYMMDD_HHMMSS>`), so children that start in the same second get the same name; the
+  history keeps every one of them (the later records get a free `_1`, `_2`, ... suffix) and
+  only re-recording the very same result file replaces its own earlier record. Children also
+  tolerate the first-use race on a brand-new history DB file (they retry the schema setup
+  instead of failing with "database is locked"). Verified with
+  `hercules-run-manager --max-parallel 2` on a two-scenario feature: two runs, two cases.
 - A case whose artifacts list shows `<root>/None` for `video` simply had no recording.
 
 Token and remote access (verified):
@@ -551,16 +554,19 @@ hercules-monitor --config .hercules/monitor.yaml --once      # from cron/CI inst
 | `HERCULES_HISTORY_DB` | runs, dashboard | History DB location; injected into children when unset (a relative value in a suite `env:` resolves inside the throwaway workspace) |
 | `ENABLE_RUN_HISTORY` | runs | Record runs into the DB the dashboard reads |
 | `DASHBOARD_AUTH_TOKEN`, `DASHBOARD_ALLOWED_HOSTS` | dashboard | Token (mandatory for non-loopback binds) and extra Host names |
-| `HERCULES_SUITE_STATE_FILE` | children of `shared_state` suites | Path of the suite JSONL file |
+| `HERCULES_SUITE_STATE_FILE` | children of `shared_state` suites | Path of the suite JSONL file (an output of the suite, not a setting: it is not read as a default anywhere) |
 
 ### 4.2 `shared_state`
 
 With `shared_state: true` every scenario receives
 `HERCULES_SUITE_STATE_FILE=<workroot>/suite_state.json`. The suite itself appends one
-completion record per suite run (always, whether or not `shared_state` is on). Nothing in
-the Hercules code base reads the variable, so it is a hook for your own steps or tools
-only. Whether a given Hercules tool can read the environment variable from a feature step
-was not verified.
+completion record per suite run (always, whether or not `shared_state` is on).
+
+*Design note:* the variable is an output of `hercules-suite`, not a setting. The Hercules
+code base does not read it, so it is a hook for your own scripts or tools; setting it
+yourself in `env:` has no effect (a suite with `shared_state: true` replaces it and logs a
+warning). Whether a given Hercules tool can read the environment variable from a feature
+step was not verified.
 
 ## 5. Troubleshooting
 
@@ -571,12 +577,11 @@ was not verified.
 | `[SKIPPED] ... skipped: dependency 'x' failed` | Dependency gating | Fix the dependency, or `skip_on_dependency_failure: false` |
 | Exit 1 but every printed line is `ok` | `EXIT_CODE_COMPAT` is not set; check `errors` in the totals (skips and timeouts count as errors) | Read the totals line and the merged XML |
 | Scenario shows `error` with `Timed out after Ns; process killed.` | Scenario exceeded the 1800 s limit (`--timeout` on run-manager) | Raise `--timeout`; suites and the monitor have no flag |
-| Monitor never reports a regression | First cycle (no baseline); `notify_on` not `regression`; `max_parallel` changed between cycles (names differ); pinned baseline pruned; state file path differs per cwd | Keep `max_parallel` stable, pin `state_file` absolutely, check logs for `baseline_missing` |
+| Monitor never reports a regression | First cycle (no baseline); `notify_on` not `regression`; `max_parallel` changed between cycles (names differ); pinned baseline pruned; the default (unset) `state_file` resolves against a different cwd | Keep `max_parallel` stable, pin `state_file` absolutely, check logs for `baseline_missing` |
 | Monitor webhook not received | Wrong URL, non-2xx answer (logged as a warning, no retry), `notify_on` filtered it out | Read the `Webhook POST ... failed` line; secrets are masked as `[REDACTED]` |
-| `hercules-monitor` traceback on start | Missing/invalid config is not caught | Fix the config; use `--config` with an existing file |
+| `hercules-monitor: error: ...` (exit 2) | Missing, unreadable or invalid monitor YAML | Fix the config; use `--config` with an existing file |
 | Dashboard shows no runs | Runs were not recorded and nothing was imported | `ENABLE_RUN_HISTORY=true`, or click "Import from output folders" with `--project-root` pointing at the directory that contains `output/` |
 | Imported run has fewer cases than the XML files hold | Import takes the first result file per output folder | Run each result in its own folder, or record with `ENABLE_RUN_HISTORY=true` |
-| Recorded parallel batch shows fewer cases than ran | Children started in the same second share a run id; the later record replaces the earlier | Use the merged JUnit XML as the source of truth; record sequentially (`max_parallel: 1`) if the dashboard must be complete |
 | Dashboard exits at start with `Refusing to bind ...` | Non-loopback host without `DASHBOARD_AUTH_TOKEN` | Set the token (>= 16 chars) or use `--host 127.0.0.1` |
 | 421 `Invalid Host header` | Accessed by a name not in the allowlist | `DASHBOARD_ALLOWED_HOSTS=name` |
 | `import rejected: send an Origin/Sec-Fetch-Site header ...` | `curl -X POST /import` without browser headers and without a token | Use the button, add `-H "Origin: http://127.0.0.1:8001"`, or configure a token |
@@ -597,17 +602,16 @@ was not verified.
   signal behaviour were not verified.
 - `SIGKILL` of an orchestrator leaves its scenario processes running (verified: after `kill -KILL` on `hercules-run-manager` the scenario `python -m testzeus_hercules` process was reparented to pid 1; they live in their
   own sessions and cannot be signalled by the dead parent). Stop with SIGINT/SIGTERM.
-- A relative `state_file` that does not exist yet is created relative to the cwd, not to
-  the monitor YAML (verified); `config` behaves the same way.
-- `hercules-monitor` has no clean error path for a missing or invalid config file
-  (traceback, exit 1).
 - `hercules-suite` and `hercules-monitor` have no per-scenario timeout flag.
-- Dashboard import keeps one run per output folder and stamps import time (verified).
-- Parallel children that start in the same second collide on the run id in the shared history
-  DB and overwrite each other's record (verified: 2 scenarios, 1 recorded case).
 - The dashboard displays absolute artifact paths on case pages; do not expose it to
   people who should not see the host layout.
-- `HERCULES_SUITE_STATE_FILE` is exported but not consumed by anything in this repository.
-- Stored `project_path` values in MCP sessions are not re-confined (`docs/mcp_server.md`).
 - There are no `start/status/stop/resume` subcommands on `hercules-run-manager`: it runs
   one feature file to completion in the foreground.
+
+### Design notes (intended behaviour, not defects)
+
+- Dashboard import keeps **one run per output folder**, named after the folder, and
+  stamps the **import time** as the run's start time (import does not read a start time
+  from the result file). A run recorded by the run itself (`ENABLE_RUN_HISTORY=true`) is
+  stamped when it is recorded, right after the run finishes, and gets one run per result
+  file; prefer that when you need close-to-real times or several result files per folder.

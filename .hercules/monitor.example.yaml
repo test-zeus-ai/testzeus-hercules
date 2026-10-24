@@ -29,4 +29,4 @@ interval_hours: 24
 webhook_url: https://hooks.example.com/services/T000000/B000000/XXXXXXXXXXXXXXXXXXXXXXXX
 notify_on: regression
 baseline: last_run
-state_file: .hercules/monitor_state.json
+state_file: monitor_state.json  # relative to this file's directory (.hercules/)

@@ -820,6 +820,7 @@ def test_suites_example_yaml_is_valid() -> None:
 
 
 def test_suites_cli_exit_codes(workspace, monkeypatch, capsys) -> None:
+    (workspace / "x.feature").write_text("Feature: x\n\n  Scenario: s\n    Given a step\n", encoding="utf-8")
     path = _write_suites_yaml(workspace, "s:\n  tests: [x.feature]\n")
     summary = {
         "suite": "s",
@@ -849,6 +850,7 @@ def test_suites_cli_exit_codes(workspace, monkeypatch, capsys) -> None:
 
 
 def test_suites_cli_success_exits_zero(workspace, monkeypatch) -> None:
+    (workspace / "x.feature").write_text("Feature: x\n\n  Scenario: s\n    Given a step\n", encoding="utf-8")
     path = _write_suites_yaml(workspace, "s:\n  tests: [x.feature]\n")
 
     async def fake_run_suite(name, path=".hercules/suites.yaml", max_parallel_override=None, out_dir=None, timeout_s=1800.0):
@@ -859,6 +861,7 @@ def test_suites_cli_success_exits_zero(workspace, monkeypatch) -> None:
 
 
 def test_suites_cli_prints_skipped_status_for_gated_features(workspace, monkeypatch, capsys) -> None:
+    (workspace / "x.feature").write_text("Feature: x\n\n  Scenario: s\n    Given a step\n", encoding="utf-8")
     path = _write_suites_yaml(workspace, "s:\n  tests: [x.feature]\n")
     summary = {
         "suite": "s",
@@ -906,3 +909,58 @@ def test_main_cli_invalid_yaml_is_a_clean_error(tmp_path, capsys) -> None:
     config.write_text("smoke: [unclosed\n", encoding="utf-8")
     assert main(["smoke", "--config", str(config)]) == 2
     assert "hercules-suite: error:" in capsys.readouterr().err
+
+
+def test_main_cli_unreadable_config_is_a_clean_error(tmp_path, capsys) -> None:
+    import os
+
+    config = tmp_path / "suites.yaml"
+    config.write_text("smoke:\n  tests: [a.feature]\n", encoding="utf-8")
+    os.chmod(config, 0)
+    try:
+        if os.access(config, os.R_OK):
+            pytest.skip("running with privileges that ignore file modes")
+        assert main(["smoke", "--config", str(config)]) == 2
+    finally:
+        os.chmod(config, 0o600)
+    err = capsys.readouterr().err
+    assert err.startswith("hercules-suite: error:") and "Traceback" not in err
+
+
+# ── TES-1947 review follow-ups ────────────────────────────────────────────────
+
+
+def _suite_config(tmp_path):
+    feature = tmp_path / "a.feature"
+    feature.write_text("Feature: a\n\n  Scenario: s\n    Given a step\n", encoding="utf-8")
+    config = tmp_path / "suites.yaml"
+    config.write_text(f"smoke:\n  tests: [{feature}]\n", encoding="utf-8")
+    return config
+
+
+def test_main_cli_runtime_oserror_is_not_reported_as_a_config_error(tmp_path, monkeypatch, capsys) -> None:
+    """Disk full / permission denied while running must keep its traceback, not become 'error: ...' exit 2."""
+    config = _suite_config(tmp_path)
+
+    async def boom(*args, **kwargs):
+        raise OSError("No space left on device")
+
+    monkeypatch.setattr(suites_module, "run_suite", boom)
+
+    with pytest.raises(OSError, match="No space left"):
+        main(["smoke", "--config", str(config)])
+    assert "hercules-suite: error:" not in capsys.readouterr().err
+
+
+def test_check_suite_config_accepts_a_valid_suite_and_rejects_cycles_and_empty_ones(tmp_path) -> None:
+    config = _suite_config(tmp_path)
+    suites_module.check_suite_config("smoke", str(config))  # no exception
+
+    with pytest.raises(ValueError, match="Unknown suite"):
+        suites_module.check_suite_config("nope", str(config))
+
+    feature = tmp_path / "a.feature"
+    cyc = tmp_path / "cycle.yaml"
+    cyc.write_text(f"a:\n  tests: [{feature}]\n  depends_on: [b]\nb:\n  tests: [{feature}]\n  depends_on: [a]\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="cycle"):
+        suites_module.check_suite_config("a", str(cyc))

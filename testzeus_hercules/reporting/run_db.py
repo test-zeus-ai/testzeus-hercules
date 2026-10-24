@@ -11,7 +11,11 @@ strings and decoded back into dicts on read.
 
 import json
 import os
+import random
+import sqlite3
 import threading
+import time
+import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Iterator
@@ -27,7 +31,7 @@ from sqlalchemy import (
     select,
     text,
 )
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
@@ -51,10 +55,18 @@ from testzeus_hercules.reporting.bundle import (
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.redact import redact_url
 
+# start_run retries this many times when a concurrent process takes the chosen run id first.
+START_RUN_ATTEMPTS = 5
 DEFAULT_DB_FILENAME = "hercules_history.db"
 FALLBACK_PROJECT_SOURCE_ROOT = "./opt"
 SQLITE_CONNECT_TIMEOUT_S = 30
 SQLITE_BUSY_TIMEOUT_MS = 30000
+# First use of a brand-new DB file by several processes at once (parallel scenario children): switching to WAL,
+# CREATE TABLE and ALTER TABLE can fail at once with "database is locked" / "table ... already exists" instead of
+# waiting on the busy timeout. These steps are idempotent, so they are retried for a bounded time.
+SQLITE_INIT_ATTEMPTS = 12
+SQLITE_INIT_RETRY_BASE_S = 0.05
+_SQLITE_CONTENTION_MARKERS = ("database is locked", "database is busy", "already exists", "duplicate column name")
 
 RUN_STATUS_RUNNING = "running"
 RUN_STATUS_PASSED = "passed"
@@ -315,6 +327,18 @@ def _pass_rate(passed: int, total: int) -> float | None:
     return min(1.0, max(0.0, passed / total))
 
 
+def _retry_on_sqlite_contention(operation, attempts: int = SQLITE_INIT_ATTEMPTS):
+    """Run an idempotent first-use SQLite operation, retrying while other processes race it (jittered backoff)."""
+    for attempt in range(attempts):
+        try:
+            return operation()
+        except OperationalError as exc:
+            if attempt == attempts - 1 or not any(marker in str(exc).lower() for marker in _SQLITE_CONTENTION_MARKERS):
+                raise
+            time.sleep(SQLITE_INIT_RETRY_BASE_S * (attempt + 1) * (0.5 + random.random()))
+    raise AssertionError("unreachable")  # pragma: no cover
+
+
 def _sqlite_configure(dbapi_connection, _connection_record) -> None:
     """Harden SQLite for concurrent writers: WAL journaling plus a busy timeout.
 
@@ -323,8 +347,16 @@ def _sqlite_configure(dbapi_connection, _connection_record) -> None:
     """
     cursor = dbapi_connection.cursor()
     try:
-        cursor.execute("PRAGMA journal_mode=WAL")
         cursor.execute(f"PRAGMA busy_timeout={SQLITE_BUSY_TIMEOUT_MS}")
+        # Changing the journal mode needs a lock the busy handler does not always wait for.
+        for attempt in range(SQLITE_INIT_ATTEMPTS):
+            try:
+                cursor.execute("PRAGMA journal_mode=WAL")
+                break
+            except sqlite3.OperationalError as exc:
+                if attempt == SQLITE_INIT_ATTEMPTS - 1 or "locked" not in str(exc).lower():
+                    raise
+                time.sleep(SQLITE_INIT_RETRY_BASE_S * (attempt + 1) * (0.5 + random.random()))
     finally:
         cursor.close()
 
@@ -348,8 +380,12 @@ class RunHistory:
         if db_url.startswith("sqlite"):
             event.listen(self.engine, "connect", _sqlite_configure)
         self.SessionLocal = sessionmaker(bind=self.engine, expire_on_commit=False)
-        Base.metadata.create_all(self.engine)
-        self._migrate_missing_columns()
+        if db_url.startswith("sqlite"):
+            _retry_on_sqlite_contention(lambda: Base.metadata.create_all(self.engine))
+            _retry_on_sqlite_contention(self._migrate_missing_columns)
+        else:
+            Base.metadata.create_all(self.engine)
+            self._migrate_missing_columns()
         # Per-junit cache of the collision-free bundle-dir name mapping, so the
         # per-case resolution below does not re-parse the XML for every case.
         self._bundle_dir_name_cache: dict[str, dict[str, str]] = {}
@@ -404,6 +440,10 @@ class RunHistory:
                         if "duplicate column name" not in str(exc).lower():
                             raise
                         logger.info("Column %s.%s was added concurrently; continuing", table.name, column.name)
+            # find_run_id_by_junit runs on every record; keep it an index lookup. Created here (not via
+            # index=True on the Text column) after the column migration, so existing databases get it
+            # too and non-sqlite backends are left alone.
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_runs_junit_xml ON runs (junit_xml)"))
 
     @contextmanager
     def _session(self) -> Iterator[Session]:
@@ -433,6 +473,11 @@ class RunHistory:
         with self._session() as session:
             return session.scalar(select(Run.id).where(Run.run_id == run_id)) is not None
 
+    def find_run_id_by_junit(self, junit_xml: str) -> str | None:
+        """run_id of the run recorded from this junit file (newest first), or None."""
+        with self._session() as session:
+            return session.scalar(select(Run.run_id).where(Run.junit_xml == _abspath(junit_xml)).order_by(Run.id.desc()))
+
     def delete_run(self, run_id: str) -> bool:
         """Delete a run and all dependent rows (cases, steps, artifacts, healing events).
 
@@ -453,16 +498,37 @@ class RunHistory:
 
     # -- writing -----------------------------------------------------------
 
-    def start_run(self, run_id: str | None = None, meta: dict | None = None) -> str:
-        """Create a new run row and return its run_id (generated when not given)."""
-        with self._session() as session:
-            if run_id is None:
-                run_id = self._generate_run_id(session)
-            elif session.scalar(select(Run.id).where(Run.run_id == run_id)) is not None:
-                run_id = self._generate_run_id(session, base=run_id)
-            run = Run(run_id=run_id, started_at=_utcnow(), status=RUN_STATUS_RUNNING, meta_json=json.dumps(meta, sort_keys=True) if meta else None)
-            session.add(run)
-        return run_id
+    def start_run(self, run_id: str | None = None, meta: dict | None = None, junit_xml: str | None = None) -> str:
+        """Create a new run row and return its run_id (generated when not given).
+
+        ``junit_xml`` is stored with the row from the start, so a concurrent writer (or a later
+        re-record after a crash) can tell which output the id belongs to.
+        """
+        requested = run_id
+        for attempt in range(START_RUN_ATTEMPTS):
+            try:
+                with self._session() as session:
+                    if run_id is None:
+                        run_id = self._generate_run_id(session)
+                    elif session.scalar(select(Run.id).where(Run.run_id == run_id)) is not None:
+                        run_id = self._generate_run_id(session, base=run_id)
+                    run = Run(
+                        run_id=run_id,
+                        started_at=_utcnow(),
+                        status=RUN_STATUS_RUNNING,
+                        meta_json=json.dumps(meta, sort_keys=True) if meta else None,
+                        junit_xml=_abspath(junit_xml) if junit_xml else None,
+                    )
+                    session.add(run)
+                return run_id
+            except IntegrityError:
+                # Another process took the id between our check and our insert (parallel scenario
+                # children finishing in the same instant): pick a fresh, random-suffixed name.
+                if attempt == START_RUN_ATTEMPTS - 1:
+                    raise
+                base = requested or datetime.now(timezone.utc).strftime("run_%Y%m%d_%H%M%S")
+                run_id = f"{base}_{uuid.uuid4().hex[:6]}"
+        raise AssertionError("unreachable")  # pragma: no cover
 
     @staticmethod
     def _generate_run_id(session: Session, base: str | None = None) -> str:
@@ -859,15 +925,23 @@ def record_run_summary(summary: dict, run_id: str | None = None, db: RunHistory 
         db = get_default_history()
 
     junit_xml = summary.get("junit_xml") or ""
+    replace_existing = run_id is not None  # an explicit run_id always replaces its earlier record
     if run_id is None and junit_xml:
-        run_id = os.path.basename(os.path.dirname(os.path.abspath(junit_xml))) or None
+        derived = os.path.basename(os.path.dirname(os.path.abspath(junit_xml))) or None
+        # The default id is only the output folder's timestamp name (run_YYYYmmdd_HHMMSS), which parallel
+        # scenario processes that start in the same second share. A re-record of the SAME junit file keeps
+        # its earlier id and replaces that record; a different file never replaces another run's record
+        # (start_run gives it a free "<id>_<n>" name instead).
+        prior = db.find_run_id_by_junit(junit_xml)
+        run_id = prior or derived
+        replace_existing = prior is not None
 
-    if run_id is not None and db.has_run(run_id):
+    if replace_existing and run_id is not None and db.has_run(run_id):
         # Idempotent re-record: replace the previous run instead of letting start_run
         # rename to <id>_1, which would create a phantom double-counted duplicate.
         logger.info("Run %s already recorded in history; replacing the previous record.", run_id)
         db.delete_run(run_id)
-    run_id = db.start_run(run_id=run_id, meta={"feature_file": summary.get("feature_file")} if summary.get("feature_file") else None)
+    run_id = db.start_run(run_id=run_id, meta={"feature_file": summary.get("feature_file")} if summary.get("feature_file") else None, junit_xml=junit_xml or None)
     db._set_run_outputs(run_id, summary)
 
     if junit_xml and not os.path.isfile(junit_xml):
