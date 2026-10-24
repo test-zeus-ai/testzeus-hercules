@@ -367,31 +367,36 @@ docker run --env-file=.env \
 
 When running Hercules in Docker, you can connect to remote browser instances using various platforms:
 
-1. **BrowserStack Integration**:
+1. **Browser Use Integration**:
+```bash
+export CDP_ENDPOINT_URL=wss://connect.browser-use.com?apiKey=your_api_key
+```
+
+2. **BrowserStack Integration**:
 ```bash
 export BROWSERSTACK_USERNAME=your_username
 export BROWSERSTACK_ACCESS_KEY=your_access_key
 export CDP_ENDPOINT_URL=$(python helper_scripts/browser_stack_generate_cdp_url.py)
 ```
 
-2. **LambdaTest Integration**:
+3. **LambdaTest Integration**:
 ```bash
 export LAMBDATEST_USERNAME=your_username
 export LAMBDATEST_ACCESS_KEY=your_access_key
 export CDP_ENDPOINT_URL=$(python helper_scripts/lambda_test_generate_cdp_url.py)
 ```
 
-3. **BrowserBase Integration**:
+4. **BrowserBase Integration**:
 ```bash
 export CDP_ENDPOINT_URL=wss://connect.browserbase.com?apiKey=your_api_key
 ```
 
-4. **AnchorBrowser Integration**:
+5. **AnchorBrowser Integration**:
 ```bash
 export CDP_ENDPOINT_URL=wss://connect.anchorbrowser.io?apiKey=your_api_key
 ```
 
-Note: Video recording is only supported on platforms that use connect_over_cdp (BrowserBase, AnchorBrowser). Platforms using the connect API (BrowserStack, LambdaTest) do not support video recording.
+Note: Video recording is only supported on platforms that use connect_over_cdp (Browser Use, BrowserBase, AnchorBrowser). Platforms using the connect API (BrowserStack, LambdaTest) do not support video recording.
 
 #### Output and Logs
 
