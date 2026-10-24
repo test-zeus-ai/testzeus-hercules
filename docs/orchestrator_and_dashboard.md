@@ -61,8 +61,8 @@ Related: `docs/run_guide.md` (single runs, CI exit codes), `docs/mcp_server.md`,
   `SKIPPED` and counted as errors (exit 1), unless `skip_on_dependency_failure: false`.
 - Dependency suites are folded into the invoking suite's run under **the invoking
   suite's** `retry`, `env` and `max_parallel`; a warning is logged when they differ.
-- `shared_state: true` only exports `HERCULES_SUITE_STATE_FILE`; nothing in this
-  repository reads that file (see 4.2).
+- `shared_state: true` exports `HERCULES_SUITE_STATE_FILE` to the scenario processes
+  (a hook for your own tooling; Hercules itself does not read it, see 4.2).
 - The dashboard is not purely read-only: `POST /import` writes into the history DB.
   It is also not static: pages render from the DB per request and `/live` polls.
 - Running Hercules does not populate the dashboard by itself. Runs are recorded only
@@ -552,16 +552,19 @@ hercules-monitor --config .hercules/monitor.yaml --once      # from cron/CI inst
 | `HERCULES_HISTORY_DB` | runs, dashboard | History DB location; injected into children when unset (a relative value in a suite `env:` resolves inside the throwaway workspace) |
 | `ENABLE_RUN_HISTORY` | runs | Record runs into the DB the dashboard reads |
 | `DASHBOARD_AUTH_TOKEN`, `DASHBOARD_ALLOWED_HOSTS` | dashboard | Token (mandatory for non-loopback binds) and extra Host names |
-| `HERCULES_SUITE_STATE_FILE` | children of `shared_state` suites | Path of the suite JSONL file |
+| `HERCULES_SUITE_STATE_FILE` | children of `shared_state` suites | Path of the suite JSONL file (an output of the suite, not a setting: it is not read as a default anywhere) |
 
 ### 4.2 `shared_state`
 
 With `shared_state: true` every scenario receives
 `HERCULES_SUITE_STATE_FILE=<workroot>/suite_state.json`. The suite itself appends one
-completion record per suite run (always, whether or not `shared_state` is on). Nothing in
-the Hercules code base reads the variable, so it is a hook for your own steps or tools
-only. Whether a given Hercules tool can read the environment variable from a feature step
-was not verified.
+completion record per suite run (always, whether or not `shared_state` is on).
+
+*Design note:* the variable is an output of `hercules-suite`, not a setting. The Hercules
+code base does not read it, so it is a hook for your own scripts or tools; setting it
+yourself in `env:` has no effect (a suite with `shared_state: true` replaces it and logs a
+warning). Whether a given Hercules tool can read the environment variable from a feature
+step was not verified.
 
 ## 5. Troubleshooting
 
@@ -598,9 +601,15 @@ was not verified.
 - `SIGKILL` of an orchestrator leaves its scenario processes running (verified: after `kill -KILL` on `hercules-run-manager` the scenario `python -m testzeus_hercules` process was reparented to pid 1; they live in their
   own sessions and cannot be signalled by the dead parent). Stop with SIGINT/SIGTERM.
 - `hercules-suite` and `hercules-monitor` have no per-scenario timeout flag.
-- Dashboard import keeps one run per output folder and stamps import time (verified).
 - The dashboard displays absolute artifact paths on case pages; do not expose it to
   people who should not see the host layout.
-- `HERCULES_SUITE_STATE_FILE` is exported but not consumed by anything in this repository.
 - There are no `start/status/stop/resume` subcommands on `hercules-run-manager`: it runs
   one feature file to completion in the foreground.
+
+### Design notes (intended behaviour, not defects)
+
+- Dashboard import keeps **one run per output folder**, named after the folder, and
+  stamps the **import time** as the run's start time (import does not read a start time
+  from the result file). A run recorded by the run itself (`ENABLE_RUN_HISTORY=true`) is
+  stamped when it is recorded, right after the run finishes, and gets one run per result
+  file; prefer that when you need close-to-real times or several result files per folder.

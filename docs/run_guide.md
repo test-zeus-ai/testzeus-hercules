@@ -562,8 +562,8 @@ Per-suite options: `tests` (feature files or directories), `plan` (compile a
 `test_plan.json` into a temporary feature instead), `retry` (per-scenario
 retries), `depends_on` (suites that run first), `env` (extra environment
 variables for every scenario subprocess), `shared_state` (exports
-`HERCULES_SUITE_STATE_FILE=<workroot>/suite_state.json` so features can chain
-suite-level state), and `max_parallel` (scenario subprocesses; default 1 runs
+`HERCULES_SUITE_STATE_FILE=<workroot>/suite_state.json` to the scenario processes for your
+own tooling; Hercules does not read it), and `max_parallel` (scenario subprocesses; default 1 runs
 features sequentially). `--max-parallel` on the CLI overrides the suite
 value. `hercules-suite` exits 1 when any scenario failed or errored
 (`EXIT_CODE_COMPAT=1` forces 0) and 2 with a one-line error for configuration
