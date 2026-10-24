@@ -80,6 +80,7 @@ from testzeus_hercules.orchestrator.session import (
     SessionState,
     get_session_manager,
     redact_url,
+    explicit_session_id_required,
     set_require_explicit_session_id,
 )
 from testzeus_hercules.reporting.bundle import parse_junit_testcases
@@ -1205,23 +1206,29 @@ async def generate_gherkin(description: str) -> str:
 
 
 @mcp.tool()
-async def run_test(gherkin: str = "", description: str = "", additional_instructions: str = "") -> str:
+async def run_test(gherkin: str = "", description: str = "", additional_instructions: str = "", session_id: str = "") -> str:
     """DEPRECATED: use hercules_configure_session + hercules_generate_and_execute(gherkin=..., description=...).
 
     Thin wrapper: creates an ephemeral session when none exists (only when
     there is something to run, and it never becomes the "most recent" session),
     generates Gherkin from ``description`` when needed, executes it in-process
-    and returns a compact text summary.
+    and returns a compact text summary. When an auth token is enforced (remote/shared use)
+    ``session_id`` is required, exactly like the ``hercules_*`` session tools.
 
     Args:
         gherkin: Raw Gherkin feature content to run directly (highest priority).
         description: Plain-English description; Gherkin is generated from it via LLM.
         additional_instructions: Extra hints for the agent, appended as Gherkin comments in the feature file.
+        session_id: Session to run in. Optional on a loopback server without a token (defaults to the most recent session).
     """
     manager = get_session_manager()
     try:
-        session_id = manager.resolve_session().session_id
-    except (KeyError, ValueError):
+        session_id = manager.resolve_session(session_id).session_id
+    except KeyError as exc:  # explicit but unknown id: never fall back to another/synthetic session
+        return f"Error: {exc.args[0]}"
+    except ValueError as exc:
+        if explicit_session_id_required():
+            return f"Error: {exc}"
         if not gherkin.strip() and not description.strip():
             return "Error: No session. Call hercules_configure_session first."
         # Synthetic session for this one-off run; touch_recent=False keeps it

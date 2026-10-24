@@ -173,7 +173,7 @@ Hercules run.
 | Client reads arbitrary files via `project_path` / `prd_path` | `resolve_within`: realpath inside the Hercules root, `PROJECT_SOURCE_ROOT`, `TEST_DATA_PATH` or `HERCULES_MCP_ALLOWED_ROOTS`; `/` and `$HOME` are never accepted as roots; PRD files must be document types with non-secret names | Stored session state is not re-checked: a `project_path` edited into `sessions.json` is used as-is (see 10) |
 | SSRF through `prd_path` URL | `url_guard` (public addresses only, redirects re-checked, IP pinned, bounded) | The `app_url` probe and the URLs test steps visit are intentionally not guarded; they must reach local apps |
 | Running an LLM-generated plan unreviewed | Approval gate bound to the plan's SHA-256 | A careless reviewer; `HERCULES_MCP_AUTO_APPROVE_PLAN=true` |
-| One client driving another client's session | With a token, `session_id` is mandatory for every `hercules_*` tool; unknown ids reveal nothing | The legacy `run_test` alias (and `get_test_results`/`generate_gherkin`) still work without a `session_id` in token mode: `run_test` runs the Gherkin in a synthetic session. Verified on this branch. Do not expose the legacy aliases to less-trusted clients; there is no switch to disable them |
+| One client driving another client's session | With a token, `session_id` is mandatory for the session tools (`hercules_generate_code_summary`, `_generate_standardized_prd`, `_generate_test_plan`, `_generate_and_execute`, `_rerun`) and for the legacy `run_test` alias; unknown ids reveal nothing | `hercules_get_run_results`, `hercules_open_dashboard`, `hercules_check_config`, `get_test_results` and `generate_gherkin` never read session state and take no session; results are read from the shared `opt/output` folder |
 | Host path leakage to remote clients | Tool results use root-relative paths or bare names; errors and JUnit failure text are scrubbed | `sessions.json` and the artifact files on disk hold absolute paths (the file is mode 0600) |
 | Credential leakage via session state | `credentials` is ignored; `app_url` and PRD URL secrets are redacted before persisting | Anything you put into Gherkin text is written verbatim to `opt/input/*.feature` and kept |
 | Hung run pinning the server | `HERCULES_MCP_EXEC_TIMEOUT`; Gherkin generation capped at 120 s | Queued callers wait without a bound |
@@ -329,7 +329,7 @@ Legacy tools are still registered for backwards compatibility but are
 deprecated:
 
 - `generate_gherkin(description)` — use `hercules_generate_and_execute(description=...)`.
-- `run_test(gherkin, description)` — use `hercules_configure_session` + `hercules_generate_and_execute`.
+- `run_test(gherkin, description, additional_instructions, session_id)` — use `hercules_configure_session` + `hercules_generate_and_execute`.
 - `get_test_results(run_id)` — use `hercules_get_run_results`.
 
 ### Results semantics
@@ -602,8 +602,11 @@ your deployment around them rather than assuming they are mitigated.
   (the dashboard refuses to serve history databases, selector/session stores and
   dotfiles, but anything else under the project root is downloadable by whoever can
   reach it).
-- **Legacy aliases ignore the explicit-session rule.** In token mode `run_test`,
-  `generate_gherkin` and `get_test_results` still work without a `session_id`.
+- **Legacy `run_test` follows the explicit-session rule.** In token mode it needs a
+  `session_id` (it has an optional `session_id` argument now) and answers
+  `Error: session_id is required when MCP_AUTH_TOKEN is set ...` without it; an
+  unknown id answers `Error: Unknown session_id ...`. `generate_gherkin` and
+  `get_test_results` do not read session state, like `hercules_get_run_results`.
 - **PRD and Gherkin content are persisted as written.** See section 7.
 
 ## 9. Troubleshooting
@@ -643,8 +646,6 @@ your deployment around them rather than assuming they are mitigated.
   paths do not apply to this server.
 - Windows paths and process semantics were not verified (path confinement uses
   `realpath`/`commonpath`; the orchestrators use POSIX process groups).
-- Legacy `run_test` does not honor token-mode session binding (verified): it runs
-  without a `session_id` in a synthetic session.
 - A `project_path` already stored in `sessions.json` is not re-confined when it is
   used later: only the value passed to `hercules_configure_session` (or
   `hercules_generate_code_summary(project_path=...)`) is checked. Verified: after editing

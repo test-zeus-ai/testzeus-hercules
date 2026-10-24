@@ -804,6 +804,60 @@ def test_legacy_run_test_forwards_additional_instructions(workspace, monkeypatch
     assert captured["content"].startswith("# Use the admin user")
 
 
+GHERKIN = "Feature: G\n\n  Scenario: s\n    Given a\n"
+
+
+def test_legacy_run_test_requires_session_id_in_token_mode(workspace, monkeypatch) -> None:
+    """With a bearer token enforced, run_test must not run in the most-recent or a synthetic session."""
+    _tmp_path, manager = workspace
+    manager.create_session("https://app.example.com")
+    monkeypatch.setenv("MCP_AUTH_TOKEN", "s" * 40)
+    executed: list[str] = []
+
+    async def fake_execute(feature_path: str, progress_sink=None) -> ExecutionOutcome:
+        executed.append(feature_path)
+        return _fake_outcome()
+
+    monkeypatch.setattr(mcp_server, "execute_feature_file", fake_execute)
+    text = run(mcp_server.run_test(gherkin=GHERKIN))
+    assert text.startswith("Error:") and "session_id is required" in text
+    assert executed == []
+    assert len(manager.list_sessions()) == 1  # no synthetic session created either
+
+
+def test_legacy_run_test_requires_session_id_in_token_mode_on_empty_registry(workspace, monkeypatch) -> None:
+    _tmp_path, manager = workspace
+    monkeypatch.setenv("MCP_AUTH_TOKEN", "s" * 40)
+    text = run(mcp_server.run_test(gherkin=GHERKIN))
+    assert "session_id is required" in text
+    assert manager.list_sessions() == []
+
+
+def test_legacy_run_test_honours_explicit_session_id_in_token_mode(workspace, monkeypatch) -> None:
+    _tmp_path, manager = workspace
+    first = manager.create_session("https://first.example.com")
+    manager.create_session("https://second.example.com")
+    monkeypatch.setenv("MCP_AUTH_TOKEN", "s" * 40)
+
+    async def fake_execute(feature_path: str, progress_sink=None) -> ExecutionOutcome:
+        return _fake_outcome()
+
+    monkeypatch.setattr(mcp_server, "execute_feature_file", fake_execute)
+    text = run(mcp_server.run_test(gherkin=GHERKIN, session_id=first.session_id))
+    assert "success=True" in text
+    assert len(first.last_run_summaries) == 1  # recorded on the session that was asked for, not the newest
+    text = run(mcp_server.run_test(gherkin=GHERKIN, session_id="sess_does_not_exist"))
+    assert text.startswith("Error:") and "Unknown session_id" in text
+
+
+def test_legacy_run_test_unknown_session_id_does_not_fall_back_without_token(workspace, monkeypatch) -> None:
+    _tmp_path, manager = workspace
+    monkeypatch.delenv("MCP_AUTH_TOKEN", raising=False)
+    text = run(mcp_server.run_test(gherkin=GHERKIN, session_id="sess_nope"))
+    assert text.startswith("Error:") and "Unknown session_id" in text
+    assert manager.list_sessions() == []
+
+
 # ── notification hub forwarding ───────────────────────────────────────────────
 
 

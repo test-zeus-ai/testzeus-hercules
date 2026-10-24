@@ -108,6 +108,5 @@ Key properties that hold across the layers:
 | MCP and dashboard | Token mode, bind refusals, plan approval, path and SSRF guards, XSS escaping | TLS, Windows paths, PDF/DOCX PRDs |
 | Orchestrators | Suite, run manager, monitor with a local webhook, signal handling | Real Slack notifications |
 
-The remaining known gaps (for example the legacy `run_test` tool not requiring
-a session id in token mode) are listed in the "known limits" section of the
-relevant guide.
+The remaining known gaps (for example real-LLM runs, TLS and Windows paths) are
+listed in the "known limits" section of the relevant guide.
