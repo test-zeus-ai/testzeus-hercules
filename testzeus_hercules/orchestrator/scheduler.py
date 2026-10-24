@@ -77,6 +77,12 @@ def _resolve_state_file(data: dict, config_dir: str) -> str:
     resolved = resolve_config_path(entry, config_dir)
     if os.path.isabs(resolved):
         return resolved
+    # An entry that already names a path inside the YAML's own directory when read from the cwd
+    # (the old shipped example: `.hercules/monitor_state.json` next to `.hercules/monitor.yaml`)
+    # must not be nested a second time under that directory.
+    from_cwd = os.path.abspath(entry)
+    if os.path.realpath(os.path.dirname(from_cwd)) == os.path.realpath(config_dir):
+        return from_cwd
     return os.path.normpath(os.path.join(config_dir, entry))
 
 
@@ -440,16 +446,22 @@ def main(argv: list[str] | None = None) -> int:
             logger.info("Monitor stopped by signal %s.", exc.signum)
         return 0
 
+    try:
+        for suite_name in cfg["suites"]:
+            suites.check_suite_config(suite_name, cfg["config"])
+    except (OSError, ValueError, yaml.YAMLError) as exc:
+        # The suites config the monitor points at is missing, unreadable or invalid. Checked up
+        # front so this handler never hides a runtime failure of the cycle itself.
+        logger.debug("Suite configuration check failed", exc_info=True)
+        print(f"hercules-monitor: error: {_one_line(exc)}", file=sys.stderr)
+        return 2
+
     state = load_state(cfg["state_file"])
     try:
         summary = run_manager.run_cli(run_monitor_once(cfg, state))
     except run_manager.CliInterrupted as exc:
         print(f"hercules-monitor: interrupted (signal {exc.signum}); scenario processes terminated.", file=sys.stderr)
         return exc.exit_code
-    except (FileNotFoundError, ValueError, yaml.YAMLError) as exc:
-        # e.g. the suites config the monitor points at is missing or invalid.
-        print(f"hercules-monitor: error: {_one_line(exc)}", file=sys.stderr)
-        return 2
     print(_format_summary(summary))
     regression = summary.get("regression") or {}
     print(f"Regressed: {bool(regression.get('regressed'))}; new failures: {', '.join(regression.get('new_failures') or []) or 'none'}; fixed: {', '.join(regression.get('fixed') or []) or 'none'}")
