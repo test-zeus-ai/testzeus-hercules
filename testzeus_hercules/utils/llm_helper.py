@@ -19,7 +19,7 @@ from testzeus_hercules.utils.model_utils import adapt_llm_params_for_model
 from testzeus_hercules.utils.response_parser import parse_response
 
 DEFAULT_LLM_SYS_MSG = "You are a helpful AI assistant."
-DEFAULT_MODEL = "gpt-4o"
+DEFAULT_MODEL = "gpt-5.4"
 DEFAULT_LLM_REQUEST_TIMEOUT_SECONDS = 60.0
 DEFAULT_LLM_MAX_RETRIES = 1
 

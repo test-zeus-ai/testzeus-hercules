@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 # how to run
-# python helper_scripts/generate_api_security_gherkin_test.py tests/test_features/ApiTesting/api_spec.yml --output=helper_scripts/output --model=gpt-4o
+# python helper_scripts/generate_api_security_gherkin_test.py tests/test_features/ApiTesting/api_spec.yml --output=helper_scripts/output --model=gpt-5.4
 
 import os
 import sys
@@ -212,7 +212,7 @@ def main() -> None:
         "--model",
         metavar="model",
         type=str,
-        default="gpt-4o",
+        default="gpt-5.4",
         help="The model to use for the OpenAI API.",
     )
     args = parser.parse_args()

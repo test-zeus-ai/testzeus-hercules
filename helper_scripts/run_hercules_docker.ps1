@@ -97,7 +97,7 @@ if (-not (Test-Path "agents_llm_config.json")) {
     {
       "provider_name": "OpenAI",
       "api_key": "YOUR_API_KEY",
-      "model": "gpt-3.5-turbo"
+      "model": "gpt-5.4"
     }
   ]
 }

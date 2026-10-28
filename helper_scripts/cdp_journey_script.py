@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-#python vir_migration_script.py raw_jsons/test1.json --output=output_txt --model=gpt-4o
+#python vir_migration_script.py raw_jsons/test1.json --output=output_txt --model=gpt-5.4
 
 
 import os
@@ -120,7 +120,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="JSON-in -> Gherkin-out script using OpenAI.")
     parser.add_argument("input_json", type=str, help="Path to the JSON file (Journey-like).")
     parser.add_argument("--output", type=str, required=True, help="Output folder for .feature files.")
-    parser.add_argument("--model", type=str, default="gpt-4o", help="OpenAI model name (default=gpt-4o).")
+    parser.add_argument("--model", type=str, default="gpt-5.4", help="OpenAI model name (default=gpt-5.4).")
     parser.add_argument(
         "--number_of_testcase",
         metavar="number_of_testcase",

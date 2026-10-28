@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-#python vir_migration_script.py raw_jsons/test1.json --output=output_txt --model=gpt-4o
+#python vir_migration_script.py raw_jsons/test1.json --output=output_txt --model=gpt-5.4
 
 
 import os
@@ -196,7 +196,7 @@ def main():
     parser = argparse.ArgumentParser(description="JSON-in -> Gherkin-out script using OpenAI.")
     parser.add_argument("input_json", type=str, help="Path to the JSON file (Virtuoso-like).")
     parser.add_argument("--output", type=str, required=True, help="Output folder for .feature files.")
-    parser.add_argument("--model", type=str, default="o1-preview", help="OpenAI model name (default=o1-preview).")
+    parser.add_argument("--model", type=str, default="gpt-5.4", help="OpenAI model name (default=gpt-5.4).")
     args = parser.parse_args()
 
     # 1) Read the JSON data
