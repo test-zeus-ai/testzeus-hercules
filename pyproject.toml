@@ -87,7 +87,7 @@ dev = [
     "ipdb>=0.13.13,<0.14",
     "twine>=5.1.1,<6",
     "deptry>=0.21.0,<0.22",
-    "pytest-rerunfailures>=15.0,<16",
+    "pytest-rerunfailures>=15.0,<17",
 ]
 
 [project.optional-dependencies]
