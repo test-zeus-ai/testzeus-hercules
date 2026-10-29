@@ -164,7 +164,7 @@ jobs:
       # job below creates the tags.
       - name: Build (and push by digest)
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: ${{ matrix.platform }}
