@@ -92,7 +92,7 @@ dev = [
 
 [project.optional-dependencies]
 api = ["jsonpath-ng>=1.6,<1.8", "openapi-schema-validator>=0.6,<1"]
-mobile = ["appium-python-client>=4.5.0,<6"]
+mobile = ["appium-python-client>=4.5.0,<7"]
 
 [tool.setuptools]
 packages = ["testzeus_hercules"]
