@@ -16,7 +16,11 @@ from langchain_openai import AzureChatOpenAI, ChatOpenAI
 from testzeus_hercules.core.agents_llm_config_manager import AgentsLLMConfigManager
 from testzeus_hercules.utils.logger import logger
 from testzeus_hercules.utils.model_utils import adapt_llm_params_for_model
-from testzeus_hercules.utils.response_parser import parse_response
+from testzeus_hercules.utils.response_parser import (
+    parse_helper_response,
+    parse_planner_response,
+    parse_response,
+)
 
 DEFAULT_LLM_SYS_MSG = "You are a helpful AI assistant."
 DEFAULT_MODEL = "gpt-4o"
@@ -383,7 +387,7 @@ def is_agent_planner_termination_message(
 ) -> bool:
     """Return True when planner JSON indicates terminate=yes."""
     try:
-        content_json = parse_response(content)
+        content_json = parse_planner_response(content)
         if content_json.get("terminate", "no") == "yes":
             if final_response_callback and content_json.get("final_response"):
                 final_response_callback(content_json["final_response"])
@@ -495,7 +499,7 @@ def extract_planner_summary(messages: list[BaseMessage]) -> str:
         # planner-shaped — and any such message is skipped regardless, so the
         # heuristic can no longer drop a verdict.
         try:
-            parsed = parse_response(content)
+            parsed = parse_planner_response(content)
         except Exception:
             continue
         if _looks_like_planner_json(parsed):
@@ -518,17 +522,18 @@ class GraphChatResult:
     messages: list[BaseMessage] = field(default_factory=list)
     cost: dict[str, Any] = field(default_factory=dict)
     terminate: str = "no"
-    # Last non-empty navigation-helper answer; carries the real PASS/FAIL
-    # outcome when the final planner message is not a terminal decision.
+    # Latest navigation-helper answer, including a blank reply. Earlier step
+    # results remain in messages and must not become the final verdict.
     last_helper_response: str = ""
 
     @property
     def summary(self) -> str:
         # 1) A terminal planner JSON wins.
         planner_summary = extract_planner_summary(self.messages)
-        if planner_summary and parse_response(planner_summary).get("terminate") == "yes":
+        if planner_summary and parse_planner_response(planner_summary).get("terminate") == "yes":
             return planner_summary
-        # 2) A terminal helper answer (PASS/FAIL verdict or terminate marker)
+        # 2) A terminal helper answer with an explicit verdict (a bare step
+        # marker is insufficient)
         # preserves the real test outcome even when the planner's latest
         # message is a non-terminal decision, provided the graph itself ended
         # (terminate == "yes"). When the run was cut short (terminate == "no":
@@ -536,24 +541,26 @@ class GraphChatResult:
         # test: the browser helper ends every successful step with "### Success:
         # ... ##TERMINATE TASK##", so treating it as a verdict would turn an
         # unfinished run into a pass. Only a failure verdict is trusted then.
-        helper_result = parse_response(self.last_helper_response)
-        if helper_result.get("terminate") == "yes":
+        helper_result = parse_helper_response(self.last_helper_response)
+        has_verdict = helper_result.get("is_assert") is True and isinstance(helper_result.get("is_passed"), bool)
+        if helper_result.get("terminate") == "yes" and has_verdict:
             helper_failed = helper_result.get("is_assert") is True and helper_result.get("is_passed") is False
             if self.terminate == "yes" or helper_failed:
                 return json.dumps(helper_result)
         # 3) Non-terminal planner response.
         if planner_summary:
             return planner_summary
-        # 4) Generic completion message, preferring any helper text over a
-        # placeholder when the graph terminated without planner JSON.
+        # 4) Ending the graph without a verdict is not a verified pass. Keep
+        # the latest helper text as diagnostic evidence, but report failure.
         if self.terminate == "yes":
             helper_response = self.last_helper_response.strip()
-            if helper_response:
-                return json.dumps({"terminate": "yes", "final_response": helper_response})
             return json.dumps(
                 {
                     "terminate": "yes",
-                    "final_response": "Test ended without planner JSON.",
+                    "final_response": helper_response or "Test ended without a terminal verdict.",
+                    "is_assert": True,
+                    "is_passed": False,
+                    "assert_summary": "No terminal planner decision or explicit helper verdict was produced.",
                 }
             )
         return ""

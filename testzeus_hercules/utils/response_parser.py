@@ -23,7 +23,7 @@ TERMINATE_TASK_MARKER = "##TERMINATE TASK##"
 # A verdict prefix needs a separator (colon, dash, en dash or em dash) right
 # after PASS/FAIL, so a legend line like "PASS/FAIL legend: which is which" is
 # not read as terminal.
-_TERMINAL_STATUS_PATTERN = re.compile(r"^\s*(PASS|FAIL)\s*[:\-–—]", re.IGNORECASE)
+_TERMINAL_STATUS_PATTERN = re.compile(r"^\s*(PASS|FAIL)\s*[:\-–—]")
 _TERMINAL_FAILURE_MARKERS = ("[error]", "[tool error]", "incomplete", "uncertain", "max nav rounds")
 # Canonical helper verdict sections (see e.g. the browser nav agent's response
 # format): "### Success:" or "### Error or Uncertainty:" followed by the
@@ -138,6 +138,27 @@ def _last_planner_object(message: str) -> dict[str, Any] | None:
         if isinstance(parsed_candidate, dict) and any(key in parsed_candidate for key in _PLANNER_KEYS):
             return parsed_candidate
     return None
+
+
+def parse_planner_response(message: str) -> dict[str, Any]:
+    """Read planner JSON without interpreting helper text as a decision."""
+    if not message or not message.strip():
+        return {}
+    return _last_planner_object(message) or {}
+
+
+def parse_helper_response(message: str) -> dict[str, Any]:
+    """Read helper verdicts before inspecting incidental JSON or planner words."""
+    # A structured helper verdict is authoritative even when its diagnostic
+    # text quotes a Success section or a step-completion marker.
+    if message.lstrip().startswith(("{", "```")):
+        structured = parse_planner_response(message)
+        if structured:
+            return structured
+    terminal_text = _parse_terminal_text(message)
+    if terminal_text.get("is_assert") is True:
+        return terminal_text
+    return parse_planner_response(message) or terminal_text
 
 
 def parse_response(message: str) -> dict[str, Any]:

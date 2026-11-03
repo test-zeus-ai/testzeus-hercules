@@ -35,11 +35,14 @@ from testzeus_hercules.core.post_process_responses import (
 )
 from testzeus_hercules.core.tools import *  # noqa: F403
 from testzeus_hercules.core.tools.tool_registry import tool_registry
+from testzeus_hercules.utils.env_flags import (
+    observer_invariants_enabled,
+    strict_verdict_enabled,
+)
 from testzeus_hercules.utils.error_evidence import (
     _redact_error_text,
     persist_error_evidence,
 )
-from testzeus_hercules.utils.env_flags import observer_invariants_enabled, strict_verdict_enabled
 from testzeus_hercules.utils.llm_helper import (
     GraphChatResult,
     convert_model_config_to_langchain_format,
@@ -47,7 +50,7 @@ from testzeus_hercules.utils.llm_helper import (
     get_llm_request_timeout_seconds,
 )
 from testzeus_hercules.utils.logger import logger
-from testzeus_hercules.utils.response_parser import parse_response
+from testzeus_hercules.utils.response_parser import parse_planner_response
 from testzeus_hercules.utils.timestamp_helper import get_timestamp_str
 from testzeus_hercules.utils.ui_messagetype import MessageType
 
@@ -613,7 +616,7 @@ class SimpleHercules:
         planner.on_planner_message(content)
 
         try:
-            parsed = parse_response(content)
+            parsed = parse_planner_response(content)
         except Exception:
             parsed = {}
 
@@ -644,7 +647,7 @@ class SimpleHercules:
                 logger.warning("[PLANNER_DEBUG] turn=%d retry raw=%s", turn, repr(content)[:400])
                 planner.on_planner_message(content)
                 try:
-                    parsed = parse_response(content)
+                    parsed = parse_planner_response(content)
                 except Exception:
                     parsed = {}
                 if any(key in parsed for key in self._PLANNER_DECISION_KEYS):
@@ -1203,9 +1206,8 @@ class SimpleHercules:
         if target_helper in {"browser", "agent"}:
             current_url = (await self._get_live_current_url()) or current_url
 
-        # Keep the previous non-empty helper answer when this run produced
-        # nothing; a blank response must not clobber the last known outcome.
-        last_helper_response = helper_response if helper_response.strip() else str(state.get("last_helper_response") or "")
+        # A blank reply belongs to this step; carrying an earlier verdict
+        # forward would misrepresent that earlier step as the final result.
 
         elapsed = time.perf_counter() - start
 
@@ -1222,7 +1224,7 @@ class SimpleHercules:
         return {
             "messages": messages,
             "completed_step_signatures": completed_step_signatures,
-            "last_helper_response": last_helper_response,
+            "last_helper_response": helper_response,
             "current_url": current_url,
             "step_token_log": state.get("step_token_log", []) + [executor_entry],
             "total_prompt_tokens": int(state.get("total_prompt_tokens", 0) or 0) + nav_prompt_tokens,

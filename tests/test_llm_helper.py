@@ -1,5 +1,6 @@
 import json
 
+import pytest
 from langchain_core.messages import AIMessage
 from testzeus_hercules.config import NonSingletonConfigManager
 from testzeus_hercules.core.agents import base_nav_agent as base_nav_agent_module
@@ -135,10 +136,13 @@ def test_summary_nonterminal_planner_beats_generic_completion() -> None:
     assert json.loads(result.summary)["next_step"] == "keep going"
 
 
-def test_summary_generic_completion_only_when_nothing_terminal_exists() -> None:
+def test_summary_missing_verdict_returns_failure() -> None:
     result = GraphChatResult(messages=[], terminate="yes", last_helper_response="")
 
-    assert json.loads(result.summary) == {"terminate": "yes", "final_response": "Test ended without planner JSON."}
+    summary = json.loads(result.summary)
+    assert summary["is_assert"] is True
+    assert summary["is_passed"] is False
+    assert "without a terminal verdict" in summary["final_response"]
 
 
 def test_summary_empty_when_graph_never_terminated() -> None:
@@ -313,3 +317,44 @@ def test_summary_helper_success_is_kept_when_the_graph_ended_normally() -> None:
 
     summary = json.loads(result.summary)
     assert summary["terminate"] == "yes" and summary["is_passed"] is True
+
+
+@pytest.mark.parametrize("text", ["PASS: everything looks fine", "Pass: try the next step", "FAIL: cannot continue", "Fail: retry the operation", "Clicked Login ##TERMINATE TASK##"])
+def test_plain_text_is_never_a_planner_decision(text: str) -> None:
+    messages = [AIMessage(content=text)]
+
+    assert extract_planner_summary(messages) == ""
+    assert GraphChatResult(messages=messages, terminate="no").summary == ""
+
+
+@pytest.mark.parametrize("verdict,is_passed", [("PASS", True), ("FAIL", False)])
+@pytest.mark.parametrize("detail", ["the plan finished", 'received {"count": 1}', "received an unmatched {", "the next_step was checked"])
+def test_helper_verdict_does_not_depend_on_incidental_content(verdict: str, is_passed: bool, detail: str) -> None:
+    result = GraphChatResult(messages=[_nonterminal_planner_message()], terminate="yes", last_helper_response=f"{verdict}: {detail}")
+
+    summary = json.loads(result.summary)
+    assert summary["is_assert"] is True
+    assert summary["is_passed"] is is_passed
+
+
+@pytest.mark.parametrize("text", ["Pass: try step two", "Fail: retry the operation", "pass: not an explicit verdict"])
+def test_helper_prefix_is_case_sensitive(text: str) -> None:
+    result = GraphChatResult(messages=[_nonterminal_planner_message()], terminate="yes", last_helper_response=text)
+
+    assert json.loads(result.summary).get("is_passed") is not True
+
+
+@pytest.mark.parametrize("text", ["", "plain narration", "Clicked Login ##TERMINATE TASK##"])
+def test_completed_graph_without_a_verdict_fails_closed(text: str) -> None:
+    result = GraphChatResult(messages=[], terminate="yes", last_helper_response=text)
+
+    summary = json.loads(result.summary)
+    assert summary["is_assert"] is True
+    assert summary["is_passed"] is False
+
+
+def test_structured_helper_failure_is_not_overridden_by_quoted_success_section() -> None:
+    helper = json.dumps({"terminate": "yes", "is_assert": True, "is_passed": False, "final_response": "### Success: quoted step output ##TERMINATE TASK##"})
+    result = GraphChatResult(messages=[_nonterminal_planner_message()], terminate="yes", last_helper_response=helper)
+
+    assert json.loads(result.summary)["is_passed"] is False

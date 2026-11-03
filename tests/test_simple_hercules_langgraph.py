@@ -114,6 +114,44 @@ def test_executor_routes_every_target_helper_to_expected_agent() -> None:
     asyncio.run(run())
 
 
+@pytest.mark.parametrize("text", ["PASS: task looks complete", "Pass: try the next step", "FAIL: retry later", "Clicked Login ##TERMINATE TASK##"])
+def test_planner_node_does_not_accept_helper_verdicts(text: str) -> None:
+    async def run() -> None:
+        hercules = _hercules()
+        hercules.agents_map = {"planner_agent": SimpleNamespace(llm=FakeLLM([AIMessage(content=text)]), system_message="Return a JSON decision", on_planner_message=lambda content: None)}
+        state = {"messages": [HumanMessage(content="check checkout")], "planner_turn": 0, "step_token_log": [], "step_timings": []}
+
+        result = await hercules._planner_node(state)
+
+        assert result["terminate"] != "yes"
+        assert result.get("is_passed") is not True
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("terminated", ["yes", "no"])
+def test_step_marker_with_nonterminal_planner_reports_failed_junit(tmp_path, monkeypatch, terminated: str) -> None:
+    async def run() -> None:
+        result = GraphChatResult(
+            messages=[AIMessage(content=json.dumps({"terminate": "no", "next_step": "verify checkout", "target_helper": "browser"}))],
+            terminate=terminated,
+            last_helper_response="Clicked Login ##TERMINATE TASK##",
+        )
+        import testzeus_hercules.utils.junit_helper as junit_helper
+
+        monkeypatch.setattr(junit_helper, "get_global_conf", lambda: _JUnitFakeConf(tmp_path))
+        proofs = tmp_path / "proofs"
+        proofs.mkdir()
+        junit_path = await build_junit_xml(
+            json.loads(result.summary), execution_time=1.0, cost_metric={}, feature="Feature: Verdict safety", scenario="Scenario: Incomplete planner", proofs_path=str(proofs)
+        )
+
+        cases = parse_junit_testcases(junit_path)
+        assert cases[0]["status"] == "failed"
+
+    asyncio.run(run())
+
+
 def test_nav_agent_executes_multiple_non_stale_tool_calls_in_order() -> None:
     async def run() -> None:
         calls: list[str] = []
@@ -464,7 +502,7 @@ def test_summary_prefers_terminal_fail_helper_text_over_nonterminal_planner() ->
     assert summary["is_passed"] is False
 
 
-def test_summary_normalizes_terminate_marker_helper_text() -> None:
+def test_summary_step_marker_does_not_override_nonterminal_planner() -> None:
     result = GraphChatResult(
         messages=[AIMessage(content=json.dumps({"terminate": "no", "next_step": "keep going", "target_helper": "browser"}))],
         terminate="yes",
@@ -472,8 +510,8 @@ def test_summary_normalizes_terminate_marker_helper_text() -> None:
     )
 
     summary = json.loads(result.summary)
-    assert summary["terminate"] == "yes"
-    assert summary["final_response"] == "Task completed"
+    assert summary["terminate"] == "no"
+    assert summary.get("is_passed") is not True
 
 
 def test_summary_terminal_planner_beats_terminal_helper() -> None:
@@ -495,44 +533,52 @@ def test_summary_uses_helper_text_when_nothing_terminal_was_parsed() -> None:
     )
 
     summary = json.loads(result.summary)
-    assert summary == {"terminate": "yes", "final_response": "plain helper narration without a verdict"}
+    assert summary["final_response"] == "plain helper narration without a verdict"
+    assert summary["is_assert"] is True
+    assert summary["is_passed"] is False
 
 
-def test_summary_generic_message_when_no_helper_text_exists() -> None:
+def test_summary_missing_helper_verdict_returns_failure() -> None:
     result = GraphChatResult(messages=[], terminate="yes", last_helper_response="")
 
-    assert json.loads(result.summary) == {"terminate": "yes", "final_response": "Test ended without planner JSON."}
+    summary = json.loads(result.summary)
+    assert summary["is_assert"] is True
+    assert summary["is_passed"] is False
+    assert "without a terminal verdict" in summary["final_response"]
 
 
-# ── executor None-coercion: a blank helper run must not clobber history ───────
+# ── an empty helper reply must not reuse an earlier step's verdict ───────────
 
 
-def test_executor_node_keeps_previous_helper_response_when_helper_returns_none(monkeypatch) -> None:
+@pytest.mark.parametrize("empty_reply", [None, "", "   "])
+@pytest.mark.parametrize("previous_verdict", ["PASS: previous step verified", "FAIL: previous step failed"])
+def test_executor_node_clears_previous_helper_verdict_on_empty_reply(monkeypatch, empty_reply: str | None, previous_verdict: str) -> None:
     async def run() -> None:
         hercules = _hercules()
         agent = FakeAgent("browser_nav_agent", [AIMessage(content="unused")])
         hercules.agents_map = {"browser_nav_agent": agent}
 
-        async def returning_none(nav_agent: Any, task: str, agent_name: str) -> None:
-            return None
+        async def returning_empty(nav_agent: Any, task: str, agent_name: str) -> str | None:
+            return empty_reply
 
-        monkeypatch.setattr(hercules, "_run_nav_agent", returning_none)
+        monkeypatch.setattr(hercules, "_run_nav_agent", returning_empty)
 
         result = await hercules._executor_node(
             {
-                "messages": [HumanMessage(content="root task")],
+                "messages": [HumanMessage(content="root task"), HumanMessage(content=previous_verdict)],
                 "next_step": "check something",
                 "target_helper": "browser",
                 "step_token_log": [],
                 "step_timings": [],
                 "completed_step_signatures": [],
-                "last_helper_response": "PASS: previous step verified",
+                "last_helper_response": previous_verdict,
                 "current_url": "",
             }
         )
 
-        assert result["last_helper_response"] == "PASS: previous step verified"
-        assert result["messages"][-1].content == "[browser_nav_agent]: "
+        assert not result["last_helper_response"].strip()
+        assert result["messages"][-1].content == f"[browser_nav_agent]: {empty_reply or ''}"
+        assert result["messages"][-2].content == previous_verdict
 
     asyncio.run(run())
 
