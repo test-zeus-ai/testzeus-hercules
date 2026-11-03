@@ -66,8 +66,7 @@ async def custom_fill_element(page: Page, selector: str, text_to_enter: str) -> 
         logger.debug(f"custom_fill_element result: {result}")
     except Exception as e:
 
-        traceback.print_exc()
-        logger.error(f"Error in custom_fill_element, Selector: {selector}, Text: {text_to_enter}. Error: {str(e)}")
+        logger.error(f"Error in custom_fill_element, Selector: {selector}, Text: {text_to_enter}. Error: {str(e)}", exc_info=True)
         raise
 
 

@@ -38,7 +38,7 @@ lint: fmt             ## Run pep8, black, mypy linters.
 .PHONY: test
 test: lint        ## Run tests and generate coverage report.
 	uv run playwright install --with-deps
-	uv run pytest -v --junit-xml=tests/test_output.xml --cov-config .coveragerc --cov=testzeus_hercules -l --tb=short --maxfail=1 tests/
+	uv run pytest -v --junit-xml=tests/test_output.xml --cov=testzeus_hercules -l --tb=short --maxfail=1 tests/
 	uv run coverage xml
 	uv run coverage html
 

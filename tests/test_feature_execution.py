@@ -2,9 +2,15 @@ import os
 import shutil
 import subprocess
 import sys
+
 import pytest
-from tests.test_base import setup_test_environment, copy_feature_files, compare_results
 from dotenv.main import dotenv_values
+from tests.test_base import compare_results, copy_feature_files, setup_test_environment
+
+# Live suite: drives `python -m testzeus_hercules` end-to-end against real LLM
+# credentials and a browser. Registered in pyproject.toml [tool.pytest.ini_options];
+# offline CI runs must deselect with -m "not live".
+pytestmark = pytest.mark.live
 
 
 # Function to retrieve all feature folders

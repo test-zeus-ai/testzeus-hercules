@@ -1,0 +1,57 @@
+# Named test suites for `hercules-suite` (testzeus_hercules.orchestrator.suites).
+#
+# Copy this file to .hercules/suites.yaml and adjust paths. Schema per suite:
+#
+#   <suite_name>:
+#     description: Free-text description (optional).
+#     tests:       List of .feature files OR directories (a directory expands
+#                  to all direct *.feature children, sorted).
+#     plan:        Path to a test_plan.json — used only when `tests` is empty;
+#                  the whole plan is compiled into a temporary feature file.
+#     tags:        Free-form labels (informational, not used for filtering).
+#     retry:       Per-scenario retries on failure (default 0).
+#     depends_on:  Suites expanded (and run) before this one's own tests;
+#                  cycles are rejected. Gating: when any dependency feature
+#                  fails, this suite's own tests are skipped and counted as
+#                  errors unless skip_on_dependency_failure is false.
+#     skip_on_dependency_failure: Skip (and count as errors) this suite's own
+#                  tests when a depends_on suite has failing features. Set
+#                  false for ordering-only behaviour (default: true).
+#     env:         Extra environment variables passed to every scenario
+#                  subprocess as-is.
+#     shared_state: When true, HERCULES_SUITE_STATE_FILE=<workroot>/suite_state.json
+#                  is exported to every scenario subprocess so features can
+#                  chain suite-level state (default false).
+#     max_parallel: Scenario subprocesses for this suite (default 1 = features
+#                  run sequentially, one subprocess per feature file; >1 splits
+#                  every feature into per-scenario runs).
+#
+# Paths are resolved relative to this YAML file's directory first, then to the
+# process working directory.
+
+# NOTE: the `tests:` entries below point at feature files that ship with THIS
+# repository (tests/test_features/* and helper_scripts/ExampleTests/). They are
+# still just examples — before running `hercules-suite`, replace them with
+# feature files (or directories of *.feature files) that exist in YOUR repo,
+# or use `plan:` with a test_plan.json instead of `tests:`.
+
+smoke:
+  description: Fast sanity checks that must always pass.
+  tests:
+    - ../tests/test_features/imageUpload
+    - ../tests/test_features/accessibility
+  tags: [smoke, fast]
+  retry: 1
+  max_parallel: 4
+
+regression:
+  description: Full regression; depends on smoke so sanity failures gate it.
+  tests:
+    - ../helper_scripts/ExampleTests
+  depends_on: [smoke]
+  tags: [regression, nightly]
+  retry: 0
+  env:
+    HERCULES_RUN_MODE: regression
+  shared_state: true
+  max_parallel: 2

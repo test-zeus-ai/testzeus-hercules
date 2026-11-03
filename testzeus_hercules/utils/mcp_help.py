@@ -14,11 +14,21 @@ import httpx
 from langchain_core.tools import StructuredTool
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.sse import sse_client
-from mcp.client.stdio import stdio_client
+from mcp.client.stdio import get_default_environment, stdio_client
 from mcp.client.streamable_http import streamable_http_client
 from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.utils.langchain_tools import merge_tools
 from testzeus_hercules.utils.logger import logger
+
+# Guidance returned with every MCP tool failure that carries isError: the tool
+# told us it failed, but not how far the operation got before failing, so the
+# effect on the remote system is unknown and must be verified before retrying.
+_TOOL_FAILURE_GUIDANCE = (
+    "The tool reported an error, so the operation's effect is UNKNOWN: it may have partially or "
+    "fully taken effect. Before retrying, verify whether the original operation actually took "
+    "effect; do not blindly repeat a potentially completed operation. Report the scenario as "
+    "INCOMPLETE or FAILED rather than PASSED."
+)
 
 # from mcp_helper import get_mcp_config, set_mcp_config
 
@@ -110,7 +120,13 @@ class MCPHelper:
             success = bool(result.get("success"))
             if success:
                 return str(result.get("result", "MCP tool executed successfully"))
-            return f"[MCP TOOL ERROR] {server_name}.{tool_name}: " f"{result.get('error', 'unknown MCP tool failure')}"
+            error_text = f"[MCP TOOL ERROR] {server_name}.{tool_name}: " f"{result.get('error', 'unknown MCP tool failure')}"
+            # Surface the unknown-outcome guidance in the observation so the
+            # agent verifies the operation's effect instead of blindly retrying.
+            guidance = result.get("recovery_guidance")
+            if guidance:
+                error_text = f"{error_text} {guidance}"
+            return error_text
 
         return _call_tool
 
@@ -169,6 +185,21 @@ class MCPHelper:
                 text_parts.append(str(call_result))
 
             result_text = "\n".join([p for p in text_parts if p])
+
+            if getattr(call_result, "isError", False):
+                # The tool explicitly reported an error outcome. Its effect on
+                # the remote system is unknown, so the caller must verify
+                # before retrying instead of blindly repeating the call.
+                logger.error(f"MCP tool '{tool_name}' reported an error result on server '{server_name}'")
+                return {
+                    "success": False,
+                    "error": result_text or "Tool reported an error result",
+                    "server": server_name,
+                    "tool": tool_name,
+                    "execution_status": "unknown",
+                    "recovery_guidance": _TOOL_FAILURE_GUIDANCE,
+                }
+
             logger.info(f"MCP tool '{tool_name}' executed successfully on server '{server_name}'")
             return {
                 "success": True,
@@ -179,11 +210,16 @@ class MCPHelper:
 
         except Exception as e:
             logger.exception(f"Error executing MCP tool '{tool_name}' on server '{server_name}' via session. Details: {repr(e)}")
+            # A mid-call transport failure has the same unknown-outcome effect
+            # as an explicit isError result: how far the operation got is not
+            # observable here, so the caller must verify before retrying.
             return {
                 "success": False,
                 "error": str(e),
                 "server": server_name,
                 "tool": tool_name,
+                "execution_status": "unknown",
+                "recovery_guidance": _TOOL_FAILURE_GUIDANCE,
             }
 
     async def list_mcp_tools(self, server_name: str) -> Dict[str, Any]:
@@ -247,6 +283,39 @@ class MCPHelper:
             logger.error(f"Error getting resource '{resource_uri}' from MCP server '{server_name}': {e}")
             return {"success": False, "error": str(e), "server": server_name}
 
+    def _run_placeholders(self) -> Dict[str, str]:
+        """Per-run placeholders usable inside stdio MCP server configs.
+
+        A stdio MCP server is a separate process launched from a fixed config,
+        so it cannot know where the current scenario's outputs go. These
+        placeholders let the config reference the run's identity and output
+        locations: ``${test_id}``, ``${proof_path}``, ``${log_path}`` and
+        ``${project_base}``.
+        """
+        conf = get_global_conf()
+        test_id = conf.get_default_test_id()
+        return {
+            "test_id": test_id,
+            "proof_path": conf.get_proof_path(test_id=test_id),
+            "log_path": conf.get_source_log_folder_path(test_id=test_id),
+            "project_base": conf.get_project_source_root(),
+        }
+
+    @staticmethod
+    def _expand(value: Any, placeholders: Dict[str, str]) -> Any:
+        """Replace ``${name}`` occurrences in ``value`` for known placeholders.
+
+        Unknown placeholder names are left untouched so a typo stays visible in
+        the launched server's arguments instead of disappearing silently.
+        Non-string values are returned unchanged.
+        """
+        if not isinstance(value, str):
+            return value
+        expanded = value
+        for name, replacement in placeholders.items():
+            expanded = expanded.replace("${" + name + "}", replacement)
+        return expanded
+
     async def connect_mcp_server(self, server_name: str, server_config: Dict[str, Any]) -> bool:
         """Connect to an MCP server and register tools for LangGraph agents."""
         try:
@@ -273,7 +342,21 @@ class MCPHelper:
             if transport == "stdio":
                 command = server_config.get("command", "python")
                 args = server_config.get("args", [])
-                server_params = StdioServerParameters(command=command, args=args)
+                placeholders = self._run_placeholders()
+                # StdioServerParameters requires string args (Sequence[str]),
+                # so coerce after placeholder expansion — same as the env path
+                # below — or a numeric literal in the config surfaces as a
+                # generic connection failure instead of the intended argument.
+                expanded_args = [str(self._expand(arg, placeholders)) for arg in args]
+                # The MCP SDK hands stdio servers a scrubbed environment, so the
+                # configured env block must be merged over the defaults or it is
+                # dropped on the floor entirely.
+                configured_env = server_config.get("env", {}) or {}
+                env = {
+                    **get_default_environment(),
+                    **{key: str(self._expand(val, placeholders)) for key, val in configured_env.items()},
+                }
+                server_params = StdioServerParameters(command=command, args=expanded_args, env=env)
 
                 client_cm = stdio_client(server_params)
                 read, write = await getattr(client_cm, "__aenter__")()

@@ -15,6 +15,17 @@ from testzeus_hercules.utils.llm_helper import create_chat_model
 from testzeus_hercules.utils.logger import logger
 
 
+def ui_assertion_prompt_addendum(agent_name: str) -> str:
+    """Prompt guidance for the opt-in assert_ui / capture_ui_value tools; empty unless they are registered for this agent."""
+    try:
+        from testzeus_hercules.core.tools.ui_assertions import prompt_addendum_for
+
+        return prompt_addendum_for(agent_name)
+    except Exception as e:  # prompt guidance must never block agent construction
+        logger.debug("UI assertion prompt addendum unavailable: %s", e)
+        return ""
+
+
 class BaseNavAgent:
     agent_name: str = "base_nav_agent"
     prompt = "Base Agent"
@@ -32,20 +43,11 @@ class BaseNavAgent:
 
         system_message = agent_prompt or self.prompt
         if system_prompt and len(system_prompt) > 0:
-            system_message = (
-                "\n".join(system_prompt)
-                if isinstance(system_prompt, list)
-                else system_prompt
-            )
-            logger.info(
-                f"Using custom system prompt for BaseNavAgent: {system_message}"
-            )
+            system_message = "\n".join(system_prompt) if isinstance(system_prompt, list) else system_prompt
+            logger.info(f"Using custom system prompt for BaseNavAgent: {system_message}")
 
-        system_message = (
-            system_message
-            + "\n"
-            + f"Current timestamp is {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        )
+        system_message = system_message + ui_assertion_prompt_addendum(self.agent_name)
+        system_message = system_message + "\n" + f"Current timestamp is {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         logger.warning(
             "[SYSTEM_PROMPT_DEBUG] agent=%s user_ltm=%r system_message_tail=%r",
             self.agent_name,
@@ -54,13 +56,11 @@ class BaseNavAgent:
         )
         if user_ltm:
             user_ltm = "\n" + user_ltm
-            system_message = Template(system_message).substitute(
-                basic_test_information=user_ltm
-            )
+            # safe_substitute: prompts are prose containing $/${ sequences; an
+            # unknown placeholder must be left as-is, never crash construction.
+            system_message = Template(system_message).safe_substitute(basic_test_information=user_ltm)
 
-        logger.info(
-            "Nav agent %s using model %s", self.agent_name, model_config.get("model")
-        )
+        logger.info("Nav agent %s using model %s", self.agent_name, model_config.get("model"))
 
         self.system_message = system_message
         self.llm: BaseChatModel = create_chat_model(model_config, llm_config_params)
@@ -73,21 +73,15 @@ class BaseNavAgent:
 
     def register_tools(self) -> None:
         """Register all the tools that the agent can perform."""
-        logger.info(
-            f"[REGISTER_TOOLS_DEBUG] Registering tools for agent: {self.agent_name}"
-        )
+        logger.info(f"[REGISTER_TOOLS_DEBUG] Registering tools for agent: {self.agent_name}")
         self.tools = registry_tools_to_structured_tools(self.agent_name)
-        logger.info(
-            f"[REGISTER_TOOLS_DEBUG] Agent {self.agent_name} now has {len(self.tools)} tools: {[t.name for t in self.tools]}"
-        )
+        logger.info(f"[REGISTER_TOOLS_DEBUG] Agent {self.agent_name} now has {len(self.tools)} tools: {[t.name for t in self.tools]}")
 
     async def shutdown(self) -> None:
         """Shutdown the agent."""
         pass
 
-    def load_tools(
-        self, additional_tool_dirs: str = os.getenv("ADDITIONAL_TOOL_DIRS", "")
-    ) -> None:
+    def load_tools(self, additional_tool_dirs: str = os.getenv("ADDITIONAL_TOOL_DIRS", "")) -> None:
         """Dynamically load additional tools from directories or Python files."""
         additional_tool_paths: list[str] = additional_tool_dirs.split(",")
 
@@ -113,9 +107,7 @@ class BaseNavAgent:
                 parent_dir = os.path.dirname(tool_path)
                 sys.path.insert(0, parent_dir)
                 try:
-                    module_name = os.path.basename(tool_path)[
-                        :-3
-                    ]  # Strip .py extension
+                    module_name = os.path.basename(tool_path)[:-3]  # Strip .py extension
                     importlib.import_module(module_name)
                     add_event(
                         EventType.TOOL,

@@ -10,6 +10,7 @@ from testzeus_hercules.core.browser_logger import get_browser_logger
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
+from testzeus_hercules.utils.redact import redact_url
 
 
 @tool(
@@ -26,13 +27,13 @@ async def open_url(
     force_new_tab: Annotated[bool, "Force opening in a new tab instead of reusing existing ones."] = False,
 ) -> Annotated[str, "Returns the result of this request in text form"]:
 
-    logger.info(f"Opening URL: {url} (force_new_tab={force_new_tab})")
+    logger.info(f"Opening URL: {redact_url(url)} (force_new_tab={force_new_tab})")
     browser_manager = PlaywrightManager()
     await browser_manager.get_browser_context()
 
     # Use the new reuse_or_create_tab method to get a page
     page = await browser_manager.reuse_or_create_tab(force_new_tab=force_new_tab)
-    logger.info(f"{'Using new tab' if force_new_tab else 'Reusing existing tab when possible'} for navigation to {url}")
+    logger.info(f"{'Using new tab' if force_new_tab else 'Reusing existing tab when possible'} for navigation to {redact_url(url)}")
 
     # Initialize browser logger
     browser_logger = get_browser_logger(get_global_conf().get_proof_path())
@@ -55,8 +56,7 @@ async def open_url(
                 await page.wait_for_load_state("domcontentloaded")
             except Exception as e:
 
-                traceback.print_exc()
-                logger.warning(f"JavaScript navigation to {special_url} failed: {e}. Trying alternative method.")
+                logger.warning(f"JavaScript navigation to {special_url} failed: {e}. Trying alternative method.", exc_info=True)
                 # Fallback method: For about: URLs, try direct goto without adding protocol
                 try:
                     if special_url.startswith("about:"):
@@ -67,8 +67,7 @@ async def open_url(
                         await page.evaluate(f"window.location.href = '{special_url}'")
                 except Exception as fallback_err:
 
-                    traceback.print_exc()
-                    logger.error(f"All navigation methods to {special_url} failed: {fallback_err}")
+                    logger.error(f"All navigation methods to {special_url} failed: {fallback_err}", exc_info=True)
                     # Continue anyway - we'll try to get the title
 
             title = await page.title()
@@ -92,7 +91,7 @@ async def open_url(
 
         url = ensure_protocol(url)
         if urls_match_for_navigation(page.url, url):
-            logger.info(f"Current page URL already matches the requested URL: current={page.url}, requested={url}. No need to refresh.")
+            logger.info(f"Current page URL already matches the requested URL: current={redact_url(page.url)}, requested={redact_url(url)}. No need to refresh.")
             try:
                 title = await page.title()
                 # Log successful navigation (from cache)
@@ -113,8 +112,7 @@ async def open_url(
                 return f"Page already loaded: {page.url}, Title: {title}"  # type: ignore
             except Exception as e:
 
-                traceback.print_exc()
-                logger.error(f"An error occurred while getting the page title: {e}, but will continue to load the page.")
+                logger.error(f"An error occurred while getting the page title: {e}, but will continue to load the page.", exc_info=True)
 
         # Navigate to the URL with a short timeout to ensure the initial load starts
         function_name = inspect.currentframe().f_code.co_name  # type: ignore
@@ -139,8 +137,7 @@ async def open_url(
                 await asyncio.sleep(timeout)
         except Exception as e:
 
-            traceback.print_exc()
-            logger.error(f"An error occurred while waiting for the page to load: {e}")
+            logger.error(f"An error occurred while waiting for the page to load: {e}", exc_info=True)
 
         # Wait for the network to idle
         await browser_manager.wait_for_page_and_frames_load()
@@ -179,7 +176,7 @@ async def open_url(
                 "force_new_tab": force_new_tab,
             },
         )
-        logger.warning(f"Initial navigation to {url} failed: {pte}. Will try to continue anyway.")  # happens more often than not, but does not seem to be a problem
+        logger.warning(f"Initial navigation to {redact_url(url)} failed: {pte}. Will try to continue anyway.")  # happens more often than not, but does not seem to be a problem
         return f"Timeout error opening URL: {url}"
 
     except Exception as e:
@@ -198,9 +195,8 @@ async def open_url(
                 "force_new_tab": force_new_tab,
             },
         )
-        logger.error(f"An error occurred while opening the URL: {url}. Error: {e}")
+        logger.error(f"An error occurred while opening the URL: {redact_url(url)}. Error: {e}", exc_info=True)
 
-        traceback.print_exc()
         return f"Error opening URL: {url}"
 
 
@@ -238,7 +234,7 @@ def ensure_protocol(url: str) -> str:
     # Regular URL handling
     if not url.startswith(("http://", "https://")):
         url = "https://" + url  # Default to https if no protocol is specified
-        logger.info(f"Added 'https://' protocol to URL because it was missing. New URL is: {url}")
+        logger.info(f"Added 'https://' protocol to URL because it was missing. New URL is: {redact_url(url)}")
     return url
 
 

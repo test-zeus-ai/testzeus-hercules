@@ -11,8 +11,9 @@ Hercules now supports executing custom Python scripts directly from your Gherkin
 - 🎯 **Complex Logic**: Handle sophisticated automation scenarios that are difficult to express in plain Gherkin
 - 🔄 **Reusability**: Write once, use across multiple test cases
 - 💪 **Full Power**: Access the complete Playwright API, Python ecosystem, and custom modules
-- 🛡️ **Secure**: Executes in a controlled sandbox environment with configurable permissions
-- 📦 **Multi-tenant**: Different security levels for different types of scripts (executor, data, API, restricted)
+- 🛡️ **Optional containment**: by default (`SANDBOX_MODE=inprocess`) scripts run inside the Hercules process with the live browser objects. With `SANDBOX_MODE=subprocess` each script runs in a disposable child process with CPU/memory limits and a hard timeout. Neither mode is a security boundary — do not run untrusted code.
+  Note: in both modes the code sees the operator's environment variables (including model API keys) and the Hercules config — another reason agent-authored code must only be your own.
+- 📦 **Multi-tenant**: Different module injection profiles for different types of scripts (executor, data, API, restricted) — a convenience allowlist, not a security control
 
 ### When to Use
 
@@ -27,6 +28,40 @@ Hercules now supports executing custom Python scripts directly from your Gherkin
 - Simple click/type operations (use regular Gherkin steps)
 - Basic navigation (use browser helper)
 - Single-step interactions
+
+---
+
+## Isolation Model (Important)
+
+The execution mode is chosen by the operator with `SANDBOX_MODE` (config or env):
+
+**`SANDBOX_MODE=inprocess` (default, legacy behaviour)** — the script is `exec`'d
+inside the Hercules agent process with the **live** `page`, `browser`, `context` and
+`playwright_manager` objects injected:
+
+- **Timeout is cooperative only**: `timeout_seconds` is enforced with `asyncio.wait_for`,
+  which can only interrupt the script at an `await`. A blocking call or a CPU-bound loop
+  is **not** killed and stalls the agent until it returns.
+- **No resource limits**: no CPU/memory rlimits and no process kill; the script shares the
+  agent's interpreter, memory and global state.
+- **Bounded output**: captured stdout is truncated at 256 KB.
+
+**`SANDBOX_MODE=subprocess` (opt-in)** — each script runs in a **disposable child
+process** that Hercules destroys after the run:
+
+- **Hard timeout**: agent-supplied `timeout_seconds` is capped at **300s**; on timeout the child process group is SIGKILLed, so an infinite loop in a script can never freeze the agent.
+- **Resource limits (POSIX)**: the child gets a CPU-time limit (timeout + 2s) and a 1 GiB address-space cap.
+- **Bounded output**: captured stdout/stderr are truncated at 256 KB per stream.
+- **Fresh interpreter per run**: no state leaks between executions, and sandbox output can no longer interleave with the agent's own stdout.
+- Live browser objects cannot cross the process boundary; the child only gets a browser when `CDP_ENDPOINT_URL` is configured (it re-attaches over CDP).
+
+**Script path confinement (both modes)**: the script must be a `.py` file that resolves
+inside one of the allowed roots — the workspace root (`PROJECT_SOURCE_ROOT`) or the
+test-data directory (`TEST_DATA_PATH`). Relative paths are tried under those roots, then
+the current working directory; absolute paths (and symlinks) that resolve outside the
+roots are rejected.
+
+**This is containment for robustness, not a security boundary.** The executed code runs with a full Python runtime — `os`, `sys`, `__import__`, network and filesystem are all reachable, and injection allowlists are not enforced against imports. Do not run untrusted code through this tool.
 
 ---
 
@@ -106,9 +141,9 @@ Scenario: Apply filter using custom script
     And only one product should be displayed
 ```
 
-### 3. Configure Permissions (Optional)
+### 3. Configure Injections (Optional)
 
-Set the tenant ID to control what modules your scripts can access:
+Set the tenant ID to control which modules are *pre-injected* into your scripts. Note: tenants only control the injection convenience allowlist — executed code can always import modules itself.
 
 ```bash
 # Full access (recommended for complex automation)
@@ -127,7 +162,8 @@ Scripts automatically have access to these objects and modules:
 ### Always Available (Base Injections)
 
 ```python
-# Playwright objects (always available)
+# Playwright objects (re-attached inside the child when CDP_ENDPOINT_URL is set;
+# without a CDP endpoint, using them raises a clear RuntimeError)
 page            # Current Playwright Page instance
 browser         # Playwright Browser instance  
 context         # Playwright BrowserContext instance
@@ -323,9 +359,11 @@ And call the validate_data function in script at "scripts/validation.py"
 
 ### With Timeout
 ```gherkin
-And execute script at "scripts/long_process.py" with 600 second timeout
-And run the migration script at "migrations/data_migration.py" with 1800 second timeout
+And execute script at "scripts/long_process.py" with 300 second timeout
+And run the migration script at "migrations/data_migration.py" with 120 second timeout
 ```
+
+Note: `timeout_seconds` is hard capped at 300 seconds; larger values are clamped down to the cap.
 
 ---
 
@@ -528,8 +566,8 @@ File not found: scripts/my_script.py
 ```
 
 **Solutions:**
-1. Use correct relative path from project root: `opt/scripts/my_script.py`
-2. Use absolute path: `/full/path/to/script.py`
+1. Use a path relative to the workspace root (`PROJECT_SOURCE_ROOT`, e.g. `scripts/my_script.py` for `opt/scripts/my_script.py`), the test-data directory, or the current working directory (`opt/scripts/my_script.py`)
+2. An absolute path works only when it lies inside `PROJECT_SOURCE_ROOT` or `TEST_DATA_PATH`; anything else is rejected
 3. Check file exists in the correct location
 
 ### Timeout Errors
@@ -540,29 +578,30 @@ Execution timed out after 300 seconds
 ```
 
 **Solutions:**
-1. Increase timeout in Gherkin: `with 600 second timeout`
+1. Increase timeout in Gherkin (hard capped at 300 seconds)
 2. Optimize script (reduce waits, improve selectors)
-3. Check for infinite loops or blocking operations
+3. Check for infinite loops or blocking operations. With `SANDBOX_MODE=subprocess` the child process is SIGKILLed on timeout, so a stuck script never blocks the agent; in the default in-process mode the timeout only fires at an `await`, so a blocking loop stalls the agent — switch to `SANDBOX_MODE=subprocess` for untrusted-quality or long-running scripts
 
 ---
 
 ## Security Considerations
 
-### Tenant Isolation
+### Isolation Model (What It Is — and What It Is Not)
 
-Different tenants have different capabilities:
-- `executor_agent`: Full access (use carefully)
-- `data_agent`: No external API access (safe for data processing)
-- `api_agent`: No data processing libraries (safe for API work)
-- `restricted_agent`: Minimal access (safest)
+- By default (`SANDBOX_MODE=inprocess`) scripts run **inside the Hercules process** with the live browser objects: there is no kill, no rlimits, and the timeout is cooperative. With `SANDBOX_MODE=subprocess` they run in a **disposable child process** with CPU/memory rlimits and a hard timeout, so a runaway script is killed and cannot hang the agent.
+- **It is not a security boundary**: executed code has full Python capabilities (`os`, `sys`, `__import__`, network, filesystem). Tenant policies and `SANDBOX_PACKAGES` are injection *conveniences*, not access controls — scripts can import any installed module themselves.
+- **Do not run untrusted code** through this tool. Restrict who can author sandbox scripts in your deployment.
+
+### Script Path Confinement
+
+Script files must be `.py` files that resolve inside the workspace root (`PROJECT_SOURCE_ROOT`) or the test-data directory (`TEST_DATA_PATH`); absolute or symlinked paths outside those roots are rejected.
 
 ### Best Practices
 
-1. **Least Privilege**: Use the most restricted tenant that meets your needs
-2. **No Secrets in Scripts**: Use environment variables or custom injections
-3. **Validate Inputs**: Always validate function arguments
-4. **Error Handling**: Catch and handle exceptions properly
-5. **Audit Scripts**: Review scripts before execution
+1. **No Secrets in Scripts**: Use environment variables or custom injections
+2. **Validate Inputs**: Always validate function arguments
+3. **Error Handling**: Catch and handle exceptions properly
+4. **Audit Scripts**: Review scripts before execution — they run with full Python privileges
 
 ---
 
@@ -637,7 +676,7 @@ All execution details are logged:
 
 ### Execution Results
 
-Scripts return structured results:
+Scripts return structured results (child stdout/stderr are captured and truncated at 256 KB per stream):
 ```json
 {
   "success": true,
@@ -647,6 +686,8 @@ Scripts return structured results:
     "product_count": 1,
     "message": "Successfully applied Turtle Neck filter. 1 products found."
   },
+  "stdout": "...\n",
+  "stderr": "...\n",
   "execution_time": 3.245,
   "screenshots": {
     "before": "opt/proofs/sandbox_before_1761930973.png",
@@ -693,7 +734,7 @@ The Python Sandbox Execution feature gives you:
 - 🔄 **Reusability**: Scripts work across multiple tests  
 - 🛠️ **Maintainability**: Easy to update and debug
 - 💪 **Power**: Full Playwright + Python capabilities
-- ✅ **Security**: Multi-tenant isolation and controlled access
+- 🧱 **Optional containment**: `SANDBOX_MODE=subprocess` gives a disposable child process per run with resource limits and a hard timeout (the default in-process mode has neither) — a robustness boundary, not a security boundary
 
 Perfect for complex automation scenarios where simple Gherkin steps aren't enough!
 

@@ -265,14 +265,14 @@ testzeus-hercules-mcp
 ```
 
 That entrypoint starts a FastMCP server using streamable HTTP. By default it
-serves `http://0.0.0.0:8000/mcp` and exposes tools such as
+serves `http://127.0.0.1:8000/mcp` and exposes tools such as
 `generate_gherkin`, `run_test`, and `get_test_results`.
 
 Server-side MCP configuration:
 
 - `TESTZEUS_ROOT`: repo/project root for generated features and output
-- `TESTZEUS_PYTHON`: Python executable used to invoke Hercules
-- `MCP_HOST`: bind host, default `0.0.0.0`
+- `TESTZEUS_PYTHON`: reserved (currently unused by the in-process server)
+- `MCP_HOST`: bind host, default `127.0.0.1` (non-loopback requires `MCP_AUTH_TOKEN`)
 - `MCP_PORT`: bind port, default `8000`
 - `MCP_PATH`: HTTP path, default `/mcp`
 

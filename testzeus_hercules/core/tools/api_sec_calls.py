@@ -10,9 +10,12 @@ from typing import Annotated, Any, List, Optional, Tuple
 import httpx
 from inflection import parameterize
 from testzeus_hercules.config import get_global_conf
+from testzeus_hercules.core.tools.api_calls import redact_tool_output
 from testzeus_hercules.core.tools.tool_registry import sec_logger as file_logger
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.utils.logger import logger
+from testzeus_hercules.utils.path_guard import resolve_in_roots
+from testzeus_hercules.utils.redact import REDACTED_HEADER_PATTERNS, REDACTED_PLACEHOLDER, is_sensitive_name, redact_url
 
 # Define cache and binary paths
 CACHE_DIR = Path(get_global_conf().get_hf_home()) / "nuclei_tool"
@@ -120,6 +123,50 @@ async def ensure_nuclei_installed() -> None:
     file_logger("Nuclei binary downloaded and installed.")
 
 
+def redact_command_for_log(command: List[str]) -> str:
+    """Render a nuclei command line for logs: header values and URL credentials are redacted.
+
+    Only the logged string is affected; the executed argv is never modified.
+    """
+    parts: List[str] = []
+    redact_next_header = False
+    redact_next_url = False
+    for arg in command:
+        if redact_next_header:
+            name, sep, _ = arg.partition(":")
+            parts.append(f"{name}{sep} {REDACTED_PLACEHOLDER}" if sep else REDACTED_PLACEHOLDER)
+            redact_next_header = False
+        elif redact_next_url:
+            parts.append(redact_url(arg))
+            redact_next_url = False
+        else:
+            parts.append(arg)
+            redact_next_header = arg in ("-H", "-header")
+            redact_next_url = arg in ("-u", "-target")
+    return " ".join(parts)
+
+
+def _is_credential_header(name: str) -> bool:
+    """True for headers that carry a credential (Authorization, Cookie, X-Api-Key, X-Auth-Token, ...); ordinary ones are not."""
+    lowered = str(name).lower()
+    return is_sensitive_name(lowered) or any(pattern in lowered for pattern in REDACTED_HEADER_PATTERNS)
+
+
+def _header_secrets(headers: Optional[List[Tuple[str, str]]]) -> List[str]:
+    """Values of credential headers passed to nuclei, plus the bare credential after a scheme ("Bearer <token>").
+
+    Ordinary headers (Accept, User-Agent, ...) are never secrets: scrubbing "application/json" from the whole
+    nuclei output would make every finding that mentions it unreadable.
+    """
+    secrets: List[str] = []
+    for name, value in headers or []:
+        if not _is_credential_header(name):
+            continue
+        secrets.append(value)
+        secrets.extend(value.split(" ", 1)[1:])
+    return secrets
+
+
 async def run_nuclei_command(
     is_open_api_spec: bool,
     open_api_spec_path: Optional[str],
@@ -130,6 +177,11 @@ async def run_nuclei_command(
     extra_args: Optional[list] = None,
 ) -> Tuple[str, str, int]:
     """Run a Nuclei command and return stdout, stderr, and return code."""
+    if is_open_api_spec and open_api_spec_path:
+        # Model-supplied path: confined to the test data / project roots
+        # (PathConfinementError is a ValueError), checked before any download.
+        open_api_spec_path = resolve_in_roots(open_api_spec_path)
+
     await ensure_nuclei_installed()
 
     command = [
@@ -167,8 +219,9 @@ async def run_nuclei_command(
     if extra_args:
         command.extend(extra_args)
 
-    logger.info(f"Running Nuclei command: {' '.join(command)}")
-    file_logger(f"Running Nuclei command: {' '.join(command)}")
+    loggable_command = redact_command_for_log(command)
+    logger.info(f"Running Nuclei command: {loggable_command}")
+    file_logger(f"Running Nuclei command: {loggable_command}")
 
     process = await asyncio.create_subprocess_exec(
         *command,
@@ -177,8 +230,12 @@ async def run_nuclei_command(
     )
     stdout, stderr = await process.communicate()
 
-    stdout_decoded = stdout.decode()
-    stderr_decoded = stderr.decode()
+    # Nuclei -v echoes requests: redact before anything is logged or returned.
+    # The auth header values passed in (and the bare tokens inside them) are
+    # scrubbed wherever they show up, not only on `Header: value` lines.
+    secret_values = _header_secrets(headers)
+    stdout_decoded = redact_tool_output(stdout.decode(errors="replace"), secret_values)
+    stderr_decoded = redact_tool_output(stderr.decode(errors="replace"), secret_values)
 
     file_logger(f"Nuclei command stdout: {stdout_decoded}")
     file_logger(f"Nuclei command stderr: {stderr_decoded}")
@@ -280,8 +337,8 @@ for tag, explanation in security_terms_explanation.items():
                     duration = end_time - start_time
                     return {"error": error_message}, duration
 
-                with open(output_file, "r") as f:
-                    content = f.read()
+                with open(output_file, "r", encoding="utf-8") as f:
+                    content = redact_tool_output(f.read(), _header_secrets(headers))
 
                 logger.info("Nuclei command completed successfully.")
                 file_logger("Nuclei command completed successfully.")
@@ -304,10 +361,8 @@ for tag, explanation in security_terms_explanation.items():
                         duration,
                     )
             except Exception as e:
-                import traceback
 
-                traceback.print_exc()
-                logger.error(f"An unexpected error occurred: {e}")
+                logger.error(f"An unexpected error occurred: {e}", exc_info=True)
                 file_logger(f"An unexpected error occurred: {e}")
                 end_time = time.perf_counter()
                 duration = end_time - start_time

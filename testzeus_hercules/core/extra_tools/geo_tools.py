@@ -1,4 +1,3 @@
-import traceback
 from typing import Annotated, Dict, List, Optional, Union
 
 from testzeus_hercules.config import get_global_conf
@@ -45,7 +44,6 @@ async def get_current_geo_location() -> Union[str, Dict[str, str]]:
 
     except Exception as e:
 
-        traceback.print_exc()
         logger.exception(f"Error in get_current_geo_location: {e}")
         return {"error": str(e)}
 
@@ -91,6 +89,5 @@ async def set_current_geo_location(
 
     except Exception as e:
 
-        traceback.print_exc()
         logger.exception(f"Error in set_current_geo_location: {e}")
         return {"error": str(e)}

@@ -1,7 +1,12 @@
 import os
-import pytest
 from typing import Generator
-from testzeus_hercules.config import SingletonConfigManager, set_global_conf, get_global_conf
+
+import pytest
+from testzeus_hercules.config import (
+    SingletonConfigManager,
+    get_global_conf,
+    set_global_conf,
+)
 
 
 class TestCertificateErrors:
@@ -50,10 +55,14 @@ class TestCertificateErrors:
         assert config.should_ignore_certificate_errors() is False
 
     def test_environment_variable_override(self) -> None:
-        """Test that environment variable IGNORE_CERTIFICATE_ERRORS overrides config."""
+        """Test that env variables apply when not ignoring env (Dict > Env).
+
+        With the documented Dict > Env priority, env values seed the config for
+        keys the explicitly passed dict omits; dict keys win for shared keys.
+        """
         os.environ["IGNORE_CERTIFICATE_ERRORS"] = "true"
 
-        config_dict = {"IGNORE_CERTIFICATE_ERRORS": "false", "AGENTS_LLM_CONFIG_FILE": "agents_llm_config.json", "AGENTS_LLM_CONFIG_FILE_REF_KEY": "azure"}
+        config_dict = {"AGENTS_LLM_CONFIG_FILE": "agents_llm_config.json", "AGENTS_LLM_CONFIG_FILE_REF_KEY": "azure"}
         config = set_global_conf(config_dict, ignore_env=False)
 
         assert config.should_ignore_certificate_errors() is True

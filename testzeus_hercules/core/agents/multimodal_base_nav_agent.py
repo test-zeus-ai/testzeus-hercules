@@ -2,7 +2,10 @@ from datetime import datetime
 from string import Template
 from typing import Any
 
-from testzeus_hercules.core.agents.base_nav_agent import BaseNavAgent
+from testzeus_hercules.core.agents.base_nav_agent import (
+    BaseNavAgent,
+    ui_assertion_prompt_addendum,
+)
 from testzeus_hercules.utils.logger import logger
 
 
@@ -11,6 +14,9 @@ class MultimodalBaseNavAgent(BaseNavAgent):
 
     agent_name: str = "multimodal_base_nav_agent"
     prompt = "Base Multimodal Agent"
+    # Subclasses whose prompt carries its own UI-assertion guidance (the mobile
+    # agent) opt out of the generic, browser-oriented addendum.
+    include_generic_ui_assertion_addendum: bool = True
 
     def __init__(
         self,
@@ -25,21 +31,15 @@ class MultimodalBaseNavAgent(BaseNavAgent):
 
         system_message = agent_prompt or self.prompt
         if system_prompt and len(system_prompt) > 0:
-            system_message = (
-                "\n".join(system_prompt)
-                if isinstance(system_prompt, list)
-                else system_prompt
-            )
+            system_message = "\n".join(system_prompt) if isinstance(system_prompt, list) else system_prompt
             logger.info(
                 "Using custom system prompt for MultimodalBaseNavAgent: %s",
                 system_message,
             )
 
-        system_message = (
-            system_message
-            + "\n"
-            + f"Current timestamp is {datetime.now().strftime('%Y/%m/%d %H:%M:%S')}"
-        )
+        if self.include_generic_ui_assertion_addendum:
+            system_message = system_message + ui_assertion_prompt_addendum(self.agent_name)
+        system_message = system_message + "\n" + f"Current timestamp is {datetime.now().strftime('%Y/%m/%d %H:%M:%S')}"
         logger.warning(
             "[SYSTEM_PROMPT_DEBUG] agent=%s user_ltm=%r system_message_tail=%r",
             self.agent_name,
@@ -48,15 +48,13 @@ class MultimodalBaseNavAgent(BaseNavAgent):
         )
         if user_ltm:
             user_ltm = "\n" + user_ltm
-            system_message = Template(system_message).substitute(
-                basic_test_information=user_ltm
-            )
+            # safe_substitute: prompts are prose containing $/${ sequences; an
+            # unknown placeholder must be left as-is, never crash construction.
+            system_message = Template(system_message).safe_substitute(basic_test_information=user_ltm)
 
         from testzeus_hercules.utils.llm_helper import create_chat_model
 
-        logger.info(
-            "Nav agent %s using model: %s", self.agent_name, model_config.get("model")
-        )
+        logger.info("Nav agent %s using model: %s", self.agent_name, model_config.get("model"))
         self.system_message = system_message
         self.llm = create_chat_model(model_config, llm_config_params)
         self.tools = []

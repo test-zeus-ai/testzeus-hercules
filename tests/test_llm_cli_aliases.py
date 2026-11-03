@@ -15,6 +15,10 @@ def _clear_testzeus_modules() -> None:
 
 
 def _load_config_module(argv: list[str]):
+    # Snapshot modules so the purge below doesn't leak: other tests keep
+    # references to module objects and lazy imports would silently re-import
+    # fresh (unpatched) copies after eviction.
+    saved_modules = {name: mod for name, mod in sys.modules.items() if name == "testzeus_hercules" or name.startswith("testzeus_hercules.")}
     _clear_testzeus_modules()
 
     pkg = types.ModuleType("testzeus_hercules")
@@ -57,6 +61,9 @@ def _load_config_module(argv: list[str]):
         return module
     finally:
         sys.argv = old_argv
+        for name in [n for n in sys.modules if n == "testzeus_hercules" or n.startswith("testzeus_hercules.")]:
+            del sys.modules[name]
+        sys.modules.update(saved_modules)
 
 
 def test_llm_base_url_alias_sets_model_base_url() -> None:

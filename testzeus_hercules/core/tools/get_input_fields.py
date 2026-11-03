@@ -7,6 +7,7 @@ from playwright.async_api import Page
 from testzeus_hercules.config import get_global_conf
 from testzeus_hercules.core.browser_logger import get_browser_logger
 from testzeus_hercules.core.playwright_manager import PlaywrightManager
+from testzeus_hercules.core.tools.get_interactive_elements import flatten_elements, is_form_field_node
 from testzeus_hercules.core.tools.tool_registry import tool
 from testzeus_hercules.telemetry import EventData, EventType, add_event
 from testzeus_hercules.utils.dom_helper import wait_for_non_loading_dom_state
@@ -44,43 +45,7 @@ async def get_input_fields() -> Annotated[str, "DOM type dict giving all input e
     if extracted_data is None:
         return "Could not fetch input fields. Please consider trying with content_type all_fields."
 
-    # Flatten the hierarchy into a list of elements
-    def flatten_elements(node: dict, parent_name: str = "", parent_title: str = "") -> list[dict]:
-        elements = []
-        form_elements = {
-            "input",
-            "label",
-            "select",
-            "textarea",
-            "button",
-            "fieldset",
-            "legend",
-            "datalist",
-            "output",
-            "option",
-            "optgroup",
-        }
-
-        if "children" in node:
-            # Get current node's name and title for passing to children
-            current_name = node.get("name", parent_name)
-            current_title = node.get("title", parent_title)
-
-            for child in node["children"]:
-                # If child doesn't have name/title, it will use parent's values
-                if "name" not in child and current_name:
-                    child["name"] = current_name
-                if "title" not in child and current_title:
-                    child["title"] = current_title
-                elements.extend(flatten_elements(child, current_name, current_title))
-
-        if "md" in node and node.get("tag", "").lower() in form_elements:
-            new_node = node.copy()
-            new_node.pop("children", None)
-            elements.append(new_node)
-        return elements
-
-    extracted_data = flatten_elements(extracted_data)
+    extracted_data = flatten_elements(extracted_data, include=is_form_field_node, compact=False)
 
     elapsed_time = time.time() - start_time
     logger.info(f"Get DOM Command executed in {elapsed_time} seconds")

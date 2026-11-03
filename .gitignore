@@ -167,3 +167,16 @@ testzeus-hercules/**/*.feature
 **/node_modules
 **/*.db
 **/context
+# Hercules local runtime state (keep .hercules/*.yaml & *.example.yaml tracked)
+.hercules/sessions.json
+.hercules/sess_*/
+.hercules/__pycache__/
+.hercules/monitor_state.json
+.hercules/parallel_*/
+.hercules/suite_runs/
+.hercules/suite_state.json
+.hercules/mock_llm/
+.hercules/code_summary.json
+.hercules/standard_prd.json
+.hercules/test_plan.json
+.hercules/api_app_prd.md

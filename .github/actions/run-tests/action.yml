@@ -1,0 +1,468 @@
+name: 'TestZeus Hercules Tests'
+description: >-
+  Run TestZeus Hercules agentic tests (single feature, bulk tests/ layout, suite,
+  or parallel scenarios) in Docker or via uv, upload reports/proofs/history as
+  artifacts, and optionally post a results summary comment on the pull request.
+branding:
+  icon: beaker
+  color: green
+
+inputs:
+  feature:
+    description: >-
+      Path (relative to the repository) to a single .feature file. It is copied to
+      opt/input/test.feature before the run. Ignored when `suite` is set or `bulk`
+      is true. Required for single and parallel modes.
+    required: false
+    default: ''
+  bulk:
+    description: >-
+      Run every test under the tests/ directory layout (tests/<name>/input/<name>.feature).
+      Takes precedence over `feature`.
+    required: false
+    default: 'false'
+  suite:
+    description: >-
+      Name of a suite to run via `hercules-suite <name>` (see .hercules/suites.yaml).
+      Takes precedence over `bulk` and `feature`.
+    required: false
+    default: ''
+  suite-config:
+    description: 'Path to the suites YAML file used with the `suite` input.'
+    required: false
+    default: '.hercules/suites.yaml'
+  max-parallel:
+    description: >-
+      Parallel scenarios. In `parallel` mode it is passed to run_manager
+      (--max-parallel); with `suite` it overrides the suite's own max_parallel.
+    required: false
+    default: '1'
+  runner:
+    description: 'How to run Hercules: `docker` (pull `image`) or `uv` (set up the repo toolchain in the job).'
+    required: false
+    default: 'docker'
+  image:
+    description: 'Docker image used when runner=docker. Must contain Hercules and its Playwright browsers.'
+    required: false
+    default: 'testzeus/hercules:latest'
+  llm-config:
+    description: >-
+      Path (in the user repo) to the agents_llm_config.json file. Exported as
+      AGENTS_LLM_CONFIG_FILE. Leave the file absent to rely on LLM_MODEL_NAME /
+      LLM_MODEL_API_KEY passed via `env-vars` instead.
+    required: false
+    default: 'agents_llm_config.json'
+  llm-config-ref-key:
+    description: >-
+      Top-level provider key inside the LLM config file to activate (e.g. openai_gpt).
+      Exported as AGENTS_LLM_CONFIG_FILE_REF_KEY. Required together with `llm-config`
+      by Hercules' config validation.
+    required: false
+    default: ''
+  base-url:
+    description: >-
+      Convenience: when non-empty, exported to the Hercules run as the APP_URL
+      environment variable. Hercules itself reads the target URL from the feature
+      steps, so put the URL there; use this only for features/tooling that read APP_URL.
+    required: false
+    default: ''
+  reports:
+    description: >-
+      When true (default), enable the opt-in reporting features for the run:
+      ENABLE_RUN_REPORTING (Hercules_Test_Report.md), ENABLE_FAILURE_BUNDLES,
+      ENABLE_RUN_HISTORY (history DB at opt/hercules_history.db unless
+      HERCULES_HISTORY_DB is set) and ENABLE_FAILURE_CLASSIFICATION. Set false
+      to leave all of them to `env-vars`.
+    required: false
+    default: 'true'
+  blocking:
+    description: >-
+      When true (default) the step fails if any test fails (Hercules runs with
+      STRICT_EXIT_CODE=true). When false, Hercules runs with EXIT_CODE_COMPAT=1 so
+      failures do not fail the job.
+    required: false
+    default: 'true'
+  python-version:
+    description: 'Python version used when runner=uv.'
+    required: false
+    default: '3.12'
+  env-vars:
+    description: >-
+      Multiline list of KEY=VALUE environment variables passed through to Hercules
+      (e.g. secrets like LLM_API_KEY, optional LOG_FILE_PATH).
+    required: false
+    default: ''
+  artifact-name:
+    description: 'Name of the uploaded artifact (reports, proofs, run history DB).'
+    required: false
+    default: 'hercules-results'
+  pr-comment:
+    description: 'Post/update a PR comment with the results summary (only on pull_request events).'
+    required: false
+    default: 'false'
+  pr-comment-failure-details:
+    description: >-
+      Include (redacted, truncated) failure messages in the PR comment. Default false:
+      the comment lists only case names, statuses and durations, because raw failure
+      text can contain secrets or private data and PR comments are readable by anyone
+      who can see the PR.
+    required: false
+    default: 'false'
+  github-token:
+    description: 'Token used to post the PR comment (requires `pr-comment: true` and pull-requests: write on the PR).'
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  outcome:
+    description: 'Outcome of the test run: success or failure.'
+    value: ${{ steps.conclude.outputs.outcome }}
+  report-path:
+    description: 'Path to the newest Hercules_Test_Report.md produced by the run (may be empty).'
+    value: ${{ steps.results.outputs.report-path }}
+  junit-path:
+    description: 'Path to the newest JUnit XML produced by the run (may be empty).'
+    value: ${{ steps.results.outputs.junit-path }}
+
+runs:
+  using: composite
+  steps:
+    # ------------------------------------------------------------------
+    # (a) Toolchain setup
+    # ------------------------------------------------------------------
+    - name: Set up uv
+      if: inputs.runner == 'uv'
+      uses: astral-sh/setup-uv@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install Hercules dependencies (uv)
+      if: inputs.runner == 'uv'
+      shell: bash
+      env:
+        # The Hercules project is this action's own checkout (.github/actions/run-tests
+        # -> repository root), not the consumer's workspace.
+        HERCULES_PROJECT: ${{ github.action_path }}/../../..
+      run: |
+        set -euo pipefail
+        uv sync --project "$HERCULES_PROJECT" --all-extras
+        uv run --project "$HERCULES_PROJECT" -- playwright install --with-deps
+
+    - name: Pull Hercules image (docker)
+      if: inputs.runner == 'docker'
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+      run: |
+        set -euo pipefail
+        case "$IMAGE" in -*) echo "::error::Invalid image reference: $IMAGE" >&2; exit 1 ;; esac
+        docker pull -- "$IMAGE"
+
+    # ------------------------------------------------------------------
+    # (c0) Parse env-vars (multiline KEY=VALUE) into $GITHUB_ENV
+    # ------------------------------------------------------------------
+    - name: Export env-vars
+      shell: bash
+      env:
+        ENV_VARS_INPUT: ${{ inputs.env-vars }}
+      run: |
+        names=""
+        while IFS= read -r line || [ -n "$line" ]; do
+          line="${line%$'\r'}"
+          [ -z "$line" ] && continue
+          case "$line" in '#'*) continue ;; esac
+          case "$line" in *=*) ;; *) echo "::warning::Ignoring malformed env-vars line (expected KEY=VALUE)" ; continue ;; esac
+          name="${line%%=*}"
+          # Only plain variable names; never let a value rewrite the runner/loader/shell environment.
+          if ! [[ "$name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+            echo "::warning::Ignoring env-vars entry with an invalid variable name" ; continue
+          fi
+          case "$name" in
+            PATH|BASH_ENV|ENV|SHELL|IFS|PYTHONPATH|PYTHONSTARTUP|LD_*|DYLD_*|NODE_OPTIONS|GITHUB_*|RUNNER_*)
+              echo "::warning::Ignoring env-vars entry for protected variable $name" ; continue ;;
+          esac
+          printf '%s\n' "$line" >> "$GITHUB_ENV"
+          names="${names}${names:+ }${name}"
+        done <<< "$ENV_VARS_INPUT"
+        echo "HERCULES_PASSTHROUGH_VARS=$names" >> "$GITHUB_ENV"
+
+    # ------------------------------------------------------------------
+    # (b) Prepare inputs: single feature copy / bulk layout check / mode validation
+    # ------------------------------------------------------------------
+    - name: Prepare test input
+      id: prepare
+      shell: bash
+      env:
+        INPUT_FEATURE: ${{ inputs.feature }}
+        INPUT_BULK: ${{ inputs.bulk }}
+        INPUT_SUITE: ${{ inputs.suite }}
+      run: |
+        set -euo pipefail
+        mode="single"
+
+        # Inputs become positional arguments later: a leading '-' would be parsed as an option.
+        for value in "$INPUT_FEATURE" "$INPUT_SUITE"; do
+          case "$value" in -*) echo "::error::Invalid input (must not start with '-'): $value" >&2; exit 1 ;; esac
+        done
+
+        if [ -n "$INPUT_SUITE" ]; then
+          mode="suite"
+        elif [ "$INPUT_BULK" = "true" ]; then
+          mode="bulk"
+        fi
+
+        case "$mode" in
+          suite)
+            echo "Mode: suite '$INPUT_SUITE'"
+            ;;
+          bulk)
+            # Hercules reads <PROJECT_SOURCE_ROOT>/tests; the run step points
+            # PROJECT_SOURCE_ROOT at the repository root unless env-vars set it.
+            if [ -n "${PROJECT_SOURCE_ROOT:-}" ]; then
+              echo "Mode: bulk (PROJECT_SOURCE_ROOT from env-vars: $PROJECT_SOURCE_ROOT)"
+            else
+              if [ ! -d tests ] || [ -z "$(ls -A tests 2>/dev/null)" ]; then
+                echo "::error::bulk=true but no non-empty tests/ directory found in the repository." >&2
+                exit 1
+              fi
+              echo "Mode: bulk (tests/ layout)"
+            fi
+            ;;
+          single)
+            if [ -z "$INPUT_FEATURE" ]; then
+              echo "::error::No test mode selected. Set one of: 'feature' (single/parallel), 'bulk: true', or 'suite'." >&2
+              exit 1
+            fi
+            if [ ! -f "$INPUT_FEATURE" ]; then
+              echo "::error::Feature file not found: $INPUT_FEATURE" >&2
+              exit 1
+            fi
+            mkdir -p opt/input
+            cp "$INPUT_FEATURE" opt/input/test.feature
+            echo "Mode: single (copied $INPUT_FEATURE -> opt/input/test.feature)"
+            ;;
+        esac
+
+        echo "mode=$mode" >> "$GITHUB_OUTPUT"
+
+    # ------------------------------------------------------------------
+    # (c1) Run Hercules
+    # ------------------------------------------------------------------
+    - name: Run Hercules
+      id: run
+      continue-on-error: true
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      env:
+        RUNNER_MODE: ${{ inputs.runner }}
+        IMAGE: ${{ inputs.image }}
+        RUN_MODE: ${{ steps.prepare.outputs.mode }}
+        INPUT_FEATURE: ${{ inputs.feature }}
+        INPUT_SUITE: ${{ inputs.suite }}
+        SUITE_CONFIG: ${{ inputs.suite-config }}
+        MAX_PARALLEL: ${{ inputs.max-parallel }}
+        LLM_CONFIG: ${{ inputs.llm-config }}
+        LLM_CONFIG_REF_KEY: ${{ inputs.llm-config-ref-key }}
+        BASE_URL: ${{ inputs.base-url }}
+        BLOCKING: ${{ inputs.blocking }}
+        REPORTS: ${{ inputs.reports }}
+        HERCULES_PROJECT: ${{ github.action_path }}/../../..
+      run: |
+        set -euo pipefail
+
+        # Validate LLM config pairing early with a clear message
+        # (Hercules requires AGENTS_LLM_CONFIG_FILE and _REF_KEY together).
+        if [ -n "$LLM_CONFIG" ] && [ -f "$LLM_CONFIG" ] && [ -z "$LLM_CONFIG_REF_KEY" ]; then
+          echo "::error::LLM config file '$LLM_CONFIG' exists but 'llm-config-ref-key' is empty. Hercules requires AGENTS_LLM_CONFIG_FILE and AGENTS_LLM_CONFIG_FILE_REF_KEY to be set together." >&2
+          exit 1
+        fi
+
+        case "$IMAGE" in -*) echo "::error::Invalid image reference: $IMAGE" >&2; exit 1 ;; esac
+        case "$MAX_PARALLEL" in ''|*[!0-9]*) echo "::error::max-parallel must be a positive integer" >&2; exit 1 ;; esac
+
+        # Build the Hercules command as an argv ARRAY (never a shell string): workflow inputs are
+        # passed as discrete arguments, so quotes/metacharacters in them cannot change the command.
+        # Env settings are collected separately and applied with `docker -e` / `export`.
+        # Workspace root as seen by Hercules (the docker runner mounts it at /workspace).
+        if [ "$RUNNER_MODE" = "docker" ]; then WS_ROOT=/workspace; else WS_ROOT="$GITHUB_WORKSPACE"; fi
+        # Merged JUnit of suite/parallel runs lands here so the result discovery
+        # and the artifact upload (opt/output) pick it up.
+        MERGED_OUT=opt/output/merged
+
+        CMD=()
+        RUN_ENV=()
+        case "$RUN_MODE" in
+          suite)
+            CMD=(hercules-suite "$INPUT_SUITE" --config "$SUITE_CONFIG" --out-dir "$MERGED_OUT")
+            if [ "$MAX_PARALLEL" != "1" ]; then
+              CMD+=(--max-parallel "$MAX_PARALLEL")
+            fi
+            ;;
+          bulk)
+            CMD=(python -m testzeus_hercules)
+            RUN_ENV+=(EXECUTE_BULK=true)
+            # Hercules reads <PROJECT_SOURCE_ROOT>/tests (default ./opt/tests): point it at the repo root.
+            if [ -z "${PROJECT_SOURCE_ROOT:-}" ]; then
+              RUN_ENV+=("PROJECT_SOURCE_ROOT=$WS_ROOT")
+            fi
+            ;;
+          single)
+            if [ "$MAX_PARALLEL" != "1" ]; then
+              # Parallel scenario execution via run_manager on the original feature path.
+              CMD=(python -m testzeus_hercules.orchestrator.run_manager "$INPUT_FEATURE" --max-parallel "$MAX_PARALLEL" --out-dir "$MERGED_OUT")
+            else
+              CMD=(python -m testzeus_hercules)
+            fi
+            ;;
+          *)
+            echo "::error::Unknown run mode: $RUN_MODE" >&2
+            exit 1
+            ;;
+        esac
+
+        # Blocking runs gate the job on the strict exit code; non-blocking runs must not fail it.
+        if [ "$BLOCKING" = "true" ]; then
+          RUN_ENV+=(STRICT_EXIT_CODE=true)
+        else
+          RUN_ENV+=(EXIT_CODE_COMPAT=1)
+        fi
+
+        # Opt-in reporting features (report, failure bundles, history DB, classification).
+        if [ "$REPORTS" = "true" ]; then
+          RUN_ENV+=(ENABLE_RUN_REPORTING=true ENABLE_FAILURE_BUNDLES=true ENABLE_RUN_HISTORY=true ENABLE_FAILURE_CLASSIFICATION=true)
+          if [ -z "${HERCULES_HISTORY_DB:-}" ]; then
+            # One history DB for every mode (bulk/suite/parallel move PROJECT_SOURCE_ROOT around).
+            mkdir -p opt
+            RUN_ENV+=("HERCULES_HISTORY_DB=$WS_ROOT/opt/hercules_history.db")
+          fi
+        fi
+
+        if [ -n "$BASE_URL" ]; then
+          RUN_ENV+=("APP_URL=$BASE_URL")
+        fi
+
+        if [ "$RUNNER_MODE" = "docker" ]; then
+          # Mount the workspace so opt/ (reports, proofs, history DB) lands in $GITHUB_WORKSPACE.
+          # The image ENTRYPOINT hard-codes the demo command, so override it and invoke the
+          # image's venv binaries directly by absolute path (no shell involved).
+          VENV_BIN=/testzeus-hercules/.venv/bin
+          DOCKER_ARGS=(run --rm
+            --entrypoint "$VENV_BIN/${CMD[0]}"
+            -v "$GITHUB_WORKSPACE:/workspace"
+            -w /workspace
+            -e PATH=$VENV_BIN:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+            -e AUTO_MODE=1
+            -e CI=true
+            -e HOME=/root
+          )
+
+          for kv in ${RUN_ENV[@]+"${RUN_ENV[@]}"}; do
+            DOCKER_ARGS+=(-e "$kv")
+          done
+
+          if [ -n "$LLM_CONFIG" ] && [ -f "$LLM_CONFIG" ]; then
+            case "$LLM_CONFIG" in
+              /*)
+                # Only the workspace is mounted: map an absolute path inside it, reject anything else.
+                case "$LLM_CONFIG" in
+                  "$GITHUB_WORKSPACE"/*) cfg="/workspace/${LLM_CONFIG#"$GITHUB_WORKSPACE"/}" ;;
+                  *) echo "::error::llm-config '$LLM_CONFIG' is outside the workspace and is not visible to the docker runner; put it in the repository or use a relative path." >&2; exit 1 ;;
+                esac
+                ;;
+              *) cfg="/workspace/${LLM_CONFIG#./}" ;;
+            esac
+            DOCKER_ARGS+=(-e "AGENTS_LLM_CONFIG_FILE=$cfg" -e "AGENTS_LLM_CONFIG_FILE_REF_KEY=$LLM_CONFIG_REF_KEY")
+          fi
+
+          # Pass user env-vars through BY NAME (values come from the job environment, never argv).
+          for name in $HERCULES_PASSTHROUGH_VARS; do
+            DOCKER_ARGS+=(-e "$name")
+          done
+
+          docker "${DOCKER_ARGS[@]}" "$IMAGE" "${CMD[@]:1}"
+        else
+          # uv runner: execute inside the synced environment.
+          if [ -n "$LLM_CONFIG" ] && [ -f "$LLM_CONFIG" ]; then
+            export AGENTS_LLM_CONFIG_FILE="${LLM_CONFIG#./}"
+            export AGENTS_LLM_CONFIG_FILE_REF_KEY="$LLM_CONFIG_REF_KEY"
+          fi
+          export AUTO_MODE=1
+          export CI=true
+          for kv in ${RUN_ENV[@]+"${RUN_ENV[@]}"}; do
+            export "$kv"
+          done
+          # --project: the Hercules environment is this action's checkout; the
+          # command still runs in the consumer's workspace (cwd).
+          uv run --project "$HERCULES_PROJECT" -- "${CMD[@]}"
+        fi
+
+    # ------------------------------------------------------------------
+    # Discover result paths (always, so artifacts/comment work on failures too)
+    # ------------------------------------------------------------------
+    - name: Collect result paths
+      id: results
+      if: always()
+      shell: bash
+      run: |
+        set -euo pipefail
+        # opt/output/merged holds the suite/parallel merged XML; tests/*/output is bulk mode.
+        junit="$( { ls -1t opt/output/*/*_result.xml tests/*/output/*/*_result.xml .hercules/suite_runs/*/merged/*_result.xml 2>/dev/null || true; } | head -n1 )"
+        report="$( { ls -1t opt/output/*/Hercules_Test_Report.md tests/*/output/*/Hercules_Test_Report.md 2>/dev/null || true; } | head -n1 )"
+        echo "junit-path=$junit" >> "$GITHUB_OUTPUT"
+        echo "report-path=$report" >> "$GITHUB_OUTPUT"
+        echo "JUnit XML: ${junit:-<none>}"
+        echo "Report:    ${report:-<none>}"
+
+    # ------------------------------------------------------------------
+    # (d) Upload artifacts (always)
+    # ------------------------------------------------------------------
+    - name: Upload results artifact
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        # tests/*/ = bulk mode outputs; .hercules/ = suite/parallel scenario
+        # workspaces (only failed scenarios keep theirs: videos, logs, proofs).
+        path: |
+          opt/output
+          opt/proofs
+          opt/hercules_history.db
+          tests/*/output
+          tests/*/proofs
+          .hercules/suite_runs
+          .hercules/parallel_*
+        if-no-files-found: ignore
+        retention-days: 14
+
+    # ------------------------------------------------------------------
+    # (e) PR comment (always, when requested and on pull_request events)
+    # ------------------------------------------------------------------
+    - name: Comment results on PR
+      if: always() && inputs.pr-comment == 'true' && github.event_name == 'pull_request'
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
+        JUNIT_PATH: ${{ steps.results.outputs.junit-path }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        INCLUDE_FAILURE_DETAILS: ${{ inputs.pr-comment-failure-details }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        bash "$ACTION_PATH/pr_comment.sh"
+
+    # ------------------------------------------------------------------
+    # Conclude: propagate the run outcome (always)
+    # ------------------------------------------------------------------
+    - name: Conclude
+      id: conclude
+      if: always()
+      shell: bash
+      env:
+        RUN_OUTCOME: ${{ steps.run.outcome }}
+      run: |
+        echo "outcome=${RUN_OUTCOME:-failure}" >> "$GITHUB_OUTPUT"
+        if [ "$RUN_OUTCOME" = "failure" ]; then
+          echo "::error::Hercules test run failed (see logs and the uploaded artifact)."
+          exit 1
+        fi

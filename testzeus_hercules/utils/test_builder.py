@@ -53,7 +53,7 @@ async def run_guided_mode(llm, test_description: str | None = None):
         elif choice == "e":
             editor = os.getenv("EDITOR", "nano")
             subprocess.run([editor, feature_path])
-            with open(feature_path) as f:
+            with open(feature_path, encoding="utf-8") as f:
                 feature = f.read()
             print("\n" + "=" * 50)
             print(feature)

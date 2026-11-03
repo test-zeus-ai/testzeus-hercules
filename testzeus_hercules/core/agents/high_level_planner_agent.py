@@ -1,13 +1,16 @@
 from string import Template
 from typing import Any
 
-from langchain_openai import ChatOpenAI
 from testzeus_hercules.core.memory.static_ltm import get_user_ltm
 from testzeus_hercules.utils.llm_helper import (
+    build_chat_client,
     get_llm_max_retries,
     get_llm_request_timeout_seconds,
+    resolve_api_key,
+    resolve_provider_settings,
 )
 from testzeus_hercules.utils.logger import logger
+from testzeus_hercules.utils.model_utils import adapt_llm_params_for_model
 
 
 class PlannerAgent:
@@ -19,7 +22,7 @@ class PlannerAgent:
         llm_config_params: dict,
         system_prompt: str | None = None,
     ) -> None:
-        base_prompt = system_prompt or self.prompt
+        base_prompt = system_prompt or get_planner_prompt()
         user_ltm = get_user_ltm()
         print("===== LTM =====")
         print(user_ltm)
@@ -28,33 +31,32 @@ class PlannerAgent:
         self.system_message = Template(base_prompt).safe_substitute(basic_test_information=user_ltm if user_ltm else "No test data provided")
         self.system_message = self._json_instruction + self.system_message
 
-        # Normalize model key: ChatOpenAI expects 'model', not 'model_name'
+        # Normalize model key: ChatOpenAI expects 'model', not 'model_name'.
         normalized = dict(model_config)
         if "model_name" in normalized and "model" not in normalized:
             normalized["model"] = normalized.pop("model_name")
         elif "model_name" in normalized:
             normalized.pop("model_name")
-        valid_keys = {
-            "model",
-            "api_key",
-            "base_url",
-            "temperature",
-            "max_tokens",
-            "timeout",
-            "max_retries",
-        }
-        filtered = {k: v for k, v in normalized.items() if k in valid_keys}
+        valid_keys = {"model", "api_key", "base_url", "timeout", "max_retries"}
+        filtered = {k: v for k, v in normalized.items() if k in valid_keys and v is not None}
 
-        # llm_config_params: drop keys unsupported by non-OpenAI models
-        unsupported_keys = {"cache_seed", "reasoning_effort", "seed"}
-        safe_llm_params = {k: v for k, v in llm_config_params.items() if k not in unsupported_keys}
-
-        safe_llm_params.pop("model", None)  # avoid duplicate with filtered
+        # Merge sampling options and normalize them for ChatOpenAI.
+        unsupported_keys = {"cache_seed", "reasoning_effort", "seed", "model"}
+        params = {k: v for k, v in normalized.items() if k in {"temperature", "max_tokens"}}
+        params.update(llm_config_params)
+        adapted = adapt_llm_params_for_model(filtered.get("model", "gpt-4o"), params)
+        # Explicit model_config values (timeout, max_retries) win over llm_config_params.
+        safe_llm_params = {k: v for k, v in adapted.items() if k not in unsupported_keys and k not in filtered}
         if "timeout" not in filtered and safe_llm_params.get("timeout") is None:
             safe_llm_params["timeout"] = get_llm_request_timeout_seconds()
         if "max_retries" not in filtered and safe_llm_params.get("max_retries") is None:
             safe_llm_params["max_retries"] = get_llm_max_retries()
-        self.llm = ChatOpenAI(**filtered, **safe_llm_params)
+        # Same provider and credential resolution as create_chat_model (and so as the navigation agents).
+        settings = resolve_provider_settings(normalized, str(filtered.get("model") or "gpt-4o"))
+        api_key = resolve_api_key(normalized, settings)
+        if api_key:
+            filtered["api_key"] = api_key
+        self.llm = build_chat_client({**filtered, **safe_llm_params}, settings)
 
     _json_instruction = """CRITICAL INSTRUCTION: You MUST respond ONLY with a valid JSON object. No preamble, no explanation, no markdown. Your entire response must be parseable JSON.
 
@@ -320,3 +322,36 @@ Available Test Data: $basic_test_information
         )
 
         print_message_as_planner(message=message)
+
+
+# target_helper enum / helper-capability wording, kept byte-identical to the
+# base prompt unless mobile device automation is enabled (DEVICE_MANAGER=appium
+# and the Appium client importable). 'mobile' is injected dynamically so the
+# planner never routes to a helper that does not exist.
+_JSON_TARGET_HELPER_ENUM = "'browser'|'api'|'sec'|'sql'|'time_keeper'|'agent'|'mcp'|'executor'|'Not_Applicable'"
+_MOBILE_JSON_TARGET_HELPER_ENUM = "'browser'|'api'|'sec'|'sql'|'time_keeper'|'agent'|'mcp'|'executor'|'mobile'|'Not_Applicable'"
+_ALLOWED_TARGET_HELPER_LIST = "'browser', 'api', 'sec', 'sql', 'time_keeper', 'agent', 'mcp', 'executor', 'Not_Applicable'"
+_MOBILE_ALLOWED_TARGET_HELPER_LIST = "'browser', 'api', 'sec', 'sql', 'time_keeper', 'agent', 'mcp', 'executor', 'mobile', 'Not_Applicable'"
+_EXECUTOR_CAPABILITY_LINE = "- Executor: Execute Python automation scripts from files"
+
+
+def get_planner_prompt() -> str:
+    """Return the planner prompt, extended with the mobile helper when mobile automation is enabled.
+
+    When mobile is disabled the returned string is byte-identical to
+    :attr:`PlannerAgent.prompt`.
+    """
+    try:
+        from testzeus_hercules.core.mobile import mobile_enabled
+
+        if not mobile_enabled():
+            return PlannerAgent.prompt
+        from testzeus_hercules.core.mobile.prompts import MOBILE_HELPER_CAPABILITY_LINE
+    except Exception:
+        return PlannerAgent.prompt
+
+    prompt = PlannerAgent.prompt
+    prompt = prompt.replace(_JSON_TARGET_HELPER_ENUM, _MOBILE_JSON_TARGET_HELPER_ENUM)
+    prompt = prompt.replace(_ALLOWED_TARGET_HELPER_LIST, _MOBILE_ALLOWED_TARGET_HELPER_LIST)
+    prompt = prompt.replace(_EXECUTOR_CAPABILITY_LINE, f"{_EXECUTOR_CAPABILITY_LINE}\n- {MOBILE_HELPER_CAPABILITY_LINE}")
+    return prompt

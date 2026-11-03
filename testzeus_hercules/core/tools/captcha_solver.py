@@ -1,5 +1,4 @@
 import re
-import traceback
 from typing import Annotated
 
 import playwright_recaptcha
@@ -23,13 +22,11 @@ async def captcha_solver(
         async with captcha_solver.AsyncSolver(page) as solver:
             page = await browser_manager.get_current_page()
             token = await solver.solve_recaptcha()
-            logger.info(token)
+            logger.debug("captcha solved (token length=%d)", len(token))
         score_pattern = re.compile(r"Your score is: (\d\.\d)")
         score_locator = page.get_by_text(score_pattern)
         logger.info(await score_locator.inner_text())
         return True
     except Exception as e:
-
-        traceback.print_exc()
-        logger.error(f"An unexpected error occurred during captcha solving: {e}")
+        logger.error(f"An unexpected error occurred during captcha solving: {e}", exc_info=True)
         return False
