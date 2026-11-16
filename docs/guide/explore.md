@@ -59,7 +59,7 @@ your session prints.
 
 ### 1. Start a session and watch it live
 
-https://github.com/user-attachments/assets/d9d6c42f-8884-4292-b149-f3ef1fe52437
+https://github.com/user-attachments/assets/3f2bb6a3-1068-4e55-bc2f-d28aad26aa31
 
 <sub>[Download the MP4](../assets/videos/explore/01-start-and-watch-live.mp4)</sub>
 
@@ -74,7 +74,7 @@ https://github.com/user-attachments/assets/d9d6c42f-8884-4292-b149-f3ef1fe52437
 
 ### 2. Review findings in one click
 
-https://github.com/user-attachments/assets/00034a15-2847-495c-9096-45e5512fd7a8
+https://github.com/user-attachments/assets/36d7aac6-99cc-4155-b5f0-5568cce1b59b
 
 <sub>[Download the MP4](../assets/videos/explore/02-review-findings-one-click.mp4)</sub>
 
@@ -89,7 +89,7 @@ https://github.com/user-attachments/assets/00034a15-2847-495c-9096-45e5512fd7a8
 
 ### 3. Explore from the terminal
 
-https://github.com/user-attachments/assets/90c9a356-633a-4898-997c-cb4809ec4037
+https://github.com/user-attachments/assets/bb3b0e8d-0f2f-46b0-a993-63bf1f9f516b
 
 <sub>[Download the MP4](../assets/videos/explore/03-explore-from-the-terminal.mp4)</sub>
 
@@ -112,7 +112,7 @@ https://github.com/user-attachments/assets/90c9a356-633a-4898-997c-cb4809ec4037
 
 ### 4. Fix, reverify, keep it fixed
 
-https://github.com/user-attachments/assets/c22e9d17-ae41-4e2d-bd16-85c96d018732
+https://github.com/user-attachments/assets/901b4ba8-bd6a-422f-962a-cac23d525ac1
 
 <sub>[Download the MP4](../assets/videos/explore/04-fix-reverify-regression.mp4)</sub>
 
@@ -139,7 +139,7 @@ https://github.com/user-attachments/assets/c22e9d17-ae41-4e2d-bd16-85c96d018732
 
 ### 5. Explore from your coding agent
 
-https://github.com/user-attachments/assets/ce9222d4-33aa-4918-a893-5c8bde477547
+https://github.com/user-attachments/assets/7fbde4fb-b0de-4cf7-a280-d760915e82a4
 
 <sub>[Download the MP4](../assets/videos/explore/05-explore-from-your-coding-agent.mp4)</sub>
 

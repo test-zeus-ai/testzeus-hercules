@@ -7,24 +7,24 @@ its sign-in page takes any name). Each video plays on this page; the MP4 files a
 
 | # | Video | Length |
 |---|---|---|
-| 1 | [One line to install and set up](#1-one-line-to-install-and-set-up) | 1:19 |
-| 2 | [From an empty project to a passing test](#2-from-an-empty-project-to-a-passing-test) | 1:52 |
-| 3 | [Review the plan before the run starts](#3-review-the-plan-before-the-run-starts) | 1:35 |
-| 4 | [Debug a run: pause, take over, answer its questions](#4-debug-a-run-pause-take-over-answer-its-questions) | 1:38 |
-| 5 | [Run tests from the terminal](#5-run-tests-from-the-terminal) | 1:47 |
+| 1 | [One line to install and set up](#1-one-line-to-install-and-set-up) | 1:28 |
+| 2 | [From an empty project to a passing test](#2-from-an-empty-project-to-a-passing-test) | 2:02 |
+| 3 | [Review the plan before the run starts](#3-review-the-plan-before-the-run-starts) | 1:41 |
+| 4 | [Debug a run: pause, take over, answer its questions](#4-debug-a-run-pause-take-over-answer-its-questions) | 1:43 |
+| 5 | [Run tests from the terminal](#5-run-tests-from-the-terminal) | 1:51 |
 | 6 | [Test from your coding agent](#6-test-from-your-coding-agent) | 1:14 |
-| 7 | [Browsers and browser options](#7-browsers-and-browser-options) | 1:22 |
-| 8 | [Test your web app on a phone](#8-test-your-web-app-on-a-phone) | 1:17 |
-| 9 | [Export a passed run as code](#9-export-a-passed-run-as-code) | 1:33 |
-| 10 | [Run a passed test on a cloud](#10-run-a-passed-test-on-a-cloud) | 1:33 |
-| 11 | [Import v1 projects, OpenAPI specs and requirement documents](#11-import-v1-projects-openapi-specs-and-requirement-documents) | 1:28 |
-| 12 | [Visual and accessibility checks](#12-visual-and-accessibility-checks) | 1:28 |
-| 13 | [Security scans](#13-security-scans) | 1:18 |
-| 14 | [Run Hercules in Docker](#14-run-hercules-in-docker) | 1:45 |
+| 7 | [Browsers and browser options](#7-browsers-and-browser-options) | 1:26 |
+| 8 | [Test your web app on a phone](#8-test-your-web-app-on-a-phone) | 1:22 |
+| 9 | [Export a passed run as code](#9-export-a-passed-run-as-code) | 1:34 |
+| 10 | [Run a passed test on a cloud](#10-run-a-passed-test-on-a-cloud) | 1:42 |
+| 11 | [Import v1 projects, OpenAPI specs and requirement documents](#11-import-v1-projects-openapi-specs-and-requirement-documents) | 1:33 |
+| 12 | [Visual and accessibility checks](#12-visual-and-accessibility-checks) | 1:33 |
+| 13 | [Security scans](#13-security-scans) | 1:20 |
+| 14 | [Run Hercules in Docker](#14-run-hercules-in-docker) | 1:46 |
 
 ## 1. One line to install and set up
 
-https://github.com/user-attachments/assets/8b9614b4-6f97-431f-bdb3-ed900b287807
+https://github.com/user-attachments/assets/d7ef9efc-e6b9-4628-9693-e94e1f044662
 
 <sub>[Download the MP4](../assets/videos/features/01-one-line-start.mp4)</sub>
 
@@ -42,7 +42,7 @@ https://github.com/user-attachments/assets/8b9614b4-6f97-431f-bdb3-ed900b287807
 
 ## 2. From an empty project to a passing test
 
-https://github.com/user-attachments/assets/d39bc972-4811-46fe-bdbd-73c5b0d88106
+https://github.com/user-attachments/assets/2de79358-1988-4d1f-8af8-e57383aacd25
 
 <sub>[Download the MP4](../assets/videos/features/02-tester-ui-quick-start.mp4)</sub>
 
@@ -67,7 +67,7 @@ Any web app; the video uses the demo shop in `bench/explore`.
 
 ## 3. Review the plan before the run starts
 
-https://github.com/user-attachments/assets/0867715b-8c56-4321-be71-f7d9d2c96d7c
+https://github.com/user-attachments/assets/b84005e4-1ef4-4686-854b-6ff0c4eda146
 
 <sub>[Download the MP4](../assets/videos/features/03-review-the-plan.mp4)</sub>
 
@@ -86,7 +86,7 @@ The video uses the demo shop, `uv run python bench/explore/app.py --bugs none --
 
 ## 4. Debug a run: pause, take over, answer its questions
 
-https://github.com/user-attachments/assets/6f724576-7666-4e34-a29e-20604636e3f2
+https://github.com/user-attachments/assets/5fa435ff-7600-4035-9213-f4a88e514339
 
 <sub>[Download the MP4](../assets/videos/features/04-debug-and-take-over.mp4)</sub>
 
@@ -105,7 +105,7 @@ The video uses the demo shop, `uv run python bench/explore/app.py --bugs none --
 
 ## 5. Run tests from the terminal
 
-https://github.com/user-attachments/assets/efdcdd25-8122-4781-a963-3f90add60124
+https://github.com/user-attachments/assets/d629ef9f-eb4e-4ba5-a78b-7af301804808
 
 <sub>[Download the MP4](../assets/videos/features/05-run-from-the-terminal.mp4)</sub>
 
@@ -120,7 +120,7 @@ https://github.com/user-attachments/assets/efdcdd25-8122-4781-a963-3f90add60124
 
 ## 6. Test from your coding agent
 
-https://github.com/user-attachments/assets/e4f413b1-915d-4147-9a1b-467a7d1ddce7
+https://github.com/user-attachments/assets/e21a2f45-1960-40f9-b6c0-16734bbf9d9f
 
 <sub>[Download the MP4](../assets/videos/features/06-test-from-your-coding-agent.mp4)</sub>
 
@@ -136,7 +136,7 @@ Recorded with the demo shop from `bench/explore` (`uv run python bench/explore/a
 
 ## 7. Browsers and browser options
 
-https://github.com/user-attachments/assets/591860d4-eeb6-488f-ad77-5f78bfd2b6d0
+https://github.com/user-attachments/assets/52f6135c-46e0-41bc-9226-cf5c564e364e
 
 <sub>[Download the MP4](../assets/videos/features/07-browsers-and-options.mp4)</sub>
 
@@ -154,7 +154,7 @@ In the video, step 2 of the case opens a small local page that prints the browse
 
 ## 8. Test your web app on a phone
 
-https://github.com/user-attachments/assets/f1a79642-181b-49a8-a9aa-76adc02d20ba
+https://github.com/user-attachments/assets/39fde2a1-5193-483b-b21c-0147e99f9aa3
 
 <sub>[Download the MP4](../assets/videos/features/08-mobile-web.mp4)</sub>
 
@@ -172,7 +172,7 @@ In the video, the last step opens a small local page that prints the screen size
 
 ## 9. Export a passed run as code
 
-https://github.com/user-attachments/assets/489dfc2d-35c6-4c55-99c4-27a11489440d
+https://github.com/user-attachments/assets/95eb6377-6cb6-4bcb-96d4-f82f8b525260
 
 <sub>[Download the MP4](../assets/videos/features/09-export-as-code.mp4)</sub>
 
@@ -194,7 +194,7 @@ See [Exporting runs as code](exporting-code.md).
 
 ## 10. Run a passed test on a cloud
 
-https://github.com/user-attachments/assets/8b7b72da-6767-4fb8-945c-ccfbfde585a4
+https://github.com/user-attachments/assets/3487e4f0-acd3-459e-89d6-5230f739bdce
 
 <sub>[Download the MP4](../assets/videos/features/10-run-on-a-cloud.mp4)</sub>
 
@@ -216,7 +216,7 @@ See [Running tests on clouds](clouds.md).
 
 ## 11. Import v1 projects, OpenAPI specs and requirement documents
 
-https://github.com/user-attachments/assets/dc096d8a-ff33-4c15-bd25-f3a03a89a6fe
+https://github.com/user-attachments/assets/39da031d-ecb8-470a-b861-323c4d2722bc
 
 <sub>[Download the MP4](../assets/videos/features/11-import-v1-and-specs.mp4)</sub>
 
@@ -231,7 +231,7 @@ https://github.com/user-attachments/assets/dc096d8a-ff33-4c15-bd25-f3a03a89a6fe
 
 ## 12. Visual and accessibility checks
 
-https://github.com/user-attachments/assets/6a8bda45-141b-4dc3-9f2d-bd63ee09dc66
+https://github.com/user-attachments/assets/bc28ae53-a0c2-4996-893a-35f3630cb22e
 
 <sub>[Download the MP4](../assets/videos/features/12-visual-and-accessibility.mp4)</sub>
 
@@ -247,7 +247,7 @@ Recorded against a small checkout page with a few accessibility problems on purp
 
 ## 13. Security scans
 
-https://github.com/user-attachments/assets/0e94cffd-f011-4ac8-99e8-bd09745396ba
+https://github.com/user-attachments/assets/1c37e682-4a4b-44ed-8ce1-1b10172a69f7
 
 <sub>[Download the MP4](../assets/videos/features/13-security-scan.mp4)</sub>
 
@@ -262,7 +262,7 @@ https://github.com/user-attachments/assets/0e94cffd-f011-4ac8-99e8-bd09745396ba
 
 ## 14. Run Hercules in Docker
 
-https://github.com/user-attachments/assets/01c52ff5-cf2e-4bce-b0ec-2262774a7e03
+https://github.com/user-attachments/assets/0bb2c518-9474-4e5a-bfbd-e558aab29232
 
 <sub>[Download the MP4](../assets/videos/features/14-docker.mp4)</sub>
 
