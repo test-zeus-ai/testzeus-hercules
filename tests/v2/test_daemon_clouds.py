@@ -67,6 +67,32 @@ def test_bad_cloud_requests_are_refused(tmp_path: Path) -> None:
     assert newline.status_code == 422 and "two" not in newline.json()["error"]
 
 
+def test_sauce_region_is_listed_saved_and_checked(tmp_path: Path, accepting: list[httpx.Request]) -> None:
+    config = make_config(tmp_path)
+    with client_for(config) as client:
+        listed = client.get("/api/clouds").json()["clouds"]
+        before_keys = client.put("/api/clouds/saucelabs/region", json={"region": "eu-central-1"})
+        saved = client.put("/api/clouds/saucelabs", json={"username": "demo", "access_key": KEY, "region": "us-east-4"})
+        changed = client.put("/api/clouds/saucelabs/region", json={"region": "eu-central-1"})
+        unknown = client.put("/api/clouds/saucelabs/region", json={"region": "mars-1"})
+        not_sauce = client.put("/api/clouds/browserstack/region", json={"region": "eu-central-1"})
+    assert (listed[1]["region"], listed[1]["region_source"], listed[1]["regions"]) == ("us-west-1", "default", ["us-west-1", "us-east-4", "eu-central-1"])
+    assert listed[0]["regions"] == [] and listed[0]["region"] is None
+    assert before_keys.status_code == 200 and before_keys.json()["check"] is None and before_keys.json()["region"] == "eu-central-1"
+    assert saved.json()["region"] == "us-east-4" and saved.json()["check"]["ok"] is True
+    assert changed.json()["region_source"] == "file" and changed.json()["check"]["ok"] is True
+    assert [request.url.host for request in accepting] == ["api.us-east-4.saucelabs.com", "api.eu-central-1.saucelabs.com"]
+    assert unknown.status_code == 422 and not_sauce.status_code == 422
+    assert KEY not in changed.text
+
+
+def test_an_environment_sauce_region_wins_and_is_named(tmp_path: Path, accepting: list[httpx.Request]) -> None:
+    config = make_config(tmp_path, env=isolated_env(tmp_path, SAUCE_REGION="us-east-4"))
+    with client_for(config) as client:
+        changed = client.put("/api/clouds/saucelabs/region", json={"region": "eu-central-1"}).json()
+    assert changed["region"] == "us-east-4" and changed["region_source"] == "env" and "SAUCE_REGION" in changed["note"]
+
+
 def test_environment_credentials_are_reported_and_win(tmp_path: Path, accepting: list[httpx.Request]) -> None:
     config = make_config(tmp_path, env=isolated_env(tmp_path, BROWSERSTACK_USERNAME="from_env", BROWSERSTACK_ACCESS_KEY=KEY))
     with client_for(config) as client:

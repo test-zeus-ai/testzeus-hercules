@@ -25,7 +25,11 @@ from typing import Any, Mapping
 
 from testzeus_hercules.act.files import is_secret_file
 from testzeus_hercules.cases.models import CLOUD_APP_PATTERN, MobileApp
-from testzeus_hercules.clouds.credentials import find_credentials
+from testzeus_hercules.clouds.credentials import (
+    DEFAULT_SAUCE_REGION,
+    SAUCELABS_REGIONS,
+    find_credentials,
+)
 from testzeus_hercules.kernel.settings import DeviceCloudSettings, Settings
 from testzeus_hercules.llm.providers import is_local_url
 
@@ -34,9 +38,6 @@ BROWSERSTACK_API = "https://api-cloud.browserstack.com/app-automate"
 # TestMu AI (formerly LambdaTest) real devices: the Appium hub and the app upload API (hosts are still lambdatest.com).
 TESTMU_HUB = "https://mobile-hub.lambdatest.com/wd/hub"
 TESTMU_API = "https://manual-api.lambdatest.com"
-# Sauce Labs data centers: the region becomes part of host names that receive the account's credentials, so only a
-# known data center is used.
-SAUCELABS_REGIONS = frozenset({"us-west-1", "us-east-4", "eu-central-1"})
 _CLOUD_APP = re.compile(CLOUD_APP_PATTERN)
 
 
@@ -92,7 +93,7 @@ def resolve_target(app: MobileApp, settings: Settings, env: Mapping[str, str], p
             f"the {app.cloud} credentials are missing: set the environment variable(s) {', '.join(missing or (cloud.username_env, cloud.access_key_env))} "
             f"(named in mobile.{app.cloud} of the project's config), or save them from the UI's Integrations screen (kept in {settings.home_dir / 'clouds.env'}){problem}"
         )
-    hub, api, region = cloud_endpoints(app.cloud, settings)
+    hub, api, region = cloud_endpoints(app.cloud, settings, found.region)
     return DeviceTarget(
         app=app,
         hub_url=hub,
@@ -106,18 +107,19 @@ def resolve_target(app: MobileApp, settings: Settings, env: Mapping[str, str], p
     )
 
 
-def cloud_endpoints(provider: str, settings: Settings) -> tuple[str, str, str | None]:
+def cloud_endpoints(provider: str, settings: Settings, region: str | None = None) -> tuple[str, str, str | None]:
     """The device cloud's Appium hub, REST API (app upload, session status) and region: the configured ones
-    (``mobile.<provider>.hub_url`` / ``api_url`` / ``region``), else the cloud's defaults. :class:`TargetError` for an
-    unknown Sauce Labs region (it becomes part of host names that receive the credentials)."""
+    (``mobile.<provider>.hub_url`` / ``api_url``; the Sauce Labs ``region`` found with the credentials, else
+    ``mobile.saucelabs.region``), else the cloud's defaults. :class:`TargetError` for an unknown Sauce Labs region (it
+    becomes part of host names that receive the credentials)."""
     cloud: DeviceCloudSettings = getattr(settings.mobile, provider)
     if provider == "browserstack":
         return (cloud.hub_url or BROWSERSTACK_HUB).rstrip("/"), (cloud.api_url or BROWSERSTACK_API).rstrip("/"), None
     if provider == "testmu":
         return (cloud.hub_url or TESTMU_HUB).rstrip("/"), (cloud.api_url or TESTMU_API).rstrip("/"), None
-    region = (cloud.region or "us-west-1").lower()
+    region = (region or cloud.region or DEFAULT_SAUCE_REGION).lower()
     if region not in SAUCELABS_REGIONS:
-        raise TargetError(f"mobile.saucelabs.region must be one of {', '.join(sorted(SAUCELABS_REGIONS))}")
+        raise TargetError(f"the Sauce Labs region must be one of {', '.join(SAUCELABS_REGIONS)}")
     hub = cloud.hub_url or f"https://ondemand.{region}.saucelabs.com:443/wd/hub"
     return hub.rstrip("/"), (cloud.api_url or f"https://api.{region}.saucelabs.com").rstrip("/"), region
 

@@ -878,6 +878,7 @@ def create_app(config: DaemonConfig) -> Starlette:
         Route("/api/clouds/{cloud}", _endpoint(cloud_api.save_cloud), methods=["PUT"]),
         Route("/api/clouds/{cloud}", _endpoint(cloud_api.remove_cloud), methods=["DELETE"]),
         Route("/api/clouds/{cloud}/check", _endpoint(cloud_api.check_cloud), methods=["POST"]),
+        Route("/api/clouds/{cloud}/region", _endpoint(cloud_api.save_cloud_region), methods=["PUT"]),
         Route("/api/runs/{run_id}/steps/{step}/decisions", _endpoint(step_decisions), methods=["GET"]),
         Route("/api/runs/{run_id}/plan", _endpoint(run_plan), methods=["GET"]),
         Route("/api/runs/{run_id}/plan/diff", _endpoint(run_plan_diff), methods=["GET"]),

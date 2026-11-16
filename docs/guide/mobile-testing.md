@@ -205,7 +205,7 @@ mobile:
   saucelabs:
     username_env: SAUCE_USERNAME
     access_key_env: SAUCE_ACCESS_KEY
-    region: us-west-1          # us-west-1, us-east-4 or eu-central-1
+    region: us-west-1          # us-west-1, us-east-4 or eu-central-1; SAUCE_REGION or the Integrations screen win
   testmu:
     username_env: LT_USERNAME
     access_key_env: LT_ACCESS_KEY

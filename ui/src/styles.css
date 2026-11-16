@@ -3413,6 +3413,10 @@ textarea {
   margin-bottom: var(--space-3);
 }
 
+.cloud-region {
+  max-width: 16rem;
+}
+
 .cloud-form-links {
   display: flex;
   flex-wrap: wrap;

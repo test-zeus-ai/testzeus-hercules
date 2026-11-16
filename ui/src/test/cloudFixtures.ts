@@ -10,6 +10,8 @@ export function cloud(overrides: Partial<Cloud> = {}): Cloud {
     username_env: "BROWSERSTACK_USERNAME",
     access_key_env: "BROWSERSTACK_ACCESS_KEY",
     region: null,
+    region_source: null,
+    regions: [],
     problem: null,
     web_mode: "connect",
     web_ready: null,
@@ -28,7 +30,7 @@ export function cloudsReport(overrides: Partial<CloudsReport> = {}): CloudsRepor
   return {
     clouds: [
       cloud(),
-      cloud({ id: "saucelabs", name: "Sauce Labs", connected: false, source: "none", username: null, username_env: "SAUCE_USERNAME", access_key_env: "SAUCE_ACCESS_KEY", web_mode: "saucectl", web_ready: "saucectl is not installed: npm install -g saucectl", ci_config: ".sauce/config.yml", ci_runner: "saucectl" }),
+      cloud({ id: "saucelabs", name: "Sauce Labs", connected: false, source: "none", username: null, username_env: "SAUCE_USERNAME", access_key_env: "SAUCE_ACCESS_KEY", region: "us-west-1", region_source: "default", regions: ["us-west-1", "us-east-4", "eu-central-1"], web_mode: "saucectl", web_ready: "saucectl is not installed: npm install -g saucectl", ci_config: ".sauce/config.yml", ci_runner: "saucectl" }),
       cloud({ id: "testmu", name: "TestMu AI", connected: true, source: "env", username: "bob", username_env: "LT_USERNAME", access_key_env: "LT_ACCESS_KEY", ci_config: "hyperexecute.yaml" }),
     ],
     keys_file: "~/.hercules/clouds.env",

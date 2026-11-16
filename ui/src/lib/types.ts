@@ -509,6 +509,10 @@ export interface Cloud {
   username_env: string;
   access_key_env: string;
   region: string | null;
+  /** Where the region comes from: SAUCE_REGION (read-only here), the keys file, the config, or the default. */
+  region_source: "env" | "file" | "config" | "default" | null;
+  /** The regions this cloud can be set to; empty when it has none to choose. */
+  regions: string[];
   problem: string | null;
   web_mode: "connect" | "saucectl";
   /** null: web tests can run on this cloud from here; otherwise why they cannot. */
@@ -538,6 +542,7 @@ export interface CloudCheck {
 }
 
 export type CloudSaved = Cloud & { check: CloudCheck; note: string | null };
+export type CloudRegionSaved = Cloud & { check: CloudCheck | null; note: string | null };
 export type CloudRemoved = Cloud & { removed: boolean; note: string | null };
 
 export type CloudRunStatus = "starting" | "running" | "passed" | "failed" | "error" | "cancelled";

@@ -107,7 +107,7 @@ async def upload_app_to_cloud(app_file: Path, cloud: CloudId, credentials: Cloud
     if not (app_file.is_file() or (app_file.is_dir() and app_file.suffix.lower() == ".app")):
         raise CloudError(f"the app file {app_file.name!r} was not found")
     try:
-        _, api, _ = cloud_endpoints(cloud, settings)
+        _, api, _ = cloud_endpoints(cloud, settings, credentials.region)
     except TargetError as exc:
         raise CloudError(str(exc)) from None
     return await upload_file(app_file, cloud, api, credentials.auth, client_factory)

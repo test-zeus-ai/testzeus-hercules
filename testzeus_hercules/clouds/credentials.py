@@ -4,7 +4,8 @@ Each cloud's user name and access key live in the environment variables named in
 (``BROWSERSTACK_USERNAME``/``BROWSERSTACK_ACCESS_KEY``, ``SAUCE_USERNAME``/``SAUCE_ACCESS_KEY`` and
 ``LT_USERNAME``/``LT_ACCESS_KEY`` by default). When the environment does not hold them, the private file
 ``clouds.env`` may: ``NAME=value`` lines, readable by its owner only (mode 0600; a file others can read is
-ignored). The tester UI saves pasted keys there. Values are added to a copy of the environment mapping handed
+ignored). The tester UI saves pasted keys there. The Sauce Labs data center comes from ``SAUCE_REGION`` in the
+environment, else the one saved in ``clouds.env``, else ``mobile.saucelabs.region``, else ``us-west-1``. Values are added to a copy of the environment mapping handed
 to a run, never to the process environment; nothing here logs or returns a key in a message.
 """
 
@@ -22,12 +23,16 @@ from testzeus_hercules.clouds.registry import CLOUD_IDS, CloudId
 from testzeus_hercules.kernel.settings import DeviceCloudSettings, Settings
 
 CLOUDS_FILENAME = "clouds.env"
+SAUCE_REGION_ENV = "SAUCE_REGION"
+SAUCELABS_REGIONS = ("us-west-1", "us-east-4", "eu-central-1")
+DEFAULT_SAUCE_REGION = "us-west-1"
 _PRIVATE_FILE = 0o600
 _PRIVATE_DIR = 0o700
 _MAX_FILE_BYTES = 16_384
 _MAX_VALUE = 512
 
 Source = Literal["env", "file", "none"]
+RegionSource = Literal["env", "file", "config", "default"]
 
 
 class CredentialError(ValueError):
@@ -45,6 +50,8 @@ class CloudCredentials:
     username: str | None = None
     access_key: str | None = field(default=None, repr=False)
     problem: str | None = None
+    region: str | None = None
+    region_source: RegionSource | None = None
 
     @property
     def found(self) -> bool:
@@ -113,18 +120,38 @@ def read_clouds_file(home: Path) -> tuple[dict[str, str], str | None]:
         return {}, f"cannot read {path} ({type(exc).__name__})"
 
 
+def _region(cloud: CloudId, config: DeviceCloudSettings, env: Mapping[str, str], stored: Mapping[str, str]) -> tuple[str | None, RegionSource | None]:
+    if cloud != "saucelabs":
+        return None, None
+    for value, source in ((env.get(SAUCE_REGION_ENV, ""), "env"), (stored.get(SAUCE_REGION_ENV, ""), "file"), (config.region or "", "config")):
+        if value.strip():
+            return value.strip().lower(), source  # type: ignore[return-value]
+    return DEFAULT_SAUCE_REGION, "default"
+
+
+_REGION_WHERE = f"choose it on the Integrations screen, with hercules cloud connect saucelabs --region, in {SAUCE_REGION_ENV}, or in mobile.saucelabs.region"
+
+
+def sauce_region(credentials: CloudCredentials) -> str:
+    region = credentials.region or DEFAULT_SAUCE_REGION
+    if region not in SAUCELABS_REGIONS:
+        raise ValueError(f"the Sauce Labs region must be one of {', '.join(SAUCELABS_REGIONS)} ({_REGION_WHERE})")
+    return region
+
+
 def find_credentials(cloud: CloudId, settings: Settings, env: Mapping[str, str]) -> CloudCredentials:
     """The cloud's credentials: both values from the environment, else both from ``clouds.env``."""
     config = cloud_settings(settings, cloud)
     names = (config.username_env, config.access_key_env)
+    stored, problem = read_clouds_file(settings.home_dir)
+    region, region_source = _region(cloud, config, env, stored)
     username, key = (env.get(names[0], "").strip(), env.get(names[1], "").strip())
     if username and key:
-        return CloudCredentials(cloud, *names, source="env", username=username, access_key=key)
-    stored, problem = read_clouds_file(settings.home_dir)
+        return CloudCredentials(cloud, *names, source="env", username=username, access_key=key, region=region, region_source=region_source)
     username, key = (stored.get(names[0], ""), stored.get(names[1], ""))
     if username and key:
-        return CloudCredentials(cloud, *names, source="file", username=username, access_key=key)
-    return CloudCredentials(cloud, *names, source="none", problem=problem)
+        return CloudCredentials(cloud, *names, source="file", username=username, access_key=key, region=region, region_source=region_source)
+    return CloudCredentials(cloud, *names, source="none", problem=problem, region=region, region_source=region_source)
 
 
 def with_cloud_credentials(env: Mapping[str, str], settings: Settings) -> dict[str, str]:
@@ -164,14 +191,39 @@ def _write(home: Path, values: Mapping[str, str]) -> Path:
     return path
 
 
-def save_credentials(cloud: CloudId, settings: Settings, username: str, access_key: str) -> Path:
-    """Save the cloud's user name and access key to ``clouds.env`` (mode 0600), keeping the other clouds' lines."""
-    config = cloud_settings(settings, cloud)
+def _checked_region(cloud: CloudId, region: str) -> str:
+    if cloud != "saucelabs":
+        raise CredentialError("only Sauce Labs has a region")
+    cleaned = region.strip().lower()
+    if cleaned not in SAUCELABS_REGIONS:
+        raise CredentialError(f"the Sauce Labs region must be one of {', '.join(SAUCELABS_REGIONS)}")
+    return cleaned
+
+
+def _saved_values(settings: Settings) -> dict[str, str]:
     values, problem = read_clouds_file(settings.home_dir)
     if problem and clouds_file(settings.home_dir).exists():
         raise CredentialError(problem)
+    return values
+
+
+def save_credentials(cloud: CloudId, settings: Settings, username: str, access_key: str, region: str | None = None) -> Path:
+    """Save the cloud's user name and access key (and Sauce Labs region) to ``clouds.env`` (mode 0600), keeping the
+    other clouds' lines."""
+    config = cloud_settings(settings, cloud)
+    checked = _checked_region(cloud, region) if region is not None else None
+    values = _saved_values(settings)
     values[config.username_env] = _clean(username, "user name")
     values[config.access_key_env] = _clean(access_key, "access key")
+    if checked is not None:
+        values[SAUCE_REGION_ENV] = checked
+    return _write(settings.home_dir, values)
+
+
+def save_region(cloud: CloudId, settings: Settings, region: str) -> Path:
+    checked = _checked_region(cloud, region)
+    values = _saved_values(settings)
+    values[SAUCE_REGION_ENV] = checked
     return _write(settings.home_dir, values)
 
 

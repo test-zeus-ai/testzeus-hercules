@@ -198,6 +198,36 @@ def test_cloud_list_warns_about_a_placeholder_name(tmp_path: Path) -> None:
     assert "placeholder" in json.loads(rows.getvalue())[0]["problem"]
 
 
+def test_cloud_connect_saves_the_sauce_region(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from testzeus_hercules.cli import cloud_cmd
+    from testzeus_hercules.clouds import check as check_module
+    from testzeus_hercules.clouds.credentials import SAUCELABS_REGIONS, find_credentials
+    from testzeus_hercules.kernel.settings import Settings
+
+    seen: list[str | None] = []
+
+    async def accept(cloud: str, credentials: CloudCredentials, settings: object) -> check_module.CheckResult:
+        seen.append(credentials.region)
+        return check_module.CheckResult(True, "connected")
+
+    monkeypatch.setattr(check_module, "check_credentials", accept)
+    env = {"HERCULES_HOME": str(tmp_path / "home"), "HERCULES_TELEMETRY": "0"}
+    monkeypatch.chdir(tmp_path)
+
+    def connect(cloud: str, err: io.StringIO) -> int:
+        args = build_parser().parse_args(["cloud", "connect", cloud, "--username", "demo", "--region", "eu-central-1"])
+        return cloud_cmd.run_cloud_command(args, env=env, out=io.StringIO(), err=err, stdin=io.StringIO("k3y\n"))
+
+    assert cloud_cmd.SAUCELABS_REGION_CHOICES == SAUCELABS_REGIONS
+    assert connect("saucelabs", io.StringIO()) == 0
+    err = io.StringIO()
+    refused = connect("browserstack", err)
+
+    assert seen == ["eu-central-1"]
+    assert find_credentials("saucelabs", Settings.load(tmp_path, env=env), {}).region_source == "file"
+    assert refused == 2 and "only Sauce Labs has a region" in err.getvalue()
+
+
 # --- hercules init for more agents ------------------------------------------
 
 

@@ -29,6 +29,7 @@ from testzeus_hercules.clouds.credentials import (
     find_credentials,
     remove_credentials,
     save_credentials,
+    save_region,
     with_cloud_credentials,
 )
 from testzeus_hercules.clouds.runner import (
@@ -124,6 +125,41 @@ def test_custom_variable_names_are_used(tmp_path: Path) -> None:
     assert found.found and (found.username_env, found.access_key_env) == ("CI_BS_USER", "CI_BS_KEY")
 
 
+def test_sauce_region_comes_from_the_environment_then_the_saved_file_then_the_config(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    (project / ".hercules").mkdir(parents=True)
+    (project / ".hercules" / "config.yaml").write_text("mobile:\n  saucelabs:\n    region: us-east-4\n", encoding="utf-8")
+    settings = Settings.load(project, env={"HERCULES_HOME": str(tmp_path / "home")})
+    (tmp_path / "other").mkdir()
+    default = find_credentials("saucelabs", _settings(tmp_path / "other"), {})
+    from_config = find_credentials("saucelabs", settings, {})
+    save_credentials("saucelabs", settings, USER, KEY, "eu-central-1")
+    from_file = find_credentials("saucelabs", settings, {})
+    from_env = find_credentials("saucelabs", settings, {"SAUCE_REGION": "US-WEST-1"})
+
+    assert (default.region, default.region_source) == ("us-west-1", "default")
+    assert (from_config.region, from_config.region_source) == ("us-east-4", "config")
+    assert (from_file.region, from_file.region_source) == ("eu-central-1", "file")
+    assert (from_env.region, from_env.region_source) == ("us-west-1", "env")
+    assert find_credentials("browserstack", settings, {}).region is None
+
+
+def test_only_a_known_sauce_region_is_saved_and_it_outlives_the_keys(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    save_region("saucelabs", settings, "eu-central-1")
+    save_credentials("saucelabs", settings, USER, KEY)
+
+    for cloud, region in (("browserstack", "eu-central-1"), ("saucelabs", "mars-1"), ("saucelabs", "evil.example/x")):
+        with pytest.raises(CredentialError):
+            save_region(cloud, settings, region)  # type: ignore[arg-type]
+    with pytest.raises(CredentialError):
+        save_credentials("testmu", settings, USER, KEY, "eu-central-1")
+
+    assert find_credentials("saucelabs", settings, {}).region == "eu-central-1"
+    remove_credentials("saucelabs", settings)
+    assert find_credentials("saucelabs", settings, {}).region == "eu-central-1"
+
+
 # --------------------------------------------------------------------------- connection check
 
 
@@ -165,6 +201,48 @@ def test_check_reports_refused_and_missing_credentials(tmp_path: Path) -> None:
 
     assert not missing.ok and "LT_USERNAME" in missing.message
     assert not refused.ok and "refused" in refused.message and KEY not in refused.message
+
+
+def _by_host(accepting: str | None, seen: list[httpx.Request]) -> Any:
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200 if accepting and request.url.host == f"api.{accepting}.saucelabs.com" else 401, json={})
+
+    def factory(**kwargs: Any) -> httpx.AsyncClient:
+        return httpx.AsyncClient(transport=httpx.MockTransport(handler), **kwargs)
+
+    return factory
+
+
+def test_check_asks_the_saved_sauce_region(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    save_credentials("saucelabs", settings, USER, KEY, "eu-central-1")
+    seen: list[httpx.Request] = []
+
+    result = asyncio.run(check_credentials("saucelabs", find_credentials("saucelabs", settings, {}), settings, _by_host("eu-central-1", seen)))
+
+    assert result.ok and [request.url.host for request in seen] == ["api.eu-central-1.saucelabs.com"]
+
+
+def test_a_refused_sauce_check_names_the_region_that_accepts_the_keys(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    save_credentials("saucelabs", settings, USER, KEY)
+    seen: list[httpx.Request] = []
+
+    result = asyncio.run(check_credentials("saucelabs", find_credentials("saucelabs", settings, {}), settings, _by_host("eu-central-1", seen)))
+
+    assert not result.ok and "region us-west-1" in result.message and "choose the region eu-central-1" in result.message
+    assert [request.url.host for request in seen] == ["api.us-west-1.saucelabs.com", "api.us-east-4.saucelabs.com", "api.eu-central-1.saucelabs.com"]
+    assert KEY not in result.message
+
+
+def test_a_sauce_check_refused_everywhere_mentions_the_region(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    save_credentials("saucelabs", settings, USER, KEY)
+
+    result = asyncio.run(check_credentials("saucelabs", find_credentials("saucelabs", settings, {}), settings, _by_host(None, [])))
+
+    assert not result.ok and "in region us-west-1" in result.message and "access key and region" in result.message
 
 
 def test_check_reports_an_unreachable_cloud(tmp_path: Path) -> None:
@@ -401,6 +479,15 @@ def test_the_sauce_project_uses_the_configured_region(tmp_path: Path) -> None:
     bundle = runs.bundle(web_result(), "saucelabs", WebOptions(), MobileOptions())
 
     assert "region: eu-central-1" in bundle.files[".sauce/config.yml"]
+
+
+def test_the_sauce_project_uses_the_saved_region(tmp_path: Path) -> None:
+    runs = _runs(tmp_path, {}, HERCULES_HOME=str(tmp_path / "home"))
+    save_region("saucelabs", runs.settings, "us-east-4")
+
+    bundle = runs.bundle(web_result(), "saucelabs", WebOptions(), MobileOptions())
+
+    assert "region: us-east-4" in bundle.files[".sauce/config.yml"]
 
 
 def test_ci_snippets_use_the_configured_variable_names() -> None:
