@@ -271,77 +271,77 @@ converts v1 projects and drafts cases from requirement documents.
 
 ## See every feature in action
 
-Fourteen short videos, one per feature, recorded against the demo shop in `bench/explore`. Click a
+Fourteen short videos, one per feature, with a spoken walkthrough, recorded against the demo shop in `bench/explore`. Click a
 picture to play the video; [Feature videos](docs/guide/videos.md) plays them in the page, with the steps to do the same on your machine.
 
 <table>
 <tr>
 <td width="50%" valign="top">
-<a href="https://github.com/user-attachments/assets/0ec6877d-9da7-4f8c-82a2-aa2233311782"><img src="docs/assets/videos/features/01-one-line-start.jpg" width="400" alt="One line to install and set up (1:19)"></a>
+<a href="https://github.com/user-attachments/assets/8b9614b4-6f97-431f-bdb3-ed900b287807"><img src="docs/assets/videos/features/01-one-line-start.jpg" width="400" alt="One line to install and set up (1:19)"></a>
 <br><b>One line to install and set up.</b> <code>uvx testzeus-hercules</code> in your app's folder installs the <code>hercules</code> command, sets up the browsers you pick, connects a model (local, OpenRouter or any OpenAI-compatible endpoint) and your coding agent, asking before each change.
 </td>
 <td width="50%" valign="top">
-<a href="https://github.com/user-attachments/assets/951672f3-f524-4a41-9cab-4eb7dc709293"><img src="docs/assets/videos/features/02-tester-ui-quick-start.jpg" width="400" alt="From an empty project to a passing test (1:52)"></a>
+<a href="https://github.com/user-attachments/assets/d39bc972-4811-46fe-bdbd-73c5b0d88106"><img src="docs/assets/videos/features/02-tester-ui-quick-start.jpg" width="400" alt="From an empty project to a passing test (1:52)"></a>
 <br><b>From an empty project to a passing test.</b> Start from an empty project in the tester UI: save an environment for the app, write a case the way a tester would, run it and watch it live, then read every step, decision and screenshot it kept.
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
-<a href="https://github.com/user-attachments/assets/ac02f8a2-6959-40b6-90af-296d7284a211"><img src="docs/assets/videos/features/03-review-the-plan.jpg" width="400" alt="Review the plan before the run starts (1:35)"></a>
+<a href="https://github.com/user-attachments/assets/0867715b-8c56-4321-be71-f7d9d2c96d7c"><img src="docs/assets/videos/features/03-review-the-plan.jpg" width="400" alt="Review the plan before the run starts (1:35)"></a>
 <br><b>Review the plan before it runs.</b> Every case becomes a plan: the actions, the success criteria the page must meet after each one, risks and lint.
 </td>
 <td width="50%" valign="top">
-<a href="https://github.com/user-attachments/assets/b8aec7be-388e-4ef9-984b-5a74a345f7f0"><img src="docs/assets/videos/features/04-debug-and-take-over.jpg" width="400" alt="Debug a run: pause, take over, answer its questions (1:38)"></a>
+<a href="https://github.com/user-attachments/assets/6f724576-7666-4e34-a29e-20604636e3f2"><img src="docs/assets/videos/features/04-debug-and-take-over.jpg" width="400" alt="Debug a run: pause, take over, answer its questions (1:38)"></a>
 <br><b>Debug a run, take over the browser.</b> Pause with Space, step with N, take over the run's own browser to do what the case forgot, fix a step that could not be done by editing its text, and approve an irreversible click before it happens.
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
-<a href="https://github.com/user-attachments/assets/f60b1d32-8a8c-4140-a755-d8d27086d690"><img src="docs/assets/videos/features/05-run-from-the-terminal.jpg" width="400" alt="Run tests from the terminal (1:47)"></a>
+<a href="https://github.com/user-attachments/assets/efdcdd25-8122-4781-a963-3f90add60124"><img src="docs/assets/videos/features/05-run-from-the-terminal.jpg" width="400" alt="Run tests from the terminal (1:47)"></a>
 <br><b>Run tests from the terminal.</b> <code>hercules run</code> runs a case in a real browser, shows each step as it goes, and exits 0, 1 or 2 for scripts and CI.
 </td>
 <td width="50%" valign="top">
-<a href="https://github.com/user-attachments/assets/e3e6acb9-30bd-48c4-9d1f-4710b036d9af"><img src="docs/assets/videos/features/06-test-from-your-coding-agent.jpg" width="400" alt="Test from your coding agent (1:14)"></a>
+<a href="https://github.com/user-attachments/assets/e4f413b1-915d-4147-9a1b-467a7d1ddce7"><img src="docs/assets/videos/features/06-test-from-your-coding-agent.jpg" width="400" alt="Test from your coding agent (1:14)"></a>
 <br><b>Test from your coding agent.</b> One command gives Claude Code (or Codex, Cursor, GitHub Copilot, Gemini CLI) the Hercules tools; then ask for a test in plain words and the agent writes the case, runs it in a real browser and reports the result.
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
-<a href="https://github.com/user-attachments/assets/ec6d36fe-0517-4de2-bffe-57a0723bf4db"><img src="docs/assets/videos/features/07-browsers-and-options.jpg" width="400" alt="Browsers and browser options (1:22)"></a>
+<a href="https://github.com/user-attachments/assets/591860d4-eeb6-488f-ad77-5f78bfd2b6d0"><img src="docs/assets/videos/features/07-browsers-and-options.jpg" width="400" alt="Browsers and browser options (1:22)"></a>
 <br><b>Any browser, any Playwright option.</b> Save an environment that runs WebKit in German, on Berlin time, already signed in from an auth JSON and sending an extra header, then run a case on it and see every option arrive.
 </td>
 <td width="50%" valign="top">
-<a href="https://github.com/user-attachments/assets/da93c378-4317-4871-bf29-e77c3815297c"><img src="docs/assets/videos/features/08-mobile-web.jpg" width="400" alt="Test your web app on a phone (1:17)"></a>
+<a href="https://github.com/user-attachments/assets/f1a79642-181b-49a8-a9aa-76adc02d20ba"><img src="docs/assets/videos/features/08-mobile-web.jpg" width="400" alt="Test your web app on a phone (1:17)"></a>
 <br><b>Test your web app on a phone.</b> Give an environment a Playwright device profile such as <code>iPhone 15</code>, run any web case on it, and watch the phone-sized run live; every step keeps the phone's screenshot.
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
-<a href="https://github.com/user-attachments/assets/054749be-679c-45c3-b9b3-18434e4c9822"><img src="docs/assets/videos/features/09-export-as-code.jpg" width="400" alt="Export a passed run as code (1:33)"></a>
+<a href="https://github.com/user-attachments/assets/489dfc2d-35c6-4c55-99c4-27a11489440d"><img src="docs/assets/videos/features/09-export-as-code.jpg" width="400" alt="Export a passed run as code (1:33)"></a>
 <br><b>Export a passed run as code.</b> Turn a passed run into a Playwright Test or pytest-playwright file with real locators and expects, then <code>hercules export --check</code> runs it once and tells you it passes, with no Hercules or model needed at test time.
 </td>
 <td width="50%" valign="top">
-<a href="https://github.com/user-attachments/assets/292f9072-a40c-4836-83a4-dbe7ceafbcef"><img src="docs/assets/videos/features/10-run-on-a-cloud.jpg" width="400" alt="Run a passed test on a cloud (1:33)"></a>
+<a href="https://github.com/user-attachments/assets/8b7b72da-6767-4fb8-945c-ccfbfde585a4"><img src="docs/assets/videos/features/10-run-on-a-cloud.jpg" width="400" alt="Run a passed test on a cloud (1:33)"></a>
 <br><b>Run a passed test on a cloud.</b> Connect BrowserStack, Sauce Labs or TestMu AI and run any passed test on the cloud's browsers from its run page, or download it as a ready-made project for that cloud's CI.
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
-<a href="https://github.com/user-attachments/assets/f92623bb-d0f9-45b5-a1b3-1a1537ea549d"><img src="docs/assets/videos/features/11-import-v1-and-specs.jpg" width="400" alt="Import v1 projects, OpenAPI specs and requirement documents (1:28)"></a>
+<a href="https://github.com/user-attachments/assets/dc096d8a-ff33-4c15-bd25-f3a03a89a6fe"><img src="docs/assets/videos/features/11-import-v1-and-specs.jpg" width="400" alt="Import v1 projects, OpenAPI specs and requirement documents (1:28)"></a>
 <br><b>Import v1 projects, specs and documents.</b> <code>hercules import</code> turns what you already have into test cases: a Hercules v1 project's Gherkin features, test data and <code>.env</code>; an OpenAPI spec, one API case per operation; and a requirements document, which your model drafts into cases marked draft for review.
 </td>
 <td width="50%" valign="top">
-<a href="https://github.com/user-attachments/assets/8bc6ae85-cc2d-4692-bae2-b7d2f17b68ab"><img src="docs/assets/videos/features/12-visual-and-accessibility.jpg" width="400" alt="Visual and accessibility checks (1:28)"></a>
+<a href="https://github.com/user-attachments/assets/6a8bda45-141b-4dc3-9f2d-bd63ee09dc66"><img src="docs/assets/videos/features/12-visual-and-accessibility.jpg" width="400" alt="Visual and accessibility checks (1:28)"></a>
 <br><b>Visual and accessibility checks.</b> Turn on <b>Accessibility</b> and <b>Visual</b> when you start a run and every page the case reaches is audited: WCAG findings with a selector and a fix that was tried in the page, layout problems at phone width, and a baseline screenshot that the next run is compared against.
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
-<a href="https://github.com/user-attachments/assets/a8255d69-1c00-41a7-92e9-9c30d19de80c"><img src="docs/assets/videos/features/13-security-scan.jpg" width="400" alt="Security scans (1:18)"></a>
+<a href="https://github.com/user-attachments/assets/0e94cffd-f011-4ac8-99e8-bd09745396ba"><img src="docs/assets/videos/features/13-security-scan.jpg" width="400" alt="Security scans (1:18)"></a>
 <br><b>Security scans.</b> <code>hercules scan</code> checks your app for known security issues with the open-source nuclei scanner, only against the app under test and without intrusive templates unless you ask.
 </td>
 <td width="50%" valign="top">
-<a href="https://github.com/user-attachments/assets/fc76ad04-d212-49d7-a98f-fb4f6bbddf3f"><img src="docs/assets/videos/features/14-docker.jpg" width="400" alt="Run Hercules in Docker (1:45)"></a>
+<a href="https://github.com/user-attachments/assets/01c52ff5-cf2e-4bce-b0ec-2262774a7e03"><img src="docs/assets/videos/features/14-docker.jpg" width="400" alt="Run Hercules in Docker (1:45)"></a>
 <br><b>Run it in Docker.</b> Build the Hercules image, serve the tester UI from a container with your project mounted and the model key passed by name, then sign in and run a case: the same UI, runs and evidence as without Docker.
 </td>
 </tr>
@@ -349,20 +349,20 @@ picture to play the video; [Feature videos](docs/guide/videos.md) plays them in 
 
 ## See exploratory testing in action
 
-Five short videos, recorded against the demo shop in `bench/explore` with its seeded bugs
+Five short videos, with a spoken walkthrough, recorded against the demo shop in `bench/explore` with its seeded bugs
 switched on. Click a picture to play the video. The steps under each one do the same on your
 machine; [Exploratory testing](docs/guide/explore.md#walkthrough-videos) has them in full.
 
 <table>
 <tr>
 <td width="50%" valign="top">
-<a href="https://github.com/user-attachments/assets/e4fc51c4-7738-4a67-b8e5-f38bfa1a0036"><img src="docs/assets/videos/explore/01-start-and-watch-live.jpg" width="400" alt="Start a session and watch it live (2:10)"></a>
+<a href="https://github.com/user-attachments/assets/d9d6c42f-8884-4292-b149-f3ef1fe52437"><img src="docs/assets/videos/explore/01-start-and-watch-live.jpg" width="400" alt="Start a session and watch it live (2:10)"></a>
 <br><b>Start a session, watch it live.</b> Run <code>hercules ui</code>, open
 <b>Explore → Start exploring</b>, pick a start case, a mission and a time box, and watch
 explorers work while each clue is reproduced.
 </td>
 <td width="50%" valign="top">
-<a href="https://github.com/user-attachments/assets/d6b5d61c-7806-47ca-b8d8-4ad8047cd9f6"><img src="docs/assets/videos/explore/02-review-findings-one-click.jpg" width="400" alt="Review findings in one click (1:07)"></a>
+<a href="https://github.com/user-attachments/assets/00034a15-2847-495c-9096-45e5512fd7a8"><img src="docs/assets/videos/explore/02-review-findings-one-click.jpg" width="400" alt="Review findings in one click (1:07)"></a>
 <br><b>Review findings in one click.</b> Open <b>Explore → Findings</b>, open a finding, and
 click <b>Real bug</b>, <b>Not a bug</b>, <b>Can't reproduce</b> or <b>Duplicate</b>. Copy it
 as a GitHub, Jira, Linear or Markdown issue.
@@ -370,13 +370,13 @@ as a GitHub, Jira, Linear or Markdown issue.
 </tr>
 <tr>
 <td width="50%" valign="top">
-<a href="https://github.com/user-attachments/assets/d76309c8-386f-4848-9794-1f348368b09e"><img src="docs/assets/videos/explore/03-explore-from-the-terminal.jpg" width="400" alt="Explore from the terminal (1:43)"></a>
+<a href="https://github.com/user-attachments/assets/90c9a356-633a-4898-997c-cb4809ec4037"><img src="docs/assets/videos/explore/03-explore-from-the-terminal.jpg" width="400" alt="Explore from the terminal (1:43)"></a>
 <br><b>Explore from the terminal.</b>
 <code>hercules explore start --from .hercules/cases/sign-in.json -t 3 -w 2</code>, then
 <code>hercules explore findings</code>, <code>show</code> and <code>issue</code>.
 </td>
 <td width="50%" valign="top">
-<a href="https://github.com/user-attachments/assets/2178e91a-818f-4aa4-a5f4-35a50202cad1"><img src="docs/assets/videos/explore/04-fix-reverify-regression.jpg" width="400" alt="Fix, reverify, keep it fixed (1:00)"></a>
+<a href="https://github.com/user-attachments/assets/c22e9d17-ae41-4e2d-bd16-85c96d018732"><img src="docs/assets/videos/explore/04-fix-reverify-regression.jpg" width="400" alt="Fix, reverify, keep it fixed (1:00)"></a>
 <br><b>Fix, reverify, keep it fixed.</b> After a fix, <code>hercules explore reverify</code>
 reruns the kept bug cases. Close a verified fix with
 <code>hercules explore triage ID --state closed</code> and its case becomes a regression test.
@@ -384,7 +384,7 @@ reruns the kept bug cases. Close a verified fix with
 </tr>
 <tr>
 <td width="50%" valign="top">
-<a href="https://github.com/user-attachments/assets/f663e2b0-8f8f-4cdd-bcd7-51374a074039"><img src="docs/assets/videos/explore/05-explore-from-your-coding-agent.jpg" width="400" alt="Explore from your coding agent (2:12)"></a>
+<a href="https://github.com/user-attachments/assets/ce9222d4-33aa-4918-a893-5c8bde477547"><img src="docs/assets/videos/explore/05-explore-from-your-coding-agent.jpg" width="400" alt="Explore from your coding agent (2:12)"></a>
 <br><b>Explore from your coding agent.</b> <code>hercules init --agent claude</code> (or
 <code>cursor</code>, <code>copilot</code>, <code>codex</code>, <code>gemini</code>), then ask:
 "Explore the shop for bugs for 3 minutes and tell me what you found."

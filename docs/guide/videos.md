@@ -1,6 +1,6 @@
 # Feature videos
 
-Short videos of each part of Hercules, recorded on a real machine against Acme Pantry, the demo shop in
+Short videos of each part of Hercules, with a spoken walkthrough, recorded on a real machine against Acme Pantry, the demo shop in
 `bench/explore` (started with no seeded bugs: `uv run python bench/explore/app.py --bugs none --port 8201`;
 its sign-in page takes any name). Each video plays on this page; the MP4 files are also in
 `docs/assets/videos/features`. The steps under each one do the same on your machine. For exploratory testing, see its own [walkthrough videos](explore.md#walkthrough-videos).
@@ -24,7 +24,7 @@ its sign-in page takes any name). Each video plays on this page; the MP4 files a
 
 ## 1. One line to install and set up
 
-https://github.com/user-attachments/assets/0ec6877d-9da7-4f8c-82a2-aa2233311782
+https://github.com/user-attachments/assets/8b9614b4-6f97-431f-bdb3-ed900b287807
 
 <sub>[Download the MP4](../assets/videos/features/01-one-line-start.mp4)</sub>
 
@@ -42,7 +42,7 @@ https://github.com/user-attachments/assets/0ec6877d-9da7-4f8c-82a2-aa2233311782
 
 ## 2. From an empty project to a passing test
 
-https://github.com/user-attachments/assets/951672f3-f524-4a41-9cab-4eb7dc709293
+https://github.com/user-attachments/assets/d39bc972-4811-46fe-bdbd-73c5b0d88106
 
 <sub>[Download the MP4](../assets/videos/features/02-tester-ui-quick-start.mp4)</sub>
 
@@ -67,7 +67,7 @@ Any web app; the video uses the demo shop in `bench/explore`.
 
 ## 3. Review the plan before the run starts
 
-https://github.com/user-attachments/assets/ac02f8a2-6959-40b6-90af-296d7284a211
+https://github.com/user-attachments/assets/0867715b-8c56-4321-be71-f7d9d2c96d7c
 
 <sub>[Download the MP4](../assets/videos/features/03-review-the-plan.mp4)</sub>
 
@@ -86,7 +86,7 @@ The video uses the demo shop, `uv run python bench/explore/app.py --bugs none --
 
 ## 4. Debug a run: pause, take over, answer its questions
 
-https://github.com/user-attachments/assets/b8aec7be-388e-4ef9-984b-5a74a345f7f0
+https://github.com/user-attachments/assets/6f724576-7666-4e34-a29e-20604636e3f2
 
 <sub>[Download the MP4](../assets/videos/features/04-debug-and-take-over.mp4)</sub>
 
@@ -105,7 +105,7 @@ The video uses the demo shop, `uv run python bench/explore/app.py --bugs none --
 
 ## 5. Run tests from the terminal
 
-https://github.com/user-attachments/assets/f60b1d32-8a8c-4140-a755-d8d27086d690
+https://github.com/user-attachments/assets/efdcdd25-8122-4781-a963-3f90add60124
 
 <sub>[Download the MP4](../assets/videos/features/05-run-from-the-terminal.mp4)</sub>
 
@@ -120,7 +120,7 @@ https://github.com/user-attachments/assets/f60b1d32-8a8c-4140-a755-d8d27086d690
 
 ## 6. Test from your coding agent
 
-https://github.com/user-attachments/assets/e3e6acb9-30bd-48c4-9d1f-4710b036d9af
+https://github.com/user-attachments/assets/e4f413b1-915d-4147-9a1b-467a7d1ddce7
 
 <sub>[Download the MP4](../assets/videos/features/06-test-from-your-coding-agent.mp4)</sub>
 
@@ -136,7 +136,7 @@ Recorded with the demo shop from `bench/explore` (`uv run python bench/explore/a
 
 ## 7. Browsers and browser options
 
-https://github.com/user-attachments/assets/ec6d36fe-0517-4de2-bffe-57a0723bf4db
+https://github.com/user-attachments/assets/591860d4-eeb6-488f-ad77-5f78bfd2b6d0
 
 <sub>[Download the MP4](../assets/videos/features/07-browsers-and-options.mp4)</sub>
 
@@ -154,7 +154,7 @@ In the video, step 2 of the case opens a small local page that prints the browse
 
 ## 8. Test your web app on a phone
 
-https://github.com/user-attachments/assets/da93c378-4317-4871-bf29-e77c3815297c
+https://github.com/user-attachments/assets/f1a79642-181b-49a8-a9aa-76adc02d20ba
 
 <sub>[Download the MP4](../assets/videos/features/08-mobile-web.mp4)</sub>
 
@@ -172,7 +172,7 @@ In the video, the last step opens a small local page that prints the screen size
 
 ## 9. Export a passed run as code
 
-https://github.com/user-attachments/assets/054749be-679c-45c3-b9b3-18434e4c9822
+https://github.com/user-attachments/assets/489dfc2d-35c6-4c55-99c4-27a11489440d
 
 <sub>[Download the MP4](../assets/videos/features/09-export-as-code.mp4)</sub>
 
@@ -194,7 +194,7 @@ See [Exporting runs as code](exporting-code.md).
 
 ## 10. Run a passed test on a cloud
 
-https://github.com/user-attachments/assets/292f9072-a40c-4836-83a4-dbe7ceafbcef
+https://github.com/user-attachments/assets/8b7b72da-6767-4fb8-945c-ccfbfde585a4
 
 <sub>[Download the MP4](../assets/videos/features/10-run-on-a-cloud.mp4)</sub>
 
@@ -216,7 +216,7 @@ See [Running tests on clouds](clouds.md).
 
 ## 11. Import v1 projects, OpenAPI specs and requirement documents
 
-https://github.com/user-attachments/assets/f92623bb-d0f9-45b5-a1b3-1a1537ea549d
+https://github.com/user-attachments/assets/dc096d8a-ff33-4c15-bd25-f3a03a89a6fe
 
 <sub>[Download the MP4](../assets/videos/features/11-import-v1-and-specs.mp4)</sub>
 
@@ -231,7 +231,7 @@ https://github.com/user-attachments/assets/f92623bb-d0f9-45b5-a1b3-1a1537ea549d
 
 ## 12. Visual and accessibility checks
 
-https://github.com/user-attachments/assets/8bc6ae85-cc2d-4692-bae2-b7d2f17b68ab
+https://github.com/user-attachments/assets/6a8bda45-141b-4dc3-9f2d-bd63ee09dc66
 
 <sub>[Download the MP4](../assets/videos/features/12-visual-and-accessibility.mp4)</sub>
 
@@ -247,7 +247,7 @@ Recorded against a small checkout page with a few accessibility problems on purp
 
 ## 13. Security scans
 
-https://github.com/user-attachments/assets/a8255d69-1c00-41a7-92e9-9c30d19de80c
+https://github.com/user-attachments/assets/0e94cffd-f011-4ac8-99e8-bd09745396ba
 
 <sub>[Download the MP4](../assets/videos/features/13-security-scan.mp4)</sub>
 
@@ -262,7 +262,7 @@ https://github.com/user-attachments/assets/a8255d69-1c00-41a7-92e9-9c30d19de80c
 
 ## 14. Run Hercules in Docker
 
-https://github.com/user-attachments/assets/fc76ad04-d212-49d7-a98f-fb4f6bbddf3f
+https://github.com/user-attachments/assets/01c52ff5-cf2e-4bce-b0ec-2262774a7e03
 
 <sub>[Download the MP4](../assets/videos/features/14-docker.mp4)</sub>
 
