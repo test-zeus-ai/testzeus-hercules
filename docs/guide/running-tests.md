@@ -315,7 +315,7 @@ Runs through the daemon save a checkpoint after every completed step (with the p
 URL, cookies and local storage) in `.hercules/checkpoints/<run_id>.db`. If a run's worker
 dies without a result (for example the browser or the model server crashed), the run is
 marked `error` and the run page shows **Resume run**. Resuming continues from the last
-completed step. The checkpoint is removed when the run finishes. `hercules run` does not
+saved step; a step that finished just before the crash may run again. The checkpoint is removed when the run finishes. `hercules run` does not
 keep checkpoints.
 
 ### Re-run

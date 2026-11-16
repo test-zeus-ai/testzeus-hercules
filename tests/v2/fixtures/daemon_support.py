@@ -33,7 +33,8 @@ FINAL = {"passed", "failed", "error", "cancelled"}
 
 def isolated_env(tmp_path: Path, **extra: str) -> dict[str, str]:
     """Environment for settings and workers: an isolated home, telemetry off."""
-    keep = {name: os.environ[name] for name in ("PATH", "SYSTEMROOT", "TMPDIR", "LANG") if name in os.environ}
+    # PLAYWRIGHT_BROWSERS_PATH (pinned in tests/v2/conftest.py) keeps the browsers findable under the moved HOME.
+    keep = {name: os.environ[name] for name in ("PATH", "SYSTEMROOT", "TMPDIR", "LANG", "PLAYWRIGHT_BROWSERS_PATH") if name in os.environ}
     return {**keep, "HOME": str(tmp_path), "HERCULES_HOME": str(tmp_path / "home"), "HERCULES_TELEMETRY": "0", "PYTHONUNBUFFERED": "1", **extra}
 
 

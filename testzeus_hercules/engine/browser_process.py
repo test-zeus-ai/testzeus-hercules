@@ -49,7 +49,9 @@ class BrowserProcess:
 def _ps(pid: int, field: str) -> str | None:
     """One ``ps`` column for ``pid`` (``command`` or ``lstart``), or None when the process is gone or ``ps`` fails."""
     try:
-        done = subprocess.run(["ps", "-o", f"{field}=", "-p", str(pid)], capture_output=True, text=True, timeout=_PS_TIMEOUT_S, check=False)
+        done = subprocess.run(
+            ["ps", "-ww", "-o", f"{field}=", "-p", str(pid)], capture_output=True, text=True, timeout=_PS_TIMEOUT_S, check=False
+        )  # -ww: Linux ps cuts long commands to the terminal width
     except (OSError, subprocess.SubprocessError):
         return None
     text = done.stdout.strip()

@@ -23,9 +23,6 @@ import pytest
 
 FIXTURE_PAGES = Path(__file__).resolve().parent / "fixtures" / "pages"
 DEFAULT_VIEWPORT = (1280, 800)
-_MAC_CHROME_FOR_TESTING = (
-    Path.home() / "Library" / "Caches" / "ms-playwright" / "chromium-1234" / "chrome-mac-arm64" / "Google Chrome for Testing.app" / "Contents" / "MacOS" / "Google Chrome for Testing"
-)
 
 T = TypeVar("T")
 
@@ -35,9 +32,9 @@ def chromium_executable() -> str | None:
     configured = os.environ.get("HERCULES_TEST_CHROMIUM")
     if configured:
         return configured
-    if _MAC_CHROME_FOR_TESTING.is_file():
-        return str(_MAC_CHROME_FOR_TESTING)
-    return None
+    from tests.v2.engine_fixtures.browser import chromium_path  # Playwright's own download, on any platform
+
+    return chromium_path()
 
 
 def fixture_url(name: str) -> str:

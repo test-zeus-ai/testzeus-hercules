@@ -67,7 +67,8 @@ def test_clipped_text_fix_ladder(results: tuple[list[LayoutResult], dict[str, An
     assert badge_fix.changes == {"white-space": "normal"} and badge_fix.verified
     assert (badge_fix.after_fix["scroll_width"], badge_fix.after_fix["client_width"]) == (120, 120)
     order_fix = _fix_for(narrow, "#order-ref")  # no break opportunity: wrapping fails verification, min-width is next
-    assert (order_fix.changes, order_fix.verified, order_fix.after_fix["client_width"]) == ({"min-width": "229px"}, True, 229)
+    width = order_fix.after_fix["client_width"]  # the text's own width: 229 px with macOS fonts, a pixel or two more on Linux
+    assert order_fix.changes == {"min-width": f"{width}px"} and order_fix.verified and 225 <= width <= 235
 
 
 def test_off_viewport_controls_get_flex_wrap_on_their_row(results: tuple[list[LayoutResult], dict[str, Any], str, str]) -> None:

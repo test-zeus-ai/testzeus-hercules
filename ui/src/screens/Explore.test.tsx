@@ -77,7 +77,12 @@ function wrap(node: ReactNode, path = "/explore") {
   );
 }
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  // The reviewer's name is remembered in localStorage; start every test without one. (Node 25+ has its own
+  // localStorage, without clear() unless it is given a file; jsdom's has it.)
+  if (typeof window.localStorage?.clear === "function") window.localStorage.clear();
+});
 
 describe("explore helpers", () => {
   it("fills the start form from an earlier session so it can run again", () => {

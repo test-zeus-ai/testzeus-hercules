@@ -150,6 +150,9 @@ def test_killed_worker_resumes_from_the_last_completed_step(tmp_path: Path) -> N
         )
         first = Worker(tmp_path, "--run-id", run_id, "--case", str(case))
         first.wait_event("step_started", step=3)
+        # LangGraph writes each checkpoint in the background; let step 2's land before the crash (step 3 waits 4 s),
+        # or the resume correctly starts again from step 2 and the assertions below would be about timing, not resuming.
+        time.sleep(1.0)
         run_dir = first.project / ".hercules" / "runs" / run_id
         recorded = json.loads((run_dir / BROWSER_FILE).read_text())
         os.killpg(first.proc.pid, signal.SIGKILL)  # the worker dies mid-step; Chromium has its own process group and keeps running

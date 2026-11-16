@@ -18,13 +18,37 @@ from typing import AsyncIterator, Iterator
 import pytest
 
 FIXTURES_DIR = Path(__file__).resolve().parent
-_DEFAULT_CHROMIUM = Path.home() / "Library/Caches/ms-playwright/chromium-1234/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing"
+# Where Playwright's Chromium download keeps its executable, per platform (newest build first when several exist).
+_EXECUTABLES = (
+    "chrome-linux64/chrome",
+    "chrome-linux-arm64/chrome",
+    "chrome-linux/chrome",
+    "chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+    "chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+    "chrome-mac/Chromium.app/Contents/MacOS/Chromium",
+    "chrome-win64/chrome.exe",
+    "chrome-win/chrome.exe",
+)
+
+
+@functools.lru_cache(maxsize=1)
+def _playwright_chromium() -> Path | None:
+    """The newest Chromium in Playwright's browser folder (tests/v2/conftest.py pins it before HOME can move)."""
+    root = os.environ.get("PLAYWRIGHT_BROWSERS_PATH")
+    if not root:
+        return None
+    builds = sorted(Path(root).glob("chromium-[0-9]*"), key=lambda path: int(path.name.split("-")[1]), reverse=True)
+    for build in builds:
+        for relative in _EXECUTABLES:
+            if (build / relative).is_file():
+                return build / relative
+    return None
 
 
 def chromium_path() -> str | None:
     configured = os.environ.get("HERCULES_CHROMIUM")
-    candidate = Path(configured) if configured else _DEFAULT_CHROMIUM
-    return str(candidate) if candidate.is_file() else None
+    candidate = Path(configured) if configured else _playwright_chromium()
+    return str(candidate) if candidate is not None and candidate.is_file() else None
 
 
 def require_chromium() -> str:
