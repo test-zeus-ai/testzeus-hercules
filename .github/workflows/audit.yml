@@ -1,0 +1,57 @@
+name: Dependency audit
+
+# Known vulnerabilities in what Hercules locks: every Python package in uv.lock (all extras and dev tools,
+# with pip-audit) and the tester UI's npm packages (npm audit). Runs on pull requests that change a lockfile,
+# on pushes to main and dev, and weekly, so a new advisory is seen even when nothing changed here.
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    paths:
+      - pyproject.toml
+      - uv.lock
+      - ui/package.json
+      - ui/package-lock.json
+      - .github/workflows/audit.yml
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  UV_VERSION: "0.11.19"
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: "3.12"
+      - name: Every locked package, with hashes
+        run: uv export --locked --all-extras --all-groups --no-emit-project -o requirements.txt
+      - name: pip-audit
+        run: uvx --from 'pip-audit>=2.9,<3' pip-audit -r requirements.txt --require-hashes --disable-pip --progress-spinner off
+
+  ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: npm audit (what ships and the build tools)
+        run: npm audit --audit-level=moderate

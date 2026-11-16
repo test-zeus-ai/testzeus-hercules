@@ -47,13 +47,13 @@ dependencies = [
     "pyyaml>=6.0.1,<7",
     "sqlalchemy>=2.0.36,<3",
     "jsonschema>=4.18,<5",
-    "langgraph>=1.0.10,<2",
+    "langgraph>=1.2.14,<2",
     "langchain-core>=1.2.22,<2",
     "mcp>=1.30.0,<2",
     "httpx>=0.28.1,<0.29",
     "starlette>=1.3.1,<2",
     "uvicorn>=0.30.0,<1",
-    "pypdf>=6.21.1,<7",
+    "pypdf>=6.21.4,<7",
 ]
 
 [project.urls]
@@ -102,7 +102,7 @@ testzeus_hercules = ["py.typed"]
 "testzeus_hercules.ui" = ["static/*", "static/assets/*"]
 
 [build-system]
-requires = ["setuptools>=77"]
+requires = ["setuptools>=84.1.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.pytest.ini_options]
@@ -195,21 +195,18 @@ ignore-decorators = ["typing.overload"]
 [tool.ruff.lint.pylint]
 allow-magic-value-types = ["int", "str", "float", "bytes"]
 
-# Security constraints for transitive dependencies (Dependabot alerts)
+# Minimum safe versions of transitive dependencies (security advisories). These are constraints, not
+# overrides: an override would replace a dependency's own requirement (pypdf's <7 cap, for example), while
+# a constraint only narrows it. Names that are not in the dependency tree are ignored.
 [tool.uv]
-override-dependencies = [
-    "pyasn1>=0.6.3",
-    "PyJWT>=2.15.0",
-    "pypdf>=6.21.1",
-    "langgraph-sdk>=0.4.4",
-    "multidict>=6.9.1",
-    "soupsieve>=2.9.0",
-    "accelerate>=1.15.0",
-    "certifi>=2026.10.19",
-]
-# Security floors for packages that may arrive transitively (through extras or other
-# dependencies). Constraints only apply when something else pulls the package in.
 constraint-dependencies = [
+    "langgraph-sdk>=0.4.6",
+    "PyJWT>=2.15.0",
+    "multidict>=6.9.1",
+    "certifi>=2026.10.19",
+    "filelock>=4.2.1",
+    "pyasn1>=0.6.5",
+    "soupsieve>=4.0.0",
     "aiohttp>=3.14.4",
     "urllib3>=2.8.0",
     "fonttools>=4.61.0",
