@@ -1,0 +1,1836 @@
+{
+  "$defs": {
+    "ApiAuth": {
+      "additionalProperties": false,
+      "description": "Request authentication; ``basic`` takes ``user:password``.",
+      "properties": {
+        "type": {
+          "enum": [
+            "basic",
+            "bearer"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "value": {
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "value"
+      ],
+      "title": "ApiAuth",
+      "type": "object"
+    },
+    "ApiCall": {
+      "additionalProperties": false,
+      "description": "An HTTP request and the checks on its response; without ``path`` the checks and saves apply to the previous response.",
+      "properties": {
+        "auth": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ApiAuth"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "body": {
+          "$ref": "#/$defs/JsonValue",
+          "default": null,
+          "description": "Request body: JSON for body_mode json (the default), text for raw, a field map for urlencoded/multipart"
+        },
+        "body_mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "json",
+                "raw",
+                "urlencoded",
+                "multipart"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Body Mode"
+        },
+        "expect": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ApiExpect"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "headers": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Headers",
+          "type": "object"
+        },
+        "method": {
+          "default": "GET",
+          "enum": [
+            "GET",
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE",
+            "HEAD",
+            "OPTIONS"
+          ],
+          "title": "Method",
+          "type": "string"
+        },
+        "path": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Relative to the case's base_url, or an absolute http(s) URL",
+          "title": "Path"
+        },
+        "query": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ]
+          },
+          "title": "Query",
+          "type": "object"
+        },
+        "save": {
+          "items": {
+            "$ref": "#/$defs/Capture"
+          },
+          "title": "Save",
+          "type": "array"
+        }
+      },
+      "title": "ApiCall",
+      "type": "object"
+    },
+    "ApiExpect": {
+      "additionalProperties": false,
+      "description": "Checks on an HTTP response; each one becomes an assertion ledger entry.",
+      "properties": {
+        "body_contains": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Body Contains",
+          "type": "array"
+        },
+        "headers": {
+          "items": {
+            "$ref": "#/$defs/HeaderCheck"
+          },
+          "title": "Headers",
+          "type": "array"
+        },
+        "json_path": {
+          "items": {
+            "$ref": "#/$defs/JsonCheck"
+          },
+          "title": "Json Path",
+          "type": "array"
+        },
+        "json_schema": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "An inline JSON Schema, or a file reference such as spec.yaml#/components/schemas/Pet",
+          "title": "Json Schema"
+        },
+        "max_time_ms": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Time Ms"
+        },
+        "openapi": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "A spec file; the body must match the schema it declares for this request's operation and status",
+          "title": "Openapi"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "maximum": 599,
+              "minimum": 100,
+              "type": "integer"
+            },
+            {
+              "pattern": "^[1-5](?:[0-9]{2}|xx|XX)$",
+              "type": "string"
+            },
+            {
+              "items": {
+                "anyOf": [
+                  {
+                    "maximum": 599,
+                    "minimum": 100,
+                    "type": "integer"
+                  },
+                  {
+                    "pattern": "^[1-5](?:[0-9]{2}|xx|XX)$",
+                    "type": "string"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "200, a class such as 2xx, or a list of accepted codes",
+          "title": "Status"
+        }
+      },
+      "title": "ApiExpect",
+      "type": "object"
+    },
+    "BrowserOptions": {
+      "additionalProperties": false,
+      "description": "Playwright launch and context options for a web run (Playwright's names).",
+      "properties": {
+        "accept_downloads": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Accept Downloads"
+        },
+        "args": {
+          "description": "browser command-line switches, e.g. --lang=de",
+          "items": {
+            "maxLength": 500,
+            "minLength": 2,
+            "type": "string"
+          },
+          "maxItems": 50,
+          "title": "Args",
+          "type": "array"
+        },
+        "bypass_csp": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bypass Csp"
+        },
+        "color_scheme": {
+          "anyOf": [
+            {
+              "enum": [
+                "light",
+                "dark",
+                "no-preference"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Color Scheme"
+        },
+        "context_extra": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "description": "other Browser.new_context options, e.g. {\"screen\": {\"width\": 1920, \"height\": 1080}, \"strict_selectors\": true}",
+          "title": "Context Extra",
+          "type": "object"
+        },
+        "device_scale_factor": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 10,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Device Scale Factor"
+        },
+        "extra_http_headers": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "$ref": "#/$defs/Secret"
+              }
+            ]
+          },
+          "description": "headers sent with every request; a value may be {\"secret\": \"ENV_VAR\"}",
+          "title": "Extra Http Headers",
+          "type": "object"
+        },
+        "firefox_user_prefs": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "maxLength": 500,
+                "type": "string"
+              }
+            ]
+          },
+          "description": "Firefox only: about:config preferences",
+          "title": "Firefox User Prefs",
+          "type": "object"
+        },
+        "forced_colors": {
+          "anyOf": [
+            {
+              "enum": [
+                "active",
+                "none"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Forced Colors"
+        },
+        "geolocation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Geolocation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "has_touch": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Has Touch"
+        },
+        "headless": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "false opens a visible window (the run's --headed always does)",
+          "title": "Headless"
+        },
+        "http_credentials": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HttpCredentials"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "ignore_https_errors": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "accept self-signed and invalid certificates",
+          "title": "Ignore Https Errors"
+        },
+        "is_mobile": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Chromium and WebKit only",
+          "title": "Is Mobile"
+        },
+        "java_script_enabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Java Script Enabled"
+        },
+        "launch_extra": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "description": "other BrowserType.launch options, e.g. {\"timeout\": 60000, \"ignore_default_args\": [\"--mute-audio\"]}",
+          "title": "Launch Extra",
+          "type": "object"
+        },
+        "locale": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "e.g. en-GB, de-DE",
+          "title": "Locale"
+        },
+        "offline": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Offline"
+        },
+        "permissions": {
+          "description": "permissions granted to every page, e.g. geolocation, notifications, clipboard-read",
+          "items": {
+            "enum": [
+              "geolocation",
+              "midi",
+              "midi-sysex",
+              "notifications",
+              "camera",
+              "microphone",
+              "background-sync",
+              "ambient-light-sensor",
+              "accelerometer",
+              "gyroscope",
+              "magnetometer",
+              "accessibility-events",
+              "clipboard-read",
+              "clipboard-write",
+              "payment-handler",
+              "storage-access"
+            ],
+            "type": "string"
+          },
+          "title": "Permissions",
+          "type": "array"
+        },
+        "proxy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProxySettings"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "record_video": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "record a video of the run into its evidence folder",
+          "title": "Record Video"
+        },
+        "reduced_motion": {
+          "anyOf": [
+            {
+              "enum": [
+                "reduce",
+                "no-preference"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reduced Motion"
+        },
+        "service_workers": {
+          "anyOf": [
+            {
+              "enum": [
+                "allow",
+                "block"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Service Workers"
+        },
+        "slow_mo": {
+          "anyOf": [
+            {
+              "maximum": 10000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "milliseconds Playwright waits after each action",
+          "title": "Slow Mo"
+        },
+        "storage_state": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "auth state: a JSON file inside the project (cookies and local storage), as saved by Playwright's storage_state()",
+          "title": "Storage State"
+        },
+        "timezone_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "an IANA time zone, e.g. Europe/Berlin",
+          "title": "Timezone Id"
+        },
+        "user_agent": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "User Agent"
+        }
+      },
+      "title": "BrowserOptions",
+      "type": "object"
+    },
+    "Capture": {
+      "additionalProperties": false,
+      "description": "Save one value of the response (a JSONPath into the JSON body, or a header) or of the rows, as ``{{name}}`` for later steps.",
+      "properties": {
+        "header": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Header"
+        },
+        "json_path": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Json Path"
+        },
+        "name": {
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "Capture",
+      "type": "object"
+    },
+    "CaseSource": {
+      "additionalProperties": false,
+      "description": "Provenance of a case written by a coding agent.",
+      "properties": {
+        "agent": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Agent"
+        },
+        "commit": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Commit"
+        },
+        "files_changed": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Files Changed",
+          "type": "array"
+        }
+      },
+      "title": "CaseSource",
+      "type": "object"
+    },
+    "EnvironmentRef": {
+      "additionalProperties": false,
+      "description": "Where the case runs: a named environment and/or explicit overrides.\n\n``device`` emulates a phone or tablet in the browser (a Playwright device profile: viewport, user agent, scale,\ntouch). ``mobile`` tests a native app on a device instead of a web page: its steps run through Appium.",
+      "properties": {
+        "base_url": {
+          "anyOf": [
+            {
+              "pattern": "^https?://[^\\s/?#]+",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Base Url"
+        },
+        "browser": {
+          "anyOf": [
+            {
+              "enum": [
+                "chromium",
+                "chrome",
+                "msedge",
+                "firefox",
+                "webkit"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "chromium (default), chrome, msedge, firefox or webkit",
+          "title": "Browser"
+        },
+        "browser_options": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BrowserOptions"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Playwright launch and context options: locale, timezone, auth state, headers, proxy, ..."
+        },
+        "device": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Mobile web emulation: a Playwright device profile, e.g. iPhone 15 or Pixel 7",
+          "title": "Device"
+        },
+        "mobile": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MobileApp"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "A native app on a device (Appium); its steps run on the device instead of a browser"
+        },
+        "ref": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ref"
+        },
+        "viewport": {
+          "anyOf": [
+            {
+              "pattern": "^[1-9][0-9]{1,4}x[1-9][0-9]{1,4}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "WIDTHxHEIGHT, e.g. 1280x800 (with device: replaces the device's viewport)",
+          "title": "Viewport"
+        }
+      },
+      "title": "EnvironmentRef",
+      "type": "object"
+    },
+    "Geolocation": {
+      "additionalProperties": false,
+      "properties": {
+        "accuracy": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Accuracy"
+        },
+        "latitude": {
+          "maximum": 90,
+          "minimum": -90,
+          "title": "Latitude",
+          "type": "number"
+        },
+        "longitude": {
+          "maximum": 180,
+          "minimum": -180,
+          "title": "Longitude",
+          "type": "number"
+        }
+      },
+      "required": [
+        "latitude",
+        "longitude"
+      ],
+      "title": "Geolocation",
+      "type": "object"
+    },
+    "HeaderCheck": {
+      "additionalProperties": false,
+      "description": "One response header assertion (names are case-insensitive).",
+      "properties": {
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "op": {
+          "default": "eq",
+          "enum": [
+            "eq",
+            "ne",
+            "contains",
+            "not_contains",
+            "matches",
+            "exists",
+            "not_exists"
+          ],
+          "title": "Op",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "HeaderCheck",
+      "type": "object"
+    },
+    "HttpCredentials": {
+      "additionalProperties": false,
+      "description": "HTTP authentication (basic or digest) the browser answers with.",
+      "properties": {
+        "origin": {
+          "anyOf": [
+            {
+              "pattern": "^https?://[^\\s/?#]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "send them only to this origin",
+          "title": "Origin"
+        },
+        "password": {
+          "$ref": "#/$defs/Secret",
+          "description": "{\"secret\": \"ENV_VAR\"}: the variable that holds the password"
+        },
+        "username": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/Secret"
+            }
+          ],
+          "title": "Username"
+        }
+      },
+      "required": [
+        "username",
+        "password"
+      ],
+      "title": "HttpCredentials",
+      "type": "object"
+    },
+    "JsonCheck": {
+      "additionalProperties": false,
+      "description": "One JSONPath assertion: the value(s) at ``path`` compared with ``value`` by ``op``.\n\nPer-value operators must hold for every match; ``exists``, ``not_exists`` and\n``not_empty`` take no value; ``count_eq`` counts an array's elements (or the matches);\n``eq_path`` compares with the value at a second JSONPath given as ``value``.",
+      "properties": {
+        "op": {
+          "default": "eq",
+          "enum": [
+            "eq",
+            "ne",
+            "contains",
+            "not_contains",
+            "matches",
+            "exists",
+            "not_exists",
+            "not_empty",
+            "gt",
+            "lt",
+            "all_gte",
+            "all_lte",
+            "count_eq",
+            "eq_path"
+          ],
+          "title": "Op",
+          "type": "string"
+        },
+        "path": {
+          "description": "JSONPath, e.g. $.items[0].id (SQL rows are a list: $[0].name)",
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "value": {
+          "$ref": "#/$defs/JsonValue",
+          "default": null,
+          "description": "Expected value (any JSON); omit for exists/not_exists/not_empty"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "title": "JsonCheck",
+      "type": "object"
+    },
+    "JsonValue": {},
+    "MobileApp": {
+      "additionalProperties": false,
+      "description": "A native app to test on a device, through an Appium server: local (default) or a device cloud.\n\nThe app is a file inside the project (``app``: an .apk, .aab, .app, .ipa or .zip), an app already in the device\ncloud's storage (``bs://...``, ``storage:...``, ``lt://...``), or an app installed on the device (``package`` and ``activity`` on\nAndroid, ``bundle_id`` on iOS). Device cloud credentials are never part of the case: they come from the environment\nvariables the project's config names (``mobile.browserstack`` / ``mobile.saucelabs`` / ``mobile.testmu``).",
+      "properties": {
+        "activity": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9_.$]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Android: the activity to start, e.g. .Settings",
+          "title": "Activity"
+        },
+        "app": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "An app file inside the project (.apk, .aab, .app, .ipa, .zip), or a device cloud app id (bs://..., storage:..., lt://...)",
+          "title": "App"
+        },
+        "appium_url": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "pattern": "^https?://[^\\s/?#@]+(?:/[^\\s?#]*)?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The Appium server (default from config: http://127.0.0.1:4723); not with cloud",
+          "title": "Appium Url"
+        },
+        "bundle_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "iOS: the installed app's bundle id, e.g. com.apple.Preferences",
+          "title": "Bundle Id"
+        },
+        "capabilities": {
+          "description": "Extra Appium capabilities, e.g. {\"appium:language\": \"en\"}; never credentials",
+          "maxProperties": 50,
+          "patternProperties": {
+            "^[A-Za-z][A-Za-z0-9_.:-]{0,99}$": {
+              "$ref": "#/$defs/JsonValue"
+            }
+          },
+          "title": "Capabilities",
+          "type": "object"
+        },
+        "cloud": {
+          "anyOf": [
+            {
+              "enum": [
+                "browserstack",
+                "saucelabs",
+                "testmu"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Run on a device cloud instead of a local Appium server",
+          "title": "Cloud"
+        },
+        "device": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Device name, e.g. emulator-5554, Pixel 7, iPhone 15",
+          "title": "Device"
+        },
+        "no_reset": {
+          "default": false,
+          "description": "Keep the app's data between runs (Appium noReset)",
+          "title": "No Reset",
+          "type": "boolean"
+        },
+        "package": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z0-9_]+)+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Android: the installed app's package, e.g. com.android.settings",
+          "title": "Package"
+        },
+        "platform": {
+          "description": "android (UiAutomator2) or ios (XCUITest)",
+          "enum": [
+            "android",
+            "ios"
+          ],
+          "title": "Platform",
+          "type": "string"
+        },
+        "platform_version": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9]+(?:\\.[0-9]+){0,2}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "OS version, e.g. 14 or 17.5",
+          "title": "Platform Version"
+        },
+        "udid": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9:._-]{1,100}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "A local device's id (adb serial or simulator UDID)",
+          "title": "Udid"
+        }
+      },
+      "required": [
+        "platform"
+      ],
+      "title": "MobileApp",
+      "type": "object"
+    },
+    "ProxySettings": {
+      "additionalProperties": false,
+      "properties": {
+        "bypass": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "comma-separated hosts that skip the proxy, e.g. .example.com,localhost",
+          "title": "Bypass"
+        },
+        "password": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Secret"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "server": {
+          "description": "e.g. http://proxy.example.com:3128 or socks5://127.0.0.1:1080",
+          "pattern": "^(https?|socks[45])://[^\\s/?#]+$",
+          "title": "Server",
+          "type": "string"
+        },
+        "username": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/Secret"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Username"
+        }
+      },
+      "required": [
+        "server"
+      ],
+      "title": "ProxySettings",
+      "type": "object"
+    },
+    "QualityCheck": {
+      "additionalProperties": false,
+      "description": "A check of the page as it is now: accessibility (``a11y``), a ``visual`` baseline, or ``layout`` across widths.\n\n* ``a11y``: axe-core plus contrast, names, target size, keyboard and focus checks at WCAG ``level``;\n  findings at or above ``fail_on`` fail the step, each with a fix value verified in the page.\n* ``visual``: compares the page with the stored ``baseline`` (pixels with ``mask`` regions left out,\n  and the computed styles of ``key_elements``). A missing baseline is created and the step is\n  ``unverified``; a difference above ``threshold`` is classified (intended change, layout break,\n  content change) by the decision engine, and a layout break fails the step.\n* ``layout``: overlapping, clipped and off-screen elements at each width in ``viewports``.\n\n``scope`` (a11y, layout) keeps only findings on elements inside that CSS selector.",
+      "properties": {
+        "baseline": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9_.-]{1,100}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "visual: baseline name, stored in .hercules/baselines/",
+          "title": "Baseline"
+        },
+        "fail_on": {
+          "default": "serious",
+          "description": "Findings at or above this impact fail the step (critical > serious > moderate > minor)",
+          "enum": [
+            "critical",
+            "serious",
+            "moderate",
+            "minor"
+          ],
+          "title": "Fail On",
+          "type": "string"
+        },
+        "full_page": {
+          "default": false,
+          "description": "visual: the whole scrollable page instead of the viewport",
+          "title": "Full Page",
+          "type": "boolean"
+        },
+        "key_elements": {
+          "description": "visual: CSS selectors whose computed styles are compared property by property",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Key Elements",
+          "type": "array"
+        },
+        "keyboard": {
+          "default": true,
+          "description": "a11y: also check keyboard reach and visible focus (presses Tab on the page)",
+          "title": "Keyboard",
+          "type": "boolean"
+        },
+        "kind": {
+          "enum": [
+            "a11y",
+            "visual",
+            "layout"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "level": {
+          "default": "AA",
+          "description": "a11y: WCAG conformance level",
+          "enum": [
+            "A",
+            "AA",
+            "AAA"
+          ],
+          "title": "Level",
+          "type": "string"
+        },
+        "mask": {
+          "description": "visual: CSS selectors of dynamic regions left out of the comparison",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Mask",
+          "type": "array"
+        },
+        "rules": {
+          "description": "a11y: only these rule ids (axe ids such as color-contrast, or image-alt, target-size, focus-not-visible); empty for all",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Rules",
+          "type": "array"
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "a11y/layout: report only elements inside this CSS selector",
+          "title": "Scope"
+        },
+        "threshold": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "visual: share of compared pixels that may differ (default 0.001)",
+          "title": "Threshold"
+        },
+        "viewports": {
+          "description": "layout: viewport widths in CSS px (default 375, 768, 1280)",
+          "items": {
+            "maximum": 4000,
+            "minimum": 200,
+            "type": "integer"
+          },
+          "maxItems": 6,
+          "title": "Viewports",
+          "type": "array"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "QualityCheck",
+      "type": "object"
+    },
+    "Secret": {
+      "additionalProperties": false,
+      "description": "A value read from the named environment variable at run time; never the value itself.",
+      "properties": {
+        "secret": {
+          "pattern": "^[A-Z_][A-Z0-9_]*$",
+          "title": "Secret",
+          "type": "string"
+        }
+      },
+      "required": [
+        "secret"
+      ],
+      "title": "Secret",
+      "type": "object"
+    },
+    "SecretRef": {
+      "additionalProperties": false,
+      "description": "A secret read from the named environment variable at run time; never the value itself.",
+      "properties": {
+        "secret": {
+          "pattern": "^[A-Z_][A-Z0-9_]*$",
+          "title": "Secret",
+          "type": "string"
+        }
+      },
+      "required": [
+        "secret"
+      ],
+      "title": "SecretRef",
+      "type": "object"
+    },
+    "SecurityScan": {
+      "additionalProperties": false,
+      "description": "A security scan of the case's own app with the nuclei scanner (installed separately; see ``hercules scan --install``).\n\nThe scan targets the case's ``environment.base_url`` (``path`` narrows it to a URL under it), or the operations\nof an OpenAPI ``openapi`` spec inside the project, sent to the base URL. Templates are chosen by ``tags`` (default\ncve, exposure, misconfig). Intrusive, denial-of-service and fuzzing templates are left out unless ``intrusive`` is\ntrue. Findings at or above ``fail_on`` fail the step; every finding is evidence.",
+      "properties": {
+        "auth": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ApiAuth"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "exclude_tags": {
+          "description": "Template tags to leave out",
+          "items": {
+            "pattern": "^[a-z0-9][a-z0-9_.-]{0,63}$",
+            "type": "string"
+          },
+          "maxItems": 30,
+          "title": "Exclude Tags",
+          "type": "array"
+        },
+        "fail_on": {
+          "default": "medium",
+          "description": "Findings at or above this severity fail the step (critical > high > medium > low > info)",
+          "enum": [
+            "critical",
+            "high",
+            "medium",
+            "low",
+            "info"
+          ],
+          "title": "Fail On",
+          "type": "string"
+        },
+        "headers": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Headers sent with every request; use {{name}} placeholders for secrets",
+          "title": "Headers",
+          "type": "object"
+        },
+        "intrusive": {
+          "default": false,
+          "description": "Also run intrusive, denial-of-service and fuzzing templates (only on apps you may break)",
+          "title": "Intrusive",
+          "type": "boolean"
+        },
+        "openapi": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "An OpenAPI spec file in the project: scan its operations (sent to the base URL)",
+          "title": "Openapi"
+        },
+        "path": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "A path under the base URL to scan instead of the base URL itself, e.g. /api",
+          "title": "Path"
+        },
+        "rate_limit": {
+          "default": 50,
+          "description": "Most requests per second",
+          "maximum": 1000,
+          "minimum": 1,
+          "title": "Rate Limit",
+          "type": "integer"
+        },
+        "tags": {
+          "description": "Template tags to run, e.g. cve, exposure, misconfig, xss, sqli (empty: cve, exposure, misconfig)",
+          "items": {
+            "pattern": "^[a-z0-9][a-z0-9_.-]{0,63}$",
+            "type": "string"
+          },
+          "maxItems": 30,
+          "title": "Tags",
+          "type": "array"
+        },
+        "timeout_s": {
+          "default": 240,
+          "description": "Time limit of the scan in seconds",
+          "maximum": 7200,
+          "minimum": 10,
+          "title": "Timeout S",
+          "type": "integer"
+        }
+      },
+      "title": "SecurityScan",
+      "type": "object"
+    },
+    "SqlCall": {
+      "additionalProperties": false,
+      "description": "One read-only SELECT on the database whose connection string is ``test_data[db]``; without ``query`` the checks apply to the previous rows.",
+      "properties": {
+        "db": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Name of the test_data entry holding the connection string (usually a secret reference)",
+          "title": "Db"
+        },
+        "expect": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SqlExpect"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "params": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Params",
+          "type": "object"
+        },
+        "query": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Query"
+        },
+        "save": {
+          "items": {
+            "$ref": "#/$defs/Capture"
+          },
+          "title": "Save",
+          "type": "array"
+        }
+      },
+      "title": "SqlCall",
+      "type": "object"
+    },
+    "SqlExpect": {
+      "additionalProperties": false,
+      "description": "Checks on a query's rows (a list of column -> value objects).",
+      "properties": {
+        "json_path": {
+          "items": {
+            "$ref": "#/$defs/JsonCheck"
+          },
+          "title": "Json Path",
+          "type": "array"
+        },
+        "max_rows": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Rows"
+        },
+        "min_rows": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min Rows"
+        },
+        "rows": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Exact row count",
+          "title": "Rows"
+        }
+      },
+      "title": "SqlExpect",
+      "type": "object"
+    },
+    "Step": {
+      "additionalProperties": false,
+      "description": "One instruction in plain language, optionally with the outcome to verify and a structured API, SQL, quality or security payload.",
+      "properties": {
+        "action": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Action",
+          "type": "string"
+        },
+        "api": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ApiCall"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "expected": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected"
+        },
+        "quality": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/QualityCheck"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "security": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SecurityScan"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "semantic": {
+          "default": false,
+          "description": "Compare `expected` by meaning (judge model) instead of literally",
+          "title": "Semantic",
+          "type": "boolean"
+        },
+        "sql": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SqlCall"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "timeout_s": {
+          "anyOf": [
+            {
+              "maximum": 7200,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Timeout S"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "title": "Step",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A test case: environment, data, and ordered steps. NL-compiled cases start as drafts.",
+  "properties": {
+    "description": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Description"
+    },
+    "environment": {
+      "$ref": "#/$defs/EnvironmentRef"
+    },
+    "id": {
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,99}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "preconditions": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Preconditions",
+      "type": "array"
+    },
+    "priority": {
+      "default": "medium",
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "title": "Priority",
+      "type": "string"
+    },
+    "source": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CaseSource"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "status": {
+      "default": "ready",
+      "enum": [
+        "draft",
+        "ready",
+        "known_bug"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "steps": {
+      "items": {
+        "$ref": "#/$defs/Step"
+      },
+      "maxItems": 200,
+      "minItems": 1,
+      "title": "Steps",
+      "type": "array"
+    },
+    "tags": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Tags",
+      "type": "array"
+    },
+    "test_data": {
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[A-Za-z_][A-Za-z0-9_]*$": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/SecretRef"
+            }
+          ]
+        }
+      },
+      "title": "Test Data",
+      "type": "object"
+    },
+    "timeout_s": {
+      "default": 300,
+      "maximum": 7200,
+      "minimum": 10,
+      "title": "Timeout S",
+      "type": "integer"
+    },
+    "title": {
+      "maxLength": 300,
+      "minLength": 1,
+      "title": "Title",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "title",
+    "steps"
+  ],
+  "title": "TestCase",
+  "type": "object"
+}

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Account - Demo Shop</title>
+  <link rel="stylesheet" href="app.css">
+  <script src="app.js"></script>
+</head>
+<body>
+  <header id="site-header"></header>
+  <main>
+    <h1>Account settings</h1>
+    <form id="profile" class="card" novalidate>
+      <label for="display-name">Display name</label>
+      <input id="display-name" type="text" autocomplete="off">
+      <label class="inline"><input type="checkbox" id="newsletter"> Email me about new products</label>
+      <p><button type="submit">Save</button></p>
+      <p id="saved" role="status"></p>
+    </form>
+    <p>Changes are kept only after you choose Save.</p>
+  </main>
+  <script>
+    const profile = DemoShop.read("profile", {});
+    document.getElementById("display-name").value = profile.displayName || "";
+    document.getElementById("newsletter").checked = Boolean(profile.newsletter);
+    document.getElementById("profile").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const name = document.getElementById("display-name").value.trim();
+      const saved = document.getElementById("saved");
+      if (!name) {
+        saved.className = "form-error";
+        saved.textContent = "Display name is required";
+        return;
+      }
+      DemoShop.write("profile", { displayName: name, newsletter: document.getElementById("newsletter").checked });
+      saved.className = "ok";
+      saved.textContent = "Profile saved";
+    });
+  </script>
+</body>
+</html>

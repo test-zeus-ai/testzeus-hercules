@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Home</title></head>
+<body>
+  <h1 id="greeting"></h1>
+  <nav><a href="login.html">Log out</a></nav>
+  <script>
+    const user = decodeURIComponent(location.hash.slice(1)) || 'guest';
+    document.getElementById('greeting').textContent = 'Welcome, ' + user;
+  </script>
+</body>
+</html>

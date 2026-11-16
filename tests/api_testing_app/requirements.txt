@@ -1,5 +1,0 @@
-fastapi
-uvicorn
-sqlalchemy
-aiosqlite
-fastapi-users[sqlalchemy]

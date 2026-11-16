@@ -1,0 +1,57 @@
+name: Docker image
+
+# Builds the Hercules image on pull requests that touch it, for amd64 and arm64, and checks
+# that it starts. Nothing is pushed. It runs only when those paths change, so do not make it
+# a required status check: other pull requests would wait for it forever.
+on:
+  pull_request:
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - docker/**
+      - pyproject.toml
+      - uv.lock
+      - testzeus_hercules/**
+      - ui/**
+      - .github/workflows/docker-build.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build the image
+        run: docker build --build-arg REVISION="${GITHUB_SHA}" -t hercules:ci .
+      - name: Check the image
+        run: |
+          set -e
+          docker run --rm hercules:ci version
+          docker run --rm hercules:ci scan --help > /dev/null
+          docker run --rm --entrypoint nuclei hercules:ci -version
+          test "$(docker run --rm --entrypoint id hercules:ci -u)" = "1000"
+      - name: Check that the daemon starts and answers
+        run: |
+          set -e
+          docker run -d --name hercules -p 127.0.0.1:7373:7373 hercules:ci
+          for _ in $(seq 1 30); do
+            if docker exec hercules hercules-healthcheck; then break; fi
+            sleep 2
+          done
+          docker exec hercules hercules-healthcheck
+          docker exec hercules hercules ui --print | grep -q "http://127.0.0.1:7373/login?code="
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:7373/)" = "401"
+      - name: Show the daemon's log
+        if: failure()
+        run: docker logs hercules 2>&1 | tail -n 200 || true
+      - name: Remove the container
+        if: always()
+        run: docker rm -f -v hercules || true

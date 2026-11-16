@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Demo Shop</title>
+  <link rel="stylesheet" href="app.css">
+  <script src="app.js"></script>
+</head>
+<body>
+  <header id="site-header"></header>
+  <main>
+    <h1 id="greeting">Welcome to Demo Shop</h1>
+    <p>A small demo store for exercising end-to-end tests. Nothing here is real.</p>
+    <ul>
+      <li><a href="login.html">Sign in</a></li>
+      <li><a href="products.html">Browse products</a></li>
+      <li><a href="cart.html">View your cart</a></li>
+      <li><a href="orders.html">Order history</a></li>
+      <li><a href="spa.html">Reviews and shipping</a></li>
+      <li><a href="faq.html">Frequently asked questions</a></li>
+      <li><a href="account.html">Account settings</a></li>
+    </ul>
+  </main>
+  <script>
+    const profile = DemoShop.read("profile", null);
+    if (profile && profile.displayName) {
+      document.getElementById("greeting").textContent = "Hello, " + profile.displayName;
+    }
+  </script>
+</body>
+</html>

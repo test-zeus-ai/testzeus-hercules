@@ -1,31 +1,33 @@
 ---
 name: Bug report
-about: Create a report to help us improve
+about: Something in Hercules does not work as documented
 title: ''
-labels: bug, help wanted
+labels: bug
 assignees: ''
 
 ---
 
-**Describe the bug**
-A clear and concise description of what the bug is.
+**What happened**
+A short description of the problem.
 
-**To Reproduce**
-Steps to reproduce the behavior:
-1. Go to '...'
-2. Click on '....'
-3. Scroll down to '....'
-4. See error
+**What you expected**
+What you expected to happen instead.
 
-**Expected behavior**
-A clear and concise description of what you expected to happen.
+**How to reproduce**
+1. The command you ran (for example `hercules run .hercules/cases/sign-in.json --mode pure`), or what you did in the tester UI or coding agent.
+2. The test case, or a smaller one that shows the problem. Remove anything private.
+3. What you saw (output, error message).
 
-**Screenshots**
-If applicable, add screenshots to help explain your problem.
+**Evidence**
+If a run went wrong, attach what helps from `.hercules/runs/<run_id>/`: `run.json`, and for the step that failed
+`steps/<n>/observation.txt`, `decisions.jsonl`, `plan.jsonl` and `plain.jpg`. Check them for anything private before you attach them.
 
-**Desktop (please complete the following information):**
- - OS: [e.g. iOS]
- - Version [e.g. 22]
+**Environment**
+- `hercules version`:
+- OS and memory:
+- Python version:
+- Model endpoint (provider and model, for example Ollama with `gemma4:26b-a4b-it-qat`):
+- Mode (`pure` or `hybrid`) and egress policy:
+- `hercules doctor` output (it never prints keys):
 
-**Additional context**
-Add any other context about the problem here.
+**Anything else**

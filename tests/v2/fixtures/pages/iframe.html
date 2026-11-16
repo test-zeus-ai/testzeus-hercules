@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Checkout</title>
+<style>
+  body { font-family: sans-serif; margin: 0; padding: 24px; }
+  iframe { width: 420px; height: 200px; border: 4px solid #888; margin-top: 16px; }
+</style>
+</head>
+<body>
+<h1>Checkout</h1>
+<button id="outer">Back to cart</button>
+<br>
+<iframe name="payment" title="Payment frame" srcdoc="<!doctype html><html><body style='margin:8px;font-family:sans-serif'><label for='card'>Card number</label> <input id='card' type='text'><br><button id='pay' onclick='document.getElementById(&quot;status&quot;).textContent=&quot;paid&quot;'>Pay now</button><p id='status'>unpaid</p></body></html>"></iframe>
+<iframe id="help" title="Help widget" src="data:text/html,%3C!doctype%20html%3E%3Cbody%3E%3Cbutton%20onclick%3D%22this.textContent%3D'Connecting'%22%3EChat%20with%20us%3C%2Fbutton%3E%3C%2Fbody%3E"></iframe>
+</body>
+</html>

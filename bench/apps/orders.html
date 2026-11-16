@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Orders - Demo Shop</title>
+  <link rel="stylesheet" href="app.css">
+  <script src="app.js"></script>
+</head>
+<body>
+  <header id="site-header"></header>
+  <main>
+    <h1>Order history</h1>
+    <p id="status-message" role="status"></p>
+    <table aria-label="Orders">
+      <thead><tr><th>Order</th><th>Customer</th><th>Date</th><th>Status</th><th>Total</th><th>Actions</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div class="pager">
+      <button type="button" class="secondary" id="prev">Previous</button>
+      <span id="page-label"></span>
+      <button type="button" class="secondary" id="next">Next</button>
+    </div>
+    <section class="card" id="details" hidden></section>
+  </main>
+  <script>
+    const PAGE_SIZE = 10;
+    const NAMES = ["Ava Turner", "Ben Ortiz", "Chloe Park", "Dev Patel", "Elena Rossi", "Finn Walsh", "Grace Kim", "Hugo Silva"];
+    const STATUSES = ["Processing", "Shipped", "Delivered"];
+    const SEEDED = Array.from({ length: 23 }, (_, i) => ({
+      number: 1001 + i,
+      customer: NAMES[i % NAMES.length],
+      date: "2026-09-" + String(1 + i).padStart(2, "0"),
+      status: STATUSES[i % STATUSES.length],
+      total: Math.round(((17 + i * 13.5) % 200 + 10) * 100) / 100,
+      items: 1 + (i % 4),
+    }));
+    let page = 1;
+
+    function allOrders() {
+      const cancelled = DemoShop.read("cancelled", []);
+      const mine = DemoShop.read("orders", []).map((o) => ({ number: o.number, customer: o.customer, date: "today", status: o.status, total: o.total, items: 1 })).reverse();
+      return mine.concat(SEEDED).map((o) => (cancelled.includes(o.number) ? Object.assign({}, o, { status: "Cancelled" }) : o));
+    }
+
+    function render() {
+      const orders = allOrders();
+      const pages = Math.max(1, Math.ceil(orders.length / PAGE_SIZE));
+      page = Math.min(Math.max(page, 1), pages);
+      const slice = orders.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+      document.getElementById("rows").innerHTML = slice.map((o) =>
+        '<tr data-number="' + o.number + '"><td>' + o.number + "</td><td>" + DemoShop.escapeHtml(o.customer) + "</td><td>" + o.date + "</td>" +
+        "<td>" + o.status + "</td><td>" + DemoShop.money(o.total) + "</td>" +
+        '<td><button type="button" class="secondary view" aria-label="View order ' + o.number + '">View</button> ' +
+        '<button type="button" class="secondary cancel" aria-label="Cancel order ' + o.number + '"' + (o.status === "Processing" ? "" : " disabled") + ">Cancel</button></td></tr>"
+      ).join("");
+      document.getElementById("page-label").textContent = "Page " + page + " of " + pages;
+      document.getElementById("prev").disabled = page === 1;
+      document.getElementById("next").disabled = page === pages;
+    }
+
+    document.getElementById("rows").addEventListener("click", (event) => {
+      const button = event.target.closest("button");
+      if (!button || button.disabled) return;
+      const number = Number(button.closest("tr").dataset.number);
+      if (button.classList.contains("cancel")) {
+        DemoShop.write("cancelled", DemoShop.read("cancelled", []).concat([number]));
+        document.getElementById("status-message").textContent = "Order " + number + " cancelled";
+        render();
+        return;
+      }
+      const order = allOrders().find((o) => o.number === number);
+      const details = document.getElementById("details");
+      details.hidden = false;
+      details.innerHTML =
+        "<h2>Order " + order.number + " details</h2>" +
+        "<p>Customer: " + DemoShop.escapeHtml(order.customer) + "</p>" +
+        "<p>Items: " + order.items + "</p>" +
+        "<p>Status: " + order.status + "</p>" +
+        "<p>Total: " + DemoShop.money(order.total) + "</p>";
+    });
+    document.getElementById("prev").addEventListener("click", () => { page -= 1; render(); });
+    document.getElementById("next").addEventListener("click", () => { page += 1; render(); });
+    render();
+  </script>
+</body>
+</html>

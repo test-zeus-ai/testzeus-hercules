@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Help - Demo Shop</title>
+  <link rel="stylesheet" href="app.css">
+  <script src="app.js"></script>
+</head>
+<body>
+  <header id="site-header"></header>
+  <main>
+    <h1>Frequently asked questions</h1>
+    <p>Select a question to show its answer. The questions further down the page cover delivery outside your country.</p>
+    <div id="faq"></div>
+    <p><a href="#top" id="back-to-top">Back to top</a></p>
+  </main>
+  <script>
+    const FAQ = [
+      ["How do I create an account?", "Choose Sign in, then follow the link to register with your email address."],
+      ["Can I change my order after placing it?", "You can cancel an order from Order history while it is still processing."],
+      ["What payment methods do you accept?", "We accept major cards and pay on delivery."],
+      ["How do I apply a coupon?", "Enter the code in the coupon box on the cart page and choose Apply."],
+      ["How long does standard delivery take?", "Standard delivery takes 3 to 5 business days."],
+      ["How do I return an item?", "Returns are free within 30 days. Start a return from Order history."],
+      ["When will I get my refund?", "Refunds reach your account within 5 business days of us receiving the return."],
+      ["Do you offer gift wrapping?", "Gift wrapping is not available at the moment."],
+      ["How do I contact support?", "Use the help form or email the support team; we reply within one business day."],
+      ["Do you ship internationally?", "Yes. We ship to 40 countries, and international orders arrive in 7 to 14 days."],
+    ];
+    const host = document.getElementById("faq");
+    host.innerHTML = FAQ.map(([question, answer], i) =>
+      '<section class="faq-item">' +
+      '<button type="button" aria-expanded="false" aria-controls="a' + i + '">' + question + "</button>" +
+      '<p id="a' + i + '" hidden>' + answer + "</p>" +
+      (i % 3 === 2 ? '<p class="spacer">More help topics continue below.</p>' : "") +
+      "</section>"
+    ).join("");
+    host.addEventListener("click", (event) => {
+      const button = event.target.closest("button[aria-controls]");
+      if (!button) return;
+      const answer = document.getElementById(button.getAttribute("aria-controls"));
+      const open = button.getAttribute("aria-expanded") === "true";
+      button.setAttribute("aria-expanded", String(!open));
+      answer.hidden = open;
+    });
+    document.getElementById("back-to-top").addEventListener("click", (event) => { event.preventDefault(); window.scrollTo(0, 0); });
+  </script>
+</body>
+</html>

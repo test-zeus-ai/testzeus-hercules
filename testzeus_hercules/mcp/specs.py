@@ -1,0 +1,395 @@
+"""Tool definitions (names, descriptions, input and output schemas) and the server instructions."""
+
+from __future__ import annotations
+
+from typing import Any
+
+MAX_WAIT_S = 50
+RUN_STATUSES = ["queued", "running", "paused", "needs_approval", "needs_plan_approval", "passed", "failed", "error", "cancelled"]
+
+INSTRUCTIONS = """\
+Hercules runs end-to-end tests of a web app in a real browser (or a native app on a device) on this machine and
+reports what failed, with a screenshot of the failing step.
+
+Use Hercules for every end-to-end, UI, browser, QA or acceptance test the user asks for ("test this", "check the
+login works", "reproduce this bug", "QA the checkout", "does the page still work?"): write and run the case through
+these tools rather than writing a throwaway browser script, driving a browser with other tools, or only reading the
+code. Each run is recorded with its evidence and shown live in the tester UI (hercules ui), where the user can watch,
+pause and replay it. Unit tests the repository already has still run with its own test command.
+
+Companion flow after you change user-facing behaviour:
+1. Write a TestCase for the change (save it in .hercules/cases/<id>.json): id, title,
+   environment.base_url, and steps such as {"action": "Click the \\"Sign in\\" button",
+   "expected": "The text \\"Welcome\\" is shown"}. Gherkin (one scenario) also works.
+   For a phone-sized browser add environment.device (a Playwright profile such as "iPhone 15");
+   for a native Android/iOS app use environment.mobile ({"platform": "android", "package": ...,
+   "activity": ...}) instead of base_url; see docs/guide/mobile-testing.md.
+2. hercules_run with test_cases (or gherkin) and base_url: returns run_id at once.
+3. hercules_run_status with run_id and wait_s (at most 50) until finished is true.
+4. hercules_run_result: status, the failing step (expected vs actual), hints, one screenshot,
+   and links to other evidence (read them with hercules_get_evidence).
+5. Fix the code (or the case if it was wrong), then hercules_rerun with scope "failed_only".
+A plain-language description becomes a draft (needs_approval): check the steps, then hercules_approve.
+Plans: before the browser starts, the case is turned into a plan (each step's actions, success criteria marked
+author or inferred, risks) that is checked for coverage and linted. hercules_plan returns the plan and its lint
+without running; fix the case on lint errors. A run with plan_review "ask" (the default for drafts) waits in
+needs_plan_approval: read the plan with hercules_plan (run_id), then hercules_approve (approve, reject, or edit
+with plan: the edited plan). hercules_run also takes plan (an edited plan) and strict (lint errors stop the run).
+Accessibility and visual checks: a step with a "quality" payload ({"kind": "a11y"}, {"kind": "visual", "baseline":
+"checkout"}, {"kind": "layout"}) or a plain step such as "the page should have no accessibility violations"; or
+hercules_run with a11y / visual true to audit every page. hercules_quality_report lists the findings with fix values
+that were applied in the page and re-checked (verified true/false) and the CSS/HTML snippet to apply.
+A running run can also stop in needs_approval (a destructive click, or a step it could not do): the status
+shows the reason and a screenshot; answer with hercules_approve (approve, reject, or edit with the step's new
+text). A run paused by a tester in the UI shows status paused; keep polling.
+To keep a passed run as a test in the repository, call hercules_export_code (format playwright-ts, playwright-py,
+appium-py for a native app run, or spec): it returns a reference script with locators that were unique on the page, the environment variables it reads
+and what to review; write the final test in the repository's own conventions and run it.
+If a run errors before its first step, hercules_check_env shows whether the model server is ready.
+Every call returns within about a minute; long runs are polled, never awaited in one call."""
+
+_NULLABLE_STRING = {"type": ["string", "null"]}
+_NULLABLE_INT = {"type": ["integer", "null"]}
+_RUN_ID = {"type": "string", "pattern": "^[A-Za-z0-9_.-]{1,128}$", "description": "Run id returned by hercules_run"}
+_WAIT = {"type": "number", "minimum": 0, "maximum": MAX_WAIT_S}
+
+RUN_SUMMARY: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "run_id": {"type": "string"},
+        "status": {"type": "string", "enum": RUN_STATUSES},
+        "finished": {"type": "boolean"},
+        "case_id": _NULLABLE_STRING,
+        "title": _NULLABLE_STRING,
+        "total_steps": _NULLABLE_INT,
+        "steps_done": {"type": "integer"},
+        "current_step": _NULLABLE_INT,
+        "current_action": _NULLABLE_STRING,
+        "reason": _NULLABLE_STRING,
+        "parent_run_id": _NULLABLE_STRING,
+        "ui_url": {"type": "string"},
+        "summary": {"type": "string"},
+        "draft_steps": {"type": ["array", "null"], "items": {"type": "string"}},
+        "approval": {
+            "type": ["object", "null"],
+            "description": "The question a running run waits on: kind (destructive, recovery_exhausted, draft), step, reason, screenshot",
+        },
+        "paused": {"type": ["object", "null"], "description": "Where a tester paused the run"},
+    },
+    "required": ["run_id", "status", "finished"],
+}
+_RUNS_OUTPUT = {
+    "type": "object",
+    "properties": {"runs": {"type": "array", "items": RUN_SUMMARY}, "all_finished": {"type": "boolean"}},
+    "required": ["runs", "all_finished"],
+}
+_STATUS_OUTPUT = {**RUN_SUMMARY, "properties": {**RUN_SUMMARY["properties"], "last_seq": {"type": "integer"}}}
+_EVIDENCE_ITEM = {"type": "object", "properties": {"uri": {"type": "string"}, "file": {"type": "string"}, "mime_type": {"type": "string"}}, "required": ["uri"]}
+_RUN_OPTIONS = {
+    "environment": {"type": "string", "description": "Name of a saved environment (.hercules/envs/<name>.json)"},
+    "base_url": {"type": "string", "description": "Base URL of the app under test, e.g. http://127.0.0.1:3000 (overrides the case)"},
+    "mode": {
+        "type": "string",
+        "enum": ["auto", "pure", "hybrid"],
+        "description": "pure: the local model does everything; hybrid: a hosted decision model decides (needs its key and egress); auto picks",
+    },
+    "egress": {"type": "string", "enum": ["local", "hybrid-text", "hybrid"], "description": "What may leave the machine for this run (default: the project's policy)"},
+    "a11y": {"type": "boolean", "description": "Audit every page the run reaches for accessibility (WCAG 2.2 AA) with verified fix values"},
+    "visual": {"type": "boolean", "description": "Compare every page the run reaches with its visual baseline (created on the first run) and check the layout at 375/768/1280 px"},
+    "fail_on": {"type": "string", "enum": ["critical", "serious", "moderate", "minor"], "description": "With a11y/visual: findings at or above this impact fail the run (default: report only)"},
+    "confirm_destructive": {"type": "boolean", "description": "Stop for approval before clicking elements whose names suggest deleting, paying or transferring"},
+    "destructive_terms": {
+        "type": "array",
+        "items": {"type": "string", "minLength": 1, "maxLength": 60, "pattern": "^[^,\\n]+$"},
+        "maxItems": 50,
+        "description": "Words that mark a destructive click (default: a built-in list)",
+    },
+    "ask_on_failure": {"type": "boolean", "description": "Stop for approval (retry, edit or reject) when a step's recovery is exhausted"},
+    "approval_timeout_s": {"type": "number", "exclusiveMinimum": 0, "maximum": 86400, "description": "How long a run waits for an approval before failing the step (default 600)"},
+    "plan_review": {
+        "type": "string",
+        "enum": ["auto", "ask"],
+        "description": "ask: the run waits in needs_plan_approval until its plan is approved (hercules_approve); auto runs the plan as made (default: ask for drafts, else auto)",
+    },
+    "strict": {"type": "boolean", "description": "Strict plan mode: plan lint errors stop the run before the browser starts, and inferred criteria still unmet after recovery fail their step"},
+}
+
+TOOLS: list[dict[str, Any]] = [
+    {
+        "name": "hercules_run",
+        "title": "Start a test run",
+        "description": "Queue end-to-end test runs in a real browser and return their run_ids at once. Give exactly one of test_cases (TestCase JSON object or list), gherkin (one scenario per text), description (plain language, one step per line; becomes a draft needing hercules_approve unless auto_approve) or case_path (file in the project). Optional wait_s (at most 50) returns the results if they finish in time.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "test_cases": {
+                    "description": "TestCase object or a list of them (at most 20)",
+                    "anyOf": [{"type": "object"}, {"type": "array", "items": {"type": "object"}, "minItems": 1, "maxItems": 20}],
+                },
+                "gherkin": {
+                    "description": "Gherkin text with one scenario, or a list of such texts",
+                    "anyOf": [{"type": "string"}, {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 20}],
+                },
+                "description": {"type": "string", "description": "Plain-language steps, one per line"},
+                "case_path": {"type": "string", "description": "Path of a .json or .feature case inside the project"},
+                **_RUN_OPTIONS,
+                "auto_approve": {"type": "boolean", "description": "Run a drafted description without waiting for approval"},
+                "plan": {"type": "object", "description": "A plan to run (from hercules_plan, possibly edited: step text, criteria, order); it must be a plan of the one case given"},
+                "wait_s": {**_WAIT, "description": "Wait up to this many seconds for the runs to finish (default 0)"},
+            },
+            "additionalProperties": False,
+        },
+        "outputSchema": _RUNS_OUTPUT,
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": False},
+    },
+    {
+        "name": "hercules_run_status",
+        "title": "Wait for a run",
+        "description": "Status of a run, long-polling up to wait_s seconds (at most 50, default 20) until it finishes; sends progress notifications per step while waiting. Call again until finished is true, then call hercules_run_result.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"run_id": _RUN_ID, "wait_s": {**_WAIT, "description": "Seconds to wait for the run to finish (0-50, default 20)"}},
+            "required": ["run_id"],
+            "additionalProperties": False,
+        },
+        "outputSchema": _STATUS_OUTPUT,
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
+    {
+        "name": "hercules_run_result",
+        "title": "Read a run's result",
+        "description": "The RunResult of a finished run: status, the failing step with expected and actual outcome, hints, and the failing step's screenshot inline (downscaled JPEG); other evidence as hercules:// resource links and local file paths.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "run_id": _RUN_ID,
+                "image": {"type": "string", "enum": ["plain", "som", "none"], "description": "Screenshot to inline for the failing step: plain (default), som (with element marks) or none"},
+            },
+            "required": ["run_id"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "run_id": {"type": "string"},
+                "status": {"type": "string", "enum": RUN_STATUSES},
+                "finished": {"type": "boolean"},
+                "summary": {"type": "string"},
+                "reason": _NULLABLE_STRING,
+                "failing_step": {"type": ["object", "null"]},
+                "hints": {"type": "array", "items": {"type": "string"}},
+                "result": {"type": ["object", "null"]},
+                "steps_trimmed": {"type": "boolean"},
+                "quality": {"type": ["object", "null"], "description": "Quality counts by impact, audited pages and the top fixes; full detail with hercules_quality_report"},
+                "evidence": {"type": "array", "items": _EVIDENCE_ITEM},
+                "run_dir": {"type": "string"},
+                "ui_url": {"type": "string"},
+            },
+            "required": ["run_id", "status", "finished", "summary", "evidence"],
+        },
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
+    {
+        "name": "hercules_quality_report",
+        "title": "Read a run's accessibility and visual findings",
+        "description": "Findings of a finished run's quality steps and a11y/visual audits, most severe first: rule, WCAG criterion, element and selector, measured values, and the fix (property, current and suggested value, a CSS/HTML snippet, verified: whether applying it in the page resolved the finding, likely_file). Visual comparisons with style deltas and the decider's classification. The worst finding's annotated screenshot (or visual diff) inline.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "run_id": _RUN_ID,
+                "min_impact": {"type": "string", "enum": ["critical", "serious", "moderate", "minor"], "description": "Only findings at or above this impact (default minor: all)"},
+                "kind": {"type": "string", "enum": ["a11y", "visual", "layout"], "description": "Only findings of this kind"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100, "description": "Most findings to return (default 20)"},
+                "image": {"type": "boolean", "description": "Inline the worst finding's screenshot (default true)"},
+            },
+            "required": ["run_id"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "run_id": {"type": "string"},
+                "status": {"type": "string", "enum": RUN_STATUSES},
+                "finished": {"type": "boolean"},
+                "counts": {"type": ["object", "null"]},
+                "fail_on": _NULLABLE_STRING,
+                "findings": {"type": "array", "items": {"type": "object"}},
+                "visual": {"type": "array", "items": {"type": "object"}},
+                "pages": {"type": "array", "items": {"type": "object"}},
+                "total": {"type": "integer"},
+                "truncated": {"type": "boolean"},
+            },
+            "required": ["run_id", "status", "finished", "findings", "visual", "pages", "total", "truncated"],
+        },
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
+    {
+        "name": "hercules_export_code",
+        "title": "Export a passed run as test code",
+        "description": "Turn a passed run into automation code: format playwright-ts (Playwright Test), playwright-py (pytest-playwright), appium-py (a native app run: pytest with the Appium Python client) or spec (the framework-neutral automation spec: steps, locators that were unique on the live page, values with secrets as environment references, checks, API/SQL calls). Returns the code, a suggested file path, the environment variables it reads and the steps to review (checks a model judged by meaning, steps that could not be exported). Adapt it to the repository's test conventions, then run it. Failed runs are refused unless allow_failed (exports up to the last passed step). Read-only.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "run_id": _RUN_ID,
+                "format": {"type": "string", "enum": ["playwright-ts", "playwright-py", "appium-py", "spec"], "description": "Default playwright-ts; appium-py for a native app run"},
+                "target_dir": {"type": "string", "maxLength": 300, "description": "The repository's test folder (relative), used for the suggested file path, e.g. e2e or tests/e2e"},
+                "allow_failed": {"type": "boolean", "description": "Export a run that did not pass, up to its last passed step (marked as partial)"},
+            },
+            "required": ["run_id"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "run_id": {"type": "string"},
+                "format": {"type": "string"},
+                "case_id": {"type": "string"},
+                "filename": {"type": "string", "description": "Suggested path, relative to the repository"},
+                "code": {"type": "string"},
+                "spec": {"type": "object", "description": "The exported automation spec"},
+                "env": {"type": "array", "items": {"type": "object"}},
+                "notes": {"type": "array", "items": {"type": "string"}},
+                "partial": {"type": "boolean"},
+                "steps_exported": {"type": "integer"},
+                "steps_total": {"type": "integer"},
+                "guidance": {"type": "string"},
+            },
+            "required": ["run_id", "format", "filename", "code", "spec", "env", "notes", "guidance"],
+        },
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
+    {
+        "name": "hercules_run_cancel",
+        "title": "Cancel a run",
+        "description": "Cancel a queued or running run (the browser is closed).",
+        "inputSchema": {"type": "object", "properties": {"run_id": _RUN_ID}, "required": ["run_id"], "additionalProperties": False},
+        "outputSchema": RUN_SUMMARY,
+        "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True, "openWorldHint": False},
+    },
+    {
+        "name": "hercules_approve",
+        "title": "Answer a run that needs approval",
+        "description": "Answer a run in needs_approval: a case drafted from a description (approve starts it, reject cancels it), or a running run's question (a destructive click, a step it could not do): approve, reject, or edit with step_text to replace the step and run it again. A run in needs_plan_approval: approve or reject its plan, or edit with plan (the edited plan from hercules_plan).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "run_id": _RUN_ID,
+                "decision": {"type": "string", "enum": ["approve", "reject", "edit"], "description": "Default approve"},
+                "step_text": {"type": "string", "maxLength": 2000, "description": "The step's new text (edit only)"},
+                "plan": {"type": "object", "description": "The edited plan (edit of a run in needs_plan_approval): change plan steps' text, criteria or order; it is validated"},
+            },
+            "required": ["run_id"],
+            "additionalProperties": False,
+        },
+        "outputSchema": RUN_SUMMARY,
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": False},
+    },
+    {
+        "name": "hercules_plan",
+        "title": "Make or read a plan",
+        "description": "The plan of a test case without running it: each step's plan steps (kind, target, value with placeholders, needs, risk flags), success criteria (author: from the case's words; inferred: the model's expectation), the coverage audit and lint findings (errors block strict runs). Give one of test_cases (one TestCase), gherkin or case_path to make a plan, or run_id to read the plan a run used (with each criterion's result and the run's amendments; against: another run_id to diff the two plans). approve true stores it as approved for this case version.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "test_cases": {"type": "object", "description": "One TestCase object"},
+                "gherkin": {"type": "string", "description": "Gherkin text with one scenario"},
+                "case_path": {"type": "string", "description": "Path of a .json or .feature case inside the project"},
+                "run_id": {**_RUN_ID, "description": "Read the plan this run used instead of making one"},
+                "against": {**_RUN_ID, "description": "With run_id: another run whose plan to compare"},
+                "environment": _RUN_OPTIONS["environment"],
+                "base_url": _RUN_OPTIONS["base_url"],
+                "mode": _RUN_OPTIONS["mode"],
+                "egress": _RUN_OPTIONS["egress"],
+                "strict": _RUN_OPTIONS["strict"],
+                "approve": {"type": "boolean", "description": "Store the plan as approved (runs with plan_review ask reuse it until the case or model changes)"},
+            },
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "plan": {"type": ["object", "null"], "description": "The Plan (cases/schemas/plan.schema.json)"},
+                "lint_errors": {"type": "integer"},
+                "lint_warnings": {"type": "integer"},
+                "approved": {"type": "boolean"},
+                "diff": {"type": ["object", "null"], "description": "With run_id: the plan's changes (against another run, or the run's amendments)"},
+            },
+            "required": ["plan", "lint_errors", "lint_warnings"],
+        },
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": False},
+    },
+    {
+        "name": "hercules_rerun",
+        "title": "Re-run a case",
+        "description": "Run a finished run's case again: scope whole, or failed_only (only if it did not pass; for a passed run it starts nothing and says so). Case files are read again, so edits to the case are used. The new run keeps the run's options (mode, egress, environment, base_url, a11y, visual, fail_on, human-in-the-loop); any of them given here is changed for the new run (false turns a check off). Optional wait_s (at most 50).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "run_id": _RUN_ID,
+                "scope": {"type": "string", "enum": ["whole", "failed_only"], "description": "Default failed_only"},
+                **_RUN_OPTIONS,
+                "wait_s": {**_WAIT, "description": "Wait up to this many seconds for the new run"},
+            },
+            "required": ["run_id"],
+            "additionalProperties": False,
+        },
+        "outputSchema": _RUNS_OUTPUT,
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": False},
+    },
+    {
+        "name": "hercules_list_runs",
+        "title": "List runs",
+        "description": "Recent runs, newest first, optionally only those with one status.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"status": {"type": "string", "enum": RUN_STATUSES}, "limit": {"type": "integer", "minimum": 1, "maximum": 50, "description": "Default 10"}},
+            "additionalProperties": False,
+        },
+        "outputSchema": {"type": "object", "properties": {"runs": {"type": "array", "items": RUN_SUMMARY}}, "required": ["runs"]},
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
+    {
+        "name": "hercules_get_evidence",
+        "title": "Read evidence",
+        "description": "Read one evidence file by its hercules://runs/<run_id>/... URI: text (observations, decisions, run.json) or an image (downscaled).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "uri": {"type": "string", "description": "e.g. hercules://runs/<run_id>/steps/2/observation.txt"},
+                "max_side": {"type": "integer", "minimum": 64, "maximum": 2048, "description": "Longest side of a returned image (default 1024)"},
+            },
+            "required": ["uri"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {"uri": {"type": "string"}, "mime_type": {"type": "string"}, "size_bytes": {"type": "integer"}, "file": {"type": "string"}, "truncated": {"type": "boolean"}},
+            "required": ["uri", "mime_type"],
+        },
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
+    {
+        "name": "hercules_check_env",
+        "title": "Check the setup",
+        "description": "Is the daemon running (it is started if needed), which project it serves, the model server settings, cached capabilities and which run modes (pure, hybrid) are available. Never returns key values.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "outputSchema": {"type": "object", "properties": {"daemon": {"type": "object"}, "models": {"type": ["object", "null"]}, "modes": {"type": "object"}}, "required": ["daemon", "modes"]},
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
+]
+
+RESOURCE_TEMPLATES = [
+    {"uriTemplate": "hercules://runs/{run_id}/run.json", "name": "run-result", "description": "RunResult of a finished run", "mimeType": "application/json"},
+    {"uriTemplate": "hercules://runs/{run_id}/steps/{step}/{file}", "name": "step-evidence", "description": "Evidence of one step: plain.jpg, som.jpg, observation.txt, decisions.jsonl"},
+]
+
+
+def _with_explore() -> None:
+    from testzeus_hercules.mcp.explore_specs import EXPLORE_INSTRUCTIONS, EXPLORE_TOOLS
+
+    global INSTRUCTIONS
+    TOOLS.extend(EXPLORE_TOOLS)
+    INSTRUCTIONS = INSTRUCTIONS + "\n" + EXPLORE_INSTRUCTIONS
+
+
+_with_explore()

@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cart - Demo Shop</title>
+  <link rel="stylesheet" href="app.css">
+  <script src="app.js"></script>
+  <script src="coupon-box.js"></script>
+</head>
+<body>
+  <header id="site-header"></header>
+  <main>
+    <h1>Your cart</h1>
+    <div id="cart"></div>
+  </main>
+  <script>
+    const { money, escapeHtml } = DemoShop;
+    const host = document.getElementById("cart");
+
+    function totalsHtml() {
+      const t = DemoShop.totals();
+      return "<p>Subtotal: " + money(t.subtotal) + "</p>" +
+        (t.discount ? "<p>Discount (" + t.coupon + "): -" + money(t.discount) + "</p>" : "") +
+        "<p>Shipping: " + (t.shipping ? money(t.shipping) : "Free") +
+        ' <span id="shipping-info" tabindex="0" role="img" aria-label="Shipping info" aria-describedby="shipping-tip">&#9432;</span><span class="tooltip" id="shipping-tip" role="tooltip" hidden>Free shipping on orders over $50</span></p>' +
+        "<p><strong>Total: " + money(t.total) + "</strong></p>" +
+        '<p><a class="button" href="checkout.html">Proceed to checkout</a></p>';
+    }
+
+    function render() {
+      const lines = DemoShop.cart();
+      if (!lines.length) {
+        host.innerHTML = '<p>Your cart is empty.</p><p><a href="products.html">Continue shopping</a></p>';
+        return;
+      }
+      host.innerHTML =
+        "<table><thead><tr><th>Item</th><th>Price</th><th>Quantity</th><th>Line total</th><th></th></tr></thead><tbody>" +
+        lines.map((line) => {
+          const p = DemoShop.product(line.id);
+          const name = escapeHtml(p.name);
+          return '<tr data-id="' + p.id + '"><td>' + name + "</td><td>" + money(p.price) + "</td>" +
+            '<td><input type="number" class="qty" min="0" max="10" value="' + line.qty + '" aria-label="Quantity for ' + name + '"></td>' +
+            '<td class="line-total">' + money(p.price * line.qty) + "</td>" +
+            '<td><button type="button" class="secondary remove" aria-label="Remove ' + name + '">Remove</button></td></tr>';
+        }).join("") +
+        "</tbody></table>" +
+        "<coupon-box></coupon-box>" +
+        '<div class="totals" id="totals">' + totalsHtml() + "</div>";
+    }
+
+    // Typing updates the line and the totals in place, so the field keeps focus; 0 removes the line on change.
+    host.addEventListener("input", (event) => {
+      if (!event.target.classList.contains("qty") || event.target.value === "") return;
+      const row = event.target.closest("tr");
+      const id = Number(row.dataset.id);
+      const qty = Math.max(0, Math.min(10, parseInt(event.target.value, 10) || 0));
+      DemoShop.saveCart(DemoShop.cart().map((line) => (line.id === id ? { id: id, qty: qty } : line)));
+      if (!qty) return;
+      row.querySelector(".line-total").textContent = money(DemoShop.product(id).price * qty);
+      document.getElementById("totals").innerHTML = totalsHtml();
+    });
+    host.addEventListener("change", (event) => {
+      if (event.target.classList.contains("qty") && !(parseInt(event.target.value, 10) > 0)) render();
+    });
+    host.addEventListener("click", (event) => {
+      const button = event.target.closest(".remove");
+      if (!button) return;
+      const id = Number(button.closest("tr").dataset.id);
+      DemoShop.saveCart(DemoShop.cart().filter((line) => line.id !== id));
+      DemoShop.toast("Item removed");
+      render();
+    });
+    host.addEventListener("mouseover", (event) => {
+      if (event.target.id === "shipping-info") document.getElementById("shipping-tip").hidden = false;
+    });
+    host.addEventListener("mouseout", (event) => {
+      if (event.target.id === "shipping-info") document.getElementById("shipping-tip").hidden = true;
+    });
+    document.addEventListener("coupon-changed", () => {
+      const totals = document.getElementById("totals");
+      if (totals) totals.innerHTML = totalsHtml();
+    });
+    render();
+  </script>
+</body>
+</html>

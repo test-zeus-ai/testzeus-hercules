@@ -1,0 +1,3267 @@
+{
+  "$defs": {
+    "AssertionCounts": {
+      "additionalProperties": false,
+      "description": "Assertion ledger totals.",
+      "properties": {
+        "failed": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Failed",
+          "type": "integer"
+        },
+        "passed": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Passed",
+          "type": "integer"
+        },
+        "total": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Total",
+          "type": "integer"
+        },
+        "unverified": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Unverified",
+          "type": "integer"
+        }
+      },
+      "title": "AssertionCounts",
+      "type": "object"
+    },
+    "AutomationAction": {
+      "additionalProperties": false,
+      "description": "One action the run carried out, as it happened.",
+      "properties": {
+        "faithful": {
+          "default": true,
+          "title": "Faithful",
+          "type": "boolean"
+        },
+        "key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "press: the key",
+          "title": "Key"
+        },
+        "kind": {
+          "enum": [
+            "navigate",
+            "click",
+            "fill",
+            "select",
+            "check",
+            "uncheck",
+            "hover",
+            "press",
+            "wait_text",
+            "wait_time"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "navigated_from": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The path the page left in that navigation (the export waits to leave it when the new path holds an id made for the run)",
+          "title": "Navigated From"
+        },
+        "navigated_to": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The path a navigation the action caused ended on (the export waits for it)",
+          "title": "Navigated To"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        },
+        "option": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "select: the option's label or value as chosen (a template when it is the typed value)",
+          "title": "Option"
+        },
+        "option_exact": {
+          "default": true,
+          "description": "select (custom drop-down): whether the option's name matched exactly",
+          "title": "Option Exact",
+          "type": "boolean"
+        },
+        "option_role": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "select (custom drop-down): the role of the option clicked",
+          "title": "Option Role"
+        },
+        "seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "wait_time: seconds",
+          "title": "Seconds"
+        },
+        "select_by": {
+          "anyOf": [
+            {
+              "enum": [
+                "label",
+                "value",
+                "option_role",
+                "text"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "select: how the option was chosen",
+          "title": "Select By"
+        },
+        "target": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TargetSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "wait_text: the text waited for",
+          "title": "Text"
+        },
+        "typed": {
+          "default": false,
+          "description": "select (custom drop-down): the value was typed into it before the option was clicked",
+          "title": "Typed",
+          "type": "boolean"
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "navigate: the address, relative to base_url when it is under it",
+          "title": "Url"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "fill/select: the value as a template; {{name}} names an entry of the spec's data",
+          "title": "Value"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "AutomationAction",
+      "type": "object"
+    },
+    "AutomationCheck": {
+      "additionalProperties": false,
+      "description": "One check of a step and how it was verified.",
+      "properties": {
+        "expected": {
+          "description": "The expected text, URL or outcome as a template",
+          "title": "Expected",
+          "type": "string"
+        },
+        "faithful": {
+          "default": true,
+          "title": "Faithful",
+          "type": "boolean"
+        },
+        "form": {
+          "anyOf": [
+            {
+              "enum": [
+                "text",
+                "text_first",
+                "body",
+                "count_zero",
+                "body_not"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Form"
+        },
+        "kind": {
+          "enum": [
+            "text",
+            "not_text",
+            "url",
+            "visible_text",
+            "element_visible",
+            "semantic",
+            "visual"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "match": {
+          "default": "contains",
+          "enum": [
+            "contains",
+            "equals"
+          ],
+          "title": "Match",
+          "type": "string"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        },
+        "observed": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Judged checks: literal evidence of the page it was judged on (title and address)",
+          "title": "Observed"
+        },
+        "source": {
+          "default": "deterministic",
+          "enum": [
+            "deterministic",
+            "llm"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "target": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TargetSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "element_visible: the element; text checks: the frames the text is in (when not in the top document)"
+        },
+        "verdict": {
+          "default": "passed",
+          "enum": [
+            "passed",
+            "failed",
+            "unverified"
+          ],
+          "title": "Verdict",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "expected"
+      ],
+      "title": "AutomationCheck",
+      "type": "object"
+    },
+    "AutomationData": {
+      "additionalProperties": false,
+      "description": "Where a ``{{name}}`` value comes from: a plain value of the case, a secret (an environment variable), a built-in, or a value a step saved.",
+      "properties": {
+        "env": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "secret: the environment variable holding it",
+          "title": "Env"
+        },
+        "kind": {
+          "enum": [
+            "value",
+            "secret",
+            "builtin",
+            "saved"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "step": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "saved: the step that saves it",
+          "title": "Step"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "value: the case's value as written (may hold built-in placeholders)",
+          "title": "Value"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "AutomationData",
+      "type": "object"
+    },
+    "AutomationSpec": {
+      "additionalProperties": false,
+      "description": "A run as framework-neutral automation: the steps that ran, in order, with their data references.",
+      "properties": {
+        "app": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Native app runs: the app and device (MobileApp); exported as Appium code, not Playwright code",
+          "title": "App"
+        },
+        "appium": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Native app runs: the Appium server or device cloud hub the run used, and the environment variables holding the cloud's credentials (never their values)",
+          "title": "Appium"
+        },
+        "base_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Base Url"
+        },
+        "browser": {
+          "default": true,
+          "title": "Browser",
+          "type": "boolean"
+        },
+        "browser_name": {
+          "anyOf": [
+            {
+              "enum": [
+                "chromium",
+                "chrome",
+                "msedge",
+                "firefox",
+                "webkit"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The browser the run used: chromium (when unset), chrome, msedge, firefox or webkit",
+          "title": "Browser Name"
+        },
+        "browser_options": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BrowserOptions"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The Playwright launch and context options the run used (secrets by variable name)"
+        },
+        "case_id": {
+          "title": "Case Id",
+          "type": "string"
+        },
+        "data": {
+          "patternProperties": {
+            "^[A-Za-z_][A-Za-z0-9_]*$": {
+              "$ref": "#/$defs/AutomationData"
+            }
+          },
+          "title": "Data",
+          "type": "object"
+        },
+        "device": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Mobile web emulation: the Playwright device profile the run used",
+          "title": "Device"
+        },
+        "steps": {
+          "items": {
+            "$ref": "#/$defs/AutomationStep"
+          },
+          "title": "Steps",
+          "type": "array"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "version": {
+          "const": 1,
+          "default": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "viewport": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Viewport"
+        }
+      },
+      "required": [
+        "case_id",
+        "title"
+      ],
+      "title": "AutomationSpec",
+      "type": "object"
+    },
+    "AutomationStep": {
+      "additionalProperties": false,
+      "description": "What one step did: its actions in order, then its checks (browser steps), or its API, SQL, quality or security payload.",
+      "properties": {
+        "action": {
+          "title": "Action",
+          "type": "string"
+        },
+        "actions": {
+          "items": {
+            "$ref": "#/$defs/AutomationAction"
+          },
+          "title": "Actions",
+          "type": "array"
+        },
+        "api": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "api steps: the request and checks as executed (ApiCall, placeholders kept)",
+          "title": "Api"
+        },
+        "checks": {
+          "items": {
+            "$ref": "#/$defs/AutomationCheck"
+          },
+          "title": "Checks",
+          "type": "array"
+        },
+        "device": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/DeviceAction"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "mobile steps: the actions done on the device, in order (their checks are in checks)",
+          "title": "Device"
+        },
+        "faithful": {
+          "default": true,
+          "title": "Faithful",
+          "type": "boolean"
+        },
+        "index": {
+          "minimum": 1,
+          "title": "Index",
+          "type": "integer"
+        },
+        "kind": {
+          "default": "browser",
+          "enum": [
+            "browser",
+            "api",
+            "sql",
+            "quality",
+            "mobile",
+            "security"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "notes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Notes",
+          "type": "array"
+        },
+        "payload_source": {
+          "anyOf": [
+            {
+              "enum": [
+                "payload",
+                "llm"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "api/sql/quality/security: written in the case, or read from the step's text by the model",
+          "title": "Payload Source"
+        },
+        "quality": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "quality steps: the check as executed (QualityCheck)",
+          "title": "Quality"
+        },
+        "security": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "security steps: the scan as executed (SecurityScan)",
+          "title": "Security"
+        },
+        "sql": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "sql steps: the query and checks as executed (SqlCall, placeholders kept)",
+          "title": "Sql"
+        },
+        "sql_dialect": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sql Dialect"
+        },
+        "status": {
+          "enum": [
+            "passed",
+            "failed",
+            "error",
+            "skipped",
+            "blocked",
+            "unverified"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "index",
+        "action",
+        "status"
+      ],
+      "title": "AutomationStep",
+      "type": "object"
+    },
+    "BrowserOptions": {
+      "additionalProperties": false,
+      "description": "Playwright launch and context options for a web run (Playwright's names).",
+      "properties": {
+        "accept_downloads": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Accept Downloads"
+        },
+        "args": {
+          "description": "browser command-line switches, e.g. --lang=de",
+          "items": {
+            "maxLength": 500,
+            "minLength": 2,
+            "type": "string"
+          },
+          "maxItems": 50,
+          "title": "Args",
+          "type": "array"
+        },
+        "bypass_csp": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bypass Csp"
+        },
+        "color_scheme": {
+          "anyOf": [
+            {
+              "enum": [
+                "light",
+                "dark",
+                "no-preference"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Color Scheme"
+        },
+        "context_extra": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "description": "other Browser.new_context options, e.g. {\"screen\": {\"width\": 1920, \"height\": 1080}, \"strict_selectors\": true}",
+          "title": "Context Extra",
+          "type": "object"
+        },
+        "device_scale_factor": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 10,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Device Scale Factor"
+        },
+        "extra_http_headers": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "$ref": "#/$defs/Secret"
+              }
+            ]
+          },
+          "description": "headers sent with every request; a value may be {\"secret\": \"ENV_VAR\"}",
+          "title": "Extra Http Headers",
+          "type": "object"
+        },
+        "firefox_user_prefs": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "maxLength": 500,
+                "type": "string"
+              }
+            ]
+          },
+          "description": "Firefox only: about:config preferences",
+          "title": "Firefox User Prefs",
+          "type": "object"
+        },
+        "forced_colors": {
+          "anyOf": [
+            {
+              "enum": [
+                "active",
+                "none"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Forced Colors"
+        },
+        "geolocation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Geolocation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "has_touch": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Has Touch"
+        },
+        "headless": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "false opens a visible window (the run's --headed always does)",
+          "title": "Headless"
+        },
+        "http_credentials": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HttpCredentials"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "ignore_https_errors": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "accept self-signed and invalid certificates",
+          "title": "Ignore Https Errors"
+        },
+        "is_mobile": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Chromium and WebKit only",
+          "title": "Is Mobile"
+        },
+        "java_script_enabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Java Script Enabled"
+        },
+        "launch_extra": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "description": "other BrowserType.launch options, e.g. {\"timeout\": 60000, \"ignore_default_args\": [\"--mute-audio\"]}",
+          "title": "Launch Extra",
+          "type": "object"
+        },
+        "locale": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "e.g. en-GB, de-DE",
+          "title": "Locale"
+        },
+        "offline": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Offline"
+        },
+        "permissions": {
+          "description": "permissions granted to every page, e.g. geolocation, notifications, clipboard-read",
+          "items": {
+            "enum": [
+              "geolocation",
+              "midi",
+              "midi-sysex",
+              "notifications",
+              "camera",
+              "microphone",
+              "background-sync",
+              "ambient-light-sensor",
+              "accelerometer",
+              "gyroscope",
+              "magnetometer",
+              "accessibility-events",
+              "clipboard-read",
+              "clipboard-write",
+              "payment-handler",
+              "storage-access"
+            ],
+            "type": "string"
+          },
+          "title": "Permissions",
+          "type": "array"
+        },
+        "proxy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProxySettings"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "record_video": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "record a video of the run into its evidence folder",
+          "title": "Record Video"
+        },
+        "reduced_motion": {
+          "anyOf": [
+            {
+              "enum": [
+                "reduce",
+                "no-preference"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reduced Motion"
+        },
+        "service_workers": {
+          "anyOf": [
+            {
+              "enum": [
+                "allow",
+                "block"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Service Workers"
+        },
+        "slow_mo": {
+          "anyOf": [
+            {
+              "maximum": 10000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "milliseconds Playwright waits after each action",
+          "title": "Slow Mo"
+        },
+        "storage_state": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "auth state: a JSON file inside the project (cookies and local storage), as saved by Playwright's storage_state()",
+          "title": "Storage State"
+        },
+        "timezone_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "an IANA time zone, e.g. Europe/Berlin",
+          "title": "Timezone Id"
+        },
+        "user_agent": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "User Agent"
+        }
+      },
+      "title": "BrowserOptions",
+      "type": "object"
+    },
+    "CostInfo": {
+      "additionalProperties": false,
+      "description": "Model usage for the run: local-model tokens, and the hosted decision cost in USD (None when nothing was billed).",
+      "properties": {
+        "tokens_in": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Tokens In",
+          "type": "integer"
+        },
+        "tokens_out": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Tokens Out",
+          "type": "integer"
+        },
+        "usd": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Usd"
+        }
+      },
+      "title": "CostInfo",
+      "type": "object"
+    },
+    "DeviceAction": {
+      "additionalProperties": false,
+      "description": "One action a native app step carried out on the device, as it happened.",
+      "properties": {
+        "at_center": {
+          "default": false,
+          "description": "tap: the screen had not changed when the run looked again after the tap, so the run also tapped where the element was drawn",
+          "title": "At Center",
+          "type": "boolean"
+        },
+        "direction": {
+          "anyOf": [
+            {
+              "enum": [
+                "up",
+                "down",
+                "left",
+                "right"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "scroll: what came into view; swipe: the way the finger moved",
+          "title": "Direction"
+        },
+        "faithful": {
+          "default": true,
+          "title": "Faithful",
+          "type": "boolean"
+        },
+        "kind": {
+          "enum": [
+            "tap",
+            "type",
+            "clear",
+            "long_press",
+            "swipe",
+            "scroll",
+            "back",
+            "home",
+            "wait"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        },
+        "target": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DeviceElement"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "type: the text as a template; {{name}} names an entry of the spec's data",
+          "title": "Value"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "DeviceAction",
+      "type": "object"
+    },
+    "DeviceElement": {
+      "additionalProperties": false,
+      "description": "The native app element an action used: its role and name as read from the screen, its locators (best first) and where it was drawn.",
+      "properties": {
+        "bounds": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "x, y, width, height in screen pixels",
+          "title": "Bounds"
+        },
+        "kind": {
+          "default": "",
+          "description": "Its class (Android) or element type (iOS), e.g. EditText, Button",
+          "title": "Kind",
+          "type": "string"
+        },
+        "locators": {
+          "items": {
+            "$ref": "#/$defs/DeviceLocator"
+          },
+          "title": "Locators",
+          "type": "array"
+        },
+        "name": {
+          "default": "",
+          "title": "Name",
+          "type": "string"
+        },
+        "role": {
+          "default": "",
+          "title": "Role",
+          "type": "string"
+        },
+        "screen": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The screen's width and height in pixels, when the page source says",
+          "title": "Screen"
+        }
+      },
+      "title": "DeviceElement",
+      "type": "object"
+    },
+    "DeviceLocator": {
+      "additionalProperties": false,
+      "description": "One way to find a native app element again (an Appium locator), with what it matched on the screen when the run used it.",
+      "properties": {
+        "count": {
+          "default": 1,
+          "description": "Elements it matched on the screen's page source",
+          "minimum": 0,
+          "title": "Count",
+          "type": "integer"
+        },
+        "inner": {
+          "default": false,
+          "description": "It finds a text drawn inside the element (a list row named after its title); a tap on it reaches the element",
+          "title": "Inner",
+          "type": "boolean"
+        },
+        "position": {
+          "default": 1,
+          "description": "Which of those (in document order) was the element",
+          "minimum": 1,
+          "title": "Position",
+          "type": "integer"
+        },
+        "using": {
+          "enum": [
+            "accessibility id",
+            "id",
+            "-android uiautomator",
+            "xpath"
+          ],
+          "title": "Using",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "using",
+        "value"
+      ],
+      "title": "DeviceLocator",
+      "type": "object"
+    },
+    "DiffClassification": {
+      "additionalProperties": false,
+      "description": "A decision engine's reading of a visual diff: intended change, layout break or content change.",
+      "properties": {
+        "confidence": {
+          "title": "Confidence",
+          "type": "number"
+        },
+        "engine": {
+          "title": "Engine",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "probabilities": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Probabilities",
+          "type": "object"
+        }
+      },
+      "required": [
+        "label",
+        "confidence",
+        "probabilities",
+        "engine"
+      ],
+      "title": "DiffClassification",
+      "type": "object"
+    },
+    "EngineInfo": {
+      "additionalProperties": false,
+      "description": "Which engines produced the result.\n\n``mode`` is ``pure`` (the local model does everything), ``hybrid`` (JEV decides,\nthe local model does the rest) or ``test`` (a model-free test decider).",
+      "properties": {
+        "clef_calls": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Clef Calls",
+          "type": "integer"
+        },
+        "decider": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Decider"
+        },
+        "decider_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Decider Model"
+        },
+        "egress": {
+          "default": "local",
+          "enum": [
+            "local",
+            "hybrid",
+            "hybrid-text"
+          ],
+          "title": "Egress",
+          "type": "string"
+        },
+        "fallbacks": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Fallbacks",
+          "type": "integer"
+        },
+        "hosted_llm_calls": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Hosted Llm Calls",
+          "type": "integer"
+        },
+        "jev_calls": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Jev Calls",
+          "type": "integer"
+        },
+        "llm": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Llm"
+        },
+        "llm_cache_hits": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Llm Cache Hits",
+          "type": "integer"
+        },
+        "mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "pure",
+                "hybrid",
+                "test"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mode"
+        }
+      },
+      "title": "EngineInfo",
+      "type": "object"
+    },
+    "EvidencePaths": {
+      "additionalProperties": false,
+      "description": "Locations of run artifacts, relative to the run directory.\n\n``junit`` (JUnit XML of the steps), ``console`` (``console.jsonl``: the page's console\nmessages and errors) and ``network`` (``network.jsonl``: the page's requests and\nresponses, secrets and auth headers redacted) are written by every run that has them.\n``video`` is the run's recording when ``browser_options.record_video`` is set; ``trace``, ``report_md`` and\n``bundle`` are not produced by this version and stay null.",
+      "properties": {
+        "bundle": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bundle"
+        },
+        "console": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Console"
+        },
+        "junit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Junit"
+        },
+        "network": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Network"
+        },
+        "report_md": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Report Md"
+        },
+        "trace": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Trace"
+        },
+        "video": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Video"
+        }
+      },
+      "title": "EvidencePaths",
+      "type": "object"
+    },
+    "FailureInfo": {
+      "additionalProperties": false,
+      "description": "Why a run failed: a model's classification (``unclassified`` when it is not sure) and a factual summary.",
+      "properties": {
+        "category": {
+          "enum": [
+            "environment",
+            "contract_violation",
+            "test_fragility",
+            "product_bug",
+            "test_data",
+            "unclassified"
+          ],
+          "title": "Category",
+          "type": "string"
+        },
+        "confidence": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "signals": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Signals",
+          "type": "array"
+        },
+        "summary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Summary"
+        }
+      },
+      "required": [
+        "category",
+        "confidence"
+      ],
+      "title": "FailureInfo",
+      "type": "object"
+    },
+    "Finding": {
+      "additionalProperties": false,
+      "description": "One problem on one element, with the values code measured.",
+      "properties": {
+        "element_desc": {
+          "default": "",
+          "title": "Element Desc",
+          "type": "string"
+        },
+        "element_md": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Element Md"
+        },
+        "evidence": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "frame": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Frame"
+        },
+        "frame_path": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Frame Path",
+          "type": "array"
+        },
+        "help_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Help Url"
+        },
+        "hints": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Hints",
+          "type": "array"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "impact": {
+          "default": "moderate",
+          "enum": [
+            "critical",
+            "serious",
+            "moderate",
+            "minor"
+          ],
+          "title": "Impact",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "a11y",
+            "visual",
+            "layout"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "level": {
+          "default": "none",
+          "enum": [
+            "A",
+            "AA",
+            "AAA",
+            "none"
+          ],
+          "title": "Level",
+          "type": "string"
+        },
+        "measured": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Measured"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "rule": {
+          "title": "Rule",
+          "type": "string"
+        },
+        "selector": {
+          "title": "Selector",
+          "type": "string"
+        },
+        "source": {
+          "default": "hercules",
+          "enum": [
+            "axe",
+            "hercules"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "wcag": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Wcag"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "rule",
+        "selector",
+        "message"
+      ],
+      "title": "Finding",
+      "type": "object"
+    },
+    "FixSuggestion": {
+      "additionalProperties": false,
+      "description": "A concrete change for one finding and the result of trying it on the live page.\n\n``changes`` is exactly what was applied for verification: CSS declarations (``css_override``,\noptionally under a ``state`` pseudo-class such as ``:focus-visible``) or attribute values\n(``attribute`` / ``text``). ``target_selector`` names the element changed when it is not the\nfinding's own element (a flex container, say), in the same frame.",
+      "properties": {
+        "after_fix": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "After Fix"
+        },
+        "changes": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Changes",
+          "type": "object"
+        },
+        "confidence": {
+          "default": 0.5,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "current": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Current"
+        },
+        "finding_ref": {
+          "title": "Finding Ref",
+          "type": "string"
+        },
+        "likely_file": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Likely File"
+        },
+        "method": {
+          "enum": [
+            "css_override",
+            "attribute",
+            "text"
+          ],
+          "title": "Method",
+          "type": "string"
+        },
+        "property_or_attr": {
+          "title": "Property Or Attr",
+          "type": "string"
+        },
+        "rationale": {
+          "default": "",
+          "title": "Rationale",
+          "type": "string"
+        },
+        "snippet": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Snippet"
+        },
+        "state": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "State"
+        },
+        "suggested": {
+          "title": "Suggested",
+          "type": "string"
+        },
+        "target_selector": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Selector"
+        },
+        "verified": {
+          "default": false,
+          "title": "Verified",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "finding_ref",
+        "property_or_attr",
+        "suggested",
+        "method"
+      ],
+      "title": "FixSuggestion",
+      "type": "object"
+    },
+    "FrameSpec": {
+      "additionalProperties": false,
+      "description": "One iframe on the way to an element: how to find the iframe element in its parent document.",
+      "properties": {
+        "fallbacks": {
+          "items": {
+            "$ref": "#/$defs/LocatorSpec"
+          },
+          "title": "Fallbacks",
+          "type": "array"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Label"
+        },
+        "locator": {
+          "$ref": "#/$defs/LocatorSpec"
+        }
+      },
+      "required": [
+        "locator"
+      ],
+      "title": "FrameSpec",
+      "type": "object"
+    },
+    "Geolocation": {
+      "additionalProperties": false,
+      "properties": {
+        "accuracy": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Accuracy"
+        },
+        "latitude": {
+          "maximum": 90,
+          "minimum": -90,
+          "title": "Latitude",
+          "type": "number"
+        },
+        "longitude": {
+          "maximum": 180,
+          "minimum": -180,
+          "title": "Longitude",
+          "type": "number"
+        }
+      },
+      "required": [
+        "latitude",
+        "longitude"
+      ],
+      "title": "Geolocation",
+      "type": "object"
+    },
+    "HttpCredentials": {
+      "additionalProperties": false,
+      "description": "HTTP authentication (basic or digest) the browser answers with.",
+      "properties": {
+        "origin": {
+          "anyOf": [
+            {
+              "pattern": "^https?://[^\\s/?#]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "send them only to this origin",
+          "title": "Origin"
+        },
+        "password": {
+          "$ref": "#/$defs/Secret",
+          "description": "{\"secret\": \"ENV_VAR\"}: the variable that holds the password"
+        },
+        "username": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/Secret"
+            }
+          ],
+          "title": "Username"
+        }
+      },
+      "required": [
+        "username",
+        "password"
+      ],
+      "title": "HttpCredentials",
+      "type": "object"
+    },
+    "JsonValue": {},
+    "LocatorSpec": {
+      "additionalProperties": false,
+      "description": "One way to find an element, with the number of elements it matched on the live page (exported locators matched one).",
+      "properties": {
+        "attribute": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "test_id: the attribute holding it (data-testid, data-test, data-qa, data-cy ...)",
+          "title": "Attribute"
+        },
+        "count": {
+          "default": 1,
+          "minimum": 0,
+          "title": "Count",
+          "type": "integer"
+        },
+        "exact": {
+          "default": true,
+          "title": "Exact",
+          "type": "boolean"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "role: the accessible name (None: the role alone)",
+          "title": "Name"
+        },
+        "role": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "role: the ARIA role",
+          "title": "Role"
+        },
+        "selectors": {
+          "description": "css: one selector per tree, each inside the shadow root of the element the previous one matched",
+          "items": {
+            "type": "string"
+          },
+          "title": "Selectors",
+          "type": "array"
+        },
+        "strategy": {
+          "enum": [
+            "test_id",
+            "role",
+            "label",
+            "placeholder",
+            "text",
+            "alt_text",
+            "title",
+            "css"
+          ],
+          "title": "Strategy",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "test id, label, placeholder, text, alt text or title",
+          "title": "Value"
+        }
+      },
+      "required": [
+        "strategy"
+      ],
+      "title": "LocatorSpec",
+      "type": "object"
+    },
+    "PlanSummary": {
+      "additionalProperties": false,
+      "description": "The plan of a run in numbers (``RunResult.plan``); the plan itself is ``plan.json`` beside ``run.json``.",
+      "properties": {
+        "amendments": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Amendments",
+          "type": "integer"
+        },
+        "author": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Author",
+          "type": "integer"
+        },
+        "coverage_gaps": {
+          "default": 0,
+          "description": "Source steps the coverage audit still found not covered after the repair",
+          "minimum": 0,
+          "title": "Coverage Gaps",
+          "type": "integer"
+        },
+        "criteria": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Criteria",
+          "type": "integer"
+        },
+        "failed": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Failed",
+          "type": "integer"
+        },
+        "file": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "plan.json",
+          "description": "The plan's file, relative to the run directory",
+          "title": "File"
+        },
+        "inferred": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Inferred",
+          "type": "integer"
+        },
+        "lint_errors": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Lint Errors",
+          "type": "integer"
+        },
+        "lint_warnings": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Lint Warnings",
+          "type": "integer"
+        },
+        "not_run": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Not Run",
+          "type": "integer"
+        },
+        "passed": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Passed",
+          "type": "integer"
+        },
+        "planning_ms": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Planning Ms",
+          "type": "integer"
+        },
+        "recoveries": {
+          "default": 0,
+          "description": "Unmet criteria that drove a recovery",
+          "minimum": 0,
+          "title": "Recoveries",
+          "type": "integer"
+        },
+        "review": {
+          "default": "generated",
+          "enum": [
+            "generated",
+            "approved",
+            "edited",
+            "rejected"
+          ],
+          "title": "Review",
+          "type": "string"
+        },
+        "source": {
+          "default": "model",
+          "enum": [
+            "model",
+            "cache",
+            "approved",
+            "edited",
+            "file"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "steps": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Steps",
+          "type": "integer"
+        },
+        "strict": {
+          "default": false,
+          "title": "Strict",
+          "type": "boolean"
+        },
+        "unverified": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Unverified",
+          "type": "integer"
+        }
+      },
+      "title": "PlanSummary",
+      "type": "object"
+    },
+    "ProxySettings": {
+      "additionalProperties": false,
+      "properties": {
+        "bypass": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "comma-separated hosts that skip the proxy, e.g. .example.com,localhost",
+          "title": "Bypass"
+        },
+        "password": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Secret"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "server": {
+          "description": "e.g. http://proxy.example.com:3128 or socks5://127.0.0.1:1080",
+          "pattern": "^(https?|socks[45])://[^\\s/?#]+$",
+          "title": "Server",
+          "type": "string"
+        },
+        "username": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/Secret"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Username"
+        }
+      },
+      "required": [
+        "server"
+      ],
+      "title": "ProxySettings",
+      "type": "object"
+    },
+    "QualityCounts": {
+      "additionalProperties": false,
+      "description": "Distinct findings (by id) per impact, and totals of findings, fixes, verified fixes and audited pages.",
+      "properties": {
+        "critical": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Critical",
+          "type": "integer"
+        },
+        "findings": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Findings",
+          "type": "integer"
+        },
+        "fixes": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Fixes",
+          "type": "integer"
+        },
+        "minor": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Minor",
+          "type": "integer"
+        },
+        "moderate": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Moderate",
+          "type": "integer"
+        },
+        "pages": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Pages",
+          "type": "integer"
+        },
+        "serious": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Serious",
+          "type": "integer"
+        },
+        "verified_fixes": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Verified Fixes",
+          "type": "integer"
+        }
+      },
+      "title": "QualityCounts",
+      "type": "object"
+    },
+    "QualityPage": {
+      "additionalProperties": false,
+      "description": "One audit of one page state: by a quality step (``source: step``) or by the run's a11y/visual option (``run``).",
+      "properties": {
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "evidence": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "findings": {
+          "items": {
+            "$ref": "#/$defs/Finding"
+          },
+          "title": "Findings",
+          "type": "array"
+        },
+        "fixes": {
+          "items": {
+            "$ref": "#/$defs/FixSuggestion"
+          },
+          "title": "Fixes",
+          "type": "array"
+        },
+        "kind": {
+          "enum": [
+            "a11y",
+            "visual",
+            "layout"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "not_scanned": {
+          "description": "Frames that could not be scanned (cross-origin)",
+          "items": {
+            "type": "string"
+          },
+          "title": "Not Scanned",
+          "type": "array"
+        },
+        "source": {
+          "enum": [
+            "step",
+            "run"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "step": {
+          "description": "The step that ran the check, or after which the page was audited",
+          "minimum": 1,
+          "title": "Step",
+          "type": "integer"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
+        },
+        "url": {
+          "default": "",
+          "title": "Url",
+          "type": "string"
+        },
+        "visual": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/QualityVisual"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "kind",
+        "source",
+        "step"
+      ],
+      "title": "QualityPage",
+      "type": "object"
+    },
+    "QualitySection": {
+      "additionalProperties": false,
+      "description": "Every page audited in a run with its findings and verified fixes, and totals by impact.\n\nRun-level audits (the run's ``a11y``/``visual`` options) fail the run only when ``fail_on`` is set\nand a finding is at or above it; quality steps fail their own step.",
+      "properties": {
+        "a11y": {
+          "default": false,
+          "title": "A11Y",
+          "type": "boolean"
+        },
+        "counts": {
+          "$ref": "#/$defs/QualityCounts",
+          "description": "Computed from pages; any value given is replaced"
+        },
+        "fail_on": {
+          "anyOf": [
+            {
+              "enum": [
+                "critical",
+                "serious",
+                "moderate",
+                "minor"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fail On"
+        },
+        "pages": {
+          "items": {
+            "$ref": "#/$defs/QualityPage"
+          },
+          "title": "Pages",
+          "type": "array"
+        },
+        "visual": {
+          "default": false,
+          "title": "Visual",
+          "type": "boolean"
+        }
+      },
+      "title": "QualitySection",
+      "type": "object"
+    },
+    "QualityVisual": {
+      "additionalProperties": false,
+      "description": "A visual comparison with a baseline: the pixel gate, the style deltas, the images and the decider's reading.",
+      "properties": {
+        "baseline": {
+          "title": "Baseline",
+          "type": "string"
+        },
+        "changed": {
+          "default": false,
+          "title": "Changed",
+          "type": "boolean"
+        },
+        "classification": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DiffClassification"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "created": {
+          "default": false,
+          "description": "The baseline did not exist and was created from this page",
+          "title": "Created",
+          "type": "boolean"
+        },
+        "diff_ratio": {
+          "default": 0.0,
+          "minimum": 0.0,
+          "title": "Diff Ratio",
+          "type": "number"
+        },
+        "images": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "before / after / diff evidence URIs",
+          "title": "Images",
+          "type": "object"
+        },
+        "missing": {
+          "description": "Key elements no longer on the page",
+          "items": {
+            "type": "string"
+          },
+          "title": "Missing",
+          "type": "array"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Why a difference was not classified (no decider that can see screenshots, no answer)",
+          "title": "Note"
+        },
+        "regions": {
+          "items": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "title": "Regions",
+          "type": "array"
+        },
+        "style_deltas": {
+          "items": {
+            "$ref": "#/$defs/StyleDelta"
+          },
+          "title": "Style Deltas",
+          "type": "array"
+        },
+        "threshold": {
+          "default": 0.0,
+          "minimum": 0.0,
+          "title": "Threshold",
+          "type": "number"
+        }
+      },
+      "required": [
+        "baseline"
+      ],
+      "title": "QualityVisual",
+      "type": "object"
+    },
+    "Secret": {
+      "additionalProperties": false,
+      "description": "A value read from the named environment variable at run time; never the value itself.",
+      "properties": {
+        "secret": {
+          "pattern": "^[A-Z_][A-Z0-9_]*$",
+          "title": "Secret",
+          "type": "string"
+        }
+      },
+      "required": [
+        "secret"
+      ],
+      "title": "Secret",
+      "type": "object"
+    },
+    "SecurityCounts": {
+      "additionalProperties": false,
+      "description": "Findings per severity, and their total.",
+      "properties": {
+        "critical": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Critical",
+          "type": "integer"
+        },
+        "findings": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Findings",
+          "type": "integer"
+        },
+        "high": {
+          "default": 0,
+          "minimum": 0,
+          "title": "High",
+          "type": "integer"
+        },
+        "info": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Info",
+          "type": "integer"
+        },
+        "low": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Low",
+          "type": "integer"
+        },
+        "medium": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Medium",
+          "type": "integer"
+        }
+      },
+      "title": "SecurityCounts",
+      "type": "object"
+    },
+    "SecurityFinding": {
+      "additionalProperties": false,
+      "description": "One match of a scanner template on the app (text already redacted).",
+      "properties": {
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "extracted": {
+          "description": "Values the template extracted (first few, clipped)",
+          "items": {
+            "type": "string"
+          },
+          "title": "Extracted",
+          "type": "array"
+        },
+        "matched_at": {
+          "default": "",
+          "description": "The URL (or host) the template matched",
+          "title": "Matched At",
+          "type": "string"
+        },
+        "matcher": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Which of the template's matchers fired",
+          "title": "Matcher"
+        },
+        "name": {
+          "default": "",
+          "title": "Name",
+          "type": "string"
+        },
+        "severity": {
+          "default": "info",
+          "enum": [
+            "critical",
+            "high",
+            "medium",
+            "low",
+            "info"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        },
+        "template_id": {
+          "title": "Template Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "template_id"
+      ],
+      "title": "SecurityFinding",
+      "type": "object"
+    },
+    "SecurityScanResult": {
+      "additionalProperties": false,
+      "description": "One scan: what was scanned with which tags, its findings, and the ones at or above ``fail_on``.",
+      "properties": {
+        "counts": {
+          "$ref": "#/$defs/SecurityCounts",
+          "description": "Computed from findings; any value given is replaced"
+        },
+        "duration_ms": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Duration Ms",
+          "type": "integer"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Why the scan did not finish (scanner missing, refused target, timeout)",
+          "title": "Error"
+        },
+        "evidence": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "exclude_tags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Exclude Tags",
+          "type": "array"
+        },
+        "fail_on": {
+          "default": "medium",
+          "enum": [
+            "critical",
+            "high",
+            "medium",
+            "low",
+            "info"
+          ],
+          "title": "Fail On",
+          "type": "string"
+        },
+        "findings": {
+          "items": {
+            "$ref": "#/$defs/SecurityFinding"
+          },
+          "title": "Findings",
+          "type": "array"
+        },
+        "input": {
+          "default": "url",
+          "enum": [
+            "url",
+            "openapi"
+          ],
+          "title": "Input",
+          "type": "string"
+        },
+        "scanner": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Scanner and version, e.g. nuclei 3.11.1",
+          "title": "Scanner"
+        },
+        "step": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The step that ran the scan (null for `hercules scan`)",
+          "title": "Step"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        },
+        "target": {
+          "description": "The URL scanned, or the OpenAPI spec (relative to the project) whose operations were scanned",
+          "title": "Target",
+          "type": "string"
+        },
+        "templates": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Templates version, when known",
+          "title": "Templates"
+        }
+      },
+      "required": [
+        "target"
+      ],
+      "title": "SecurityScanResult",
+      "type": "object"
+    },
+    "SecuritySection": {
+      "additionalProperties": false,
+      "description": "Every security scan of a run, and the findings per severity over all of them.",
+      "properties": {
+        "counts": {
+          "$ref": "#/$defs/SecurityCounts",
+          "description": "Computed from scans; any value given is replaced"
+        },
+        "scans": {
+          "items": {
+            "$ref": "#/$defs/SecurityScanResult"
+          },
+          "title": "Scans",
+          "type": "array"
+        }
+      },
+      "title": "SecuritySection",
+      "type": "object"
+    },
+    "StepResult": {
+      "additionalProperties": false,
+      "description": "Outcome of one step; ``index`` is the 1-based position in the case.",
+      "properties": {
+        "action": {
+          "title": "Action",
+          "type": "string"
+        },
+        "actual": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Actual"
+        },
+        "decisions": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Decisions",
+          "type": "integer"
+        },
+        "duration_ms": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Duration Ms",
+          "type": "integer"
+        },
+        "evidence": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "expected": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected"
+        },
+        "index": {
+          "minimum": 1,
+          "title": "Index",
+          "type": "integer"
+        },
+        "notes": {
+          "description": "What the run changed about the step: its order, a value re-entered the way a field asks for it",
+          "items": {
+            "type": "string"
+          },
+          "title": "Notes",
+          "type": "array"
+        },
+        "sequence": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "When the step ran, 1-based, when that differs from its index (a field it depends on ran first); null when it ran in the written order",
+          "title": "Sequence"
+        },
+        "status": {
+          "enum": [
+            "passed",
+            "failed",
+            "error",
+            "skipped",
+            "blocked",
+            "unverified"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "index",
+        "action",
+        "status"
+      ],
+      "title": "StepResult",
+      "type": "object"
+    },
+    "StyleDelta": {
+      "additionalProperties": false,
+      "description": "One computed-style (or box) property of a key element that differs from its baseline value.",
+      "properties": {
+        "after": {
+          "title": "After",
+          "type": "string"
+        },
+        "before": {
+          "title": "Before",
+          "type": "string"
+        },
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "property": {
+          "title": "Property",
+          "type": "string"
+        },
+        "selector": {
+          "title": "Selector",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "selector",
+        "property",
+        "before",
+        "after"
+      ],
+      "title": "StyleDelta",
+      "type": "object"
+    },
+    "TargetSpec": {
+      "additionalProperties": false,
+      "description": "The element an action used: its role and name as perceived, the frames it is in, and its unique locators (best first).",
+      "properties": {
+        "checked": {
+          "default": 0,
+          "description": "Candidates evaluated on the live page",
+          "minimum": 0,
+          "title": "Checked",
+          "type": "integer"
+        },
+        "fallbacks": {
+          "items": {
+            "$ref": "#/$defs/LocatorSpec"
+          },
+          "title": "Fallbacks",
+          "type": "array"
+        },
+        "frames": {
+          "items": {
+            "$ref": "#/$defs/FrameSpec"
+          },
+          "title": "Frames",
+          "type": "array"
+        },
+        "locator": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LocatorSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The preferred locator; None when no candidate matched only this element"
+        },
+        "name": {
+          "default": "",
+          "title": "Name",
+          "type": "string"
+        },
+        "role": {
+          "default": "",
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "title": "TargetSpec",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Result of one run, returned by the API and MCP tools and stored as ``run.json``.",
+  "properties": {
+    "assertions": {
+      "$ref": "#/$defs/AssertionCounts"
+    },
+    "automation": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AutomationSpec"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "What the run did as framework-neutral automation (steps, verified locators, values, checks); see `hercules export`"
+    },
+    "case_id": {
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,99}$",
+      "title": "Case Id",
+      "type": "string"
+    },
+    "cost": {
+      "$ref": "#/$defs/CostInfo"
+    },
+    "duration_s": {
+      "default": 0.0,
+      "minimum": 0.0,
+      "title": "Duration S",
+      "type": "number"
+    },
+    "engines": {
+      "$ref": "#/$defs/EngineInfo"
+    },
+    "evidence": {
+      "$ref": "#/$defs/EvidencePaths"
+    },
+    "failure": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/FailureInfo"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "hints": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Hints",
+      "type": "array"
+    },
+    "plan": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PlanSummary"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The run's plan in numbers (criteria results, amendments, lint); the plan itself is plan.json beside run.json"
+    },
+    "quality": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/QualitySection"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "run_id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Run Id",
+      "type": "string"
+    },
+    "security": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SecuritySection"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The run's security scans (security steps) and their findings"
+    },
+    "status": {
+      "enum": [
+        "queued",
+        "running",
+        "needs_approval",
+        "needs_plan_approval",
+        "passed",
+        "failed",
+        "error",
+        "cancelled"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "steps": {
+      "items": {
+        "$ref": "#/$defs/StepResult"
+      },
+      "title": "Steps",
+      "type": "array"
+    },
+    "ui_url": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Ui Url"
+    },
+    "verdict_source": {
+      "default": "none",
+      "enum": [
+        "ledger",
+        "decider",
+        "llm",
+        "none"
+      ],
+      "title": "Verdict Source",
+      "type": "string"
+    }
+  },
+  "required": [
+    "run_id",
+    "status",
+    "case_id"
+  ],
+  "title": "RunResult",
+  "type": "object"
+}

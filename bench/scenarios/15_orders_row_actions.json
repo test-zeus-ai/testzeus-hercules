@@ -1,0 +1,12 @@
+{
+  "id": "orders-row-actions",
+  "title": "Per-row buttons view and cancel one order",
+  "tags": ["table"],
+  "test_data": {"order": "1004", "customer": "Dev Patel"},
+  "steps": [
+    {"action": "I open \"/orders.html\""},
+    {"action": "I click the \"View order {{order}}\" button", "expected": "I should see \"Order {{order}} details\""},
+    {"action": "verify", "expected": "I should see \"Customer: {{customer}}\""},
+    {"action": "I click the \"Cancel order {{order}}\" button", "expected": "I should see \"Order {{order}} cancelled\""}
+  ]
+}

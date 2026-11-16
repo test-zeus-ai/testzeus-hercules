@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Unlabelled fields</title>
+<style>
+  body { font-family: sans-serif; margin: 0; padding: 24px; }
+  .group { margin: 10px 0; }
+  .picker-display { border: 1px solid #999; width: 200px; padding: 6px; cursor: pointer; }
+  #status-options { border: 1px solid #ccc; width: 200px; }
+</style>
+</head>
+<body>
+<header><a href="/"><img alt="brand logo" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" width="40" height="20"></a><input placeholder="Search" id="top-search"></header>
+<h1>Employee search</h1>
+<form onsubmit="return false">
+  <div class="group">
+    <div class="label-wrapper"><label class="label">Person Name</label></div>
+    <div><div class="autocomplete"><div class="text-input"><input placeholder="Start typing..." id="employee"></div></div></div>
+  </div>
+  <div class="group">
+    <div class="label-wrapper"><label class="label">Manager Name</label></div>
+    <div><div class="autocomplete"><div class="text-input"><input placeholder="Start typing..." id="supervisor"></div></div></div>
+  </div>
+  <div class="group">
+    <div class="label-wrapper"><label class="label">Contract Type *</label></div>
+    <div><div class="select-wrapper">
+      <div class="picker-display" id="status" onclick="document.getElementById('status-options').hidden = false"><div class="picker-display-input" tabindex="0">-- Select --</div><div class="picker-display--after"><i class="icon picker-display--arrow" style="display:inline-block;width:10px;height:10px;background:#555"></i></div></div>
+      <div id="status-options" role="listbox" hidden>
+        <div role="option" onclick="choose(this)">Permanent</div>
+        <div role="option" onclick="choose(this)">Temporary</div>
+      </div>
+    </div></div>
+  </div>
+</form>
+<table>
+  <tr><td>Card number:</td><td><input name="card" id="account"></td><td><span></span></td></tr>
+  <tr><td>Confirm card number:</td><td><input name="card_confirm" id="verify"></td><td><span></span></td></tr>
+</table>
+<p><b>Username</b></p>
+<div class="login"><input type="text" name="u" id="login-user"></div>
+<div class="cart">
+  <div class="item"><div class="name">Lamp</div><div class="pricebar"><div class="price">$9.99</div><button>Remove</button></div></div>
+  <div class="item"><div class="name">Daypack</div><div class="pricebar"><div class="price">$29.99</div><button>Remove</button></div></div>
+</div>
+<div class="tabs"><button id="deposit-tab">Deposit</button><button>Withdraw</button></div>
+<form onsubmit="return false"><label>Amount to send</label><input type="number" id="amount"><button type="submit" id="deposit-submit">Deposit</button></form>
+<script>
+  function choose(option) {
+    document.querySelector('#status .picker-display-input').textContent = option.textContent;
+    document.getElementById('status-options').hidden = true;
+  }
+</script>
+</body>
+</html>

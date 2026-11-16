@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Shadow widgets</title>
+<style> body { font-family: sans-serif; margin: 0; padding: 24px; } </style>
+</head>
+<body>
+<h1>Search</h1>
+<search-box></search-box>
+<fancy-panel><button id="slotted" slot="actions">Slotted action</button></fancy-panel>
+<p id="result">none</p>
+<script>
+  customElements.define("search-box", class extends HTMLElement {
+    constructor() {
+      super();
+      const root = this.attachShadow({ mode: "open" });
+      root.innerHTML = '<div class="wrap"><label for="q">Query</label> <input id="q" type="search" placeholder="Search docs"> <button id="go">Go</button></div>';
+      root.getElementById("go").addEventListener("click", () => {
+        document.getElementById("result").textContent = "searched:" + root.getElementById("q").value;
+      });
+    }
+  });
+  customElements.define("fancy-panel", class extends HTMLElement {
+    constructor() {
+      super();
+      const root = this.attachShadow({ mode: "open" });
+      root.innerHTML = '<div style="border:1px solid #ccc;padding:8px;margin-top:12px"><button id="go">Panel button</button> <slot name="actions"></slot></div>';
+    }
+  });
+</script>
+</body>
+</html>

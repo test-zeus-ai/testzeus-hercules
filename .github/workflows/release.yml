@@ -1,67 +1,324 @@
-name: Upload Python Package
-permissions:
-  contents: write
+name: Release
 
+# A release is a version tag (2.1.0, v2.1.0, 2.1.0rc1, ...) whose number equals the version in pyproject.toml.
+# The order is: check the tag -> build and check the packages -> run the test suite -> publish to PyPI ->
+# create the GitHub release with the files attached -> publish the Docker image. Nothing is published unless
+# every check before it passed, and the GitHub release only appears once PyPI has the version.
+#
+# PyPI publishing uses trusted publishing (OIDC): no API token is stored in the repository, and PyPI records a
+# signed attestation of where each file was built. One-time setup is described in CONTRIBUTING.md
+# ("Releasing"). Running this workflow by hand (workflow_dispatch) does every check and publishes nothing.
 on:
   push:
     tags:
-      - '*' # Push events to matching tags
+      - "v[0-9]+.[0-9]+.[0-9]+*"
+      - "[0-9]+.[0-9]+.[0-9]+*"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
-  UV_VERSION: "0.4.29"
+  UV_VERSION: "0.11.19"
+  FORCE_COLOR: "1"
+  GHCR_IMAGE: ghcr.io/${{ github.repository_owner }}/testzeus-hercules
+  DOCKERHUB_IMAGE: testzeus/hercules
 
 jobs:
-  release:
-    name: Create Release
+  version:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      prerelease: ${{ steps.check.outputs.prerelease }}
+      publish: ${{ steps.check.outputs.publish }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
-      - name: Generate Changelog
-        run: .github/release_message.sh > release_message.md
-      - name: Release
-        uses: softprops/action-gh-release@v3
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
-          body_path: release_message.md
+          version: ${{ env.UV_VERSION }}
+          python-version: "3.12"
+      - name: The tag is the package's version
+        id: check
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          uv run --no-project --with 'packaging>=24' python - <<'EOF'
+          import os, tomllib
+          from packaging.version import Version
+          version = Version(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])
+          tagged = os.environ["REF_TYPE"] == "tag"
+          if tagged:
+              tag = os.environ["REF_NAME"].removeprefix("v")
+              if Version(tag) != version:
+                  raise SystemExit(f"tag {os.environ['REF_NAME']} does not match version {version} in pyproject.toml")
+          if tagged and version.is_devrelease:
+              raise SystemExit(f"{version} is a development version; tag a final or pre-release version")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              out.write(f"version={version}\nprerelease={str(version.is_prerelease).lower()}\npublish={str(tagged).lower()}\n")
+          print(f"version {version}, prerelease {version.is_prerelease}, publish {tagged}")
+          EOF
 
-  deploy:
-    needs: release
+  build:
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: "3.12"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: Build the tester UI
+        run: bash scripts/build_ui.sh
+      - name: Absolute links in the PyPI description, pinned to this release
+        run: python scripts/pypi_readme.py --ref "${GITHUB_REF_NAME}"
+      - name: Build the sdist and the wheel
+        run: uv build
+      - name: Check the packages
+        run: bash scripts/check_dist.sh dist
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
+
+  install:
+    name: install (Python ${{ matrix.python }}, ${{ matrix.os }})
+    needs: build
     strategy:
       fail-fast: false
       matrix:
-        python-version: [3.11]
         os: [ubuntu-latest]
+        python: ["3.11", "3.12", "3.13", "3.14", "3.15"]
+        include:
+          - os: macos-latest
+            python: "3.12"
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          python-version: ${{ matrix.python-version }}
-        id: setup_python
-      - name: Cache UV cache
-        uses: actions/cache@v6
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
-          path: ~/.cache/uv
-          key: uv-cache-${{ runner.os }}-${{ steps.setup_python.outputs.python-version }}-${{ env.UV_VERSION }}
-      - name: Cache Packages
-        uses: actions/cache@v6
+          version: ${{ env.UV_VERSION }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          path: ~/.local
-          key: uv-local-${{ runner.os }}-${{ steps.setup_python.outputs.python-version }}-${{ hashFiles('**/uv.lock') }}-${{ hashFiles('.github/workflows/*.yml') }}
-      - name: Install UV ${{ env.UV_VERSION }}
-        run: |
-          pip install uv==${{ env.UV_VERSION }}
-      - name: Install project
-        run: make install-extra
-      - name: Build and publish to PyPI
+          name: dist
+          path: dist
+      - name: The wheel installs and starts
         env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+          PYTHON: ${{ matrix.python }}
+        run: bash scripts/check_dist.sh dist
+
+  test:
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: "3.12"
+      - run: uv sync --locked --all-extras
+      - run: uv run playwright install --with-deps chromium
+      - name: Lint
+        run: make lint
+      - name: Offline test suite
+        run: uv run pytest -q -m "not live" tests/v2
+
+  pypi:
+    needs: [version, build, install, test]
+    if: needs.version.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: pypi
+      url: https://pypi.org/project/testzeus-hercules/${{ needs.version.outputs.version }}/
+    permissions:
+      id-token: write # trusted publishing and attestations
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+
+  github-release:
+    needs: [version, pypi]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist
+      - name: Release notes
+        run: bash .github/release_message.sh > release_message.md
+      - uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
+        with:
+          name: Hercules ${{ needs.version.outputs.version }}
+          body_path: release_message.md
+          prerelease: ${{ needs.version.outputs.prerelease == 'true' }}
+          make_latest: ${{ needs.version.outputs.prerelease == 'true' && 'false' || 'true' }}
+          files: dist/*
+          fail_on_unmatched_files: true
+
+  # The image is built natively on an amd64 and an arm64 runner (no emulation), each pushed by digest, then one
+  # job joins the two into the release's tags. GHCR needs no secrets; Docker Hub (testzeus/hercules, where the
+  # image has always been published) is added when the DOCKERHUB_USERNAME variable and DOCKERHUB_TOKEN secret exist.
+  docker-build:
+    needs: [version, pypi]
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            platform: linux/amd64
+          - runner: ubuntu-24.04-arm
+            platform: linux/arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    env:
+      DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - if: env.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Image names
+        id: names
         run: |
-          make build
-          make publish
-      # The Docker image (linux/amd64 + linux/arm64) is published by .github/workflows/docker-publish.yml.
+          names="${GHCR_IMAGE}"
+          if [ -n "${DOCKERHUB_USERNAME}" ]; then names="${names},${DOCKERHUB_IMAGE}"; fi
+          echo "names=${names}" >> "$GITHUB_OUTPUT"
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          build-args: |
+            VERSION=${{ needs.version.outputs.version }}
+            REVISION=${{ github.sha }}
+          outputs: type=image,"name=${{ steps.names.outputs.names }}",push-by-digest=true,name-canonical=true,push=true
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha,scope=${{ matrix.platform }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.platform }}
+      - name: Check the image starts
+        run: |
+          set -e
+          docker run --rm --platform ${{ matrix.platform }} "${GHCR_IMAGE}@${{ steps.build.outputs.digest }}" version
+      - name: Keep the digest
+        run: |
+          mkdir -p "${RUNNER_TEMP}/digests"
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${RUNNER_TEMP}/digests/${digest#sha256:}"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: digest-${{ matrix.runner }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  docker:
+    needs: [version, docker-build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+      id-token: write # build provenance attestation
+      attestations: write
+    env:
+      DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digest-*
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - if: env.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Tags
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: |
+            ${{ env.GHCR_IMAGE }}
+            name=${{ env.DOCKERHUB_IMAGE }},enable=${{ env.DOCKERHUB_USERNAME != '' }}
+          flavor: latest=false
+          tags: |
+            type=raw,value=${{ needs.version.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.version.outputs.version }},enable=${{ needs.version.outputs.prerelease != 'true' }}
+            type=raw,value=latest,enable=${{ needs.version.outputs.prerelease != 'true' }}
+      - name: Join the two architectures into the release's tags
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          set -e
+          # The tag list and the digests are meant to split into separate arguments.
+          # shellcheck disable=SC2046
+          for image in $(jq -r '.tags[] | split(":")[0]' <<< "${DOCKER_METADATA_OUTPUT_JSON}" | sort -u); do
+            docker buildx imagetools create \
+              $(jq -cr --arg image "$image" '.tags | map(select(startswith($image + ":")) | "-t " + .) | join(" ")' <<< "${DOCKER_METADATA_OUTPUT_JSON}") \
+              $(printf "${image}@sha256:%s " *)
+          done
+      - name: Digest of the joined image
+        id: digest
+        run: |
+          digest=$(docker buildx imagetools inspect "${GHCR_IMAGE}:${{ needs.version.outputs.version }}" --format '{{json .Manifest}}' | jq -r .digest)
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.GHCR_IMAGE }}
+          subject-digest: ${{ steps.digest.outputs.digest }}
+          push-to-registry: true

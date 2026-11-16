@@ -1,0 +1,230 @@
+"""Every construct
+
+Exported by Hercules from run r_20261026_120000_abcdef (case golden-case). It repeats what the run did, with the
+locators that matched only the element used during the run. Adapt it to this project's tests (fixtures,
+page objects, conftest.py) before keeping it, then run it with pytest (pytest-playwright).
+Environment: BASE_URL (optional), APP_DB_URL (required), APP_PASSWORD (required), APP_TOKEN (required), PETS_API_KEY (required).
+"""
+
+from __future__ import annotations
+
+import base64
+import datetime
+import json
+import os
+import re
+import sqlite3
+import time
+from collections.abc import Iterator
+from pathlib import Path
+from typing import Any
+from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
+
+import pytest
+from playwright.sync_api import APIRequestContext, Page, Playwright, expect
+
+BASE_URL = os.environ.get("BASE_URL", "http://shop.test")
+TIMESTAMP = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d%H%M%S")
+RUN_ID = "run-" + TIMESTAMP
+DATA = {
+    "country": "Canada",
+    "email": "user+" + RUN_ID + "@shop.test",
+    "name": "Sam",
+}
+
+
+@pytest.fixture(scope="session")
+def browser_type_launch_args(browser_type_launch_args: dict) -> dict:
+    """The browser in HERCULES_CHROMIUM when it is set (a Chrome for Testing build), else Playwright's own."""
+    executable = os.environ.get("HERCULES_CHROMIUM")
+    return {**browser_type_launch_args, "executable_path": executable} if executable else browser_type_launch_args
+
+
+def url(path: str) -> str:
+    """A page address: relative ones are resolved against BASE_URL, as the run did."""
+    return urljoin(BASE_URL, path)
+
+
+def api_url(path: str) -> str:
+    """An API address: relative paths are appended to BASE_URL, as the run did."""
+    return BASE_URL.rstrip("/") + "/" + path.lstrip("/")
+
+
+def text(value: Any) -> str:
+    return value if isinstance(value, str) else json.dumps(value, separators=(",", ":"))
+
+
+MISSING: Any = object()
+
+
+def at(document: Any, path: list[str | int]) -> Any:
+    """The value at a JSON path given as keys (MISSING when there is none)."""
+    node = document
+    for key in path:
+        if isinstance(node, dict) and isinstance(key, str) and key in node:
+            node = node[key]
+        elif isinstance(node, list) and isinstance(key, int) and -len(node) <= key < len(node):
+            node = node[key]
+        else:
+            return MISSING
+    return node
+
+
+def exists(value: Any) -> bool:
+    return value is not MISSING
+
+
+def same(actual: Any, expected: Any) -> bool:
+    """Equal values; a number and its text are equal too (as in the run's checks), a boolean and a number never."""
+    if actual is MISSING:
+        return False
+    if isinstance(actual, bool) != isinstance(expected, bool):
+        return text(actual) == text(expected)
+    return bool(actual == expected) or text(actual) == text(expected)
+
+
+def contains(actual: Any, expected: Any) -> bool:
+    if isinstance(actual, str):
+        return text(expected) in actual
+    if isinstance(actual, list):
+        return any(same(item, expected) for item in actual)
+    if isinstance(actual, dict):
+        return isinstance(expected, str) and expected in actual
+    return False
+
+
+def number(value: Any) -> float:
+    if isinstance(value, bool):
+        return float("nan")
+    if isinstance(value, (int, float)):
+        return float(value)
+    try:
+        return float(str(value).strip())
+    except ValueError:
+        return float("nan")
+
+
+def size(value: Any) -> int:
+    return 0 if value is MISSING else len(value) if isinstance(value, list) else 1
+
+
+def status_in(status: int, codes: list[str]) -> bool:
+    return any(code == str(status) or (code.endswith("xx") and code[0] == str(status)[0]) for code in codes)
+
+
+def with_query(address: str, pairs: list[tuple[str, str]]) -> str:
+    """The address with these query parameters (replacing any of the same name it already has)."""
+    parts = urlsplit(address)
+    names = {name for name, _ in pairs}
+    kept = [(name, value) for name, value in parse_qsl(parts.query, keep_blank_values=True) if name not in names]
+    return urlunsplit(parts._replace(query=urlencode(kept + list(pairs))))
+
+
+def sqlite_rows(address: str, query: str, params: dict[str, Any]) -> list[dict[str, Any]]:
+    """Rows of one read-only query on the SQLite database an SQLAlchemy URL names (sqlite:///app.db).
+
+    A relative path is taken from the current directory (the run took it from the project folder).
+    """
+    path = address.split(":///", 1)[1] if ":///" in address else address
+    connection = sqlite3.connect(Path(path.split("?", 1)[0]).resolve().as_uri() + "?mode=ro", uri=True)
+    try:
+        connection.row_factory = sqlite3.Row
+        return [dict(row) for row in connection.execute(query, params)]
+    finally:
+        connection.close()
+
+
+@pytest.fixture
+def api(playwright: Playwright) -> Iterator[APIRequestContext]:
+    """A request context of its own, as the run sent its API requests apart from the browser."""
+    context = playwright.request.new_context()
+    yield context
+    context.dispose()
+
+
+def test_golden_case(page: Page, api: APIRequestContext) -> None:
+    """Every construct"""
+    saved: dict[str, Any] = {}
+
+    # Step 1: I open "/login"
+    page.goto(url("/login"))
+
+    # Step 2: I sign in
+    # also unique on the page: page.get_by_label("Email", exact=True)
+    page.get_by_test_id("email").fill(DATA["email"])
+    page.get_by_label("Password", exact=True).fill(os.environ["APP_PASSWORD"])
+    page.get_by_role("button", name="Sign in", exact=True).click()
+    page.wait_for_url(lambda address: urlsplit(address).path == "/dashboard")
+    expect(page.get_by_text("Welcome, " + DATA["name"])).to_be_visible()
+    expect(page).to_have_url(re.compile(re.escape("/dashboard")))
+
+    # Step 3: Choose options
+    page.get_by_role("combobox", name="Country", exact=True).select_option(label=DATA["country"])
+    page.locator("#colour").select_option("blue")
+    page.get_by_role("combobox", name="Book", exact=True).evaluate("element => element.scrollIntoView({block: 'center'})")
+    page.get_by_role("combobox", name="Book", exact=True).click()
+    page.get_by_role("combobox", name="Book", exact=True).press_sequentially("Peter Pan")
+    page.get_by_role("option", name="Peter Pan", exact=True).click()
+    page.get_by_role("checkbox", name="I agree", exact=True).check()
+    page.locator("[data-qa=\"help\"]").hover()
+    page.get_by_placeholder("Search", exact=True).press("Enter")
+    page.keyboard.press("Escape")
+    expect(page.get_by_text("Saved").first).to_be_visible(timeout=10_000)
+    # the step waits a fixed time
+    page.wait_for_timeout(1500)
+    expect(page.get_by_text("Items").first).to_be_visible()
+    expect(page.get_by_text("Error")).to_have_count(0)
+    # TODO: no Playwright text assertion held on the page; check this text by hand
+    # expect(page.locator("body")).not_to_contain_text("Choose a country", ignore_case=True)
+    expect(page.get_by_text("Profile").first).to_be_visible()
+    expect(page).to_have_url(url("/account"))
+
+    # Step 4: Pay by card
+    page.locator("iframe[title=\"Card details\"]").content_frame.get_by_role("textbox", name="Card number", exact=True).fill("4242 4242 4242 4242")
+    page.locator("#cart > coupon-box").locator("#apply").click()
+    # TODO: no locator matched only the element to click (button "Remove"); this one is a guess
+    page.get_by_role("button", name="Remove", exact=True).click()
+    expect(page.locator("iframe[title=\"Card details\"]").content_frame.get_by_text("Card saved")).to_be_visible()
+    expect(page.get_by_role("link", name="Receipt", exact=True)).to_be_visible()
+    # Judged by its meaning by a model during the run: "the order is confirmed"
+    # The run's verdict: judged by meaning by jev: 93% likely to hold
+    # Observed: page "Thanks" at /success
+    # TODO: assert in code: the order is confirmed
+
+    # Step 5: Create a pet
+    started = time.monotonic()
+    response = api.fetch(with_query(api_url("/pets"), [("dry", "no"), ("tags", "a"), ("tags", "b")]), method="POST", headers={"X-API-Key": os.environ["PETS_API_KEY"], "Authorization": "Bearer " + os.environ["APP_TOKEN"]}, data={"name": "Bella " + RUN_ID, "owner": DATA["email"], "age": 2, "vaccinated": True, "notes": None}, max_redirects=0)
+    elapsed_ms = (time.monotonic() - started) * 1000
+    assert response.status == 201, "HTTP status 201"
+    # TODO: validate the response body against the JSON Schema spec.yaml#/components/schemas/Pet with your project's validator
+    body = response.json()
+    assert contains(at(body, ["name"]), "Bella"), "$.name contains \"Bella\""
+    assert number(at(body, ["id"])) > number(0), "$.id gt 0"
+    # TODO: check $.items[*].price all_gte 0 (a JSONPath this export does not translate)
+    assert not exists(at(body, ["missing"])), "$.missing not_exists"
+    assert exists(response.headers.get("location", MISSING)), "header Location exists"
+    assert "Bella" in response.text(), "body contains Bella"
+    assert elapsed_ms < 2000, "response time under 2000 ms"
+    saved["pet_id"] = at(body, ["id"])
+    saved["where"] = response.headers.get("location", MISSING)
+
+    # Step 6: Read it back
+    response = api.fetch(api_url("/pets/" + text(saved["pet_id"])), method="GET", headers={"Authorization": "Basic " + base64.b64encode(("admin:" + os.environ["APP_PASSWORD"]).encode()).decode()}, max_redirects=0)
+    assert status_in(response.status, ["2xx", "304"]), "HTTP status 2xx or 304"
+    body = response.json()
+    assert same(at(body, ["id"]), saved["pet_id"]), "$['id'] eq \"{{pet_id}}\""
+    assert same(size(at(body, ["tags"])), 2), "$.tags count_eq 2"
+
+    # Step 7: Send a note
+    response = api.fetch("https://hooks.test/note", method="POST", headers={"Content-Type": "text/plain"}, data="hello " + DATA["name"], max_redirects=0)
+    assert response.status == 200, "HTTP status 200"
+
+    # Step 8: The dogs are stored
+    rows = sqlite_rows(os.environ["APP_DB_URL"], "SELECT name FROM pets WHERE tag = :tag", {"tag": "dog"})
+    assert len(rows) == 2, "row count == 2"
+    assert same(at(rows, [0, "name"]), "Rex"), "rows $[0].name eq \"Rex\""
+
+    # Step 9: Accessible
+    # the a11y check runs Hercules' own checks; the export writes it as a comment to replace with your project's tools
+    # The run checked the page's accessibility: {"kind": "a11y"}
+    # TODO: replace this a11y check with your project's tools

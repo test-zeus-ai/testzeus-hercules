@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Poisoned globals</title>
+<style> body { font-family: sans-serif; margin: 0; padding: 24px; } button, a, input { display: block; margin: 8px 0; } </style>
+<script>
+  // Patch globals and prototypes the way some sandboxes, polyfills and component frameworks do.
+  Array.from = function () { throw new TypeError("Array.from is disabled in this sandbox"); };
+  Array.prototype.map = function () { throw new TypeError("Array.prototype.map is disabled in this sandbox"); };
+  Array.prototype.filter = function () { throw new TypeError("Array.prototype.filter is disabled in this sandbox"); };
+  Array.prototype.forEach = function () { throw new TypeError("Array.prototype.forEach is disabled in this sandbox"); };
+  Array.prototype.some = function () { throw new TypeError("Array.prototype.some is disabled in this sandbox"); };
+  Array.prototype.includes = function () { throw new TypeError("Array.prototype.includes is disabled in this sandbox"); };
+  Array.prototype.join = function () { throw new TypeError("Array.prototype.join is disabled in this sandbox"); };
+  JSON.stringify = function () { throw new TypeError("JSON.stringify is disabled in this sandbox"); };
+  const realRect = Element.prototype.getBoundingClientRect;
+  Element.prototype.getBoundingClientRect = function () {
+    if (this.classList && this.classList.contains("cursed")) throw new Error("rect access denied for this element");
+    return realRect.call(this);
+  };
+  const realStyle = window.getComputedStyle;
+  window.getComputedStyle = function (el, pseudo) {
+    if (el && el.classList && el.classList.contains("unstyled")) throw new Error("style access denied for this element");
+    return realStyle.call(window, el, pseudo);
+  };
+</script>
+</head>
+<body>
+<h1>Sandboxed page</h1>
+<button id="good">Good button</button>
+<a href="/next">Good link</a>
+<input aria-label="Good field">
+<button class="cursed">Cursed button</button>
+<button class="unstyled">Unstyled button</button>
+<x-trap><button>Trapped button</button></x-trap>
+<x-open></x-open>
+<x-closed></x-closed>
+<p id="result">none</p>
+<script>
+  document.getElementById("good").addEventListener("click", () => { document.getElementById("result").textContent = "clicked"; });
+  // A custom element whose own getters and methods throw.
+  customElements.define("x-trap", class extends HTMLElement {
+    get shadowRoot() { throw new Error("x-trap: shadowRoot getter throws"); }
+    get children() { throw new Error("x-trap: children getter throws"); }
+    get isContentEditable() { throw new Error("x-trap: isContentEditable getter throws"); }
+    getAttribute() { throw new Error("x-trap: getAttribute throws"); }
+  });
+  customElements.define("x-open", class extends HTMLElement {
+    constructor() {
+      super();
+      this.attachShadow({ mode: "open" }).innerHTML = '<div><button>Shadow button</button><slot></slot></div>';
+    }
+  });
+  customElements.define("x-closed", class extends HTMLElement {
+    constructor() {
+      super();
+      this.attachShadow({ mode: "closed" }).innerHTML = '<button>Closed shadow button</button>';
+    }
+  });
+</script>
+</body>
+</html>
