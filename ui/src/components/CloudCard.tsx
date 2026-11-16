@@ -66,10 +66,10 @@ function ConnectForm({ cloud, onOutcome }: { cloud: Cloud; onOutcome: (outcomes:
   return (
     <form className="form cloud-form" onSubmit={submit} noValidate aria-label={`Connect ${cloud.name}`}>
       <div className="field-row">
-        <Field id={`cloud-${cloud.id}-username`} label="User name" error={touched ? errors.username : undefined}>
+        <Field id={`cloud-${cloud.id}-username`} label="User name" error={touched ? errors.username : undefined} required>
           <input className="mono" value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="off" spellCheck={false} autoCapitalize="off" placeholder={cloud.username ?? ""} />
         </Field>
-        <Field id={`cloud-${cloud.id}-key`} label="Access key" error={touched ? errors.accessKey : undefined}>
+        <Field id={`cloud-${cloud.id}-key`} label="Access key" error={touched ? errors.accessKey : undefined} required>
           <input className="mono" type="password" value={accessKey} onChange={(event) => setAccessKey(event.target.value)} autoComplete="off" spellCheck={false} autoCapitalize="off" />
         </Field>
       </div>

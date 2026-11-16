@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent } from "react";
-import { Field } from "../components/Field";
+import { Field, RequiredNote } from "../components/Field";
 import { Icon } from "../components/Icon";
 import { ApiError, api, post } from "../lib/api";
 import { EMPTY_ENV, envToForm, environmentBody, targetSummary, validateEnvironment, type EnvForm } from "../lib/environmentForm";
@@ -116,7 +116,8 @@ export function EnvironmentsScreen() {
         </div>
         <form className="panel form" onSubmit={submit} noValidate aria-labelledby="env-form-title">
           <h2 id="env-form-title">{editing ? `Edit ${editing}` : "New environment"}</h2>
-          <Field id="env-name" label="Name" error={shown.name}>
+          <RequiredNote />
+          <Field id="env-name" label="Name" error={shown.name} required>
             <input className="mono" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="staging" />
           </Field>
           <Field id="env-target" label="Target">
@@ -129,6 +130,7 @@ export function EnvironmentsScreen() {
             id="env-base-url"
             label="Base URL"
             error={shown.baseUrl}
+            required={form.target === "web"}
             help={form.target === "app" ? "Optional: only API steps of the case use it." : undefined}
           >
             <input className="mono" value={form.baseUrl} onChange={(event) => setForm({ ...form, baseUrl: event.target.value })} placeholder="http://localhost:3000" />
@@ -274,7 +276,7 @@ function AppFields({ form, setForm, errors }: { form: EnvForm; setForm: (form: E
           </select>
         </Field>
       </div>
-      <Field id="env-app" label="App" error={errors.app} help="A file inside the project, a device cloud app id, or leave empty and name the installed app below.">
+      <Field id="env-app" label="App" error={errors.app} required={Boolean(form.cloud)} help={form.cloud ? "A file inside the project or the device cloud's app id." : "A file inside the project, a device cloud app id, or leave empty and name the installed app below (one of them is required)."}>
         <input className="mono" value={form.app} onChange={(event) => setForm({ ...form, app: event.target.value })} placeholder={android ? "apps/demo.apk" : "apps/Demo.app"} />
       </Field>
       {android ? (

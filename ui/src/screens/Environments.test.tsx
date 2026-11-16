@@ -39,6 +39,23 @@ describe("EnvironmentsScreen", () => {
 });
 
 describe("EnvironmentsScreen native apps", () => {
+  it("marks the fields each target requires", () => {
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <EnvironmentsScreen />
+      </QueryClientProvider>,
+    );
+    const required = (label: string) => screen.getByLabelText(label).getAttribute("aria-required") === "true";
+    expect(screen.getByText("Required")).toBeTruthy();
+    expect([required("Name"), required("Base URL"), required("Viewport")]).toEqual([true, true, false]);
+    fireEvent.change(screen.getByLabelText("Target"), { target: { value: "app" } });
+    expect([required("Base URL"), required("App")]).toEqual([false, false]);
+    fireEvent.change(screen.getByLabelText("Runs on"), { target: { value: "saucelabs" } });
+    expect(required("App")).toBe(true);
+    expect(screen.getByText("Base URL").classList.contains("is-required")).toBe(false);
+    expect(screen.getByText("App").classList.contains("is-required")).toBe(true);
+  });
+
   it("saves a native app environment without a base URL", async () => {
     render(
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>

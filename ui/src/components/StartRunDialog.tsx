@@ -126,7 +126,7 @@ export function StartRunDialog({ onClose, onStarted, initial = {}, rerun }: { on
             </fieldset>
 
             {source === "saved" ? (
-              <Field id="start-case" label="Case">
+              <Field id="start-case" label="Case" required>
                 <select value={chosenCase} onChange={(event) => setCasePath(event.target.value)} disabled={validCases.length === 0}>
                   {validCases.length === 0 ? <option value="">No saved cases yet</option> : null}
                   {validCases.map((entry) => (
@@ -138,11 +138,11 @@ export function StartRunDialog({ onClose, onStarted, initial = {}, rerun }: { on
               </Field>
             ) : source === "gherkin" ? (
               <div className="field">
-                <span className="field-label">Scenario</span>
+                <span className="field-label is-required">Scenario</span>
                 <GherkinEditor value={gherkin} onChange={setGherkin} rows={10} id="start-gherkin" errorLine={errorLine(start.error?.message)} />
               </div>
             ) : (
-              <Field id="start-description" label="Steps, one per line" help="Becomes a draft: review the steps on the run page, then approve it.">
+              <Field id="start-description" label="Steps, one per line" required help="Becomes a draft: review the steps on the run page, then approve it.">
                 <textarea rows={6} value={description} onChange={(event) => setDescription(event.target.value)} placeholder={"Open /login\nSign in as the demo user\nCheck the welcome message"} />
               </Field>
             )}

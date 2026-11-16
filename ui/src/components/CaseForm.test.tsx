@@ -20,6 +20,14 @@ describe("CaseForm", () => {
     expect(screen.queryByText(/Use lowercase letters/)).toBeNull();
   });
 
+  it("marks the case id, title and steps as required", () => {
+    render(<Harness initial={{ ...emptyForm(), id: "x", title: "T", steps: [{ action: "Go", expected: "" }] }} />);
+    expect(screen.getByLabelText("Case id").getAttribute("aria-required")).toBe("true");
+    expect(screen.getByLabelText("Title").getAttribute("aria-required")).toBe("true");
+    expect(screen.getByText("Steps").classList.contains("is-required")).toBe(true);
+    expect(screen.getByLabelText("Tags").getAttribute("aria-required")).toBeNull();
+  });
+
   it("adds, edits and removes steps", () => {
     render(<Harness initial={{ ...emptyForm(), id: "x", title: "T", steps: [{ action: "First", expected: "" }] }} />);
     fireEvent.click(screen.getByRole("button", { name: "Add step" }));

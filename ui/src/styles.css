@@ -1703,6 +1703,28 @@ textarea {
   margin-bottom: 4px;
 }
 
+.is-required::after {
+  content: "*";
+  content: "*" / "";
+  margin-left: 2px;
+  color: var(--fail);
+  font-weight: 600;
+}
+
+.required-note {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-2);
+}
+
+.is-required-key::before {
+  content: "*";
+  content: "*" / "";
+  margin-right: 4px;
+  color: var(--fail);
+  font-weight: 600;
+}
+
 .field-help {
   font-size: var(--text-xs);
   color: var(--text-3);

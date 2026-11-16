@@ -1,4 +1,4 @@
-import { Field } from "./Field";
+import { Field, RequiredNote } from "./Field";
 import type { CaseFormValue, FormDatum, FormErrors, FormStep } from "../lib/caseForm";
 
 /** The structured TestCase form. Pure: the value and errors come from the parent. */
@@ -16,8 +16,9 @@ export function CaseForm({ value, errors, onChange }: { value: CaseFormValue; er
 
   return (
     <div className="case-form">
+      <RequiredNote />
       <div className="field-row">
-        <Field id="case-id" label="Case id" error={errors.id} help="Lowercase; also the file name.">
+        <Field id="case-id" label="Case id" error={errors.id} help="Lowercase; also the file name." required>
           <input className="mono" value={value.id} onChange={(event) => set("id", event.target.value)} />
         </Field>
         <Field id="case-priority" label="Priority">
@@ -35,7 +36,7 @@ export function CaseForm({ value, errors, onChange }: { value: CaseFormValue; er
           </select>
         </Field>
       </div>
-      <Field id="case-title" label="Title" error={errors.title}>
+      <Field id="case-title" label="Title" error={errors.title} required>
         <input value={value.title} onChange={(event) => set("title", event.target.value)} />
       </Field>
       <div className="field-row">
@@ -54,7 +55,7 @@ export function CaseForm({ value, errors, onChange }: { value: CaseFormValue; er
       </Field>
 
       <fieldset className="steps-editor">
-        <legend>Steps</legend>
+        <legend className="is-required">Steps</legend>
         {errors.steps ? <p className="field-error" role="alert">{errors.steps}</p> : null}
         <ol>
           {value.steps.map((step, offset) => {

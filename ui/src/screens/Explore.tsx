@@ -662,7 +662,7 @@ export function FindingDetail({ finding, you }: { finding: Finding; you?: string
           <p className="muted">{pending.effect}</p>
           <div className="field-row">
             {pending.id === "duplicate" ? (
-              <Field id={`quick-dup-${finding.id}`} label="Duplicate of" help="Findings with the same message come first.">
+              <Field id={`quick-dup-${finding.id}`} label="Duplicate of" required help="Findings with the same message come first.">
                 <select value={quickDuplicate} onChange={(event) => setQuickDuplicate(event.target.value)} autoFocus>
                   <option value="">Choose the original…</option>
                   {others.map(({ item, same }) => (
@@ -675,11 +675,11 @@ export function FindingDetail({ finding, you }: { finding: Finding; you?: string
               </Field>
             ) : null}
             {pending.needsReason ? (
-              <Field id={`quick-reason-${finding.id}`} label="Why" help="Kept in the finding's history; a rejected case is never proposed again.">
+              <Field id={`quick-reason-${finding.id}`} label="Why" required help="Kept in the finding's history; a rejected case is never proposed again.">
                 <input type="text" value={quickReason} onChange={(event) => setQuickReason(event.target.value)} autoFocus={pending.id !== "duplicate"} />
               </Field>
             ) : null}
-            <Field id={`quick-by-${finding.id}`} label="Your name" help={you && by === you ? "From git user.name." : undefined}>
+            <Field id={`quick-by-${finding.id}`} label="Your name" required help={you && by === you ? "From git user.name." : undefined}>
               <input type="text" value={by} onChange={(event) => setBy(event.target.value)} />
             </Field>
           </div>
@@ -790,7 +790,7 @@ export function FindingDetail({ finding, you }: { finding: Finding; you?: string
                 ))}
               </select>
             </Field>
-            <Field id={`triage-by-${finding.id}`} label="Your name">
+            <Field id={`triage-by-${finding.id}`} label="Your name" required>
               <input type="text" value={by} onChange={(event) => setBy(event.target.value)} />
             </Field>
           </div>
@@ -799,7 +799,7 @@ export function FindingDetail({ finding, you }: { finding: Finding; you?: string
               <input type="text" value={duplicateOf} onChange={(event) => setDuplicateOf(event.target.value)} />
             </Field>
           ) : null}
-          <Field id={`triage-reason-${finding.id}`} label="Reason" error={needsReason ? (caseDecision === "rejected" && !NEEDS_REASON.has(nextState) ? "Say why: a rejected case is never proposed again" : "Say why: dismissals feed the real-bug rate") : undefined}>
+          <Field id={`triage-reason-${finding.id}`} label="Reason" required={NEEDS_REASON.has(nextState) || caseDecision === "rejected"} error={needsReason ? (caseDecision === "rejected" && !NEEDS_REASON.has(nextState) ? "Say why: a rejected case is never proposed again" : "Say why: dismissals feed the real-bug rate") : undefined}>
             <input type="text" value={reason} onChange={(event) => setReason(event.target.value)} />
           </Field>
           <div className="form-actions">
