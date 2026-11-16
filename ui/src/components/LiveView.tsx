@@ -17,6 +17,11 @@ interface Props {
   lastInput?: { ok: boolean; detail: string } | null;
 }
 
+export function fitWidth(size: { width: number; height: number }, viewportHeight = window.innerHeight): number {
+  if (!size.height || !viewportHeight) return size.width;
+  return Math.min(size.width, Math.round((viewportHeight * 0.75 * size.width) / size.height));
+}
+
 /** The run's browser, live; while the run is paused the tester may take over with clicks and typing. */
 export function LiveView({ runId, active, paused, fallbackRef, lastInput = null }: Props) {
   const canvas = useRef<HTMLCanvasElement | null>(null);
@@ -96,7 +101,7 @@ export function LiveView({ runId, active, paused, fallbackRef, lastInput = null 
           ref={canvas}
           className="live-canvas"
           hidden={!hasFrames}
-          style={cast.size ? { maxWidth: `${cast.size.width}px` } : undefined /* a phone's page stays phone-sized, not stretched */}
+          style={cast.size ? { maxWidth: `${fitWidth(cast.size)}px` } : undefined /* a phone's page stays phone-sized, not stretched */}
           onClick={onClick}
           aria-label={driving ? "Live browser view: click to click on the page" : "Live browser view"}
           role="img"

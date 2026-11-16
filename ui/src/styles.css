@@ -1446,8 +1446,11 @@ textarea {
 
 .shot-frame img {
   display: block;
-  width: 100%;
+  width: auto;
   height: auto;
+  max-width: 100%;
+  max-height: 75vh;
+  margin: 0 auto;
 }
 
 .shot-empty {
@@ -2829,17 +2832,36 @@ textarea {
 
 .live-frame {
   position: relative;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto;
   border: 1px solid var(--line);
   border-radius: var(--radius-m);
   overflow: hidden;
   background: var(--surface-sunk);
 }
 
-.live-frame img,
+.live-frame:has(> .shot-empty) {
+  width: auto;
+}
+
+.live-canvas[hidden] {
+  display: none;
+}
+
 .live-canvas {
   display: block;
   width: 100%;
   height: auto;
+  margin: 0 auto;
+}
+
+.live-frame img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 75vh;
   margin: 0 auto;
 }
 
@@ -2962,8 +2984,11 @@ textarea {
 
 .approval-shot img {
   display: block;
-  width: 100%;
+  width: auto;
   height: auto;
+  max-width: 100%;
+  max-height: 75vh;
+  margin: 0 auto;
 }
 
 @media (max-width: 860px) {
