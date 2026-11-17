@@ -52,6 +52,7 @@ class Replayer:
     scope: Scope
     promises: Sequence[Promise] = ()
     data: Callable[[str], str] = lambda text: text  # fills {{name}} placeholders in recorded values
+    project_dir: Path | None = None
     # A judged clue is confirmed by asking the same judge again about the last turn (where the anomaly showed);
     # the moves themselves are still replayed without a model.
     decider: Any = None
@@ -147,6 +148,13 @@ class Replayer:
                 await locator.hover(timeout=_ACTION_TIMEOUT_MS)
             elif action.kind == "press":
                 await locator.press(action.key or "Enter", timeout=_ACTION_TIMEOUT_MS)
+            elif action.kind == "download":
+                async with page.expect_download(timeout=_ACTION_TIMEOUT_MS):
+                    await locator.click(timeout=_ACTION_TIMEOUT_MS)
+            elif action.kind == "upload":
+                if self.project_dir is None or not action.files:
+                    return False
+                await locator.set_input_files([self.project_dir / path for path in action.files], timeout=_ACTION_TIMEOUT_MS)
             with contextlib.suppress(Exception):
                 await page.wait_for_load_state("load", timeout=_ACTION_TIMEOUT_MS)
             return True

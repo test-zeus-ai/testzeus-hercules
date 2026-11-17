@@ -192,6 +192,9 @@ def test_plan_schema_requires_every_action_field() -> None:
     by_kind = {kind: member for member in members for kind in (member["properties"]["kind"].get("enum") or [member["properties"]["kind"]["const"]])}
     assert set(by_kind) == set(intent_module.ALL_KINDS)
     assert set(by_kind["fill"]["properties"]) == {"kind", "target", "value"}, "an action carries only the fields its kind uses"
+    assert set(by_kind["upload"]["properties"]) == {"kind", "target", "value"}
+    assert set(by_kind["download"]["properties"]) == {"kind", "target", "url", "value"}
+    assert set(by_kind["assert_file_column"]["properties"]) == {"kind", "expected", "match", "target", "value"}
     assert set(by_kind["navigate"]["properties"]) == {"kind", "url"}
     assert set(by_kind["assert_url"]["properties"]) == {"kind", "expected", "match"}
     assert schema["properties"]["actions"]["minItems"] == 1
@@ -208,6 +211,8 @@ def test_a_verbose_action_with_every_field_is_still_accepted() -> None:
         (StepIntent(kind="click", target="Sign in", role="button"), 'click the "Sign in" button'),
         (StepIntent(kind="fill", target="Password", value="s3cret"), 'fill the "Password" field'),
         (StepIntent(kind="select", target="Category", value="Accessories"), 'select "Accessories" in "Category"'),
+        (StepIntent(kind="upload", target="Case clearance photo", value="case.png"), 'upload a file to "Case clearance photo"'),
+        (StepIntent(kind="download", target="Export CSV"), 'click "Export CSV" to download a file'),
         (StepIntent(kind="check", target="In stock only"), 'check "In stock only"'),
         (StepIntent(kind="uncheck", target="In stock only"), 'uncheck "In stock only"'),
         (StepIntent(kind="hover", target="Menu"), 'hover over "Menu"'),
@@ -259,7 +264,7 @@ def test_a_partly_done_step_asks_the_model_what_remains_on_the_current_page() ->
         for member in json_schema_for(llm.calls[0]["schema"])["properties"]["actions"]["items"]["anyOf"]
         for kind in (member["properties"]["kind"].get("enum") or [member["properties"]["kind"]["const"]])
     }
-    assert kinds == {"navigate", "click", "fill", "select", "check", "uncheck", "hover", "press", "wait"}, "a continuation plans actions only, never checks"
+    assert kinds == {"navigate", "click", "fill", "select", "upload", "download", "check", "uncheck", "hover", "press", "wait"}, "a continuation plans actions only, never checks"
 
 
 def test_a_finished_step_has_nothing_remaining() -> None:
@@ -664,3 +669,31 @@ def test_a_field_dependency_names_a_later_field_step_and_quotes_it(reply: dict[s
 
     assert answer == expected
     assert "step 5: I select" in llm.calls[0]["user"] and llm.calls[0]["schema"] == "RunFirstReply"
+
+
+@pytest.mark.parametrize(
+    ("value", "files"),
+    [("case.png", ["case.png"]), ("a.png | b.png", ["a.png", "b.png"]), (" fixtures/a.png |  | b.pdf ", ["fixtures/a.png", "b.pdf"]), ("", []), (None, [])],
+)
+def test_an_upload_value_names_its_files_in_order(value: str | None, files: list[str]) -> None:
+    assert intent_module.upload_files(value) == files
+
+
+def test_the_step_prompts_teach_upload_and_never_fill_for_files() -> None:
+    for prompt in (INTERPRET_SYSTEM_PROMPT, CASE_SYSTEM_PROMPT):
+        assert "- upload: target" in prompt and "always upload, never fill" in prompt
+    assert "select, upload, download, check" in intent_module.CONTINUE_SYSTEM_PROMPT
+
+
+def test_a_download_needs_an_element_only_when_it_has_no_address() -> None:
+    assert StepIntent(kind="download", target="Export CSV").needs_target
+    assert not StepIntent(kind="download", url="/reports/q3.pdf").needs_target
+    assert not StepIntent(kind="download", target="Export", url="/reports/q3.pdf").needs_target
+    assert not StepIntent(kind="download").needs_target
+
+
+def test_the_step_prompts_teach_downloads_and_file_checks() -> None:
+    for prompt in (INTERPRET_SYSTEM_PROMPT, CASE_SYSTEM_PROMPT):
+        assert "- download: the step downloads" in prompt and "assert_file_rows" in prompt and "never of the page" in prompt
+    assert "the assert_file_ kinds" in CASE_SYSTEM_PROMPT
+    assert "download: target or url" in intent_module.CONTINUE_SYSTEM_PROMPT

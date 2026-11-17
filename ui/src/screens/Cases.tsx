@@ -5,7 +5,7 @@ import { CaseForm, TestDataEditor } from "../components/CaseForm";
 import { GherkinEditor } from "../components/GherkinEditor";
 import { Icon } from "../components/Icon";
 import { placeholderSuggestions } from "../components/PlaceholderSuggest";
-import { CaseFiles } from "../components/ReferenceFiles";
+import { CaseFiles } from "../components/StepFiles";
 import { StartRunDialog, type StartRunInitial } from "../components/StartRunDialog";
 import { ApiError, api, post, remove } from "../lib/api";
 import { emptyForm, environmentTag, errorLine, formUnquoted, gherkinUnquoted, quoteFormPlaceholders, quoteGherkinPlaceholders, fromForm, testDataOf, toForm, validTestData, validateCaseForm, validateTestData, withEnvironmentTag, type CaseFormValue, type FormDatum } from "../lib/caseForm";
@@ -49,7 +49,7 @@ export function caseNameFromParam(param: string | undefined): string | null {
 
 export const DISCARD_PROMPT = "Discard the unsaved changes to this case?";
 
-export const deleteCasePrompt = (name: string) => `Delete ${name} with its test data and reference files? This cannot be undone.`;
+export const deleteCasePrompt = (name: string) => `Delete ${name} with its test data and its files for upload steps? This cannot be undone.`;
 
 function newDraft(kind: Kind): Draft {
   return { name: null, kind, gherkin: kind === "feature" ? NEW_FEATURE : "", form: emptyForm(), data: [], base: undefined, dirty: true };

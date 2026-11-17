@@ -539,3 +539,24 @@ def test_a_cancelled_cloud_run_stops_its_process_and_children(tmp_path: Path, mo
     assert final is not None and final.status == "cancelled" and not runs.is_active(record.id)
     log = (tmp_path / "cloud-runs" / record.id / "output.log").read_text(encoding="utf-8")
     assert "a line of output" in log and len(log) > 200_000, "a 200 kB line does not stop the output being read"
+
+
+def test_a_web_bundle_carries_the_files_the_run_uploaded(tmp_path: Path) -> None:
+    from testzeus_hercules.cases.automation import AutomationAction, AutomationStep, LocatorSpec, TargetSpec
+
+    result = web_result()
+    upload = AutomationAction(kind="upload", value="case.png", files=["fixtures/case.png"], target=TargetSpec(locator=LocatorSpec(strategy="label", value="Photo")))
+    steps = [*result.automation.steps, AutomationStep(index=99, action="upload", status="passed", actions=[upload])]  # type: ignore[union-attr]
+    result = result.model_copy(update={"automation": result.automation.model_copy(update={"steps": steps})})  # type: ignore[union-attr]
+    (tmp_path / "fixtures").mkdir()
+    (tmp_path / "fixtures" / "case.png").write_bytes(b"\x89PNG\r\n\x1a\n\x00binary")
+
+    bundle = web_bundle(result, "browserstack", WebOptions(), project_dir=tmp_path)
+
+    assert bundle.files["fixtures/case.png"] == b"\x89PNG\r\n\x1a\n\x00binary"
+    assert zipfile.ZipFile(io.BytesIO(bundle.zip_bytes())).read("fixtures/case.png") == b"\x89PNG\r\n\x1a\n\x00binary"
+    with pytest.raises(ExportError, match="needs those files"):
+        web_bundle(result, "browserstack", WebOptions())
+    (tmp_path / "fixtures" / "case.png").unlink()
+    with pytest.raises(ExportError, match="not in the project any more"):
+        web_bundle(result, "browserstack", WebOptions(), project_dir=tmp_path)

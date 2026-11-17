@@ -1,5 +1,5 @@
 import { useId, useLayoutEffect, useRef, useState, type InputHTMLAttributes, type KeyboardEvent, type ReactNode, type RefObject } from "react";
-import { BUILTIN_PLACEHOLDERS, type FormDatum } from "../lib/caseForm";
+import { BUILTIN_PLACEHOLDERS, DOWNLOAD_PLACEHOLDERS, type FormDatum } from "../lib/caseForm";
 import { environmentVariables } from "../lib/environmentForm";
 import type { Environment } from "../lib/types";
 
@@ -40,6 +40,7 @@ export function placeholderSuggestions(env: Pick<Environment, "name" | "secret_n
     if (!found.has(row.key)) found.set(row.key, { name: row.key, detail: row.secret ? `${env?.name} · secret ${row.value}` : `${env?.name} · ${row.value}`, kind: "env" });
   }
   for (const name of BUILTIN_PLACEHOLDERS) found.set(name, { name, detail: "built-in", kind: "builtin" });
+  for (const name of DOWNLOAD_PLACEHOLDERS) found.set(name, { name, detail: "after a download step", kind: "builtin" });
   return [...found.values()];
 }
 

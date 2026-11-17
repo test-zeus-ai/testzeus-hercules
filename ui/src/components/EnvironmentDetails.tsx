@@ -3,8 +3,9 @@ import type { ReactNode } from "react";
 import { api } from "../lib/api";
 import { BROWSER_CHOICES } from "../lib/browserOptionsForm";
 import { environmentVariables, secretVariables } from "../lib/environmentForm";
-import type { Environment, ReferenceFiles, SecretSource, SecretStatus } from "../lib/types";
+import type { Environment, SecretSource, SecretStatus, StepFiles } from "../lib/types";
 import { Icon } from "./Icon";
+import { fileSize } from "./StepFiles";
 
 const SOURCE_LABEL: Record<SecretSource, string> = { env: "set in the daemon's environment", file: "saved in Hercules", none: "not set" };
 
@@ -21,7 +22,7 @@ export function EnvironmentDetails({ env, onEdit, onDelete, deleting, error }: {
     enabled: secrets.length > 0,
   });
   const sources = new Map((status.data?.secrets ?? []).map((item) => [item.name, item.source]));
-  const files = useQuery({ queryKey: ["environment-files", env.name], queryFn: () => api<ReferenceFiles>(`/api/environments/${encodeURIComponent(env.name)}/files`) });
+  const files = useQuery({ queryKey: ["environment-files", env.name], queryFn: () => api<StepFiles>(`/api/environments/${encodeURIComponent(env.name)}/files`) });
   const app = env.mobile;
   const rows: [string, ReactNode][] = app
     ? [
@@ -112,13 +113,13 @@ export function EnvironmentDetails({ env, onEdit, onDelete, deleting, error }: {
         <p className="muted small">None.</p>
       )}
 
-      <h3>Reference files</h3>
+      <h3>Files for upload steps</h3>
       {files.data?.files.length ? (
         <ul className="env-file-list">
           {files.data.files.map((file) => (
             <li key={file.name}>
               <span className="mono">{file.name}</span>
-              <span className="muted small">{file.kind === "text" ? `${file.chars.toLocaleString()} characters read` : "image"}</span>
+              <span className="muted small">{fileSize(file.size)}</span>
             </li>
           ))}
         </ul>

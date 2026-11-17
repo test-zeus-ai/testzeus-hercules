@@ -15,14 +15,50 @@ from testzeus_hercules.act.api import text_content_type
 from testzeus_hercules.cases.automation import AutomationAction, AutomationCheck, AutomationStep, LocatorSpec
 from testzeus_hercules.cases.models import ApiCall
 from testzeus_hercules.export import browser_setup
-from testzeus_hercules.export.common import BASE_URL_ENV, BROWSER_ENV, Helpers, Writer, address_pattern, json_path_keys, one_line, safe_id, status_codes
+from testzeus_hercules.export.common import (
+    BASE_URL_ENV,
+    BROWSER_ENV,
+    DOWNLOADED_FILE,
+    Helpers,
+    Writer,
+    address_pattern,
+    file_type_prefixes,
+    json_path_keys,
+    one_line,
+    row_comparison,
+    safe_id,
+    status_codes,
+    uploads_download,
+)
 from testzeus_hercules.export.common import viewport_size as _viewport
 from testzeus_hercules.perceive.locators import css_string
 
 WAIT_TEXT_MS = 10_000
 
 HELPERS = Helpers(
-    order=("base", "url", "api_url", "env", "text", "at", "exists", "same", "contains", "matches", "filled", "number", "size", "bounded", "status_in", "escape", "with_query"),
+    order=(
+        "base",
+        "url",
+        "api_url",
+        "env",
+        "text",
+        "at",
+        "exists",
+        "same",
+        "contains",
+        "matches",
+        "filled",
+        "number",
+        "size",
+        "bounded",
+        "status_in",
+        "escape",
+        "with_query",
+        "download",
+        "download_start",
+        "download_text",
+        "download_rows",
+    ),
     requires={
         "url": ("base",),
         "api_url": ("base",),
@@ -30,6 +66,9 @@ HELPERS = Helpers(
         "contains": ("same",),
         "matches": ("text",),
         "bounded": ("number",),
+        "download_start": ("download",),
+        "download_text": ("download",),
+        "download_rows": ("download_text",),
     },
     source={
         "base": "",  # written by the header (it needs the run's base URL)
@@ -127,6 +166,55 @@ function statusIn(status: number, codes: string[]): boolean {
         "escape": """
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&");
+}
+""",
+        "download": """
+let downloadedFile = "";
+
+/** Start a download (a click, or opening its address) and keep the file, as the run did. */
+async function keepDownload(page: import("@playwright/test").Page, start: () => Promise<unknown>): Promise<string> {
+  const download = page.waitForEvent("download");
+  await start().catch((error: unknown) => {
+    if (!String(error).includes("Download is starting")) throw error;
+  });
+  const file = await download;
+  downloadedFile = test.info().outputPath(file.suggestedFilename());
+  await file.saveAs(downloadedFile);
+  return downloadedFile;
+}
+
+/** Fetch a file from its address with the page's cookies and keep it, as the run did. */
+async function fetchDownload(page: import("@playwright/test").Page, address: string): Promise<string> {
+  const response = await page.request.get(address);
+  expect(response.ok(), `${address} answered HTTP ${response.status()}`).toBe(true);
+  const disposition = response.headers()["content-disposition"] ?? "";
+  const named = disposition.includes("filename") ? (disposition.split("filename")[1].replace(/^[*= ]+/, "").split(";")[0].split("''").pop() ?? "").replace(/"/g, "") : "";
+  const { writeFileSync } = await import("node:fs");
+  downloadedFile = test.info().outputPath(decodeURIComponent(named || new URL(response.url()).pathname.split("/").pop() || "download"));
+  writeFileSync(downloadedFile, await response.body());
+  return downloadedFile;
+}
+""",
+        "download_start": """
+/** The first bytes of the latest download, to tell its type. */
+async function downloadedStart(): Promise<string> {
+  const { readFileSync } = await import("node:fs");
+  return readFileSync(downloadedFile).subarray(0, 8).toString("latin1");
+}
+""",
+        "download_text": """
+/** The latest download's text. */
+async function downloadedText(): Promise<string> {
+  const { readFileSync } = await import("node:fs");
+  return readFileSync(downloadedFile, "utf8").replace(/^\\uFEFF/, "");
+}
+""",
+        "download_rows": """
+/** The latest download's column names and rows (a simple CSV: no commas or line breaks inside cells). */
+async function downloadedRows(): Promise<{ names: string[]; rows: string[][] }> {
+  const lines = (await downloadedText()).split(/\\r?\\n/).filter((line) => line.trim());
+  const cells = lines.map((line) => line.split(",").map((cell) => cell.trim().replace(/^"|"$/g, "")));
+  return { names: cells[0] ?? [], rows: cells.slice(1) };
 }
 """,
         "with_query": """
@@ -329,6 +417,14 @@ class TypeScriptWriter(Writer):
             self.emit(f"await page.waitForTimeout({int((action.seconds or 0) * 1000)});")
         elif kind == "press" and action.target is None:
             self.emit(f"await page.keyboard.press({self.string(action.key or '')});")
+        elif kind == "download":
+            self.helpers.add("download")
+            if action.target is not None:
+                self.emit(f"await keepDownload(page, () => {self.target_expr(step, action.target, kind)}.click());")
+            elif action.url is not None:
+                self.emit(f"await fetchDownload(page, {self.url_expr(action.url)});")
+            else:
+                self.todo(step, "the download this step started was not recorded")
         else:
             self.element_action(step, action)
         if action.navigated_to:
@@ -358,6 +454,17 @@ class TypeScriptWriter(Writer):
             self.emit(f"await {locator}.fill({self.expr(action.value)});")
         elif kind == "select":
             self.select(step, action, locator)
+        elif kind == "upload" and uploads_download(action):
+            if "".join((action.value or "").split()) != DOWNLOADED_FILE:
+                self.todo(step, "attach the file the test downloaded together with the other files here")
+                return
+            self.helpers.add("download")
+            self.emit(f"await {locator}.setInputFiles([downloadedFile]);")
+        elif kind == "upload":
+            if not action.files:
+                self.todo(step, "the files attached here were not recorded")
+                return
+            self.emit(f"await {locator}.setInputFiles([{', '.join(self.string(path) for path in action.files)}]);")
 
     def select(self, step: AutomationStep, action: AutomationAction, locator: str) -> None:
         option = self.expr(action.option) if action.option is not None else None
@@ -418,6 +525,53 @@ class TypeScriptWriter(Writer):
             self.emit(f"await expect(page.getByText({expected}).first()).toBeVisible();")
         elif check.kind == "element_visible":
             self.emit(f"await expect({self.target_expr(step, check.target, 'check')}).toBeVisible();")
+        elif check.kind == "file":
+            self.file_check(step, check, expected)
+
+    def file_check(self, step: AutomationStep, check: AutomationCheck, expected: str) -> None:
+        if not check.faithful:
+            return
+        self.helpers.add("download")
+        compare = "toBe" if check.match == "equals" else "toContain"
+        if check.file_check == "name":
+            self.emit(f"expect(downloadedFile.split(/[\\\\/]/).pop()).{compare}({expected});")
+        elif check.file_check == "type":
+            prefixes = file_type_prefixes(check.expected)
+            if prefixes is None:
+                self.todo(step, f"check that the downloaded file is a {check.expected}")
+                return
+            self.helpers.add("download_start")
+            tests = " || ".join(f"start.startsWith({self.string(prefix.decode('latin1'))})" for prefix in prefixes)
+            self.emit(f"{{ const start = await downloadedStart(); expect({tests}).toBe(true); }}")
+        elif check.file_check in ("text", "not_text"):
+            self.helpers.add("download_text")
+            negate = ".not" if check.file_check == "not_text" else ""
+            self.emit(f'expect((await downloadedText()).replace(/\\s+/g, " ").toLowerCase()){negate}.toContain(({expected}).toLowerCase());')
+        elif check.file_check == "rows":
+            found = row_comparison(check.expected)
+            if found is None:
+                self.todo(step, f"check that the downloaded file has {check.expected} rows")
+                return
+            self.helpers.add("download_rows")
+            matcher = {"==": "toBe", ">=": "toBeGreaterThanOrEqual", "<=": "toBeLessThanOrEqual", ">": "toBeGreaterThan", "<": "toBeLessThan"}[found[0]]
+            self.emit(f"expect((await downloadedRows()).rows.length).{matcher}({found[1]});")
+        elif check.file_check == "column":
+            self.helpers.add("download_rows")
+            column = self.string(check.subject or "")
+            picked = "rows"
+            if check.where:
+                key, _, value = check.where.partition("=")
+                picked = f"rows.filter((row) => row[names.indexOf({self.string(key.strip())})] === {self.string(value.strip())})"
+            self.emit(
+                f"{{ const {{ names, rows }} = await downloadedRows(); const picked = {picked}; expect(picked.length).toBeGreaterThan(0); for (const row of picked) expect(row[names.indexOf({column})]).{compare}({expected}); }}"
+            )
+        elif check.file_check == "json":
+            keys = json_path_keys(check.subject or "")
+            if keys is None:
+                self.todo(step, f"check {check.subject} in the downloaded JSON")
+                return
+            self.helpers.update({"download_text", "at", "text"})
+            self.emit(f"expect(text(at(JSON.parse(await downloadedText()), {json.dumps(keys)}))).{compare}({expected});")
 
     # ------------------------------------------------------------------ API, SQL and quality steps
 

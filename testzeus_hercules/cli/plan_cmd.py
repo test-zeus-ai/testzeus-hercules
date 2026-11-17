@@ -30,7 +30,6 @@ from testzeus_hercules.engine.masking import MaskingDecider
 from testzeus_hercules.engine.plan import PlanStore, render_plan
 from testzeus_hercules.engine.planning import PlanOptions, approve_plan, make_plan
 from testzeus_hercules.engine.service_intent import case_hint
-from testzeus_hercules.cases.reference_files import load_reference_context, using_reference
 from testzeus_hercules.kernel.paths import HerculesPaths
 from testzeus_hercules.kernel.secrets_store import with_saved_secrets
 from testzeus_hercules.kernel.settings import Settings, SettingsError
@@ -135,20 +134,19 @@ async def _make(case: Any, settings: Settings, env: Mapping[str, str], options: 
             confirm_destructive=options.confirm_destructive,
             reuse=not options.fresh,
         )
-        with using_reference(load_reference_context(settings.project_dir, protected.environment.ref, data.redact, case_id=protected.id)):
-            outcome = await make_plan(
-                protected,
-                interpreter=engines.interpreter,
-                decider=MaskingDecider(engines.decider, data.redact),
-                model_id=model_id,
-                store=store,
-                env=env,
-                names=sorted(set(protected.test_data) | set(hidden)),
-                hidden=sorted(hidden),
-                service=case_hint(protected.tags) is not None,
-                options=plan_options,
-                redact=data.redact,
-            )
+        outcome = await make_plan(
+            protected,
+            interpreter=engines.interpreter,
+            decider=MaskingDecider(engines.decider, data.redact),
+            model_id=model_id,
+            store=store,
+            env=env,
+            names=sorted(set(protected.test_data) | set(hidden)),
+            hidden=sorted(hidden),
+            service=case_hint(protected.tags) is not None,
+            options=plan_options,
+            redact=data.redact,
+        )
         plan = outcome.plan
         if options.approve:
             plan = approve_plan(plan, store, outcome.key, by="user")

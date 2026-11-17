@@ -15,14 +15,50 @@ from testzeus_hercules.act.api import text_content_type
 from testzeus_hercules.cases.automation import AutomationAction, AutomationCheck, AutomationStep, LocatorSpec
 from testzeus_hercules.cases.models import ApiCall
 from testzeus_hercules.export import browser_setup
-from testzeus_hercules.export.common import BASE_URL_ENV, BROWSER_ENV, Helpers, Writer, address_pattern, json_path_keys, one_line, safe_id, snake, status_codes
+from testzeus_hercules.export.common import (
+    BASE_URL_ENV,
+    BROWSER_ENV,
+    DOWNLOADED_FILE,
+    Helpers,
+    Writer,
+    address_pattern,
+    file_type_prefixes,
+    json_path_keys,
+    one_line,
+    row_comparison,
+    safe_id,
+    snake,
+    status_codes,
+    uploads_download,
+)
 from testzeus_hercules.export.common import viewport_size as _viewport
 from testzeus_hercules.perceive.locators import css_string
 
 WAIT_TEXT_MS = 10_000
 
 HELPERS = Helpers(
-    order=("base", "url", "api_url", "text", "missing", "at", "exists", "same", "contains", "matches", "filled", "number", "size", "bounded", "status_in", "with_query", "sqlite"),
+    order=(
+        "base",
+        "url",
+        "api_url",
+        "text",
+        "missing",
+        "at",
+        "exists",
+        "same",
+        "contains",
+        "matches",
+        "filled",
+        "number",
+        "size",
+        "bounded",
+        "status_in",
+        "with_query",
+        "sqlite",
+        "download",
+        "download_text",
+        "download_rows",
+    ),
     requires={
         "url": ("base",),
         "api_url": ("base",),
@@ -34,6 +70,8 @@ HELPERS = Helpers(
         "filled": ("missing",),
         "size": ("missing",),
         "bounded": ("number", "missing"),
+        "download_text": ("download",),
+        "download_rows": ("download",),
     },
     source={
         "base": "",  # written by the header (it needs the run's base URL)
@@ -123,6 +161,48 @@ def bounded(value: Any, bound: Any, kind: str) -> bool:
         "status_in": """
 def status_in(status: int, codes: list[str]) -> bool:
     return any(code == str(status) or (code.endswith("xx") and code[0] == str(status)[0]) for code in codes)
+""",
+        "download": """
+DOWNLOADS = Path(tempfile.mkdtemp(prefix="hercules-downloads-"))
+downloaded: list[Path] = []
+
+
+def keep_download(page: Page, start: Any) -> Path:
+    \"\"\"Start a download (a click, or opening its address) and keep the file, as the run did.\"\"\"
+    with page.expect_download() as info:
+        try:
+            start()
+        except Exception as error:
+            if "Download is starting" not in str(error):
+                raise
+    path = DOWNLOADS / info.value.suggested_filename
+    info.value.save_as(path)
+    downloaded.append(path)
+    return path
+
+
+def fetch_download(page: Page, address: str) -> Path:
+    \"\"\"Fetch a file from its address with the page's cookies and keep it, as the run did.\"\"\"
+    response = page.request.get(address)
+    assert response.ok, f"{address} answered HTTP {response.status}"
+    disposition = response.headers.get("content-disposition", "")
+    named = disposition.split("filename", 1)[1].lstrip("*= ").split(";")[0].split("''")[-1].strip('"') if "filename" in disposition else ""
+    path = DOWNLOADS / (unquote(named or urlsplit(response.url).path.rsplit("/", 1)[-1]) or "download")
+    path.write_bytes(response.body())
+    downloaded.append(path)
+    return path
+""",
+        "download_text": """
+def downloaded_text() -> str:
+    \"\"\"The latest download's text, whitespace folded and lower case.\"\"\"
+    return " ".join(downloaded[-1].read_text(encoding="utf-8-sig", errors="replace").split()).casefold()
+""",
+        "download_rows": """
+def downloaded_rows() -> tuple[list[str], list[list[str]]]:
+    \"\"\"The latest download's column names and data rows (a CSV).\"\"\"
+    with downloaded[-1].open(newline="", encoding="utf-8-sig") as handle:
+        rows = [[cell.strip() for cell in row] for row in csv.reader(handle) if any(cell.strip() for cell in row)]
+    return (rows[0], rows[1:]) if rows else ([], [])
 """,
         "with_query": '''
 def with_query(address: str, pairs: list[tuple[str, str]]) -> str:
@@ -274,6 +354,10 @@ class PythonWriter(Writer):
             modules.add("re")
         if "sqlite" in used:
             modules.add("sqlite3")
+        if "download" in used:
+            modules.add("tempfile")
+        if "download_rows" in used:
+            modules.add("csv")
         if any(entry.kind == "builtin" for entry in spec.data.values()):
             modules.add("datetime")
         if self.timed:
@@ -283,14 +367,23 @@ class PythonWriter(Writer):
         lines += [f"import {name}" for name in sorted(modules)]
         if self.api_used:
             lines.append("from collections.abc import Iterator")
-        if "sqlite" in used:
+        if used & {"sqlite", "download"}:
             lines.append("from pathlib import Path")
-        if used & {"text", "missing", "sqlite"} or self.saved_used:
+        if used & {"text", "missing", "sqlite", "download"} or self.saved_used:
             lines.append("from typing import Any")
         parse = sorted(
             {
                 name
-                for name, helper in (("urljoin", "url"), ("urlsplit", "wait"), ("parse_qsl", "with_query"), ("urlencode", "with_query"), ("urlsplit", "with_query"), ("urlunsplit", "with_query"))
+                for name, helper in (
+                    ("urljoin", "url"),
+                    ("urlsplit", "wait"),
+                    ("urlsplit", "download"),
+                    ("unquote", "download"),
+                    ("parse_qsl", "with_query"),
+                    ("urlencode", "with_query"),
+                    ("urlsplit", "with_query"),
+                    ("urlunsplit", "with_query"),
+                )
                 if helper in used
             }
         )
@@ -410,6 +503,14 @@ class PythonWriter(Writer):
             self.emit(f"page.wait_for_timeout({int((action.seconds or 0) * 1000)})")
         elif kind == "press" and action.target is None:
             self.emit(f"page.keyboard.press({self.string(action.key or '')})")
+        elif kind == "download":
+            self.helpers.add("download")
+            if action.target is not None:
+                self.emit(f"keep_download(page, lambda: {self.target_expr(step, action.target, kind)}.click())")
+            elif action.url is not None:
+                self.emit(f"fetch_download(page, {self.url_expr(action.url)})")
+            else:
+                self.todo(step, "the download this step started was not recorded")
         else:
             self.element_action(step, action)
         if action.navigated_to:
@@ -442,6 +543,17 @@ class PythonWriter(Writer):
             self.emit(f"{locator}.fill({self.expr(action.value)})")
         elif kind == "select":
             self.select(step, action, locator)
+        elif kind == "upload" and uploads_download(action):
+            if "".join((action.value or "").split()) != DOWNLOADED_FILE:
+                self.todo(step, "attach the file the test downloaded together with the other files here")
+                return
+            self.helpers.add("download")
+            self.emit(f"{locator}.set_input_files([downloaded[-1]])")
+        elif kind == "upload":
+            if not action.files:
+                self.todo(step, "the files attached here were not recorded")
+                return
+            self.emit(f"{locator}.set_input_files([{', '.join(self.string(path) for path in action.files)}])")
 
     def select(self, step: AutomationStep, action: AutomationAction, locator: str) -> None:
         if action.option is None:
@@ -499,6 +611,49 @@ class PythonWriter(Writer):
             self.emit(f"expect(page.get_by_text({expected}).first).to_be_visible()")
         elif check.kind == "element_visible":
             self.emit(f"expect({self.target_expr(step, check.target, 'check')}).to_be_visible()")
+        elif check.kind == "file":
+            self.file_check(step, check, expected)
+
+    def file_check(self, step: AutomationStep, check: AutomationCheck, expected: str) -> None:
+        if not check.faithful:
+            return
+        self.helpers.add("download")
+        equals = check.match == "equals"
+        if check.file_check == "name":
+            self.emit(f"assert downloaded[-1].name == {expected}" if equals else f"assert {expected} in downloaded[-1].name")
+        elif check.file_check == "type":
+            prefixes = file_type_prefixes(check.expected)
+            if prefixes is None:
+                self.todo(step, f"check that the downloaded file is a {check.expected}")
+                return
+            self.emit(f"assert downloaded[-1].read_bytes().startswith({prefixes!r})")
+        elif check.file_check in ("text", "not_text"):
+            self.helpers.add("download_text")
+            self.emit(f'assert " ".join(({expected}).split()).casefold() {"not in" if check.file_check == "not_text" else "in"} downloaded_text()')
+        elif check.file_check == "rows":
+            found = row_comparison(check.expected)
+            if found is None:
+                self.todo(step, f"check that the downloaded file has {check.expected} rows")
+                return
+            self.helpers.add("download_rows")
+            self.emit(f"assert len(downloaded_rows()[1]) {found[0]} {found[1]}")
+        elif check.file_check == "column":
+            self.helpers.add("download_rows")
+            self.emit("names, rows = downloaded_rows()")
+            if check.where:
+                key, _, value = check.where.partition("=")
+                self.emit(f"rows = [row for row in rows if row[names.index({self.string(key.strip())})] == {self.string(value.strip())}]")
+            self.emit("assert rows")
+            cell = f"row[names.index({self.string(check.subject or '')})]"
+            self.emit(f"assert all({cell} == {expected} for row in rows)" if equals else f"assert all({expected} in {cell} for row in rows)")
+        elif check.file_check == "json":
+            keys = json_path_keys(check.subject or "")
+            if keys is None:
+                self.todo(step, f"check {check.subject} in the downloaded JSON")
+                return
+            self.helpers.update({"at", "text"})
+            value = f'text(at(json.loads(downloaded[-1].read_text(encoding="utf-8-sig")), {keys!r}))'
+            self.emit(f"assert {value} == {expected}" if equals else f"assert {expected} in {value}")
 
     # ------------------------------------------------------------------ API, SQL and quality steps
 

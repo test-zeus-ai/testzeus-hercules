@@ -35,7 +35,7 @@ def _usable_root(root: Path) -> Path | None:
     return real
 
 
-def confine(name: str, roots: Iterable[Path]) -> Path:
+def confine(name: str, roots: Iterable[Path], *, where: str = "the project folder") -> Path:
     """The real path of the existing file ``name`` inside one of ``roots``; :class:`PathConfinementError` otherwise."""
     text = str(name or "").strip()
     if not text or "\x00" in text:
@@ -56,4 +56,4 @@ def confine(name: str, roots: Iterable[Path]) -> Path:
             return real
     if os.path.isabs(text) and not any(Path(os.path.realpath(text)).is_relative_to(root) for root in allowed):
         raise PathConfinementError(f"'{text}' is outside the project; keep the file inside the project folder")
-    raise PathConfinementError(f"file not found: '{text}' (looked in the project folder)")
+    raise PathConfinementError(f"file not found: '{text}' (looked in {where})")

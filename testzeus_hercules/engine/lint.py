@@ -22,7 +22,7 @@ from __future__ import annotations
 import re
 from typing import Any, Iterable, Mapping
 
-from testzeus_hercules.cases.models import BUILTIN_PLACEHOLDERS, SecretRef, TestCase
+from testzeus_hercules.cases.models import BUILTIN_PLACEHOLDERS, DOWNLOAD_PLACEHOLDERS, SecretRef, TestCase
 from testzeus_hercules.cases.plan import LintFinding, Plan
 
 __all__ = ["fact_findings", "model_findings", "lint_plan"]
@@ -88,7 +88,7 @@ def fact_findings(case: TestCase, plan: Plan, *, env: Mapping[str, str], hidden:
                 suggestion='make it a secret of the environment (or of the case\'s test_data: {"secret": "ENV_VAR_NAME"}) and write {{name}} in the URL; this works in .feature files too',
             )
         )
-    known = set(BUILTIN_PLACEHOLDERS) | set(case.test_data) | set(hidden) | _saved_names(case)
+    known = set(BUILTIN_PLACEHOLDERS) | set(case.test_data) | set(hidden) | _saved_names(case) | (set(DOWNLOAD_PLACEHOLDERS) if any(item.kind == "download" for item in plan.steps) else set())
     for item in plan.steps:
         texts = [item.target, item.value, item.url, item.expected, *(criterion.expected for criterion in item.criteria), *(criterion.value for criterion in item.criteria)]
         unknown = sorted({name for text in texts if text for name in _PLACEHOLDER.findall(text) if name not in known and not _HIDDEN.match(name)})

@@ -38,7 +38,6 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from testzeus_hercules.act.redact import mask_url_credentials
 from testzeus_hercules.cases.models import TestCase, placeholder_names, set_environment_names
-from testzeus_hercules.cases.reference_files import load_reference_context, using_reference
 from testzeus_hercules.cli.version import package_version
 from testzeus_hercules.clouds.runner import CloudRuns
 from testzeus_hercules.daemon import cases as case_files
@@ -707,9 +706,7 @@ async def create_plan(request: Request, daemon: Daemon) -> Response:
     if body.approve:
         plan = approved(plan, by="agent")
         if plan.model:
-            with using_reference(load_reference_context(daemon.config.settings.project_dir, case.environment.ref, case_id=case.id)):
-                key = plan_key(plan.case_hash, plan.model)
-            PlanStore(daemon.config.paths.project_hercules_dir / "plans").save_approved(key, plan)
+            PlanStore(daemon.config.paths.project_hercules_dir / "plans").save_approved(plan_key(plan.case_hash, plan.model), plan)
     return JSONResponse(_plan_view(plan))
 
 

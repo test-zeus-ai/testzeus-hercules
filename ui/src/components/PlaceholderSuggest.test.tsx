@@ -26,10 +26,11 @@ function Editor({ suggestions, initial, environments = [] }: { suggestions: Sugg
 describe("placeholder suggestions", () => {
   it("offers test data first, then the environment's variables and secrets, then built-ins", () => {
     const found = placeholderSuggestions(SHOP, [{ key: "user", value: "bob", secret: false }, { key: "coupon", value: "PANTRY10", secret: false }]);
-    expect(found.map((item) => item.name)).toEqual(["user", "coupon", "password", "run_id", "timestamp"]);
+    expect(found.map((item) => item.name)).toEqual(["user", "coupon", "password", "run_id", "timestamp", "downloaded_file", "downloaded_file_name"]);
+    expect(found.find((item) => item.name === "downloaded_file")?.detail).toBe("after a download step");
     expect(found.find((item) => item.name === "password")?.detail).toBe("shop · secret SHOP_PASSWORD");
     expect(matchingSuggestions(found, "ord").map((item) => item.name)).toEqual(["password"]);
-    expect(matchingSuggestions(found, "").length).toBe(5);
+    expect(matchingSuggestions(found, "").length).toBe(7);
   });
 
   it("suggests names after {{ in a step and inserts the chosen one", () => {

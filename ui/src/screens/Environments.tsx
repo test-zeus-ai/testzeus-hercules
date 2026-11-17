@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent } from "react";
 import { EnvironmentDetails } from "../components/EnvironmentDetails";
-import { EnvironmentFiles } from "../components/ReferenceFiles";
+import { EnvironmentFiles } from "../components/StepFiles";
 import { EnvironmentVariables } from "../components/EnvironmentVariables";
 import { Field, RequiredNote } from "../components/Field";
 import { Icon } from "../components/Icon";
@@ -12,7 +12,7 @@ import type { Environment } from "../lib/types";
 
 export { validateEnvironment };
 
-export const deletePrompt = (name: string) => `Delete the environment ${name} and its reference files? Cases that name it will no longer find it.`;
+export const deletePrompt = (name: string) => `Delete the environment ${name} and its files for upload steps? Cases that name it will no longer find it.`;
 
 export function EnvironmentsScreen() {
   const client = useQueryClient();

@@ -35,9 +35,8 @@ from pydantic import ValidationError
 
 from testzeus_hercules.cases.gherkin import VERIFY_ACTION
 from testzeus_hercules.cases.models import Step, TestCase
-from testzeus_hercules.cases.reference_files import reference_fingerprint
 from testzeus_hercules.cases.plan import ACTION_KINDS, Criterion, Plan, PlanReview, PlanStep, Risk, SourceStep
-from testzeus_hercules.engine.intent import PROMPT_VERSION, CaseReading, ItemRole, StepIntent, normalise_step_text
+from testzeus_hercules.engine.intent import FILE_ASSERT_KINDS, PROMPT_VERSION, CaseReading, ItemRole, StepIntent, normalise_step_text
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +56,7 @@ __all__ = [
     "step_text",
 ]
 
-_ASSERT_TO_CHECK = {"assert_text": "text_visible", "assert_not_text": "text_absent", "assert_url": "url_matches"}
+_ASSERT_TO_CHECK = {"assert_text": "text_visible", "assert_not_text": "text_absent", "assert_url": "url_matches", **{kind: kind.replace("assert_", "") for kind in FILE_ASSERT_KINDS}}
 _CHECK_TO_ASSERT = {value: key for key, value in _ASSERT_TO_CHECK.items()}
 _SERVICE = frozenset({"api", "sql", "quality"})
 
@@ -78,8 +77,7 @@ def case_hash(case: TestCase) -> str:
 
 def plan_key(digest: str, model_id: str) -> str:
     """The key of a case's plans: the case's hash, the reading prompt's version and the model that read it."""
-    reference = reference_fingerprint()
-    return hashlib.sha256(json.dumps([digest, PROMPT_VERSION, model_id or "", *([reference] if reference else [])]).encode("utf-8")).hexdigest()
+    return hashlib.sha256(json.dumps([digest, PROMPT_VERSION, model_id or ""]).encode("utf-8")).hexdigest()
 
 
 def _flat(text: str | None) -> str:
@@ -101,6 +99,11 @@ def step_text(step: PlanStep | StepIntent) -> str:
         return f"open {step.url or ''}".strip()
     if kind in ("fill", "select"):
         return f"{kind}{target} with \"{step.value or ''}\""
+    if kind == "upload":
+        return f"upload \"{step.value or ''}\" to{target}"
+    if kind == "download":
+        named = f' "{step.value}"' if step.value else ""
+        return f"download{named} from {step.url}" if step.url else f"download{named} by clicking{target}"
     if kind == "press":
         return f"press {step.value or ''}{' on' + target if target else ''}".strip()
     if kind == "wait":
@@ -141,6 +144,21 @@ def criterion_text(
     if check == "count":
         how = {"eq": "", "gte": "at least ", "lte": "at most "}.get(op, "")
         return f'{how}{count} element(s) show "{target}"'
+    if check == "file_name":
+        return f'the downloaded file\'s name {"is" if match == "equals" else "contains"} "{expected}"'
+    if check == "file_type":
+        return f"the downloaded file is a {expected}"
+    if check == "file_text":
+        return f'the downloaded file contains "{expected}"'
+    if check == "file_not_text":
+        return f'the downloaded file does not contain "{expected}"'
+    if check == "file_rows":
+        return f"the downloaded file has {expected} rows"
+    if check == "file_column":
+        where = f" where {value}" if value else " in every row"
+        return f'column "{target}" {"is" if match == "equals" else "contains"} "{expected}"{where} in the downloaded file'
+    if check == "file_json":
+        return f'{target} {"is" if match == "equals" else "contains"} "{expected}" in the downloaded file'
     return f"{'looks: ' if visual else ''}{expected or ''}".strip()
 
 
@@ -193,6 +211,9 @@ def _criterion(identifier: str, check: str, origin: str, *, outcome: bool = Fals
 
 def _outcome_criterion(identifier: str, part: StepIntent, expected_text: str) -> Criterion | None:
     """An assertion the model read as a criterion checked by the step's own verification."""
+    if part.kind in FILE_ASSERT_KINDS and part.expected:
+        match = part.match or ("equals" if part.kind in ("assert_file_name", "assert_file_column", "assert_file_json") else "contains")
+        return _criterion(identifier, _ASSERT_TO_CHECK[part.kind], "author", outcome=True, expected=part.expected, match=match, target=part.target, value=part.value)
     if part.kind in _ASSERT_TO_CHECK and part.expected:
         return _criterion(identifier, _ASSERT_TO_CHECK[part.kind], "author", outcome=True, expected=part.expected, match=part.match or "contains")
     if part.kind == "assert_visible" and part.target:
@@ -325,7 +346,7 @@ def _action_steps(number: int, step: Step, reading: CaseReading, extras: Mapping
         return wanted if wanted in action_ids else action_ids[-1]
 
     found = _model_criteria(extras.get("criteria") or (), step_id, normalise_step_text(step.action), entered, outcomes)
-    return [item.model_copy(update={"criteria": [*item.criteria, *found.get(item.id, [])]}) for item in plan] or [
+    return [item.model_copy(update={"criteria": _kept_criteria(item, [*item.criteria, *found.get(item.id, [])])}) for item in plan] or [
         PlanStep(id=f"{number}.1", step=number, kind="unknown", text=_clip(normalise_step_text(step.action)), read="page")
     ]
 
@@ -383,8 +404,14 @@ def plan_reading(plan: Plan, case: TestCase, *, source: Literal["model", "cache"
     return CaseReading(intents=intents, source=source, needs=needs)  # type: ignore[arg-type]
 
 
+def _kept_criteria(item: PlanStep, criteria: Sequence[Criterion]) -> list[Criterion]:
+    """A step's criteria without those a model inferred for a download: the download itself proves the file arrived, and the
+    page cannot show it."""
+    return [criterion for criterion in criteria if not (item.kind == "download" and criterion.origin == "inferred")]
+
+
 def _intent(item: PlanStep) -> StepIntent:
-    criteria = tuple(criterion for criterion in item.criteria if not criterion.outcome)
+    criteria = tuple(criterion for criterion in _kept_criteria(item, item.criteria) if not criterion.outcome)
     fields = {"target": item.target, "value": item.value, "url": item.url, "role": item.role, "expected": item.expected}
     return StepIntent(kind=item.kind if item.kind in ACTION_KINDS or item.kind in _SERVICE else "unknown", source="case", plan_step=item.id, criteria=criteria, risk=tuple(item.risk.flags), **fields)  # type: ignore[arg-type]
 
@@ -394,7 +421,9 @@ def _assert_intents(item: PlanStep) -> list[StepIntent]:
     for criterion in item.criteria:
         if not criterion.outcome:
             continue
-        if criterion.check in _CHECK_TO_ASSERT:
+        if criterion.check.startswith("file_"):
+            found.append(StepIntent(kind=_CHECK_TO_ASSERT[criterion.check], expected=criterion.expected, match=criterion.match, target=criterion.target, value=criterion.value, source="case", plan_step=item.id))  # type: ignore[arg-type]
+        elif criterion.check in _CHECK_TO_ASSERT:
             found.append(StepIntent(kind=_CHECK_TO_ASSERT[criterion.check], expected=criterion.expected, match=criterion.match if criterion.check == "url_matches" else None, source="case", plan_step=item.id))  # type: ignore[arg-type]
         elif criterion.check == "element_state" and criterion.state == "visible" and criterion.target:
             found.append(StepIntent(kind="assert_visible", target=criterion.target, source="case", plan_step=item.id))

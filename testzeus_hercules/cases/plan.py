@@ -1,7 +1,7 @@
 """The plan of a run (:class:`Plan`): how the model read a case, made explicit before the browser starts.
 
 For each step of the case (a *source step*) the plan holds one or more plan steps: an
-action (navigate, click, fill, select, check, uncheck, hover, press, wait), an API, SQL or
+action (navigate, click, fill, select, upload, download, check, uncheck, hover, press, wait), an API, SQL or
 quality step, or ``verify`` (the step's expected outcome, checked). Each plan step carries
 its target and value as the model read them (placeholders such as ``{{password}}`` kept,
 never secret values), the steps whose field must be set first (``needs``), risk flags with a
@@ -35,9 +35,11 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_vali
 
 PLAN_VERSION = 1
 
-PlanStepKind = Literal["navigate", "click", "fill", "select", "check", "uncheck", "hover", "press", "wait", "api", "sql", "quality", "security", "verify", "unknown"]
-ACTION_KINDS: frozenset[str] = frozenset({"navigate", "click", "fill", "select", "check", "uncheck", "hover", "press", "wait", "unknown"})
-CriterionCheck = Literal["text_visible", "text_absent", "url_matches", "field_value", "element_state", "count", "judged"]
+PlanStepKind = Literal["navigate", "click", "fill", "select", "upload", "download", "check", "uncheck", "hover", "press", "wait", "api", "sql", "quality", "security", "verify", "unknown"]
+ACTION_KINDS: frozenset[str] = frozenset({"navigate", "click", "fill", "select", "upload", "download", "check", "uncheck", "hover", "press", "wait", "unknown"})
+CriterionCheck = Literal[
+    "text_visible", "text_absent", "url_matches", "field_value", "element_state", "count", "judged", "file_name", "file_type", "file_text", "file_not_text", "file_rows", "file_column", "file_json"
+]
 CriterionOrigin = Literal["author", "inferred"]
 ElementState = Literal["open", "closed", "visible", "hidden", "enabled", "disabled", "checked", "unchecked", "expanded", "collapsed"]
 CountOp = Literal["eq", "gte", "lte"]
@@ -81,6 +83,13 @@ _REQUIRED: dict[str, tuple[str, ...]] = {
     "element_state": ("state",),
     "count": ("target", "count"),
     "judged": ("expected",),
+    "file_name": ("expected",),
+    "file_type": ("expected",),
+    "file_text": ("expected",),
+    "file_not_text": ("expected",),
+    "file_rows": ("expected",),
+    "file_column": ("expected", "target"),
+    "file_json": ("expected", "target"),
 }
 
 

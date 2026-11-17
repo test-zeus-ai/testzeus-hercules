@@ -133,7 +133,7 @@ describe("CasesScreen", () => {
           return respond(CASES);
         }
         if (url === "/api/cases/login.feature") return respond({ ...saved("login.feature", LOGIN), test_case: { ...saved("login.feature", LOGIN).test_case, test_data: { user: "ana" } } });
-        if (url === "/api/cases/login.feature/files") return respond({ case: "login", files: [], max_files: 20, max_bytes: 26214400, model: "local" });
+        if (url === "/api/cases/login.feature/files") return respond({ case: "login", files: [], max_files: 20, max_bytes: 26214400 });
         if (url === "/api/cases/validate") return respond({ valid: true, error: null, test_case: { id: "login", title: "Login", steps: [{ action: "Open" }] } });
         return respond({ error: "not found" }, 404);
       }),

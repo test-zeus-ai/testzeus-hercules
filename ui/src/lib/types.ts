@@ -584,19 +584,15 @@ export interface CloudRun {
 
 export type CloudRunDetail = CloudRun & { log: string };
 
-export interface ReferenceFile {
+export interface StepFile {
   name: string;
-  kind: "text" | "image";
   size: number;
-  chars: number;
-  sha256: string;
 }
 
-export interface ReferenceFiles {
+export interface StepFiles {
   environment?: string;
   case?: string;
-  files: ReferenceFile[];
+  files: StepFile[];
   max_files: number;
   max_bytes: number;
-  model: "local";
 }

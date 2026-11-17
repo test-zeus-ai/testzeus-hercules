@@ -559,3 +559,135 @@ def test_a_form_that_opts_out_of_browser_validation_is_judged_by_its_own_marks_o
         assert native.kind == "invalid" and native.field is not None and native.field.native
 
     run(body, html)
+
+
+UPLOAD_PAGE = (FIXTURES_DIR.parent / "fixtures" / "pages" / "upload.html").read_text(encoding="utf-8")
+
+
+def _upload_files(tmp_path: Any) -> list[Any]:
+    root = tmp_path / "project"
+    (root / "fixtures").mkdir(parents=True)
+    (root / "fixtures" / "case.png").write_bytes(b"\x89PNG\r\n\x1a\nfake")
+    (root / "fixtures" / "invoice.pdf").write_bytes(b"%PDF-1.4")
+    (root / ".env").write_text("TOKEN=x")
+    return [root]
+
+
+async def _held(page: Any, selector: str) -> list[str]:
+    return await page.eval_on_selector(selector, "el => Array.from(el.files, (file) => file.name)")
+
+
+def test_upload_attaches_files_to_inputs_labels_and_file_pickers(tmp_path: Any) -> None:
+    roots = _upload_files(tmp_path)
+
+    async def body(page: Any) -> None:
+        photo = await act.upload(page.locator("#photo"), ["fixtures/case.png"], roots=roots)
+        assert photo.ok, photo.detail
+        assert await _held(page, "#photo") == ["case.png"]
+        assert photo.chosen == {"files": [str((roots[0] / "fixtures" / "case.png").resolve())]}
+        documents = await act.upload(page.locator("#documents"), ["fixtures/case.png", "fixtures/invoice.pdf"], roots=roots)
+        assert documents.ok and await _held(page, "#documents") == ["case.png", "invoice.pdf"]
+        receipt = await act.upload(page.get_by_text("Drop the receipt here"), ["fixtures/invoice.pdf"], roots=roots)
+        assert receipt.ok, receipt.detail
+        assert await _held(page, "#receipt") == ["invoice.pdf"]
+        extras = await act.upload(page.locator("#choose"), ["fixtures/case.png", "fixtures/invoice.pdf"], roots=roots)
+        assert extras.ok and "file picker" in extras.detail, extras.detail
+        assert await _held(page, "#extras") == ["case.png", "invoice.pdf"]
+
+    run(body, UPLOAD_PAGE)
+
+
+def test_upload_failures_say_whether_another_element_can_help(tmp_path: Any) -> None:
+    roots = _upload_files(tmp_path)
+
+    async def body(page: Any) -> None:
+        missing = await act.upload(page.locator("#photo"), ["nowhere.png"], roots=roots)
+        assert (missing.ok, missing.kind, missing.retry) == (False, "file_missing", False) and "nowhere.png" in missing.detail and "project folder" in missing.detail
+        secret = await act.upload(page.locator("#photo"), [".env"], roots=roots)
+        assert (secret.ok, secret.kind, secret.retry) == (False, "file_missing", False)
+        outside = await act.upload(page.locator("#photo"), ["../outside.png"], roots=roots)
+        assert not outside.ok and not outside.retry
+        too_many = await act.upload(page.locator("#photo"), ["fixtures/case.png", "fixtures/invoice.pdf"], roots=roots)
+        assert (too_many.ok, too_many.kind, too_many.retry) == (False, "too_many_files", False) and "takes one file" in too_many.detail
+        picker_one = await act.upload(page.locator("#single-picker"), ["fixtures/case.png", "fixtures/invoice.pdf"], roots=roots)
+        assert (picker_one.ok, picker_one.kind) == (False, "too_many_files")
+        none = await act.upload(page.locator("#photo"), [], roots=roots)
+        assert not none.ok and not none.retry
+        plain = await act.upload(page.locator("#help"), ["fixtures/case.png"], roots=roots, timeout_ms=1_000)
+        assert not plain.ok and plain.retry and "opened no file picker" in plain.detail
+        assert await _held(page, "#photo") == []
+
+    run(body, UPLOAD_PAGE)
+
+
+def _downloads(body: Callable[[Any, str], Awaitable[None]]) -> None:
+    from tests.v2.fixtures.download_server import serve_downloads
+
+    async def go() -> None:
+        with serve_downloads() as base:
+            async with open_page(url=f"{base}/downloads.html") as page:
+                await body(page, base)
+
+    asyncio.run(go())
+
+
+def test_download_by_click_keeps_attachments_files_in_new_tabs_and_script_made_files(tmp_path: Any) -> None:
+    from tests.v2.fixtures.download_server import REPORT_CSV
+
+    folder = tmp_path / "downloads"
+
+    async def body(page: Any, base: str) -> None:
+        csv_file = await act.download_by_click(page.locator("#csv"), folder, expected_name="report.csv")
+        assert csv_file.ok, csv_file.detail
+        assert csv_file.chosen is not None and (csv_file.chosen["name"], csv_file.chosen["type"], csv_file.chosen["via"]) == ("report.csv", "csv", "download")
+        assert (folder / "report.csv").read_bytes() == REPORT_CSV and csv_file.chosen["size"] == len(REPORT_CSV)
+        again = await act.download_by_click(page.locator("#csv-again"), folder)
+        assert again.ok and again.chosen is not None and again.chosen["name"] == "report_2.csv"
+        invoice = await act.download_by_click(page.locator("#invoice"), folder)
+        assert invoice.ok and invoice.chosen is not None and (invoice.chosen["name"], invoice.chosen["type"]) == ("invoice_INV-77.pdf", "pdf")
+        statement = await act.download_by_click(page.locator("#statement"), folder)
+        assert statement.ok, statement.detail
+        assert statement.chosen is not None and statement.chosen["type"] == "pdf" and statement.chosen["name"].startswith("statement")
+        summary = await act.download_by_click(page.locator("#summary"), folder)
+        assert summary.ok and (folder / "summary.txt").read_text() == "Summary: 3 orders, 2 paid"
+        assert len(page.context.pages) == 1, "a tab opened only to show a file is closed"
+
+    _downloads(body)
+
+
+def test_download_by_click_failures_say_whether_another_element_can_help(tmp_path: Any) -> None:
+    folder = tmp_path / "downloads"
+
+    async def body(page: Any, base: str) -> None:
+        nothing = await act.download_by_click(page.locator("#nothing"), folder, timeout_ms=1_500)
+        assert (nothing.ok, nothing.kind, nothing.retry) == (False, "no_download", True) and "started no download" in nothing.detail
+        empty = await act.download_by_click(page.locator("#empty"), folder)
+        assert (empty.ok, empty.kind, empty.retry) == (False, "wrong_file", False) and "empty" in empty.detail
+        named = await act.download_by_click(page.locator("#csv"), folder, expected_name="orders.csv")
+        assert (named.ok, named.retry) == (False, False) and "named 'report.csv', not 'orders.csv'" in named.detail
+        page_link = await act.download_by_click(page.locator("#plain"), folder, timeout_ms=1_500)
+        assert not page_link.ok and page_link.retry
+        assert sorted(path.name for path in folder.iterdir()) == ["report.csv"]
+
+    _downloads(body)
+
+
+def test_download_from_url_keeps_attachments_and_inline_files_and_refuses_pages(tmp_path: Any) -> None:
+    from tests.v2.fixtures.download_server import ORDERS_JSON
+
+    folder = tmp_path / "downloads"
+
+    async def body(page: Any, base: str) -> None:
+        sheet = await act.download_from_url(page, "/files/orders.xlsx", folder, base_url=base)
+        assert sheet.ok and sheet.chosen is not None and (sheet.chosen["name"], sheet.chosen["type"]) == ("orders.xlsx", "xlsx"), sheet.detail
+        shown = await act.download_from_url(page, f"{base}/data/orders.json", folder)
+        assert shown.ok and shown.chosen is not None and (shown.chosen["name"], shown.chosen["via"], shown.chosen["type"]) == ("orders.json", "response", "json")
+        assert (folder / "orders.json").read_bytes() == ORDERS_JSON
+        web_page = await act.download_from_url(page, "/plain.html", folder, base_url=base)
+        assert (web_page.ok, web_page.kind, web_page.retry) == (False, "not_a_file", False) and "is a web page, not a file" in web_page.detail
+        assert page.url.endswith("/downloads.html"), "downloading from an address leaves the page where it is"
+        missing = await act.download_from_url(page, "/files/nope.csv", folder, base_url=base)
+        assert not missing.ok and not missing.retry and "HTTP 404" in missing.detail
+        assert act.download_name("../../etc/pass wd?.csv") == "etc_pass_wd_.csv" and act.download_name("...") == "download"
+
+    _downloads(body)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from testzeus_hercules.cases.reference_files import save_reference_file
+from testzeus_hercules.cases.step_files import save_step_file
 from tests.v2.fixtures.daemon_support import client_for, make_config, submit, wait_for
 
 FEATURE = """Feature: Shop
@@ -34,7 +34,7 @@ def test_a_case_is_deleted_with_its_test_data_and_files(tmp_path: Path) -> None:
     project = config.settings.project_dir
     with client_for(config) as client:
         client.post("/api/cases", json={"gherkin": FEATURE, "test_data": {"coupon": "PANTRY10"}})
-        save_reference_file(project, "checkout", "rules.md", b"PANTRY10 takes 10% off", scope="case")
+        save_step_file(project, "checkout", "rules.md", b"PANTRY10 takes 10% off", scope="case")
         removed = client.delete("/api/cases/checkout.feature")
         missing = client.delete("/api/cases/checkout.feature")
         sidecar = client.delete("/api/cases/checkout.data.json")
@@ -47,7 +47,7 @@ def test_an_environment_is_deleted_with_its_files(tmp_path: Path) -> None:
     project = config.settings.project_dir
     with client_for(config) as client:
         client.post("/api/environments", json={"name": "shop", "base_url": "http://127.0.0.1:9"})
-        save_reference_file(project, "shop", "rules.md", b"PANTRY10 takes 10% off")
+        save_step_file(project, "shop", "rules.md", b"PANTRY10 takes 10% off")
         removed = client.delete("/api/environments/shop")
         missing = client.delete("/api/environments/shop")
         listed = client.get("/api/environments").json()["environments"]

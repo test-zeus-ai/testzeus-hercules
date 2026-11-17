@@ -21,18 +21,22 @@ test sends next still reaches it.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import dataclasses
+import hashlib
 import os
 import re
 import time
 import weakref
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Iterable, Literal
-from urllib.parse import urljoin, urlsplit
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Iterable, Literal, Sequence
+from urllib.parse import unquote, urljoin, urlsplit
 from urllib.request import url2pathname
 
 from playwright.async_api import Error as PlaywrightError
+
+from testzeus_hercules.act.files import PathConfinementError, confine
 
 if TYPE_CHECKING:
     from playwright.async_api import Locator, Page
@@ -107,7 +111,7 @@ class InvalidURLError(ValueError):
     """The URL cannot be opened (unsupported scheme or a relative path without a base URL)."""
 
 
-ResultKind = Literal["disabled", "not_editable", "value_mismatch", "invalid", "changed", "too_long", "option_missing"]
+ResultKind = Literal["disabled", "not_editable", "value_mismatch", "invalid", "changed", "too_long", "option_missing", "file_missing", "too_many_files", "no_download", "not_a_file", "wrong_file"]
 
 
 @dataclass(frozen=True)
@@ -120,6 +124,8 @@ class ActionResult:
     url_after: str = ""
     kind: ResultKind | None = None
     retry: bool = True
+    # upload: ``files``, the real paths attached. download: ``file`` (where it was saved), ``name``, ``size``, ``type``,
+    # ``sha256`` and ``via`` (download, tab or response).
     # select: how the option was found (``by``: label, value, option_role or text; ``option``: its text; for a custom
     # drop-down also ``role``, ``exact`` and ``typed`` when the value was typed into it first). For exporting the run.
     chosen: dict[str, Any] | None = None
@@ -938,6 +944,257 @@ async def uncheck(locator: Locator, *, timeout_ms: int = DEFAULT_TIMEOUT_MS) -> 
     return blocked or await _perform(locator.page, "unchecked", lambda: locator.uncheck(timeout=timeout_ms))
 
 
+_FILE_INPUT_JS = """el => {
+  const input = el instanceof HTMLLabelElement ? el.control : el;
+  return input instanceof HTMLInputElement && input.type === 'file' ? { multiple: input.multiple } : null;
+}"""
+_FILE_NAMES_JS = """el => {
+  const input = el instanceof HTMLLabelElement ? el.control : el;
+  return input && input.files ? Array.from(input.files, (file) => file.name) : null;
+}"""
+
+
+def _named(paths: Sequence[Path]) -> str:
+    return ", ".join(f"'{path.name}'" for path in paths)
+
+
+async def upload(locator: Locator, names: Sequence[str], *, roots: Iterable[Path], timeout_ms: int = DEFAULT_TIMEOUT_MS) -> ActionResult:
+    """Attach the files ``names`` (each found inside ``roots``, see :func:`confine`) to a file input.
+
+    A file input, or a label of one, gets the files directly; any other element is clicked and the
+    file picker it opens gets them. A file that cannot be found, or several files for a field that
+    takes one, fails without retry (another element cannot help); a click that opens no picker fails
+    with retry. Afterwards a file input is read back: it must hold every file.
+    """
+    page = locator.page
+    if not names:
+        return ActionResult(ok=False, detail="upload failed: the step names no file", url_after=page.url, kind="file_missing", retry=False)
+    try:
+        folders = list(roots)
+        where = "the case's files, the environment's files and the project folder" if len(folders) > 1 else "the project folder"
+        paths = [confine(name, folders, where=where) for name in names]
+    except PathConfinementError as exc:
+        return ActionResult(ok=False, detail=f"upload failed: {exc}", url_after=page.url, kind="file_missing", retry=False)
+    blocked = await _blocked(locator, "upload", timeout_ms)
+    if blocked is not None:
+        return blocked
+    try:
+        field = await locator.evaluate(_FILE_INPUT_JS, timeout=timeout_ms)
+    except PlaywrightError as exc:
+        return ActionResult(ok=False, detail=f"upload failed: {_first_line(exc)}", url_after=page.url)
+    one_file = f"upload failed: the field takes one file, and the step names {len(paths)}"
+    if field is not None:
+        if len(paths) > 1 and not field.get("multiple"):
+            return ActionResult(ok=False, detail=one_file, url_after=page.url, kind="too_many_files", retry=False)
+        result = await _perform(page, f"attached {_named(paths)}", lambda: locator.set_input_files(paths, timeout=timeout_ms))
+        if not result.ok:
+            return result
+        try:
+            held = await locator.evaluate(_FILE_NAMES_JS, timeout=timeout_ms)
+        except PlaywrightError:
+            return result
+        missing = [path.name for path in paths if path.name not in (held or [])]
+        if missing:
+            return ActionResult(ok=False, detail=f"upload failed: the field does not hold {', '.join(missing)} after attaching", url_after=page.url, kind="value_mismatch", retry=False)
+        return dataclasses.replace(result, chosen={"files": [str(path) for path in paths]})
+    picker: dict[str, bool] = {}
+
+    async def choose() -> None:
+        async with page.expect_file_chooser(timeout=timeout_ms) as opened:
+            await locator.click(timeout=timeout_ms)
+        chooser = await opened.value
+        picker["opened"] = True
+        if len(paths) > 1 and not chooser.is_multiple():
+            picker["single"] = True
+            return
+        await chooser.set_files(paths, timeout=timeout_ms)
+
+    result = await _perform(page, f"attached {_named(paths)} through the file picker", choose)
+    if picker.get("single"):
+        return ActionResult(ok=False, detail=one_file, url_after=page.url, kind="too_many_files", retry=False)
+    if not result.ok and not picker.get("opened"):
+        return ActionResult(ok=False, detail="upload failed: the element is not a file input and clicking it opened no file picker", url_after=page.url)
+    return dataclasses.replace(result, chosen={"files": [str(path) for path in paths]}) if result.ok else result
+
+
+DOWNLOAD_TIMEOUT_MS = 30_000
+MAX_DOWNLOAD_BYTES = 50 * 1024 * 1024
+_UNSAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")
+_PAGE_TYPES = ("text/html", "application/xhtml+xml")
+_DISPOSITION_STAR = re.compile(r"filename\*\s*=\s*[^']*'[^']*'([^;]+)", re.IGNORECASE)
+_DISPOSITION = re.compile(r'filename\s*=\s*"?([^";]+)"?', re.IGNORECASE)
+
+
+def download_name(name: str) -> str:
+    """A downloaded file's name made safe for the evidence folder: letters, digits, '.', '_' and '-'."""
+    return _UNSAFE_NAME.sub("_", name.strip()).strip("._-")[:120] or "download"
+
+
+def _unique(folder: Path, name: str) -> Path:
+    candidate = folder / name
+    number = 2
+    while candidate.exists():
+        candidate = folder / f"{Path(name).stem}_{number}{Path(name).suffix}"
+        number += 1
+    return candidate
+
+
+def _response_name(url: str, headers: dict[str, str]) -> str:
+    disposition = headers.get("content-disposition", "")
+    found = _DISPOSITION_STAR.search(disposition) or _DISPOSITION.search(disposition)
+    if found:
+        return unquote(found.group(1).strip())
+    return unquote(urlsplit(url).path.rsplit("/", 1)[-1]) or "download"
+
+
+def _is_page(headers: dict[str, str]) -> bool:
+    kind = headers.get("content-type", "").split(";")[0].strip().lower()
+    return kind in _PAGE_TYPES or (not kind and "attachment" not in headers.get("content-disposition", "").lower())
+
+
+def _kept(path: Path, wanted: str, expected_name: str | None, via: str, page_url: str) -> ActionResult:
+    from testzeus_hercules.act.file_contents import file_type
+
+    size = path.stat().st_size
+    if size == 0:
+        path.unlink(missing_ok=True)
+        return ActionResult(ok=False, detail=f"download failed: '{wanted}' arrived empty (0 bytes)", url_after=page_url, kind="wrong_file", retry=False)
+    if size > MAX_DOWNLOAD_BYTES:
+        path.unlink(missing_ok=True)
+        return ActionResult(ok=False, detail=f"download failed: '{wanted}' is larger than {MAX_DOWNLOAD_BYTES // (1024 * 1024)} MB", url_after=page_url, kind="wrong_file", retry=False)
+    if expected_name and expected_name.strip().casefold() not in (wanted.casefold(), download_name(wanted).casefold()):
+        return ActionResult(ok=False, detail=f"download failed: the file is named '{wanted}', not '{expected_name.strip()}'", url_after=page_url, kind="wrong_file", retry=False)
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    chosen = {"file": str(path), "name": path.name, "size": size, "type": file_type(path), "sha256": digest, "via": via}
+    return ActionResult(ok=True, detail=f"downloaded '{path.name}' ({size:,} bytes)", url_after=page_url, chosen=chosen)
+
+
+async def _save_download(item: Any, folder: Path, expected_name: str | None, page_url: str) -> ActionResult:
+    failure = await item.failure()
+    wanted = str(item.suggested_filename or "download")
+    if failure:
+        return ActionResult(ok=False, detail=f"download failed: {failure}", url_after=page_url, kind="wrong_file", retry=False)
+    folder.mkdir(parents=True, exist_ok=True)
+    path = _unique(folder, download_name(wanted))
+    await item.save_as(path)
+    if path.stat().st_size == 0:
+        await asyncio.sleep(1)
+        await item.save_as(path)
+    return _kept(path, wanted, expected_name, "download", page_url)
+
+
+def _save_bytes(body: bytes, wanted: str, folder: Path, expected_name: str | None, via: str, page_url: str) -> ActionResult:
+    folder.mkdir(parents=True, exist_ok=True)
+    path = _unique(folder, download_name(wanted))
+    path.write_bytes(body[: MAX_DOWNLOAD_BYTES + 1])
+    return _kept(path, wanted, expected_name, via, page_url)
+
+
+async def _fetched_file(page: Page, url: str, timeout_ms: int) -> tuple[bytes, str] | None:
+    """The file at ``url`` fetched with the browser's cookies, or None when it is a web page or cannot be fetched."""
+    if urlsplit(url).scheme.lower() not in _WEB_SCHEMES:
+        return None
+    try:
+        response = await page.context.request.get(url, timeout=timeout_ms, max_redirects=5)
+        headers = {key.lower(): value for key, value in response.headers.items()}
+        if response.status >= 400 or _is_page(headers):
+            return None
+        return await response.body(), _response_name(response.url, headers)
+    except PlaywrightError:
+        return None
+
+
+async def download_by_click(locator: Locator, folder: Path, *, expected_name: str | None = None, timeout_ms: int = DOWNLOAD_TIMEOUT_MS) -> ActionResult:
+    """Click the element and keep the file it starts: a download, or a file it opens in a new tab or in this one.
+
+    The file is saved into ``folder`` under its own name (made safe; ``_2``, ``_3`` on a clash). A click that starts
+    no file within ``timeout_ms`` fails with retry (another element may be the right one); a file that arrives empty,
+    too large or with another name than ``expected_name`` fails without retry.
+    """
+    page = locator.page
+    blocked = await _blocked(locator, "download", min(timeout_ms, DEFAULT_TIMEOUT_MS))
+    if blocked is not None:
+        return blocked
+    arrived: asyncio.Future[Any] = asyncio.get_running_loop().create_future()
+    opened: list[Any] = []
+
+    def on_download(item: Any) -> None:
+        if not arrived.done():
+            arrived.set_result(item)
+
+    def on_page(new: Any) -> None:
+        opened.append(new)
+        new.on("download", on_download)
+
+    before = page.url
+    page.on("download", on_download)
+    page.context.on("page", on_page)
+    try:
+        try:
+            await locator.click(timeout=min(timeout_ms, DEFAULT_TIMEOUT_MS), no_wait_after=True)
+        except PlaywrightError as exc:
+            return ActionResult(ok=False, detail=f"download failed: {_first_line(exc)}", url_after=page.url)
+        seen: set[str] = set()
+        deadline = time.monotonic() + timeout_ms / 1000
+        while time.monotonic() < deadline:
+            if arrived.done():
+                return await _save_download(arrived.result(), folder, expected_name, page.url)
+            for source in [*opened, page]:
+                address = str(getattr(source, "url", "") or "")
+                if address in seen or address in ("", _BLANK_PAGE) or (source is page and address == before):
+                    continue
+                seen.add(address)
+                fetched = await _fetched_file(page, address, timeout_ms)
+                if fetched is not None:
+                    if source is not page:
+                        with contextlib.suppress(PlaywrightError):
+                            await source.close()
+                    return _save_bytes(fetched[0], fetched[1], folder, expected_name, "tab", page.url)
+            await asyncio.sleep(_POLL_S)
+        return ActionResult(ok=False, detail="download failed: clicking it started no download and opened no file", url_after=page.url, kind="no_download")
+    finally:
+        page.remove_listener("download", on_download)
+        page.context.remove_listener("page", on_page)
+
+
+async def download_from_url(
+    page: Page, url: str, folder: Path, *, base_url: str | None = None, file_roots: Iterable[Path | str] | None = None, expected_name: str | None = None, timeout_ms: int = DOWNLOAD_TIMEOUT_MS
+) -> ActionResult:
+    """Fetch the file at ``url`` with the browser's cookies and keep it; the page stays where it is. An address that
+    answers with a web page or an error fails without retry. A ``file:`` address inside the project is opened instead."""
+    try:
+        target = resolve_url(url, base_url, file_roots=file_roots)
+    except InvalidURLError as exc:
+        return ActionResult(ok=False, detail=str(exc), url_after=page.url, retry=False)
+    if urlsplit(target).scheme.lower() not in _WEB_SCHEMES:
+        return await _download_by_opening(page, target, folder, expected_name, timeout_ms)
+    try:
+        response = await page.context.request.get(target, timeout=timeout_ms, max_redirects=5)
+        headers = {key.lower(): value for key, value in response.headers.items()}
+        if response.status >= 400:
+            return ActionResult(ok=False, detail=f"download of {target} failed: the server answered HTTP {response.status}", url_after=page.url, kind="not_a_file", retry=False)
+        if _is_page(headers):
+            return ActionResult(ok=False, detail=f"download failed: {target} is a web page, not a file", url_after=page.url, kind="not_a_file", retry=False)
+        body = await response.body()
+    except PlaywrightError as exc:
+        return ActionResult(ok=False, detail=f"download of {target} failed: {_first_line(exc)}", url_after=page.url, retry=False)
+    via = "download" if "attachment" in headers.get("content-disposition", "").lower() else "response"
+    return _save_bytes(body, _response_name(response.url, headers), folder, expected_name, via, page.url)
+
+
+async def _download_by_opening(page: Page, target: str, folder: Path, expected_name: str | None, timeout_ms: int) -> ActionResult:
+    try:
+        async with page.expect_download(timeout=timeout_ms) as info:
+            try:
+                await page.goto(target, timeout=timeout_ms)
+            except PlaywrightError as exc:
+                if "Download is starting" not in str(exc) and _INTERRUPTED not in str(exc):
+                    raise
+        return await _save_download(await info.value, folder, expected_name, page.url)
+    except PlaywrightError as exc:
+        return ActionResult(ok=False, detail=f"download of {target} failed: {_first_line(exc)}", url_after=page.url, kind="not_a_file", retry=False)
+
+
 async def hover(locator: Locator, *, timeout_ms: int = DEFAULT_TIMEOUT_MS) -> ActionResult:
     return await _perform(locator.page, "hovered", lambda: locator.hover(timeout=timeout_ms))
 
@@ -1051,6 +1308,9 @@ class BrowserActions:
     fill = staticmethod(fill)
     select = staticmethod(select)
     select_options = staticmethod(select_options)
+    upload = staticmethod(upload)
+    download_by_click = staticmethod(download_by_click)
+    download_from_url = staticmethod(download_from_url)
     check = staticmethod(check)
     uncheck = staticmethod(uncheck)
     hover = staticmethod(hover)

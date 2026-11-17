@@ -27,8 +27,8 @@ _DATA_KEY = r"^[A-Za-z_][A-Za-z0-9_]*$"
 AUTOMATION_VERSION = 1
 
 LocatorStrategy = Literal["test_id", "role", "label", "placeholder", "text", "alt_text", "title", "css"]
-ActionKind = Literal["navigate", "click", "fill", "select", "check", "uncheck", "hover", "press", "wait_text", "wait_time"]
-CheckKind = Literal["text", "not_text", "url", "visible_text", "element_visible", "semantic", "visual"]
+ActionKind = Literal["navigate", "click", "fill", "select", "upload", "download", "check", "uncheck", "hover", "press", "wait_text", "wait_time"]
+CheckKind = Literal["text", "not_text", "url", "visible_text", "element_visible", "semantic", "visual", "file"]
 # How a literal text check is written as code, chosen from what held on the live page when the check passed:
 # text (one element shows the text), text_first (several do; the first is visible), body (the body's text holds it),
 # count_zero (no element shows it), body_not (the body's text does not hold it).
@@ -115,8 +115,10 @@ class AutomationAction(_Model):
 
     kind: ActionKind
     target: TargetSpec | None = None
-    value: str | None = Field(default=None, description="fill/select: the value as a template; {{name}} names an entry of the spec's data")
+    value: str | None = Field(default=None, description='fill/select: the value as a template; {{name}} names an entry of the spec\'s data. upload: the file names, " | " between several')
     url: str | None = Field(default=None, description="navigate: the address, relative to base_url when it is under it")
+    files: list[str] | None = Field(default=None, description="upload: the files attached, relative to the project")
+    saved_as: str | None = Field(default=None, description="download: the file's name as the run saved it")
     key: str | None = Field(default=None, description="press: the key")
     seconds: float | None = Field(default=None, description="wait_time: seconds")
     text: str | None = Field(default=None, description="wait_text: the text waited for")
@@ -142,6 +144,9 @@ class AutomationCheck(_Model):
     verdict: Literal["passed", "failed", "unverified"] = "passed"
     source: Literal["deterministic", "llm"] = "deterministic"
     observed: str | None = Field(default=None, description="Judged checks: literal evidence of the page it was judged on (title and address)")
+    file_check: Literal["name", "type", "text", "not_text", "rows", "column", "json"] | None = Field(default=None, description="file: what is checked in the run's latest downloaded file")
+    subject: str | None = Field(default=None, description="file column: the column; file json: the JSON path")
+    where: str | None = Field(default=None, description='file column: the row checked, as "<column> = <value>" (None: every row)')
     faithful: bool = True
     note: str | None = None
 

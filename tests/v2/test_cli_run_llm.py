@@ -305,7 +305,7 @@ def test_the_whole_case_is_read_by_the_model_in_one_call_before_the_steps(tmp_pa
     action = reading["response_format"]["json_schema"]["schema"]["properties"]["step_2_action"]["items"]
     shapes = {tuple(sorted(member["properties"]["kind"].get("enum") or [member["properties"]["kind"]["const"]])): member for member in action["anyOf"]}
     assert all(set(member["required"]) == set(member["properties"]) for member in shapes.values()), "every field of a kind is required so constrained decoding cannot drop the value"
-    assert set(shapes[("fill", "select")]["required"]) == {"kind", "target", "value"}, "an action carries only the fields its kind uses"
+    assert set(shapes[("fill", "select", "upload")]["required"]) == {"kind", "target", "value"}, "an action carries only the fields its kind uses"
     cache = list((h.project / ".hercules" / "cache" / "interpret").glob("reading-*.json"))
     assert len(cache) == 1
 

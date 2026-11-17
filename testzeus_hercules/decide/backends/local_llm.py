@@ -25,7 +25,6 @@ from typing import Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, create_model, model_validator
 
-from testzeus_hercules.cases.reference_files import current_reference
 from testzeus_hercules.decide.chunking import decide_in_chunks
 from testzeus_hercules.decide.contract import (
     Answer,
@@ -220,14 +219,6 @@ def _render_question(qid: str, question: Question, extras: dict[str, dict[str, A
     return lines
 
 
-def _reference_query(request: DecisionRequest) -> str:
-    state = request.state if isinstance(request.state, dict) else {}
-    step = state.get("step")
-    parts = [str(step.get("text", "")) if isinstance(step, dict) else str(step or ""), str(state.get("task", ""))]
-    parts += [_text(question.model_dump(mode="json")) for question in request.questions.values()]
-    return " ".join(parts)
-
-
 def render_prompt(request: DecisionRequest, *, send_images: bool) -> tuple[str, list[bytes]]:
     """The user turn for ``request`` and the images it refers to (empty unless ``send_images``)."""
     images: list[bytes] = []
@@ -313,18 +304,12 @@ class LocalLLMDecider:
         send_images = self._vision and self._structured.accepts_images
         self._check_boxes(request, send_images)
         user, images = render_prompt(request, send_images=send_images)
-        references: list[str] = []
-        context = current_reference()
-        if context is not None:
-            section, references = context.section(_reference_query(request), purpose)
-            if section:
-                user = f"{section}\n\n{user}"
         schema = response_model(request)
         started = time.perf_counter()
         reply = await self._ask(user, images, schema, purpose)
         latency_ms = int((time.perf_counter() - started) * 1000)
         answers = {qid: _to_answer(question, getattr(reply, f"q{index}")) for index, (qid, question) in enumerate(request.questions.items())}
-        decision = Decision(answers=answers, engine=self.engine, model_version=self._model_version, latency_ms=latency_ms, cost_usd=0.0, references=references)
+        decision = Decision(answers=answers, engine=self.engine, model_version=self._model_version, latency_ms=latency_ms, cost_usd=0.0)
         return decision.validate_against(request)
 
     def _check_boxes(self, request: DecisionRequest, send_images: bool) -> None:

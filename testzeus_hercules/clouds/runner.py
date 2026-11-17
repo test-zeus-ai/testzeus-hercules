@@ -280,10 +280,13 @@ class CloudRuns:
             owner_pid=os.getpid(),
         )
         project = self._dir(record.id) / "project"
-        for relative, text in bundle.files.items():
+        for relative, content in bundle.files.items():
             path = project / relative
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(text, encoding="utf-8")
+            if isinstance(content, bytes):
+                path.write_bytes(content)
+            else:
+                path.write_text(content, encoding="utf-8")
         self._write(record)
         return record, bundle, credentials
 

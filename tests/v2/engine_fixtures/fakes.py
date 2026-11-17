@@ -184,6 +184,7 @@ class FakeResult:
     url_after: str = ""
     kind: str | None = None
     retry: bool = True
+    chosen: dict[str, Any] | None = None
 
 
 class FakeActions:
@@ -209,6 +210,7 @@ class FakeActions:
         self.invisible_mds = set(invisible_mds)
         self.url_after_click = url_after_click
         self.text_after_click = text_after_click
+        self.download_content = b"Order ID,Status\n1001,Paid\n1002,Paid\n"
         self.calls: list[tuple[Any, ...]] = []
 
     def _ok(self, page: Any, detail: str) -> FakeResult:
@@ -242,6 +244,27 @@ class FakeActions:
 
     async def select(self, locator: FakeLocator, value: str, *, timeout_ms: int = 0) -> FakeResult:
         return await self._element("select", locator, value)
+
+    async def download_by_click(self, locator: FakeLocator, folder: Any, *, expected_name: str | None = None, timeout_ms: int = 0) -> FakeResult:
+        result = await self._element("download", locator, expected_name)
+        if not result.ok:
+            return result
+        return self._downloaded(folder, expected_name or "report.csv")
+
+    async def download_from_url(self, page: Any, url: str, folder: Any, *, base_url: str | None = None, expected_name: str | None = None, **_: Any) -> FakeResult:
+        self.calls.append(("download_from_url", url, expected_name))
+        return self._downloaded(folder, expected_name or url.rsplit("/", 1)[-1])
+
+    def _downloaded(self, folder: Any, name: str) -> FakeResult:
+        from pathlib import Path
+
+        path = Path(folder) / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(self.download_content)
+        return FakeResult(ok=True, detail=f"downloaded '{name}'", chosen={"file": str(path), "name": name, "size": len(self.download_content), "type": "csv", "via": "download"})
+
+    async def upload(self, locator: FakeLocator, names: list[str], *, roots: Any = (), timeout_ms: int = 0) -> FakeResult:
+        return await self._element("upload", locator, tuple(names))
 
     async def check(self, locator: FakeLocator, *, timeout_ms: int = 0) -> FakeResult:
         return await self._element("check", locator)

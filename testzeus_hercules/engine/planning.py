@@ -278,7 +278,7 @@ async def _reread(step: PlanStep, interpreter: Interpreter) -> PlanStep:
     first = intent.parts()[0]
     if first.kind == "unknown" and not first.target:
         return step.model_copy(update={"read": "page"})
-    kind = first.kind if first.kind in ("navigate", "click", "fill", "select", "check", "uncheck", "hover", "press", "wait") else "unknown"
+    kind = first.kind if first.kind in ("navigate", "click", "fill", "select", "upload", "download", "check", "uncheck", "hover", "press", "wait") else "unknown"
     fields = {"kind": kind, "target": first.target, "value": first.value, "url": first.url, "role": first.role, "expected": first.expected if kind == "wait" else None, "read": "case"}
     updated = step.model_copy(update=fields)
     return updated.model_copy(update={"text": step.text or step_text(updated)})

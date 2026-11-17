@@ -9,6 +9,7 @@ export const DATA_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 export const VIEWPORT_PATTERN = /^[1-9][0-9]{1,4}x[1-9][0-9]{1,4}$/;
 export const BASE_URL_PATTERN = /^https?:\/\/[^\s/?#]+/;
 export const BUILTIN_PLACEHOLDERS = ["run_id", "timestamp"];
+export const DOWNLOAD_PLACEHOLDERS = ["downloaded_file", "downloaded_file_name"];
 export const PLACEHOLDER = /\{\{(.*?)\}\}/g;
 export const MAX_STEPS = 200;
 
@@ -156,7 +157,7 @@ export function validateCaseForm(value: CaseFormValue, environmentNames: Iterabl
   });
   Object.assign(errors, validateTestData(value.testData));
   const keys = value.testData.map((datum) => datum.key.trim());
-  const known = new Set([...BUILTIN_PLACEHOLDERS, ...keys, ...environmentNames]);
+  const known = new Set([...BUILTIN_PLACEHOLDERS, ...DOWNLOAD_PLACEHOLDERS, ...keys, ...environmentNames]);
   value.steps.forEach((step, offset) => {
     for (const text of [step.action, step.expected]) {
       for (const match of text.matchAll(PLACEHOLDER)) {

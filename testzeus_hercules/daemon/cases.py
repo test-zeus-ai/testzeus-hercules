@@ -18,7 +18,7 @@ from typing import AbstractSet, Any
 from pydantic import ValidationError
 
 from testzeus_hercules.cases.gherkin import DATA_SUFFIX, FeatureData, GherkinError, compile_feature, data_file, load_feature, slugify
-from testzeus_hercules.cases.reference_files import files_dir
+from testzeus_hercules.cases.step_files import files_dir
 from testzeus_hercules.cases.models import BUILTIN_PLACEHOLDERS, EnvironmentRef, Step, TestCase, TestDataValue, placeholder_names_in
 from testzeus_hercules.daemon.models import Environment
 

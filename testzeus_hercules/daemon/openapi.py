@@ -266,7 +266,7 @@ def _paths() -> dict[str, Any]:
         "/api/cases/{name}": {
             "parameters": [_param("name", "path", {"type": "string"}, "File name such as login.json")],
             "get": {"summary": "One saved case: the TestCase, the file kind and its source text", "responses": {"200": _json({"type": "object"}), **_errors(404, 422)}},
-            "delete": {"summary": "Delete a saved case with its test data file and reference files", "responses": {"200": _json({"type": "object"}), **_errors(404, 422)}},
+            "delete": {"summary": "Delete a saved case with its test data file and its files for upload steps", "responses": {"200": _json({"type": "object"}), **_errors(404, 422)}},
         },
         "/api/environments": {
             "get": {"summary": "Saved environments", "responses": {"200": _json({"type": "object"}), **_errors()}},
@@ -279,7 +279,7 @@ def _paths() -> dict[str, Any]:
         "/api/environments/{name}": {
             "parameters": [_param("name", "path", {"type": "string"}, "Environment name")],
             "get": {"summary": "One environment", "responses": {"200": _json(_ref("Environment")), **_errors(404)}},
-            "delete": {"summary": "Delete an environment and its reference files (cases that name it no longer load it)", "responses": {"200": _json({"type": "object"}), **_errors(404)}},
+            "delete": {"summary": "Delete an environment and its files for upload steps (cases that name it no longer load it)", "responses": {"200": _json({"type": "object"}), **_errors(404)}},
         },
         "/api/devices": {
             "get": {"summary": "Device profiles for mobile web emulation (Playwright's names, for environment.device)", "responses": {"200": _json({"type": "object"}), **_errors()}},
@@ -322,34 +322,34 @@ def _cloud_paths(run_ops: dict[str, Any]) -> dict[str, Any]:
         "/api/environments/{name}/files": {
             "parameters": [_param("name", "path", {"type": "string"}, "The environment")],
             "get": {
-                "summary": "The environment's reference files, read by the local model only (name, kind, size, extracted characters)",
+                "summary": "The environment's files for upload steps (name, size); never read by a model",
                 "responses": {"200": _json({"type": "object"}), **_errors(404)},
             },
         },
         "/api/environments/{name}/files/{filename}": {
             "parameters": [_param("name", "path", {"type": "string"}, "The environment"), _param("filename", "path", {"type": "string"}, "The file name")],
             "put": {
-                "summary": "Add or replace a reference file (raw body, application/octet-stream, at most 25 MB): md, txt, pdf, docx, csv, json, png or jpg",
+                "summary": "Add or replace a file for upload steps (raw body, application/octet-stream, at most 25 MB; no credential or configuration files)",
                 "requestBody": {"required": True, "content": {"application/octet-stream": {"schema": {"type": "string", "format": "binary"}}}},
                 "responses": {"200": _json({"type": "object"}), **_errors(404, 413, 415, 422)},
             },
-            "delete": {"summary": "Remove a reference file", "responses": {"200": _json({"type": "object"}), **_errors(404, 422)}},
+            "delete": {"summary": "Remove a file for upload steps", "responses": {"200": _json({"type": "object"}), **_errors(404, 422)}},
         },
         "/api/cases/{name}/files": {
             "parameters": [_param("name", "path", {"type": "string"}, "The saved case file name")],
             "get": {
-                "summary": "The case's reference files, read by the local model only while it plans and runs this case",
+                "summary": "The case's files for upload steps (name, size); found before the environment's, never read by a model",
                 "responses": {"200": _json({"type": "object"}), **_errors(404, 422)},
             },
         },
         "/api/cases/{name}/files/{filename}": {
             "parameters": [_param("name", "path", {"type": "string"}, "The saved case file name"), _param("filename", "path", {"type": "string"}, "The file name")],
             "put": {
-                "summary": "Add or replace a case reference file (raw body, application/octet-stream, at most 25 MB): md, txt, pdf, docx, csv, json, png or jpg",
+                "summary": "Add or replace a case file for upload steps (raw body, application/octet-stream, at most 25 MB; no credential or configuration files)",
                 "requestBody": {"required": True, "content": {"application/octet-stream": {"schema": {"type": "string", "format": "binary"}}}},
                 "responses": {"200": _json({"type": "object"}), **_errors(404, 413, 415, 422)},
             },
-            "delete": {"summary": "Remove a case reference file", "responses": {"200": _json({"type": "object"}), **_errors(404, 422)}},
+            "delete": {"summary": "Remove a case file for upload steps", "responses": {"200": _json({"type": "object"}), **_errors(404, 422)}},
         },
         "/api/secrets": {
             "get": {

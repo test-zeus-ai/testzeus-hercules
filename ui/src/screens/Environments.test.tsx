@@ -178,15 +178,15 @@ describe("EnvironmentsScreen variables and secrets", () => {
   });
 });
 
-describe("EnvironmentsScreen reference files", () => {
+describe("EnvironmentsScreen files for upload steps", () => {
   it("asks to save first, then lists files and uploads new ones as raw bytes", async () => {
-    let files = [{ name: "rules.md", kind: "text", size: 2048, chars: 1800, sha256: "a" }];
+    let files = [{ name: "case.png", size: 2048 }];
     fetchMock.mockImplementation((url: string, init?: RequestInit) => {
       if (url === "/api/environments") return respond({ environments: [{ name: "shop", base_url: "http://127.0.0.1:8201", secret_names: [] }] });
-      if (url === "/api/environments/shop/files") return respond({ environment: "shop", files, max_files: 20, max_bytes: 26214400, model: "local" });
-      if (url === "/api/environments/shop/files/prices.csv" && init?.method === "PUT") {
-        files = [...files, { name: "prices.csv", kind: "text", size: 24, chars: 22, sha256: "b" }];
-        return respond({ file: files[1], environment: "shop", files, max_files: 20, max_bytes: 26214400, model: "local" });
+      if (url === "/api/environments/shop/files") return respond({ environment: "shop", files, max_files: 20, max_bytes: 26214400 });
+      if (url === "/api/environments/shop/files/invoice.pdf" && init?.method === "PUT") {
+        files = [...files, { name: "invoice.pdf", size: 8 }];
+        return respond({ file: files[1], environment: "shop", files, max_files: 20, max_bytes: 26214400 });
       }
       return respond({ error: "not found" }, 404);
     });
@@ -195,16 +195,16 @@ describe("EnvironmentsScreen reference files", () => {
         <EnvironmentsScreen />
       </QueryClientProvider>,
     );
-    expect(screen.getByText(/read by the local model only, never sent to the hosted decider/)).toBeTruthy();
+    expect(screen.getByText(/only to the app under test, never to a model/)).toBeTruthy();
     fireEvent.click(await screen.findByRole("button", { name: /edit/i }));
-    expect(await screen.findByText("rules.md")).toBeTruthy();
-    expect(screen.getByText(/1,800 characters read/)).toBeTruthy();
+    expect(await screen.findByText("case.png")).toBeTruthy();
+    expect(screen.getByText("2.0 KB")).toBeTruthy();
 
-    const file = new File(["item,price\ngreen tea,4\n"], "prices.csv", { type: "text/csv" });
-    fireEvent.change(screen.getByLabelText("Add reference files"), { target: { files: [file] } });
+    const file = new File(["%PDF-1.4"], "invoice.pdf", { type: "application/pdf" });
+    fireEvent.change(screen.getByLabelText("Add files for upload steps"), { target: { files: [file] } });
 
-    expect(await screen.findByText("prices.csv")).toBeTruthy();
-    const put = fetchMock.mock.calls.find(([url]) => url === "/api/environments/shop/files/prices.csv");
+    expect(await screen.findByText("invoice.pdf")).toBeTruthy();
+    const put = fetchMock.mock.calls.find(([url]) => url === "/api/environments/shop/files/invoice.pdf");
     const init = put?.[1] as RequestInit;
     expect(init.method).toBe("PUT");
     expect((init.headers as Record<string, string>)["Content-Type"]).toBe("application/octet-stream");
@@ -212,17 +212,17 @@ describe("EnvironmentsScreen reference files", () => {
   });
 });
 
-describe("EnvironmentsScreen reference files on a new environment", () => {
+describe("EnvironmentsScreen files for upload steps on a new environment", () => {
   it("keeps files picked before the first save and uploads them once it is saved", async () => {
     const uploaded: string[] = [];
     fetchMock.mockImplementation((url: string, init?: RequestInit) => {
       if (url === "/api/environments" && init?.method === "POST") return respond({ name: "shop", base_url: "http://127.0.0.1:8201", secret_names: [] }, 201);
       if (url === "/api/environments") return respond({ environments: [] });
-      if (url === "/api/environments/shop/files/rules.md" && init?.method === "PUT") {
+      if (url === "/api/environments/shop/files/case.png" && init?.method === "PUT") {
         uploaded.push(url);
-        return respond({ environment: "shop", files: [], max_files: 20, max_bytes: 26214400, model: "local" });
+        return respond({ environment: "shop", files: [], max_files: 20, max_bytes: 26214400 });
       }
-      if (url === "/api/environments/shop/files") return respond({ environment: "shop", files: uploaded.length ? [{ name: "rules.md", kind: "text", size: 40, chars: 38, sha256: "a" }] : [], max_files: 20, max_bytes: 26214400, model: "local" });
+      if (url === "/api/environments/shop/files") return respond({ environment: "shop", files: uploaded.length ? [{ name: "case.png", size: 40 }] : [], max_files: 20, max_bytes: 26214400 });
       return respond({ error: "not found" }, 404);
     });
     render(
@@ -230,7 +230,7 @@ describe("EnvironmentsScreen reference files on a new environment", () => {
         <EnvironmentsScreen />
       </QueryClientProvider>,
     );
-    fireEvent.change(screen.getByLabelText("Add reference files"), { target: { files: [new File(["The team coupon is PANTRY10."], "rules.md", { type: "text/markdown" })] } });
+    fireEvent.change(screen.getByLabelText("Add files for upload steps"), { target: { files: [new File(["png"], "case.png", { type: "image/png" })] } });
     expect(screen.getByText(/added when you save the environment/)).toBeTruthy();
     expect(uploaded).toEqual([]);
 
@@ -238,8 +238,8 @@ describe("EnvironmentsScreen reference files on a new environment", () => {
     fireEvent.change(screen.getByLabelText("Base URL"), { target: { value: "http://127.0.0.1:8201" } });
     fireEvent.click(screen.getByRole("button", { name: /save environment/i }));
 
-    await waitFor(() => expect(uploaded).toEqual(["/api/environments/shop/files/rules.md"]));
-    expect(await screen.findByText(/38 characters read/)).toBeTruthy();
+    await waitFor(() => expect(uploaded).toEqual(["/api/environments/shop/files/case.png"]));
+    expect(await screen.findByText("40 B")).toBeTruthy();
   });
 });
 
@@ -248,7 +248,7 @@ describe("EnvironmentsScreen view and edit", () => {
     fetchMock.mockImplementation((url: string, init?: RequestInit) => {
       if (url === "/api/environments") return respond({ environments: [{ name: "shop", base_url: "http://127.0.0.1:8201", viewport: "1280x800", secret_names: [], variables: { user: "ana", password: { secret: "SHOP_PASSWORD" } } }] });
       if (url.startsWith("/api/secrets?names=")) return respond({ secrets: [{ name: "SHOP_PASSWORD", source: "file" }], file: "/home/me/.hercules/secrets.env" });
-      if (url === "/api/environments/shop/files") return respond({ environment: "shop", files: [{ name: "rules.md", kind: "text", size: 40, chars: 38, sha256: "a" }], max_files: 20, max_bytes: 26214400, model: "local" });
+      if (url === "/api/environments/shop/files") return respond({ environment: "shop", files: [{ name: "rules.md", size: 40 }], max_files: 20, max_bytes: 26214400 });
       if (url === "/api/environments/shop" && init?.method === "DELETE") return respond({ name: "shop", removed: true });
       return respond({ error: "not found" }, 404);
     });

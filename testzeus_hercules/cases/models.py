@@ -39,6 +39,7 @@ BASELINE_NAME_PATTERN = r"^[A-Za-z0-9_.-]{1,100}$"
 BASE_URL_PATTERN = r"^https?://[^\s/?#]+"
 
 BUILTIN_PLACEHOLDERS: frozenset[str] = frozenset({"run_id", "timestamp"})
+DOWNLOAD_PLACEHOLDERS: frozenset[str] = frozenset({"downloaded_file", "downloaded_file_name"})
 MAX_STEPS = 200
 
 _PLACEHOLDER = re.compile(r"\{\{(.*?)\}\}")
@@ -516,7 +517,7 @@ class TestCase(_Model):
     @model_validator(mode="after")
     def _known_placeholders(self) -> TestCase:
         """Every ``{{name}}`` is test data, an environment variable, a built-in, or a value an earlier step saves; every ``db`` names test data."""
-        known = BUILTIN_PLACEHOLDERS | set(self.test_data) | outside_names(self.environment.ref)
+        known = BUILTIN_PLACEHOLDERS | DOWNLOAD_PLACEHOLDERS | set(self.test_data) | outside_names(self.environment.ref)
         unknown: list[str] = []
         malformed: list[str] = []
 

@@ -73,10 +73,10 @@ from testzeus_hercules.cases.automation import AutomationCheck, AutomationSpec, 
 from testzeus_hercules.decide.engine import DecisionEngine
 from testzeus_hercules.engine.automation import build_spec
 from testzeus_hercules.cases.browser_options import BrowserOptions
+from testzeus_hercules.cases.step_files import step_file_roots
 from testzeus_hercules.engine.browser_launch import VIDEO_DIRNAME, BrowserSetupError, browser_launch
 from testzeus_hercules.engine.browser_process import forget_browser, record_browser
 from testzeus_hercules.engine.control import RetryStep, RunControl, SkipStep, StepBlocked
-from testzeus_hercules.cases.reference_files import load_reference_context, using_reference
 from testzeus_hercules.engine.data import CaseData, MissingSecretError, protect_case
 from testzeus_hercules.engine.evidence import EvidenceStore
 from testzeus_hercules.engine.gate import threshold_for
@@ -710,6 +710,7 @@ class _Run:
                 actions=self.deps.actions,
                 base_url=self.base_url,
                 file_roots=(self.ctx.paths.project_dir,),
+                upload_roots=step_file_roots(self.ctx.paths.project_dir, self.case.environment.ref, self.case.id),
                 threshold=threshold_for(_engine_name(self.deps.decider)),
                 threshold_by_engine=threshold_for,
                 images=self.deps.images,
@@ -1195,7 +1196,6 @@ async def run_case(case: TestCase, ctx: RunContext, deps: RunDeps, *, resume: bo
         config["configurable"] = {"thread_id": ctx.run_id}
     async with contextlib.AsyncExitStack() as stack:
         run = _Run(case, ctx, deps, stack)
-        stack.enter_context(using_reference(load_reference_context(ctx.paths.project_dir, run.case.environment.ref, run.data.redact, case_id=run.case.id)))
         graph = run.graph()
         if resume:
             if deps.checkpointer is None:

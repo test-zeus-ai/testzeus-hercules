@@ -45,7 +45,7 @@ numbered `<step>.<n>`:
 
 | Field | Meaning |
 |---|---|
-| `kind` | `navigate`, `click`, `fill`, `select`, `check`, `uncheck`, `hover`, `press`, `wait`, `api`, `sql`, `quality`, or `verify` (the step's expected outcome, checked) |
+| `kind` | `navigate`, `click`, `fill`, `select`, `upload`, `download`, `check`, `uncheck`, `hover`, `press`, `wait`, `api`, `sql`, `quality`, or `verify` (the step's expected outcome, checked) |
 | `target`, `value`, `url` | As the model read them. Placeholders such as `{{password}}` stay placeholders: secret values never appear in a plan |
 | `needs` | Steps whose field must be set first (a region list that depends on the country) |
 | `risk` | `destructive`, `irreversible` or `external_side_effect`, with the model's reason |

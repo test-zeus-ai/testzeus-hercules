@@ -547,3 +547,43 @@ class Helpers:
                 lines.extend(self.source[name].strip("\n").splitlines())
                 lines.append("")
         return lines
+
+
+_TYPE_PREFIXES: dict[str, tuple[bytes, ...]] = {
+    "pdf": (b"%PDF",),
+    "docx": (b"PK\x03\x04",),
+    "xlsx": (b"PK\x03\x04",),
+    "zip": (b"PK\x03\x04",),
+    "png": (b"\x89PNG",),
+    "jpeg": (b"\xff\xd8\xff",),
+    "gif": (b"GIF87a", b"GIF89a"),
+}
+_ROW_OPS = {"": "==", "=": "==", "==": "==", "exactly": "==", ">=": ">=", "at least": ">=", "<=": "<=", "at most": "<=", ">": ">", "more than": ">", "<": "<", "fewer than": "<", "less than": "<"}
+_ROW_COUNT = re.compile(r"^\s*(>=|<=|==|=|>|<|at least|at most|more than|fewer than|less than|exactly)?\s*(\d[\d,]*)\s*(?:rows?)?\s*$", re.IGNORECASE)
+
+
+DOWNLOADED_FILE = "{{downloaded_file}}"
+
+
+def uploads_download(action: Any) -> bool:
+    """True when an upload attaches the file an earlier step downloaded (``{{downloaded_file}}``)."""
+    return action.kind == "upload" and DOWNLOADED_FILE in "".join((action.value or "").split())
+
+
+def file_type_prefixes(expected: str) -> tuple[bytes, ...] | None:
+    """The first bytes a file of the named type starts with (``PDF``, ``an Excel file``); None for text types."""
+    from testzeus_hercules.act.file_contents import TYPE_NAMES
+
+    words = [word.strip(".").lower() for word in expected.replace("-", " ").split()]
+    kinds = set().union(*(TYPE_NAMES.get(word, frozenset()) for word in words)) if words else set()
+    if not kinds or kinds - set(_TYPE_PREFIXES):
+        return None
+    return tuple(sorted({prefix for kind in kinds for prefix in _TYPE_PREFIXES[kind]}))
+
+
+def row_comparison(expected: str) -> tuple[str, int] | None:
+    """A file_rows check's operator (``==``, ``>=``, ...) and number."""
+    found = _ROW_COUNT.match(expected)
+    if found is None:
+        return None
+    return _ROW_OPS[(found.group(1) or "").lower()], int(found.group(2).replace(",", ""))

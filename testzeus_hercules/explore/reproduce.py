@@ -89,6 +89,7 @@ async def run_reproduction(case: TestCase, ctx: RunContext, deps: RunDeps, job: 
     replayer = Replayer(
         open_page=lambda: _open_page(case, ctx, deps),
         data=lambda text: data.resolve(text, captured=False),
+        project_dir=ctx.paths.project_dir,
         setup=list(job.setup) if fresh else [],
         base_url=job.base_url,
         start_url=clue.start_url or job.start_url,

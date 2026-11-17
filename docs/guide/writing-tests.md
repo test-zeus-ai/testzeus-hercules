@@ -159,6 +159,8 @@ Phrasings like these are read reliably:
 | Click | `Click the "Save" button`, `Click on "Profile"`, `Tap "Menu"` |
 | Fill | `Fill "{{email}}" in "Email"`, `Type "hello" into "Message"`, `Fill "Name" with "Ada"` |
 | Select | `Select "Germany" from "Country"`, `Choose "Large" in "Size"` |
+| Upload | `Upload "case.png" to "Photo"`, `Attach "fixtures/invoice.pdf" and "case.png" to "Documents"` ([Files for upload steps](#files-for-upload-steps)) |
+| Download | `Click "Export CSV" to download the report`, `Download the file from "/reports/q3.pdf"` ([Downloading and checking files](#downloading-and-checking-files)) |
 | Check boxes | `Check "I agree"`, `Uncheck "Subscribe"` |
 | Hover | `Hover over "Account"` |
 | Keys | `Press Enter`, `Press the key "Escape"` |
@@ -338,39 +340,75 @@ replaced with a `{{url_credential_N}}` placeholder for the run and masked by nam
 [Credentials in URLs](modes-and-privacy.md#credentials-in-urls)), but the case file itself
 then holds it, and an exported test cannot know which variable to read it from.
 
-## Reference files
+## Files for upload steps
 
-An environment, and a single case, can hold reference files that the model reads while it
-plans and runs: requirements, field rules, sample data. A case's run reads its own files
-and its environment's.
+A step that uploads names its files: `I upload "case.png" to "Case clearance photo"`, or
+several at once, `I upload "fixtures/invoice.pdf" and "case.png" to "Documents"` (the
+field must accept several). Hercules looks for each name in this order:
 
-- On an environment: the **Environments** screen (**Add files**; files picked before the
-  first save are added when it is saved) or `PUT /api/environments/<name>/files/<file>`.
-  Stored in `.hercules/files/<environment>/`.
-- On a case: the **Form** tab of the **Cases** screen, or
-  `PUT /api/cases/<saved file name>/files/<file>`. Stored by case id in
-  `.hercules/case-files/<case id>/`.
+1. the case's own files, `.hercules/case-files/<case id>/`;
+2. the files of the case's environment, `.hercules/files/<environment>/`;
+3. the project folder, for a path such as `fixtures/invoice.pdf`.
 
-Uploads are the raw file (`application/octet-stream`).
+Add files to a case on the **Form** tab of the **Cases** screen, and to an environment on
+the **Environments** screen (**Add files**; files picked before the first save are added
+when it is saved), or with `PUT /api/cases/<saved file name>/files/<file>` and
+`PUT /api/environments/<name>/files/<file>` (the raw file, `application/octet-stream`).
 
-- Types: `.md`, `.txt`, `.pdf`, `.docx`, `.csv` and `.json` are read as text; `.png` and
-  `.jpg` are kept but not yet sent to a model. Up to 20 files of 25 MB each per environment
-  and per case, kept with their extracted text.
-- Key and credential files (`.env`, `*.pem`, private keys by content) are refused.
-- Files are never pasted whole. Each model call gets the passages that best match the step
-  it is about, within a budget: about 6,000 characters to read the case, 3,000 to judge an
-  expected outcome or to recover from a failed step, 2,000 to choose an element.
-- **Local model only.** File text goes to the model configured as Hercules' local model
-  (`llm` in the config: Ollama, LM Studio, or the endpoint you chose with `hercules setup`)
-  and never to the hosted decider (JEV through OpenRouter). In hybrid mode JEV decides
-  without the files; the local model reads them for the plan, for recovery and when it
-  answers a decision itself.
-- File text is treated as data, never instructions, and secret values are masked in it
-  before it reaches the model.
-- Each decision record in `steps/<n>/decisions.jsonl` lists the passages its model call
-  received (`"references": ["rules.md#2"]`). Changing a file makes the next run read the
-  case again instead of reusing a cached plan.
-- Exported code does not use the files: it runs without a model.
+- Any file type, up to 20 files of 25 MB each per case and per environment.
+- Key and credential files (`.env`, `*.pem`, private keys by content) are refused, and a
+  step can never attach a file outside these folders or the project.
+- **Never read by a model.** The files go only to the app under test; no model, local or
+  hosted, receives their contents. The file's name is part of the step's text, which is read
+  like any other step.
+- The field can be a file input, a label of one (also when the input itself is hidden), or a
+  button that opens the browser's file picker. A file that cannot be found fails the step at
+  once; a field that takes one file fails when the step names several.
+- Exported code attaches the same files by their path in the project
+  (`setInputFiles([...])`, `set_input_files([...])`), and a cloud run's project carries them.
+
+## Downloading and checking files
+
+A step that downloads a file clicks the control that starts it, or names the file's
+address:
+
+```gherkin
+When I click "Export CSV" to download the report
+When I download the file from "/reports/q3.pdf"
+When I download "invoice.pdf" by clicking "Invoice"
+```
+
+The file is saved in the run's evidence, in `steps/<n>/downloads/`, under the name the
+site gives it (letters, digits, `.`, `_` and `-` only; `_2`, `_3` when a name repeats), and
+listed with the step on the run page. A step that names the file fails when the site sends
+another name. A click that starts no download (and opens no file in a new tab) within 30
+seconds counts as the wrong control: Hercules tries another, then fails the step. An address
+is fetched with the browser's cookies and the page stays where it is; an address that answers
+with a web page or an error fails the step. Files are kept up to 50 MB.
+
+Later steps check the newest download, in code:
+
+| Check | Example |
+|---|---|
+| Name | `Then the downloaded file is named "report.csv"` |
+| Type | `Then the downloaded file is a PDF` (read from the file's first bytes, not its name) |
+| Text | `Then the downloaded file contains "Total Due: $950"`, `... does not contain "Refunded"` |
+| Rows | `Then the downloaded CSV has 12 rows`, `... has at least 3 rows` (CSV or the first sheet of an XLSX, without the header row) |
+| Column | `Then column "Status" is "Paid" in every row`, `Then column "Status" is "Paid" for Order ID 1002` |
+| JSON | `Then the downloaded JSON has "$.total" equal to "1240"` |
+
+Text is read from PDF, DOCX, XLSX, CSV, JSON and plain text files (a PDF with no text in it,
+such as a scan, fails a text check). `{{downloaded_file}}` (the newest download's path) and
+`{{downloaded_file_name}}` work in later steps, for example to upload it again:
+`When I upload "{{downloaded_file}}" to "Attachment"`.
+
+- **Never read by a model.** Downloaded files are checked in code only; no model, local or
+  hosted, receives their contents. An outcome only a reader could judge ("the report says
+  the order was approved") is not a file check: write what the file should contain instead.
+- Exported code downloads with `waitForEvent("download")` / `expect_download()` and repeats
+  the name, type, text, row, column and JSON checks on text and CSV files. Text inside a PDF,
+  DOCX or XLSX, and a file the site showed in the browser instead of downloading, become TODO
+  lines in the export.
 
 ## Gherkin `.feature` files
 

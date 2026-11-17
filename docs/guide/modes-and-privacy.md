@@ -157,13 +157,12 @@ this machine and to listed hosts never goes through an `HTTP_PROXY` / `ALL_PROXY
 What never leaves the machine in any mode: your case files, the evidence folder, and
 the secret values in your test data (models see the `{{placeholder}}`, not the value).
 
-### Reference files
+### Files for upload steps
 
-Reference files of an environment or a case ([Reference files](writing-tests.md#reference-files))
-are read by the local model only. Under `hybrid` and `hybrid-text` the hosted decider never
-receives their text. When the local model is a hosted endpoint (`openai-compatible`,
-OpenRouter, ...), that endpoint receives the passages it is given, like the page text it
-already reads.
+Files that upload steps attach ([Files for upload steps](writing-tests.md#files-for-upload-steps))
+are never read by any model, in any mode: they go only to the app under test. The same holds
+for files a run downloads ([Downloading and checking files](writing-tests.md#downloading-and-checking-files)):
+their checks run in code, and their contents never reach a model.
 
 ## Credentials in URLs
 
