@@ -57,7 +57,10 @@ def _filename(request: Request) -> str:
 
 
 def _listing(daemon: Daemon, owner: str, scope: Scope) -> dict[str, object]:
-    files = list_step_files(daemon.config.settings.project_dir, owner, scope)
+    try:
+        files = list_step_files(daemon.config.settings.project_dir, owner, scope)
+    except StepFileError as exc:
+        raise _api_error(422, str(exc)) from None
     return {scope: owner, "files": [asdict(item) for item in files], "max_files": MAX_FILES, "max_bytes": MAX_FILE_BYTES}
 
 

@@ -49,17 +49,20 @@ def read_private_env(path: Path, max_bytes: int = MAX_FILE_BYTES) -> tuple[dict[
         return {}, f"cannot read {path} ({type(exc).__name__})"
 
 
+def env_text(values: Mapping[str, str], header: str) -> str:
+    return "\n".join([f"# {header}"] + [f"{name}='{value}'" for name, value in sorted(values.items())]) + "\n"
+
+
 def write_private_env(path: Path, values: Mapping[str, str], header: str) -> Path:
     with EDIT_LOCK:
         path.parent.mkdir(parents=True, exist_ok=True, mode=PRIVATE_DIR)
         temporary = path.with_name(f"{path.name}.{os.getpid()}.{secrets.token_hex(4)}.tmp")
-        lines = [f"# {header}"] + [f"{name}='{value}'" for name, value in sorted(values.items())]
         descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), PRIVATE_FILE)
         try:
             try:
                 if hasattr(os, "fchmod"):
                     os.fchmod(descriptor, PRIVATE_FILE)
-                os.write(descriptor, ("\n".join(lines) + "\n").encode("utf-8"))
+                os.write(descriptor, env_text(values, header).encode("utf-8"))
                 os.fsync(descriptor)
             finally:
                 os.close(descriptor)

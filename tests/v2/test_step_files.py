@@ -107,3 +107,38 @@ def test_a_file_name_in_the_url_is_decoded_once() -> None:
     from testzeus_hercules.daemon.files import _filename
 
     assert _filename(Request({"type": "http", "path_params": {"filename": "%41.png"}})) == "%41.png"
+
+
+@pytest.mark.parametrize("linked", [".hercules/files", ".hercules/files/shop", ".hercules/case-files/checkout"])
+def test_files_are_never_written_through_a_symbolic_link(tmp_path: Path, linked: str) -> None:
+    project, outside = tmp_path / "project", tmp_path / "outside"
+    outside.mkdir()
+    (outside / "case.png").write_bytes(b"theirs")
+    link = project / linked
+    link.parent.mkdir(parents=True)
+    link.symlink_to(outside, target_is_directory=True)
+    owner, scope = ("checkout", "case") if "case-files" in linked else ("shop", "environment")
+
+    with pytest.raises(StepFileError, match="symbolic link"):
+        save_step_file(project, owner, "case.png", PNG, scope)  # type: ignore[arg-type]
+    with pytest.raises(StepFileError, match="symbolic link"):
+        remove_step_file(project, owner, "case.png", scope)  # type: ignore[arg-type]
+    with pytest.raises(StepFileError, match="symbolic link"):
+        list_step_files(project, owner, scope)  # type: ignore[arg-type]
+
+    assert (outside / "case.png").read_bytes() == b"theirs" and sorted(path.name for path in outside.iterdir()) == ["case.png"]
+    roots = step_file_roots(project, "shop", "checkout")
+    assert len(roots) == 2 and roots[-1] == project
+    assert all(root.resolve().is_relative_to(project.resolve()) for root in roots)
+
+
+def test_files_are_never_written_outside_the_project(tmp_path: Path) -> None:
+    project, outside = tmp_path / "project", tmp_path / "outside"
+    project.mkdir()
+    outside.mkdir()
+    (project / ".hercules").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(StepFileError, match="inside the project"):
+        save_step_file(project, "shop", "case.png", PNG)
+
+    assert not any(outside.iterdir())

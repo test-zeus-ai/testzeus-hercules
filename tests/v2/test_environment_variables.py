@@ -145,6 +145,21 @@ def test_a_saved_secret_comes_back_exactly_as_it_was_given(tmp_path: Path, value
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX permissions")
+def test_a_secret_that_would_make_the_file_too_large_is_refused_and_the_others_kept(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from testzeus_hercules.kernel import secrets_store
+
+    monkeypatch.setattr(secrets_store, "MAX_SECRETS_BYTES", 2048)
+    home = tmp_path / "home"
+    save_secret(home, "FIRST", "a" * 900)
+    save_secret(home, "SECOND", "b" * 900)
+
+    with pytest.raises(SecretStoreError, match="limited to 2 KiB in all; remove some before adding THIRD"):
+        save_secret(home, "THIRD", "c" * 900)
+
+    assert read_saved_secrets(home) == ({"FIRST": "a" * 900, "SECOND": "b" * 900}, None)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permissions")
 def test_secrets_saved_at_the_same_time_are_all_kept(tmp_path: Path) -> None:
     home = tmp_path / "home"
     names = [f"SECRET_{index}" for index in range(24)]

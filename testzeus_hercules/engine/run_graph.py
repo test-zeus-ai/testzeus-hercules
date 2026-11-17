@@ -321,6 +321,8 @@ class RunState(TypedDict, total=False):
     # The plan: each criterion's result so far and every amendment made while the run ran.
     plan_results: tuple[CriterionResult, ...]
     amendments: tuple[Amendment, ...]
+    captured: dict[str, Any]
+    downloads: tuple[str, ...]
 
 
 def _resolved_base_url(template: str | None, data: CaseData) -> str | None:
@@ -727,6 +729,9 @@ class _Run:
     async def _reopen(self, state: RunState) -> str | None:
         """On resume: a new step runner and, when the case needs one, a browser back on the page where the last completed step left it."""
         self._build_runner()
+        assert self.runner is not None
+        self.data.captured.update(state.get("captured") or {})
+        self.runner.deps.downloads.extend(Path(path) for path in state.get("downloads") or () if Path(path).is_file())
         self.resumed_plan = True  # the plan the run started with (plan.json); never asked about again
         stopped = await self._read_case()
         if stopped and stopped.get("setup_error"):
@@ -900,6 +905,8 @@ class _Run:
             "unreadable": tuple(item for item in state.get("unreadable") or () if item != number) + ((number,) if outcome.error_class == _UNREADABLE else ()),
             "plan_results": tuple(state.get("plan_results") or ()) + outcome.criteria + self.planner.outcome_results(number, outcome.ledger, ran=outcome.status != "skipped"),
             "amendments": tuple(state.get("amendments") or ()) + outcome.amendments,
+            "captured": dict(self.data.captured),
+            "downloads": tuple(str(path) for path in self.runner.deps.downloads) if self.runner is not None else tuple(state.get("downloads") or ()),
         }
 
     def _planned_automation(self, automation: AutomationStep, outcome: StepOutcome) -> AutomationStep:

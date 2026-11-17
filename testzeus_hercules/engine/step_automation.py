@@ -231,6 +231,8 @@ def _unexported_file_check(file_check: str, downloads: list[Path]) -> str | None
         return None
     if file_check in ("text", "not_text") and kind in ("pdf", "docx", "xlsx"):
         return f"the export does not read the text of a {kind} file; check it by hand"
+    if file_check in ("text", "not_text") and kind not in ("csv", "json", "text"):
+        return f"the download is a {kind} file, which has no text to check"
     if file_check in ("rows", "column") and kind != "csv":
         return f"the export reads rows from CSV files only, and this download is a {kind} file; check it by hand"
     if file_check == "json" and kind != "json":

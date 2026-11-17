@@ -5,12 +5,13 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Literal
 
-from testzeus_hercules.kernel.private_env import EDIT_LOCK, read_private_env, write_private_env
+from testzeus_hercules.kernel.private_env import EDIT_LOCK, env_text, read_private_env, write_private_env
 
 SECRETS_FILENAME = "secrets.env"
 SECRET_NAME = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 MAX_SECRET_CHARS = 4096
 MAX_SECRETS_BYTES = 262_144
+_HEADER = "Secrets saved by Hercules (readable by you only). Environment variables win."
 
 SecretSource = Literal["env", "file", "none"]
 
@@ -47,7 +48,9 @@ def save_secret(home: Path, name: str, value: str) -> Path:
     with EDIT_LOCK:
         values = _saved(home)
         values[name] = value
-        return write_private_env(secrets_file(home), values, "Secrets saved by Hercules (readable by you only). Environment variables win.")
+        if len(env_text(values, _HEADER).encode("utf-8")) > MAX_SECRETS_BYTES:
+            raise SecretStoreError(f"saved secrets are limited to {MAX_SECRETS_BYTES // 1024} KiB in all; remove some before adding {name}")
+        return write_private_env(secrets_file(home), values, _HEADER)
 
 
 def remove_secret(home: Path, name: str) -> bool:
@@ -58,7 +61,7 @@ def remove_secret(home: Path, name: str) -> bool:
             return False
         del values[name]
         if values:
-            write_private_env(secrets_file(home), values, "Secrets saved by Hercules (readable by you only). Environment variables win.")
+            write_private_env(secrets_file(home), values, _HEADER)
         else:
             secrets_file(home).unlink(missing_ok=True)
     return True

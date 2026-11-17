@@ -43,6 +43,16 @@ def files_dir(project_dir: Path, owner: str, scope: Scope = "environment") -> Pa
     return project_dir / ".hercules" / FILES_DIRNAME / owner
 
 
+def _kept_folder(project_dir: Path, owner: str, scope: Scope) -> Path:
+    folder = files_dir(project_dir, owner, scope)
+    for path in (folder.parent, folder):
+        if path.is_symlink():
+            raise StepFileError(f"{path.relative_to(project_dir).as_posix()} is a symbolic link; attached files are kept only inside the project")
+    if not folder.resolve().is_relative_to(project_dir.resolve()):
+        raise StepFileError("attached files are kept only inside the project")
+    return folder
+
+
 def _checked_name(name: str) -> str:
     if not FILE_NAME.fullmatch(name) or ".." in name or name.strip() != name:
         raise StepFileError("a file name uses letters, digits, spaces, '.', '_' or '-' (at most 120 characters, no folders)")
@@ -59,7 +69,7 @@ def save_step_file(project_dir: Path, owner: str, name: str, content: bytes, sco
         raise StepFileError(f"{name} is larger than {MAX_FILE_BYTES // (1024 * 1024)} MB")
     if sensitive_file("", content[:4096]):
         raise StepFileError(f"{name} holds a private key or service-account credentials; it was not saved")
-    folder = files_dir(project_dir, owner, scope)
+    folder = _kept_folder(project_dir, owner, scope)
     existing = {item.name for item in list_step_files(project_dir, owner, scope)}
     if name not in existing and len(existing) >= MAX_FILES:
         raise StepFileError(f"{'a case' if scope == 'case' else 'an environment'} holds at most {MAX_FILES} files; remove one first")
@@ -76,14 +86,14 @@ def save_step_file(project_dir: Path, owner: str, name: str, content: bytes, sco
 
 
 def remove_step_file(project_dir: Path, owner: str, name: str, scope: Scope = "environment") -> bool:
-    path = files_dir(project_dir, owner, scope) / _checked_name(name)
-    found = path.is_file()
+    path = _kept_folder(project_dir, owner, scope) / _checked_name(name)
+    found = path.is_file() and not path.is_symlink()
     path.unlink(missing_ok=True)
     return found
 
 
 def list_step_files(project_dir: Path, owner: str, scope: Scope = "environment") -> list[StepFile]:
-    folder = files_dir(project_dir, owner, scope)
+    folder = _kept_folder(project_dir, owner, scope)
     if not folder.is_dir():
         return []
     return [
@@ -99,7 +109,7 @@ def step_file_roots(project_dir: Path, environment: str | None, case_id: str | N
     roots: list[Path] = []
     for owner, scope in owners:
         try:
-            roots.append(files_dir(project_dir, owner, scope))
+            roots.append(_kept_folder(project_dir, owner, scope))
         except StepFileError:
             continue
     return (*roots, project_dir)
