@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { emptyForm, errorLine, fromForm, toForm, validateCaseForm, environmentTag, gherkinUnquoted, quoteGherkinPlaceholders, quotePlaceholders, unquotedPlaceholders, withEnvironmentTag, type CaseFormValue } from "./caseForm";
+import { emptyForm, errorLine, fromForm, savedNamesIn, toForm, validateCaseForm, environmentTag, gherkinUnquoted, quoteGherkinPlaceholders, quotePlaceholders, unquotedPlaceholders, withEnvironmentTag, type CaseFormValue } from "./caseForm";
 import type { TestCase } from "./types";
 
 const valid = (): CaseFormValue => ({
@@ -118,5 +118,21 @@ describe("unquoted placeholders", () => {
     expect(gherkinUnquoted(gherkin)).toEqual([{ line: 4, tokens: ["{{url}}"] }]);
     expect(quoteGherkinPlaceholders(gherkin).split("\n")[3]).toBe('    Given I open "{{url}}"');
     expect(quoteGherkinPlaceholders(gherkin).split("\n")[6]).toBe('      {"name": {{pet}}}');
+  });
+});
+
+describe("saved values", () => {
+  it("knows the names a step saves, for the steps after it only", () => {
+    expect(savedNamesIn('When I save the response JSON "$.code" as "order_code"')).toEqual(["order_code"]);
+    expect(savedNamesIn("store the header ETag as {{etag}}")).toEqual(["etag"]);
+    expect(savedNamesIn('Click "Save as draft"')).toEqual([]);
+    const steps = [
+      { action: 'I send a GET request to "/api/orders/{{order_code}}"', expected: "" },
+      { action: 'I save the response JSON "$.code" as "order_code"', expected: "" },
+      { action: 'I send a GET request to "/api/orders/{{order_code}}"', expected: "" },
+    ];
+    const errors = validateCaseForm({ ...valid(), steps });
+    expect(errors["steps.0.placeholders"]).toMatch(/Unknown placeholder \{\{order_code\}\}/);
+    expect(errors["steps.2.placeholders"]).toBeUndefined();
   });
 });

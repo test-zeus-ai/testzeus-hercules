@@ -37,6 +37,7 @@ from testzeus_hercules.cases.gherkin import VERIFY_ACTION
 from testzeus_hercules.cases.models import Step, TestCase
 from testzeus_hercules.cases.plan import ACTION_KINDS, Criterion, Plan, PlanReview, PlanStep, Risk, SourceStep
 from testzeus_hercules.engine.intent import FILE_ASSERT_KINDS, PROMPT_VERSION, CaseReading, ItemRole, StepIntent, normalise_step_text
+from testzeus_hercules.engine.service_intent import case_kind
 
 logger = logging.getLogger(__name__)
 
@@ -165,9 +166,8 @@ def criterion_text(
 # --------------------------------------------------------------------------- building
 
 
-def _service_hint(case: TestCase) -> bool:
-    tags = {tag.strip().lower() for tag in case.tags}
-    return "kind:api" in tags or "kind:sql" in tags
+def _service_hint(case: TestCase) -> str | None:
+    return case_kind(case)
 
 
 def is_check_only(step: Step) -> bool:
@@ -188,7 +188,7 @@ def source_steps(case: TestCase) -> list[SourceStep]:
         elif step.security is not None:
             kind, payload = "security", True
         elif hint:
-            kind, payload = ("sql" if "kind:sql" in {tag.strip().lower() for tag in case.tags} else "api"), False
+            kind, payload = hint, False
         elif is_check_only(step):
             kind, payload = "verify", False
         else:
@@ -408,6 +408,12 @@ def _kept_criteria(item: PlanStep, criteria: Sequence[Criterion]) -> list[Criter
     """A step's criteria without those a model inferred for a download: the download itself proves the file arrived, and the
     page cannot show it."""
     return [criterion for criterion in criteria if not (item.kind == "download" and criterion.origin == "inferred")]
+
+
+def kept_criteria(plan: Plan) -> Plan:
+    """``plan`` without the criteria a run never checks (see :func:`_kept_criteria`), for a plan made before they were dropped."""
+    steps = [item.model_copy(update={"criteria": kept}) if len(kept := _kept_criteria(item, item.criteria)) != len(item.criteria) else item for item in plan.steps]
+    return plan if all(new is old for new, old in zip(steps, plan.steps)) else plan.model_copy(update={"steps": steps})
 
 
 def _intent(item: PlanStep) -> StepIntent:

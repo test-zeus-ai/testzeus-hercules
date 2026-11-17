@@ -37,6 +37,7 @@ change. Or let your coding agent do it: copy the prompt in
 | [Getting started](getting-started.md) | Install, hardware tiers, model servers and other endpoints, `hercules setup`, `hercules doctor`, your first run |
 | [Browsers and browser options](browsers.md) | Chromium, Chrome, Edge, Firefox and WebKit; locale, time zone, signed-in auth JSON, headers, proxy and every other Playwright option, locally, in exported code and on clouds |
 | [Writing tests](writing-tests.md) | The TestCase format, steps and expected outcomes, test data, secrets, Gherkin, drafts |
+| [Writing Gherkin](gherkin.md) | One scenario per `.feature` file: quoting labels and placeholders, choosing the environment with `@env:`, test data, checks, files, and the Gherkin editor's suggestions, colours and keys |
 | [Exploratory testing](explore.md) | `hercules explore`: time-boxed bug hunts with a swarm size you choose, reproduced findings with failing cases, triage and the findings ledger; [walkthrough videos](explore.md#walkthrough-videos) |
 | [Plans](plans.md) | The plan made before each run: success criteria, coverage audit, lint, review, strict mode, amendments |
 | [Running tests](running-tests.md) | `hercules run`, results and evidence, exit codes, the daemon, the tester UI, debugging, approvals, resuming |

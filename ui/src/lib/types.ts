@@ -458,6 +458,14 @@ export interface Health {
   project_dir: string;
   parallel_runs: number;
   queue: Record<string, number>;
+  pid?: number;
+  started_at?: string;
+  ui_url?: string;
+  /** The account the daemon runs as, the computer's name, and the Hercules home folder. */
+  user?: string | null;
+  host?: string | null;
+  home_dir?: string;
+  egress_policy?: string;
 }
 
 export interface RunEvent {

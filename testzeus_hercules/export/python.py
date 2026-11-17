@@ -82,8 +82,11 @@ def url(path: str) -> str:
 ''',
         "api_url": '''
 def api_url(path: str) -> str:
-    """An API address: relative paths are appended to BASE_URL, as the run did."""
-    return BASE_URL.rstrip("/") + "/" + path.lstrip("/")
+    """An API address: relative paths go under BASE_URL's folder (a page at its end, such as /index.html, is left out), as the run did."""
+    base = urlsplit(BASE_URL)
+    page = base.path.rsplit("/", 1)[-1].lower().endswith((".html", ".htm", ".php", ".asp", ".aspx", ".jsp"))
+    folder = base.path[: base.path.rfind("/") + 1] if page else base.path
+    return urlunsplit((base.scheme, base.netloc, folder.rstrip("/"), "", "")) + "/" + path.lstrip("/")
 ''',
         "text": """
 def text(value: Any) -> str:
@@ -382,6 +385,8 @@ class PythonWriter(Writer):
                     ("parse_qsl", "with_query"),
                     ("urlencode", "with_query"),
                     ("urlsplit", "with_query"),
+                    ("urlsplit", "api_url"),
+                    ("urlunsplit", "api_url"),
                     ("urlunsplit", "with_query"),
                 )
                 if helper in used

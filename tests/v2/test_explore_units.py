@@ -1037,3 +1037,20 @@ def test_a_finished_session_says_what_to_do_next() -> None:
     assert "not a pass" in out.getvalue()
     assert "f9" in _event_line({"kind": "finding", "data": {"finding": "f9", "severity": "P2", "outcome": "new", "title": "500"}})
     assert _event_line({"kind": "size", "data": {"by": "ana", "workers": [2, 4]}}) == "  swarm size changed by ana: explorers 2 → 4"
+
+
+@pytest.mark.parametrize(
+    ("base", "address", "opened"),
+    [
+        ("http://localhost:8000/index.html", "/shop.html", "http://localhost:8000/shop.html"),
+        ("http://localhost:8000/index.html", "shop.html", "http://localhost:8000/shop.html"),
+        ("http://host/app", "login", "http://host/app/login"),
+        ("http://host/app", "/app/cart", "http://host/app/cart"),
+        ("http://localhost:8000", "cart.html", "http://localhost:8000/cart.html"),
+        ("http://localhost:8000/index.html", "https://other.test/x", "https://other.test/x"),
+    ],
+)
+def test_an_area_opens_where_a_browser_on_the_base_url_would(base: str, address: str, opened: str) -> None:
+    from testzeus_hercules.explore.oracles import address_under
+
+    assert address_under(base, address) == opened

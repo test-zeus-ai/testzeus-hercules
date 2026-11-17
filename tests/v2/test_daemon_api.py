@@ -328,6 +328,8 @@ def test_health_and_openapi(config) -> None:  # type: ignore[no-untyped-def]
         spec = client.get("/api/openapi.json").json()
     assert health["project_dir"] == str(config.settings.project_dir)
     assert health["queue"] == {"queued": 0, "running": 0, "paused": 0, "needs_approval": 0, "needs_plan_approval": 0}
+    assert health["home_dir"] == str(config.paths.home_dir) and health["egress_policy"] == config.settings.egress.policy
+    assert "user" in health and "host" in health
     assert spec["openapi"].startswith("3.")
     for path in (
         "/api/runs",

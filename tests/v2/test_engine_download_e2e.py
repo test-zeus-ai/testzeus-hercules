@@ -111,6 +111,15 @@ def test_downloads_are_kept_checked_in_code_and_uploaded_again(tmp_path: Path, c
     ledger = [json.loads(line) for line in (run_dir / "ledger.jsonl").read_text().splitlines()] if (run_dir / "ledger.jsonl").exists() else []
     if ledger:
         assert {entry["check"] for entry in ledger} >= {"file_rows", "file_column", "file_name_equals", "file_json", "file_type", "file_text"}
+    results = json.loads((run_dir / "plan.json").read_text())["results"]
+    assert [(entry["check"], entry["status"]) for entry in results if entry["check"].startswith("file_")] == [
+        ("file_rows", "passed"),
+        ("file_column", "passed"),
+        ("file_name", "passed"),
+        ("file_json", "passed"),
+        ("file_type", "passed"),
+        ("file_text", "passed"),
+    ]
     contents = ("Linus", "Pending", "INV-77 Total", "1002,Grace", '"currency"')
     assert model.prompts and not any(token in prompt for prompt in model.prompts for token in contents), "no downloaded file reaches a model"
     code = export_run(RunResult.model_validate(result), "playwright-py").code

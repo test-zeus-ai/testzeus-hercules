@@ -20,8 +20,9 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, Callable
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 
+from testzeus_hercules.act.api import PAGE_NAME
 from testzeus_hercules.decide.contract import DecisionRequest, NoulCriteria, NoulQuestion, Question
 from testzeus_hercules.explore.models import Move, Promise
 
@@ -44,6 +45,16 @@ def _guard_or_abort(failure: str) -> bool:
     """A failure the scope guard caused (``net::ERR_BLOCKED_BY_CLIENT``, in any spelling) or a request the page cancelled."""
     text = failure.lower().replace("_", "")
     return "blockedbyclient" in text or "erraborted" in text
+
+
+def address_under(base_url: str, address: str) -> str:
+    """``address`` (absolute, a path such as ``/shop.html``, or relative) as a browser on ``base_url`` would open it. A base
+    that names a page (``/index.html``) is never treated as a folder; one that names a folder (``/app``) is, for a relative
+    address."""
+    if urlsplit(address).scheme or address.startswith("/"):
+        return urljoin(base_url, address)
+    last = urlsplit(base_url).path.rstrip("/").rsplit("/", 1)[-1]
+    return urljoin(base_url if PAGE_NAME.search(last) else base_url.rstrip("/") + "/", address)
 
 
 def normalize_route(url: str) -> str:

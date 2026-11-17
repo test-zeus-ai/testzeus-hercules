@@ -412,7 +412,8 @@ such as a scan, fails a text check). `{{downloaded_file}}` (the newest download'
 
 ## Gherkin `.feature` files
 
-A `.feature` file with exactly one scenario can be run directly:
+A `.feature` file with exactly one scenario can be run directly. [Writing Gherkin](gherkin.md)
+shows how to write one that reads reliably and how the Gherkin editor helps.
 
 ```gherkin
 @smoke
@@ -606,6 +607,16 @@ count beyond that is reported as not exact. Connection strings never appear in e
 A value a step saves is available to later steps as `{{name}}`. In a JSON value, an exact
 `"{{name}}"` keeps the saved value's type (a number stays a number). A saved value whose
 name looks secret (`token`, `password`, `api_key`...) is masked like a secret.
+
+In plain language, a step that says it saves something `as "<name>"` (save, store, remember,
+keep or capture) defines `{{<name>}}` for the steps after it, without test data:
+
+```gherkin
+When I save the response JSON "$.code" as "order_code"
+And I send a GET request to "/api/orders/{{order_code}}"
+```
+
+Using the name before the step that saves it is reported as an unknown placeholder.
 
 ### Plain-language API and SQL steps
 

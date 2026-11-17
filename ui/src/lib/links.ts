@@ -16,3 +16,7 @@ export const TESTZEUS_SITE = "https://testzeus.com/";
 /** Where testzeus.com's own "Free Trial" button goes. */
 export const TESTZEUS_FREE_TRIAL = "https://prod.testzeus.app/sign-up";
 export const TESTZEUS_PRICING = "https://testzeus.com/pricing";
+
+/** The user guide on GitHub (the project's documentation link); ``page`` is a file in docs/guide. */
+export const DOCS_BASE = "https://github.com/test-zeus-ai/testzeus-hercules/blob/main/docs/guide/";
+export const docsUrl = (page: string): string => `${DOCS_BASE}${page}`;

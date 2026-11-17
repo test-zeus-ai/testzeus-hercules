@@ -15,13 +15,12 @@ from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-from urllib.parse import urljoin
 
 from testzeus_hercules.cases.automation import AutomationAction, AutomationStep, TargetSpec
 from testzeus_hercules.engine.page_log import PageLog
 from testzeus_hercules.explore.explorer import do_direct
 from testzeus_hercules.explore.models import Promise, Scope, Turn
-from testzeus_hercules.explore.oracles import Oracles
+from testzeus_hercules.explore.oracles import Oracles, address_under
 from testzeus_hercules.explore.scope import ScopeGuard
 from testzeus_hercules.perceive.locators import build_locator
 
@@ -75,7 +74,7 @@ class Replayer:
                     await guard.install(page.context)
                     log.attach(page)
                     if self.setup:
-                        await page.goto(self.base_url + "/", wait_until="load", timeout=20_000)
+                        await page.goto(self.base_url, wait_until="load", timeout=20_000)
                         for turn in self.setup:
                             if await self._do(page, turn) != "passed":
                                 raise RuntimeError(f"the start case's step did not replay: {turn.move.text[:120]}")
@@ -120,7 +119,7 @@ class Replayer:
     async def _action(self, page: Any, action: AutomationAction) -> bool:
         try:
             if action.kind == "navigate":
-                await page.goto(urljoin(self.base_url + "/", action.url or "/"), wait_until="load", timeout=20_000)
+                await page.goto(address_under(self.base_url, action.url) if action.url else self.base_url, wait_until="load", timeout=20_000)
                 return True
             if action.kind == "wait_time":
                 await page.wait_for_timeout(min((action.seconds or 1) * 1000, 30_000))

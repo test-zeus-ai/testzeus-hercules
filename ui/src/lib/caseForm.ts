@@ -10,6 +10,14 @@ export const VIEWPORT_PATTERN = /^[1-9][0-9]{1,4}x[1-9][0-9]{1,4}$/;
 export const BASE_URL_PATTERN = /^https?:\/\/[^\s/?#]+/;
 export const BUILTIN_PLACEHOLDERS = ["run_id", "timestamp"];
 export const DOWNLOAD_PLACEHOLDERS = ["downloaded_file", "downloaded_file_name"];
+
+const SAVE_VERBS = "save|saves|store|stores|remember|remembers|keep|keeps|capture|captures";
+const SAVES_AS = new RegExp(`\\b(?:${SAVE_VERBS})\\b[^\\n]*?\\bas\\s+(?:["\u201c]?\\{\\{\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*\\}\\}|["\u201c]([A-Za-z_][A-Za-z0-9_]*)["\u201d])`, "gi");
+
+/** The names a step's text says it saves for later steps ("I save the response JSON "$.code" as "order_code""). */
+export function savedNamesIn(text: string): string[] {
+  return [...text.matchAll(SAVES_AS)].map((match) => match[1] ?? match[2]).filter(Boolean);
+}
 export const PLACEHOLDER = /\{\{(.*?)\}\}/g;
 export const MAX_STEPS = 200;
 
@@ -163,10 +171,11 @@ export function validateCaseForm(value: CaseFormValue, environmentNames: Iterabl
       for (const match of text.matchAll(PLACEHOLDER)) {
         const name = match[1].trim();
         if (!known.has(name)) {
-          errors[`steps.${offset}.placeholders`] = `Unknown placeholder {{${name}}}: add it to the test data or to the environment's variables.`;
+          errors[`steps.${offset}.placeholders`] = `Unknown placeholder {{${name}}}: add it to the test data or to the environment's variables, or save it in an earlier step.`;
         }
       }
     }
+    for (const name of savedNamesIn(step.action)) known.add(name);
   });
   return errors;
 }

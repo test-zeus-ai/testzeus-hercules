@@ -21,8 +21,10 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import functools
+import getpass
 import json
 import os
+import platform
 import shutil
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -843,8 +845,19 @@ async def health(request: Request, daemon: Daemon) -> Response:
             "parallel_runs": daemon.config.parallel_runs,
             "queue": daemon.store.counts(),
             "ui_url": daemon.config.public_url,
+            "user": _user_name(),
+            "host": platform.node() or None,
+            "home_dir": str(daemon.config.paths.home_dir),
+            "egress_policy": daemon.config.settings.egress.policy,
         }
     )
+
+
+def _user_name() -> str | None:
+    try:
+        return getpass.getuser()
+    except Exception:
+        return None
 
 
 async def models(request: Request, daemon: Daemon) -> Response:

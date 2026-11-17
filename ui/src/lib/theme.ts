@@ -20,7 +20,7 @@ export function applyTheme(choice: ThemeChoice): void {
 }
 
 /** Light, dark or follow the system; remembered per browser. */
-export function useTheme(): [ThemeChoice, () => void] {
+export function useTheme(): [ThemeChoice, () => void, (choice: ThemeChoice) => void] {
   const [choice, setChoice] = useState<ThemeChoice>(stored);
   useEffect(() => {
     applyTheme(choice);
@@ -32,5 +32,5 @@ export function useTheme(): [ThemeChoice, () => void] {
     }
   }, [choice]);
   const cycle = useCallback(() => setChoice((current) => ORDER[(ORDER.indexOf(current) + 1) % ORDER.length]), []);
-  return [choice, cycle];
+  return [choice, cycle, setChoice];
 }

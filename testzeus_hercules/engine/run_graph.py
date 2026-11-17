@@ -98,7 +98,7 @@ from testzeus_hercules.engine.ports import DefaultPerceiver, Perceiver
 from testzeus_hercules.engine.quality import QualitySession, RunQualityOptions, baseline_dir
 from testzeus_hercules.engine.quality_intent import QualityInterpreter
 from testzeus_hercules.engine.service import ServiceSession
-from testzeus_hercules.engine.service_intent import ServiceInterpreter, case_hint
+from testzeus_hercules.engine.service_intent import ServiceInterpreter, case_kind
 from testzeus_hercules.engine.step_graph import StepDeps, StepLimits, StepOutcome, StepRunner
 from testzeus_hercules.engine.verify import LedgerEntry
 from testzeus_hercules.kernel.run_context import CancelToken, RunCancelledError, RunContext
@@ -351,7 +351,7 @@ class _Run:
             project_dir=ctx.paths.project_dir,
             base_url=self.base_url,
             interpreter=ServiceInterpreter(llm=deps.interpreter.model if deps.interpreter is not None else None),
-            hint=case_hint(case.tags),
+            hint=case_kind(case),
             events=ctx.events,
             timeout_s=deps.limits.request_timeout_s,
             transport=deps.http_transport,
@@ -385,7 +385,7 @@ class _Run:
             env=deps.env,
             names=sorted(set(case.test_data) | set(self.data.hidden)),
             hidden=sorted(self.data.hidden),
-            service=case_hint(case.tags) is not None,
+            service=case_kind(case) is not None,
             options=PlanOptions(coverage=plan.coverage, strict=plan.strict, confirm_destructive=plan.confirm_destructive),
             redact=self.data.redact,
             given=plan.given,

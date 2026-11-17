@@ -8,7 +8,7 @@ import { placeholderSuggestions } from "../components/PlaceholderSuggest";
 import { CaseFiles } from "../components/StepFiles";
 import { StartRunDialog, type StartRunInitial } from "../components/StartRunDialog";
 import { ApiError, api, post, remove } from "../lib/api";
-import { emptyForm, environmentTag, errorLine, formUnquoted, gherkinUnquoted, quoteFormPlaceholders, quoteGherkinPlaceholders, fromForm, testDataOf, toForm, validTestData, validateCaseForm, validateTestData, withEnvironmentTag, type CaseFormValue, type FormDatum } from "../lib/caseForm";
+import { emptyForm, environmentTag, errorLine, formUnquoted, gherkinUnquoted, quoteFormPlaceholders, quoteGherkinPlaceholders, fromForm, savedNamesIn, testDataOf, toForm, validTestData, validateCaseForm, validateTestData, withEnvironmentTag, type CaseFormValue, type FormDatum } from "../lib/caseForm";
 import { environmentNames, targetSummary } from "../lib/environmentForm";
 import { useDebounced } from "../lib/useDebounced";
 import { isCaseList, isSavedCase } from "../lib/guards";
@@ -48,6 +48,13 @@ export function caseNameFromParam(param: string | undefined): string | null {
 }
 
 export const DISCARD_PROMPT = "Discard the unsaved changes to this case?";
+
+/** The editor's heading: the case's title; the file name only when the case has no title yet. */
+export function caseHeading(name: string | null, title: string | null | undefined, kind: "feature" | "json"): string {
+  const shown = title?.trim();
+  if (shown) return shown;
+  return name ?? (kind === "feature" ? "New Gherkin case" : "New case");
+}
 
 export const deleteCasePrompt = (name: string) => `Delete ${name} with its test data and its files for upload steps? This cannot be undone.`;
 
@@ -224,8 +231,13 @@ export function CasesScreen({ selected }: { selected?: string }) {
   const envs = useQuery({ queryKey: ["environments"], queryFn: () => api<{ environments: Environment[] }>("/api/environments") });
   const gherkinEnvironment = draft.kind === "feature" ? environmentTag(draft.gherkin) : draft.form.environmentRef.trim();
   const suggestions = useMemo(
-    () => placeholderSuggestions(envs.data?.environments.find((env) => env.name === gherkinEnvironment), draft.kind === "feature" ? draft.data : draft.form.testData),
-    [envs.data, gherkinEnvironment, draft.kind, draft.data, draft.form.testData],
+    () =>
+      placeholderSuggestions(
+        envs.data?.environments.find((env) => env.name === gherkinEnvironment),
+        draft.kind === "feature" ? draft.data : draft.form.testData,
+        draft.kind === "feature" ? savedNamesIn(draft.gherkin) : draft.form.steps.flatMap((step) => savedNamesIn(step.action)),
+      ),
+    [envs.data, gherkinEnvironment, draft.kind, draft.data, draft.form.testData, draft.gherkin, draft.form.steps],
   );
   const environmentSuggestions = useMemo(() => (envs.data?.environments ?? []).map((env) => ({ name: env.name, detail: targetSummary(env) })), [envs.data]);
   const savedEnvironments = useMemo(() => (envs.data?.environments ?? []).map((env) => env.name), [envs.data]);
@@ -328,8 +340,8 @@ export function CasesScreen({ selected }: { selected?: string }) {
         />
         <div className="panel case-editor">
           <div className="panel-head">
-            <h2>
-              {draft.name ?? (draft.kind === "feature" ? "New Gherkin case" : "New case")}
+            <h2 title={draft.name ?? undefined}>
+              {caseHeading(draft.name, entry?.title ?? (draft.kind === "feature" ? compiled?.title : draft.form.title), draft.kind)}
               {draft.dirty ? <span className="muted small"> · unsaved</span> : null}
             </h2>
             <div className="editor-actions">

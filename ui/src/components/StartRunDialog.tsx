@@ -9,7 +9,7 @@ import type { CaseEntry, Environment, ModelsReport, RerunScope, RunView, TestCas
 import { Field } from "./Field";
 import { GherkinEditor } from "./GherkinEditor";
 import { Modal } from "./Modal";
-import { RunOptionsFields } from "./RunOptionsFields";
+import { OptionGroup, RunOptionsFields } from "./RunOptionsFields";
 
 type Source = "saved" | "gherkin" | "description";
 
@@ -225,15 +225,12 @@ export function StartRunDialog({ onClose, onStarted, initial = {}, rerun }: { on
 
         <RunOptionsFields value={options} errors={optionErrors} onChange={setOptions} />
 
-        <details className="advanced" open={initialForm.headed || undefined}>
-          <summary>Advanced</summary>
-          <div className="field-row">
-            <label className="field field-check">
-              <input type="checkbox" checked={headed} onChange={(event) => setHeaded(event.target.checked)} />
-              <span>Show the browser window</span>
-            </label>
-          </div>
-        </details>
+        <OptionGroup title="Advanced" summary={headed ? "browser window shown" : null}>
+          <label className="field field-check">
+            <input type="checkbox" checked={headed} onChange={(event) => setHeaded(event.target.checked)} />
+            <span>Show the browser window</span>
+          </label>
+        </OptionGroup>
 
         {error ? (
           <p className="callout callout-fail" role="alert">

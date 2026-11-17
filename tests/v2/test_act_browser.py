@@ -691,3 +691,27 @@ def test_download_from_url_keeps_attachments_and_inline_files_and_refuses_pages(
         assert act.download_name("../../etc/pass wd?.csv") == "etc_pass_wd_.csv" and act.download_name("...") == "download"
 
     _downloads(body)
+
+
+SKIP_LINK_PAGE = """
+<html><head><style>
+  .skip { position: absolute; left: 1rem; top: -3rem; }
+  .skip:focus { top: 1rem; }
+</style></head><body>
+  <a class="skip" href="#main">Skip to content</a>
+  <nav><a href="#nav">Shop</a></nav>
+  <main id="main" tabindex="-1"><h1>Quote</h1></main>
+</body></html>
+"""
+
+
+def test_a_link_off_the_page_until_focused_is_activated_with_the_keyboard() -> None:
+    async def body(page: Any) -> None:
+        started = time.monotonic()
+        result = await act.click(page.get_by_role("link", name="Skip to content"))
+        assert result.ok and "keyboard" in result.detail, result.detail
+        assert page.url.endswith("#main") and time.monotonic() - started < 3
+        shop = await act.click(page.get_by_role("link", name="Shop"))
+        assert shop.ok and shop.detail == "clicked" and page.url.endswith("#nav")
+
+    run(body, SKIP_LINK_PAGE)

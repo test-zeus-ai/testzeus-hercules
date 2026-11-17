@@ -33,7 +33,7 @@ from typing import Any, Callable, Literal, Mapping
 from urllib.parse import urlsplit
 
 from testzeus_hercules.act import api_assert, api_schema, jsonpath
-from testzeus_hercules.act.api import HttpRequest, HttpResponse, auth_headers, exchange_record, send
+from testzeus_hercules.act.api import HttpRequest, HttpResponse, api_url, auth_headers, exchange_record, send
 from testzeus_hercules.act.files import PathConfinementError, confine
 from testzeus_hercules.act.redact import REDACTED, is_secret_name, redact_url, redact_value
 from testzeus_hercules.act.sql import MAX_ROWS, SqlResult, select
@@ -240,7 +240,7 @@ class ServiceSession:
             raise _StepFailure("error", f"only http and https URLs can be requested (got {scheme}:)", "InvalidRequest")
         if not self.base_url:
             raise _StepFailure("error", f"the relative path {url!r} needs the case's environment.base_url (or --base-url)", "InvalidRequest")
-        return self.base_url.rstrip("/") + "/" + url.lstrip("/")
+        return api_url(self.base_url, url)
 
     def _request(self, call: ApiCall) -> HttpRequest:
         headers = [(self._text(name, "headers"), self._text(value, "headers")) for name, value in call.headers.items()]

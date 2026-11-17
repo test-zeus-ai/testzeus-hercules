@@ -458,6 +458,18 @@ class CaseSource(_Model):
     files_changed: list[NonEmpty] = Field(default_factory=list)
 
 
+_SAVES_AS = re.compile(
+    r"\b(?:save|saves|store|stores|remember|remembers|keep|keeps|capture|captures)\b[^\n]*?\bas\s+(?:\"|\u201c)?\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}|"
+    r"\b(?:save|saves|store|stores|remember|remembers|keep|keeps|capture|captures)\b[^\n]*?\bas\s+(?:\"|\u201c)([A-Za-z_][A-Za-z0-9_]*)(?:\"|\u201d)",
+    re.IGNORECASE,
+)
+
+
+def saved_names_in(text: str) -> set[str]:
+    """The names a plain-language step says it saves for later steps (``I save the response JSON "$.code" as "order_code"``)."""
+    return {first or second for first, second in _SAVES_AS.findall(text or "")}
+
+
 def placeholder_names_in(text: str) -> list[str]:
     return [raw.strip() for raw in _PLACEHOLDER.findall(text) if _NAME.fullmatch(raw.strip())]
 
@@ -540,6 +552,7 @@ class TestCase(_Model):
             if isinstance(payload, SqlCall) and payload.db is not None and payload.db not in self.test_data:
                 malformed.append(f"steps[{number}].sql.db {payload.db!r} is not a test_data entry; add it with the connection string (a secret reference)")
             saved |= {capture.name for capture in (payload.save if payload is not None else [])}
+            saved |= saved_names_in(step.action)
         if unknown or malformed:
             problems = malformed + (
                 [f"unknown placeholder(s) {', '.join(unknown)}; known names: {', '.join(sorted(known | saved))}; define them in test_data or as variables of the case's environment"] if unknown else []

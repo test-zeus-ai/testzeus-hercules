@@ -222,3 +222,16 @@ def test_the_case_list_names_each_case_environment(tmp_path: Path) -> None:
         client.post("/api/cases", json={"test_case": _case("Open the home page")})
         listed = {entry["name"]: entry["environment"] for entry in client.get("/api/cases").json()["cases"]}
     assert listed == {"sign-in.feature": "shop", "uses-env.json": None}
+
+
+def test_a_step_that_saves_a_value_defines_it_for_later_steps() -> None:
+    from testzeus_hercules.cases.models import TestCase
+
+    def case(*actions: str) -> dict:
+        return {"id": "c", "title": "t", "environment": {"base_url": "http://127.0.0.1:9"}, "steps": [{"action": action} for action in actions]}
+
+    TestCase.model_validate(case('I send a POST request to "/api/orders"', 'I save the response JSON "$.code" as "order_code"', 'I send a GET request to "/api/orders/{{order_code}}"'))
+    with pytest.raises(ValueError, match="unknown placeholder"):
+        TestCase.model_validate(case('I send a GET request to "/api/orders/{{order_code}}"', 'I save the response JSON "$.code" as "order_code"'))
+    with pytest.raises(ValueError, match="unknown placeholder"):
+        TestCase.model_validate(case('I click "Save as draft"', 'I open "/drafts/{{draft}}"'))

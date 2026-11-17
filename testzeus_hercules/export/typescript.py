@@ -79,9 +79,11 @@ function url(path: string): string {
 }
 """,
         "api_url": """
-/** An API address: relative paths are appended to BASE_URL, as the run did. */
+/** An API address: relative paths go under BASE_URL's folder (a page at its end, such as /index.html, is left out), as the run did. */
 function apiUrl(path: string): string {
-  return BASE_URL.replace(/\\/+$/, "") + "/" + path.replace(/^\\/+/, "");
+  const base = new URL(BASE_URL);
+  const folder = /\\.(?:html?|php|aspx?|jsp)$/i.test(base.pathname) ? base.pathname.replace(/[^/]*$/, "") : base.pathname;
+  return base.origin + folder.replace(/\\/+$/, "") + "/" + path.replace(/^\\/+/, "");
 }
 """,
         "env": """

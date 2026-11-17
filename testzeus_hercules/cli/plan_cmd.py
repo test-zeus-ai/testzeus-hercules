@@ -29,7 +29,7 @@ from testzeus_hercules.engine.factory import EngineFactoryError, FactoryOptions,
 from testzeus_hercules.engine.masking import MaskingDecider
 from testzeus_hercules.engine.plan import PlanStore, render_plan
 from testzeus_hercules.engine.planning import PlanOptions, approve_plan, make_plan
-from testzeus_hercules.engine.service_intent import case_hint
+from testzeus_hercules.engine.service_intent import case_kind
 from testzeus_hercules.kernel.paths import HerculesPaths
 from testzeus_hercules.kernel.secrets_store import with_saved_secrets
 from testzeus_hercules.kernel.settings import Settings, SettingsError
@@ -143,7 +143,7 @@ async def _make(case: Any, settings: Settings, env: Mapping[str, str], options: 
             env=env,
             names=sorted(set(protected.test_data) | set(hidden)),
             hidden=sorted(hidden),
-            service=case_hint(protected.tags) is not None,
+            service=case_kind(protected) is not None,
             options=plan_options,
             redact=data.redact,
         )

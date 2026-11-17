@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Route, Router, Switch } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
-import { CasesScreen, DISCARD_PROMPT, caseNameFromParam } from "./Cases";
+import { CasesScreen, DISCARD_PROMPT, caseHeading, caseNameFromParam } from "./Cases";
 
 const LOGIN = `Feature: Login
   Scenario: Sign in
@@ -228,5 +228,14 @@ describe("CasesScreen", () => {
     await waitFor(() => expect(posted).toHaveLength(1));
     expect(posted[0].gherkin).toBe('Feature: Login\n  Scenario: Sign in\n    Given I open "{{url}}"\n');
     expect(editor().value).toContain('Given I open "{{url}}"');
+  });
+});
+
+describe("caseHeading", () => {
+  it("shows the case's title, and the file name only for a case without one", () => {
+    expect(caseHeading("browse-the-catalog.feature", "Browse the catalog, place an order", "feature")).toBe("Browse the catalog, place an order");
+    expect(caseHeading("checkout.json", "  ", "json")).toBe("checkout.json");
+    expect(caseHeading(null, undefined, "feature")).toBe("New Gherkin case");
+    expect(caseHeading(null, null, "json")).toBe("New case");
   });
 });

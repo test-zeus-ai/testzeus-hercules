@@ -421,9 +421,30 @@ async def open_url(page: Page, url: str, *, base_url: str | None = None, timeout
     return result
 
 
+async def _off_the_page(locator: Locator, timeout_ms: int) -> bool:
+    """True when the element lies wholly above or left of the page, where no scrolling reaches it (a skip link that
+    appears only when it has keyboard focus)."""
+    try:
+        box = await locator.bounding_box(timeout=timeout_ms)
+    except PlaywrightError:
+        return False
+    return box is not None and (box["y"] + box["height"] <= 0 or box["x"] + box["width"] <= 0)
+
+
+async def _press_enter(locator: Locator) -> None:
+    await locator.focus()
+    await locator.page.keyboard.press("Enter")
+
+
 async def click(locator: Locator, *, timeout_ms: int = DEFAULT_TIMEOUT_MS) -> ActionResult:
+    """Click the element; one placed off the page until it has focus (a skip link) is activated with the keyboard instead,
+    as a person would reach it."""
     blocked = await _blocked(locator, "click", timeout_ms)
-    return blocked or await _perform(locator.page, "clicked", lambda: locator.click(timeout=timeout_ms, no_wait_after=True), navigation_grace_s=NAVIGATION_START_GRACE_S)
+    if blocked is not None:
+        return blocked
+    if await _off_the_page(locator, timeout_ms):
+        return await _perform(locator.page, "activated with the keyboard (the element is off the page until it has focus)", lambda: _press_enter(locator), navigation_grace_s=NAVIGATION_START_GRACE_S)
+    return await _perform(locator.page, "clicked", lambda: locator.click(timeout=timeout_ms, no_wait_after=True), navigation_grace_s=NAVIGATION_START_GRACE_S)
 
 
 async def fill(locator: Locator, value: str, *, timeout_ms: int = DEFAULT_TIMEOUT_MS, verify: bool = True) -> ActionResult:

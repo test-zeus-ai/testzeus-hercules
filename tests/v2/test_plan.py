@@ -18,7 +18,7 @@ from testzeus_hercules.decide.contract import Decision, NoulAnswer
 from testzeus_hercules.engine.data import protect_case
 from testzeus_hercules.engine.intent import CaseReading, StepIntent
 from testzeus_hercules.engine.lint import lint_plan
-from testzeus_hercules.engine.plan import PlanError, PlanStore, as_run, build_plan, case_hash, check_plan, diff_plans, plan_key, plan_reading, render_plan
+from testzeus_hercules.engine.plan import PlanError, PlanStore, as_run, build_plan, case_hash, check_plan, diff_plans, kept_criteria, plan_key, plan_reading, render_plan
 from testzeus_hercules.engine.planning import PlanOptions, apply_edits, make_plan
 
 from tests.v2.engine_fixtures.fakes import ScriptedInterpreter, clicks, fills, intent, opens, sees
@@ -419,3 +419,5 @@ def test_a_download_keeps_only_the_criteria_its_steps_words_state() -> None:
     )
     download = plan_reading(cached, case).get(1, "action", step)
     assert download is not None and [criterion.origin for criterion in download.criteria] == ["author"], "a plan saved before keeps no inferred criterion either"
+    assert [criterion.origin for criterion in kept_criteria(cached).steps[0].criteria] == ["author"]
+    assert kept_criteria(plan) is plan

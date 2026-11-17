@@ -334,3 +334,21 @@ describe("StartRunDialog environment", () => {
     await waitFor(() => expect(select().value).toBe("staging"));
   });
 });
+
+describe("StartRunDialog option groups", () => {
+  const group = (title: string) => screen.getByText(title, { selector: ".option-group-title" }).closest("details") as HTMLDetailsElement;
+
+  it("starts with quality checks, plan, human in the loop and advanced collapsed", () => {
+    renderDialog();
+    for (const title of ["Quality checks", "Plan", "Human in the loop", "Advanced"]) expect(group(title).open).toBe(false);
+    fireEvent.click(screen.getByText("Quality checks", { selector: ".option-group-title" }));
+    expect(group("Quality checks").open).toBe(true);
+  });
+
+  it("opens a group that already holds a choice and summarises the closed ones", () => {
+    renderRerun("whole");
+    expect(group("Quality checks").open).toBe(true);
+    expect(group("Human in the loop").open).toBe(true);
+    expect(group("Plan").open).toBe(false);
+  });
+});

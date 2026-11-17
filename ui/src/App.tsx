@@ -7,6 +7,7 @@ import { TESTZEUS_SITE, withUtm } from "./lib/links";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Icon, type IconName } from "./components/Icon";
 import { api, UNAUTHORIZED_EVENT } from "./lib/api";
+import { useFont } from "./lib/font";
 import { useTheme } from "./lib/theme";
 import type { Health } from "./lib/types";
 import { CasesScreen } from "./screens/Cases";
@@ -14,6 +15,7 @@ import { EnvironmentsScreen } from "./screens/Environments";
 import { ExploreScreen } from "./screens/Explore";
 import { ExploreSessionScreen } from "./screens/ExploreSession";
 import { IntegrationsScreen } from "./screens/Integrations";
+import { SettingsScreen } from "./screens/Settings";
 import { ModelsScreen } from "./screens/Models";
 import { RunDetailScreen } from "./screens/RunDetail";
 import { RunsScreen } from "./screens/Runs";
@@ -27,8 +29,25 @@ const NAV: Array<{ href: string; label: string; icon: IconName; match: (path: st
   { href: "/integrations", label: "Integrations", icon: "cloud", match: (path) => path.startsWith("/integrations") },
 ];
 
-const THEME_LABEL = { system: "Theme: system", light: "Theme: light", dark: "Theme: dark" } as const;
-const THEME_ICON = { system: "auto", light: "sun", dark: "moon" } as const;
+const SIDEBAR_KEY = "hercules.sidebar.collapsed";
+
+function readCollapsed(): boolean {
+  try {
+    return window.localStorage.getItem(SIDEBAR_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeCollapsed(value: boolean): void {
+  try {
+    if (value) window.localStorage.setItem(SIDEBAR_KEY, "1");
+    else window.localStorage.removeItem(SIDEBAR_KEY);
+  } catch {
+    return;
+  }
+}
+
 
 function SignedOut() {
   return (
@@ -54,7 +73,22 @@ function SignedOut() {
 
 export function App() {
   const [location] = useLocation();
-  const [theme, cycleTheme] = useTheme();
+  useTheme();
+  useFont();
+  const [collapsed, setCollapsed] = useState(readCollapsed);
+  const [animating, setAnimating] = useState(false);
+  useEffect(() => {
+    if (!animating) return undefined;
+    const timer = window.setTimeout(() => setAnimating(false), 320);
+    return () => window.clearTimeout(timer);
+  }, [animating, collapsed]);
+  const toggleSidebar = () => {
+    setAnimating(true);
+    setCollapsed((value) => {
+      writeCollapsed(!value);
+      return !value;
+    });
+  };
   const [signedOut, setSignedOut] = useState(false);
   const health = useQuery({ queryKey: ["health"], queryFn: () => api<Health>("/api/health"), refetchInterval: 15000 });
 
@@ -68,11 +102,14 @@ export function App() {
   const active = (queue.running ?? 0) + (queue.queued ?? 0);
 
   return (
-    <div className="shell">
+    <div className={`shell${collapsed ? " shell-collapsed" : ""}${animating ? " shell-animating" : ""}`}>
       <a className="skip-link" href="#main">
         Skip to content
       </a>
       <aside className="sidebar">
+        <button type="button" className="sidebar-toggle" onClick={toggleSidebar} aria-expanded={!collapsed} aria-label={collapsed ? "Expand the sidebar" : "Collapse the sidebar"} title={collapsed ? "Expand" : "Collapse"}>
+          <Icon name="chevron" size={14} />
+        </button>
         <Link href="/" className="brand" aria-label="Hercules, a QA engine by TestZeus: runs">
           <BrandLockup />
         </Link>
@@ -82,7 +119,7 @@ export function App() {
               const current = item.match(location);
               return (
                 <li key={item.href}>
-                  <Link href={item.href} className={`nav-link${current ? " nav-current" : ""}`} aria-current={current ? "page" : undefined}>
+                  <Link href={item.href} className={`nav-link${current ? " nav-current" : ""}`} aria-current={current ? "page" : undefined} title={collapsed ? item.label : undefined}>
                     <Icon name={item.icon} size={17} />
                     <span className="nav-label">{item.label}</span>
                     {item.beta ? <span className="nav-beta">Beta</span> : null}
@@ -95,10 +132,15 @@ export function App() {
         </nav>
         <div className="sidebar-foot">
           <ProPromo />
-          <button type="button" className="icon-button theme-toggle" onClick={cycleTheme} aria-label={`${THEME_LABEL[theme]} (change)`} title={THEME_LABEL[theme]}>
-            <Icon name={THEME_ICON[theme]} size={16} />
-            <span className="nav-label">{theme === "system" ? "System" : theme === "light" ? "Light" : "Dark"}</span>
-          </button>
+          <Link
+            href="/settings"
+            className={`nav-link settings-link${location.startsWith("/settings") ? " nav-current" : ""}`}
+            aria-current={location.startsWith("/settings") ? "page" : undefined}
+            title={collapsed ? "Settings" : undefined}
+          >
+            <Icon name="settings" size={16} />
+            <span className="nav-label">Settings</span>
+          </Link>
           {health.data ? (
             <p className="daemon-info" title={health.data.project_dir}>
               <span className="daemon-dot" aria-hidden="true" /> v{health.data.version}
@@ -125,6 +167,7 @@ export function App() {
             <Route path="/environments" component={EnvironmentsScreen} />
             <Route path="/models" component={ModelsScreen} />
             <Route path="/integrations" component={IntegrationsScreen} />
+            <Route path="/settings" component={SettingsScreen} />
             <Route>
               <section className="page">
                 <h1>Not found</h1>

@@ -30,8 +30,9 @@ export function environmentTrigger(suggestions: Suggestion[]): Trigger {
 }
 const MAX_SHOWN = 8;
 
-export function placeholderSuggestions(env: Pick<Environment, "name" | "secret_names" | "variables"> | undefined, testData: FormDatum[]): Suggestion[] {
+export function placeholderSuggestions(env: Pick<Environment, "name" | "secret_names" | "variables"> | undefined, testData: FormDatum[], saved: string[] = []): Suggestion[] {
   const found = new Map<string, Suggestion>();
+  for (const name of saved) if (!found.has(name)) found.set(name, { name, detail: "saved by a step", kind: "data" });
   for (const row of testData) {
     const name = row.key.trim();
     if (name && !found.has(name)) found.set(name, { name, detail: row.secret ? `test data · secret ${row.value.trim()}` : "test data", kind: "data" });

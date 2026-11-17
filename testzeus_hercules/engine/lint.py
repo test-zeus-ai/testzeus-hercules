@@ -22,7 +22,7 @@ from __future__ import annotations
 import re
 from typing import Any, Iterable, Mapping
 
-from testzeus_hercules.cases.models import BUILTIN_PLACEHOLDERS, DOWNLOAD_PLACEHOLDERS, SecretRef, TestCase
+from testzeus_hercules.cases.models import BUILTIN_PLACEHOLDERS, DOWNLOAD_PLACEHOLDERS, SecretRef, TestCase, saved_names_in
 from testzeus_hercules.cases.plan import LintFinding, Plan
 
 __all__ = ["fact_findings", "model_findings", "lint_plan"]
@@ -57,6 +57,7 @@ def _saved_names(case: TestCase) -> set[str]:
         payload = step.api or step.sql
         if payload is not None:
             names |= {capture.name for capture in payload.save}
+        names |= saved_names_in(step.action)
     return names
 
 
