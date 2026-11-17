@@ -21,6 +21,7 @@ import type { DebugAction } from "../lib/control";
 import { mergeResult, orderedSteps, stepLabel, type ApprovalRequest, type PlannedStep, type TimelineStep } from "../lib/timeline";
 import { FINAL_STATUSES, type ApprovalView, type CaseEntry, type CloudRun, type DecisionView, type RerunScope, type RunView, type TestCase } from "../lib/types";
 import { useRunTimeline } from "../lib/useRunTimeline";
+import { pathUrl } from "../lib/caseTree";
 import { isCaseList, isRunCase, isRunView } from "../lib/guards";
 import type { PlanView } from "../lib/plan";
 
@@ -298,7 +299,7 @@ export function RunDetailScreen({ runId }: { runId: string }) {
         </div>
         <div className="run-actions">
           {savedCase ? (
-            <Link href={`/cases/${encodeURIComponent(savedCase.name)}`} className="button" title={`Edit ${savedCase.name}`}>
+            <Link href={`/cases/${pathUrl(savedCase.name)}`} className="button" title={`Edit ${savedCase.name}`}>
               <Icon name="cases" size={13} /> Edit case
             </Link>
           ) : null}

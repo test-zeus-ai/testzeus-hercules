@@ -163,7 +163,7 @@ export function App() {
             <Route path="/explore" component={ExploreScreen} />
             <Route path="/explore/:id">{(params) => <ExploreSessionScreen key={params.id} sessionId={params.id} />}</Route>
             <Route path="/cases">{() => <CasesScreen />}</Route>
-            <Route path="/cases/:name">{(params) => <CasesScreen selected={params.name} />}</Route>
+            <Route path="/cases/*">{(params) => <CasesScreen selected={params["*"]} />}</Route>
             <Route path="/environments" component={EnvironmentsScreen} />
             <Route path="/models" component={ModelsScreen} />
             <Route path="/integrations" component={IntegrationsScreen} />

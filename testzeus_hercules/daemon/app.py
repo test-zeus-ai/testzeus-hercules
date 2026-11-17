@@ -25,6 +25,7 @@ import getpass
 import json
 import os
 import platform
+import secrets
 import shutil
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -35,6 +36,7 @@ from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.requests import Request
 from starlette.responses import FileResponse, JSONResponse, Response, StreamingResponse
+from starlette.convertors import Convertor, register_url_convertor
 from starlette.routing import Route, WebSocketRoute
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
@@ -63,17 +65,23 @@ from testzeus_hercules.daemon.models import (
     SETTING_NAMES,
     ApprovalRequest,
     ApprovalView,
+    BatchSkip,
     CaseSave,
+    CasesMove,
     CaseValidate,
     ControlRequest,
     Environment,
     EnvironmentSave,
     ExportView,
+    FolderCreate,
+    FolderUpdate,
     InputRequest,
     PauseView,
     PlanCreate,
     PlanView,
     RerunRequest,
+    RunBatchCreate,
+    RunBatchCreated,
     RunCreate,
     RunCreated,
     RunSettings,
@@ -152,6 +160,8 @@ class Daemon:
             parent_run_id=record.get("parent_run_id"),
             started_by=_started_by(record),
             agent=(record.get("source") or {}).get("agent") if _started_by(record) == "agent" else None,
+            batch=(record.get("source") or {}).get("batch"),
+            folder=(record.get("source") or {}).get("folder"),
             worker_pid=record.get("worker_pid"),
             last_seq=self.store.last_seq(run_id),
             mode=options.get("mode"),
@@ -322,13 +332,54 @@ async def create_run(request: Request, daemon: Daemon) -> Response:
     return _created(daemon, record)
 
 
+def new_batch_id() -> str:
+    return f"b_{datetime.now(timezone.utc):%Y%m%d_%H%M%S}_{secrets.token_hex(3)}"
+
+
+async def create_batch(request: Request, daemon: Daemon) -> Response:
+    raw = await _body(request)
+    paths, project = daemon.config.paths, daemon.config.settings.project_dir
+    with placeholder_names(_chosen_environment_names(daemon, raw)):
+        body = _parse(RunBatchCreate, raw)
+        try:
+            entries = case_files.cases_in_folder(paths.cases_dir, project, body.folder, subfolders=body.subfolders)
+        except FileNotFoundError:
+            raise ApiError(404, "folder not found") from None
+        except case_files.CaseError as exc:
+            raise ApiError(422, str(exc)) from None
+        batch, origin = new_batch_id(), run_origin(request)
+        runs: list[RunCreated] = []
+        skipped: list[BatchSkip] = []
+        for entry in entries:
+            if not entry["valid"]:
+                skipped.append(BatchSkip(name=entry["name"], reason=f"does not load: {entry.get('error')}"))
+                continue
+            if entry.get("status") == "draft":
+                skipped.append(BatchSkip(name=entry["name"], reason="a draft: review its steps and mark it ready to run it with the folder"))
+                continue
+            try:
+                case = case_files.load_case_file(project / entry["path"])
+                case = case_files.apply_environment(case, paths.envs_dir, environment=body.environment, base_url=body.base_url)
+            except case_files.CaseError as exc:
+                skipped.append(BatchSkip(name=entry["name"], reason=str(exc)))
+                continue
+            source = {"environment": body.environment, "base_url": body.base_url, "kind": "case_path", "path": entry["path"], "batch": batch, "folder": body.folder, **origin}
+            record = daemon.runs.submit(case, options=body.run_options(), source=source)
+            runs.append(RunCreated(run_id=record["id"], status=record["status"], case_id=record.get("case_id"), ui_url=daemon.ui_url(record["id"])))
+    if not entries:
+        raise ApiError(422, f"{body.folder or 'the top level'} has no saved cases")
+    created = RunBatchCreated(batch=batch, folder=body.folder, runs=runs, skipped=skipped)
+    return JSONResponse(created.model_dump(mode="json"), status_code=201 if runs else 200)
+
+
 async def list_runs(request: Request, daemon: Daemon) -> Response:
     status = request.query_params.get("status")
     if status is not None and status not in ALL_STATUSES:
         raise ApiError(422, f"status must be one of {', '.join(sorted(ALL_STATUSES))}")
     limit = _query_number(request, "limit", int, default=50, low=1, high=MAX_LIST)
     with_result = request.query_params.get("with_result", "").lower() in ("1", "true", "yes")
-    records = daemon.store.list_runs(status=status, limit=limit)
+    batch = request.query_params.get("batch") or None
+    records = daemon.store.list_runs(status=status, limit=limit, batch=batch)
     return JSONResponse({"runs": [daemon.view(record, with_result=with_result) for record in records]})
 
 
@@ -738,9 +789,31 @@ async def case_plan(request: Request, daemon: Daemon) -> Response:
 # --------------------------------------------------------------------------- cases and environments
 
 
+class _CasePath(Convertor[str]):
+    regex = r"[^/].*?\.(?:json|feature)"
+
+    def convert(self, value: str) -> str:
+        return value
+
+    def to_string(self, value: str) -> str:
+        return value
+
+
+register_url_convertor("casepath", _CasePath())
+
+
+def _case_error(exc: Exception) -> ApiError:
+    if isinstance(exc, FileNotFoundError):
+        return ApiError(404, f"not found: {exc.args[0]}" if exc.args else "not found")
+    if isinstance(exc, case_files.CaseExists):
+        return ApiError(409, str(exc))
+    return ApiError(422, str(exc))
+
+
 async def list_cases(request: Request, daemon: Daemon) -> Response:
     paths = daemon.config.paths
-    return JSONResponse({"cases": case_files.list_cases(paths.cases_dir, daemon.config.settings.project_dir)})
+    folders = case_files.list_folders(paths.cases_dir)
+    return JSONResponse({"cases": case_files.list_cases(paths.cases_dir, daemon.config.settings.project_dir, folders), "folders": folders})
 
 
 async def get_case(request: Request, daemon: Daemon) -> Response:
@@ -754,7 +827,8 @@ async def get_case(request: Request, daemon: Daemon) -> Response:
         source = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         source = None
-    return JSONResponse({"name": path.name, "kind": path.suffix.lstrip("."), "source": source, "test_case": case_files.case_json(case)})
+    name = case_files.case_name(daemon.config.paths.cases_dir, path)
+    return JSONResponse({"name": name, "folder": name.rpartition("/")[0], "kind": path.suffix.lstrip("."), "source": source, "test_case": case_files.case_json(case)})
 
 
 async def validate_case(request: Request, daemon: Daemon) -> Response:
@@ -775,13 +849,13 @@ async def validate_case(request: Request, daemon: Daemon) -> Response:
 async def save_case(request: Request, daemon: Daemon) -> Response:
     body = _parse(CaseSave, await _body(request))
     try:
-        path, case = case_files.save_case(daemon.config.paths.cases_dir, test_case=body.test_case, gherkin=body.gherkin, overwrite=body.overwrite, test_data=body.test_data)
+        path, case = case_files.save_case(daemon.config.paths.cases_dir, test_case=body.test_case, gherkin=body.gherkin, overwrite=body.overwrite, test_data=body.test_data, folder=body.folder)
     except case_files.CaseExists as exc:
         raise ApiError(409, str(exc)) from None
     except case_files.CaseError as exc:
         raise ApiError(422, str(exc)) from None
     relative = path.relative_to(daemon.config.settings.project_dir).as_posix()
-    return JSONResponse({"name": path.name, "path": relative, "id": case.id}, status_code=201)
+    return JSONResponse({"name": case_files.case_name(daemon.config.paths.cases_dir, path), "path": relative, "id": case.id}, status_code=201)
 
 
 async def delete_case(request: Request, daemon: Daemon) -> Response:
@@ -791,7 +865,49 @@ async def delete_case(request: Request, daemon: Daemon) -> Response:
         raise ApiError(404, "case not found") from None
     except case_files.CaseError as exc:
         raise ApiError(422, str(exc)) from None
-    return JSONResponse({"name": path.name, "removed": True})
+    return JSONResponse({"name": case_files.case_name(daemon.config.paths.cases_dir, path), "removed": True})
+
+
+async def move_cases(request: Request, daemon: Daemon) -> Response:
+    body = _parse(CasesMove, await _body(request))
+    try:
+        moved = case_files.move_cases(daemon.config.paths.cases_dir, body.names, body.folder)
+    except (FileNotFoundError, case_files.CaseError) as exc:
+        raise _case_error(exc) from None
+    return JSONResponse({"folder": body.folder, "names": moved})
+
+
+async def create_folder(request: Request, daemon: Daemon) -> Response:
+    body = _parse(FolderCreate, await _body(request))
+    try:
+        folder = case_files.create_folder(daemon.config.paths.cases_dir, body.parent, body.name)
+    except (FileNotFoundError, case_files.CaseError) as exc:
+        raise _case_error(exc) from None
+    return JSONResponse({"folder": folder}, status_code=201)
+
+
+async def update_folder(request: Request, daemon: Daemon) -> Response:
+    body = _parse(FolderUpdate, await _body(request))
+    folder = request.path_params["folder"]
+    try:
+        if body.name is not None:
+            moved = case_files.rename_folder(daemon.config.paths.cases_dir, folder, body.name)
+        else:
+            moved = case_files.move_folder(daemon.config.paths.cases_dir, folder, body.parent or "")
+    except (FileNotFoundError, case_files.CaseError) as exc:
+        raise _case_error(exc) from None
+    return JSONResponse({"folder": moved, "was": folder})
+
+
+async def delete_folder(request: Request, daemon: Daemon) -> Response:
+    mode = request.query_params.get("mode", "move_up")
+    if mode not in ("move_up", "delete_cases"):
+        raise ApiError(422, "mode must be move_up or delete_cases")
+    try:
+        result = case_files.delete_folder(daemon.config.paths.cases_dir, daemon.config.settings.project_dir, request.path_params["folder"], mode)  # type: ignore[arg-type]
+    except (FileNotFoundError, case_files.CaseError) as exc:
+        raise _case_error(exc) from None
+    return JSONResponse(result)
 
 
 async def delete_environment(request: Request, daemon: Daemon) -> Response:
@@ -910,6 +1026,7 @@ def create_app(config: DaemonConfig) -> Starlette:
         Route("/api/models", _endpoint(models), methods=["GET"]),
         Route("/api/runs", _endpoint(list_runs), methods=["GET"]),
         Route("/api/runs", _endpoint(create_run), methods=["POST"]),
+        Route("/api/runs/batch", _endpoint(create_batch), methods=["POST"]),
         Route("/api/runs/{run_id}", _endpoint(get_run), methods=["GET"]),
         Route("/api/runs/{run_id}", _endpoint(delete_run), methods=["DELETE"]),
         Route("/api/runs/{run_id}/events", _endpoint(run_events), methods=["GET"]),
@@ -945,12 +1062,16 @@ def create_app(config: DaemonConfig) -> Starlette:
         Route("/api/cases", _endpoint(list_cases), methods=["GET"]),
         Route("/api/cases", _endpoint(save_case), methods=["POST"]),
         Route("/api/cases/validate", _endpoint(validate_case), methods=["POST"]),
-        Route("/api/cases/{name}", _endpoint(get_case), methods=["GET"]),
-        Route("/api/cases/{name}", _endpoint(delete_case), methods=["DELETE"]),
-        Route("/api/cases/{name}/plan", _endpoint(case_plan), methods=["GET"]),
-        Route("/api/cases/{name}/files", _endpoint(files_api.list_files), methods=["GET"]),
-        Route("/api/cases/{name}/files/{filename}", _endpoint(files_api.put_file), methods=["PUT"]),
-        Route("/api/cases/{name}/files/{filename}", _endpoint(files_api.delete_file), methods=["DELETE"]),
+        Route("/api/cases/move", _endpoint(move_cases), methods=["POST"]),
+        Route("/api/cases/{name:casepath}/plan", _endpoint(case_plan), methods=["GET"]),
+        Route("/api/cases/{name:casepath}/files", _endpoint(files_api.list_files), methods=["GET"]),
+        Route("/api/cases/{name:casepath}/files/{filename}", _endpoint(files_api.put_file), methods=["PUT"]),
+        Route("/api/cases/{name:casepath}/files/{filename}", _endpoint(files_api.delete_file), methods=["DELETE"]),
+        Route("/api/cases/{name:casepath}", _endpoint(get_case), methods=["GET"]),
+        Route("/api/cases/{name:casepath}", _endpoint(delete_case), methods=["DELETE"]),
+        Route("/api/folders", _endpoint(create_folder), methods=["POST"]),
+        Route("/api/folders/{folder:path}", _endpoint(update_folder), methods=["PATCH"]),
+        Route("/api/folders/{folder:path}", _endpoint(delete_folder), methods=["DELETE"]),
         Route("/api/environments", _endpoint(list_environments), methods=["GET"]),
         Route("/api/devices", _endpoint(list_devices), methods=["GET"]),
         Route("/api/environments", _endpoint(save_environment), methods=["POST"]),

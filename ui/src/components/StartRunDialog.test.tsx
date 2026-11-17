@@ -352,3 +352,39 @@ describe("StartRunDialog option groups", () => {
     expect(group("Plan").open).toBe(false);
   });
 });
+
+describe("StartRunDialog folder runs", () => {
+  it("runs every ready case of a folder as one batch", async () => {
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === "/api/runs/batch" && init?.method === "POST") return respond({ batch: "b_1", folder: "Checkout", runs: [{ run_id: "r_a" }, { run_id: "r_b" }], skipped: [] }, 201);
+      if (url === "/api/cases")
+        return respond({
+          cases: [
+            { name: "Checkout/a.json", folder: "Checkout", path: ".hercules/cases/Checkout/a.json", kind: "json", valid: true, status: "ready" },
+            { name: "Checkout/Payments/b.json", folder: "Checkout/Payments", path: ".hercules/cases/Checkout/Payments/b.json", kind: "json", valid: true, status: "ready" },
+            { name: "Checkout/c.json", folder: "Checkout", path: ".hercules/cases/Checkout/c.json", kind: "json", valid: true, status: "draft" },
+          ],
+          folders: ["Checkout", "Checkout/Payments"],
+        });
+      if (url === "/api/environments") return respond({ environments: [] });
+      if (url === "/api/models") return respond(MODELS);
+      return respond({ error: "not found" }, 404);
+    });
+    const onStarted = vi.fn();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <StartRunDialog onClose={() => undefined} onStarted={onStarted} initial={{ source: "folder", folder: "Checkout" }} />
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByRole("button", { name: "Run 2 cases" })).toBeTruthy();
+    expect(screen.getByText(/1 draft or broken case is skipped/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Include subfolders" }));
+    expect(screen.getByRole("button", { name: "Run 1 case" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Include subfolders" }));
+    fireEvent.click(screen.getByRole("button", { name: "Run 2 cases" }));
+    await waitFor(() => expect(onStarted).toHaveBeenCalledWith("r_a", "b_1"));
+    const call = fetchMock.mock.calls.find(([url]) => url === "/api/runs/batch");
+    expect(JSON.parse((call![1] as RequestInit).body as string)).toMatchObject({ folder: "Checkout", subfolders: true, mode: "auto" });
+  });
+});

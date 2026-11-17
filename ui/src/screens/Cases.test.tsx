@@ -54,7 +54,7 @@ function renderAt(path: string) {
       <Router hook={location.hook}>
         <Switch>
           <Route path="/cases">{() => <CasesScreen />}</Route>
-          <Route path="/cases/:name">{(params) => <CasesScreen selected={params.name} />}</Route>
+          <Route path="/cases/*">{(params) => <CasesScreen selected={params["*"]} />}</Route>
         </Switch>
       </Router>
     </QueryClientProvider>,
@@ -153,7 +153,7 @@ describe("CasesScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: /save/i }));
 
     await waitFor(() => expect(posted).toHaveLength(1));
-    expect(posted[0]).toEqual({ gherkin: LOGIN, test_data: { user: "ana", password: { secret: "SHOP_PASSWORD" } }, overwrite: true });
+    expect(posted[0]).toEqual({ gherkin: LOGIN, test_data: { user: "ana", password: { secret: "SHOP_PASSWORD" } }, overwrite: true, folder: "" });
   });
 
   it("deletes the open case after asking", async () => {
@@ -178,11 +178,11 @@ describe("CasesScreen", () => {
     expect(await screen.findByText("Deleted login.feature")).toBeTruthy();
   });
 
-  it("lists saved cases by title and step count, with the file name only as a hint", async () => {
+  it("lists saved cases in the tree by title, with the file name on hover", async () => {
     renderAt("/cases");
-    const item = await screen.findByRole("link", { name: /Login/ });
-    expect(item.textContent).toBe("Login1 step");
+    const item = await screen.findByRole("link", { name: "Login" });
     expect(item.getAttribute("title")).toBe("login.feature");
+    expect(item.getAttribute("href")).toBe("/cases/login.feature");
   });
 
   it("explains @env tags and adds one for a saved environment", async () => {

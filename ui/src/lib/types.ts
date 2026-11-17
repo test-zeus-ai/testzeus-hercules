@@ -242,6 +242,8 @@ export interface RunView {
   parent_run_id?: string | null;
   started_by?: "daemon" | "agent" | null;
   agent?: string | null;
+  batch?: string | null;
+  folder?: string | null;
   worker_pid?: number | null;
   last_seq: number;
   mode?: string | null;
@@ -305,6 +307,7 @@ export interface TestCase {
 
 export interface CaseEntry {
   name: string;
+  folder?: string;
   path: string;
   kind: "json" | "feature";
   valid: boolean;
@@ -316,8 +319,14 @@ export interface CaseEntry {
   environment?: string | null;
 }
 
+export interface CaseListing {
+  cases: CaseEntry[];
+  folders?: string[];
+}
+
 export interface SavedCase {
   name: string;
+  folder?: string;
   kind: "json" | "feature";
   source: string | null;
   test_case: TestCase;

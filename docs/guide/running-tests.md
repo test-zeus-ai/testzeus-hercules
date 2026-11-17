@@ -220,6 +220,18 @@ case's plan without running it, `GET /api/runs/{run_id}/plan` returns the plan a
 `GET /api/runs/{run_id}/plan/diff` compares it with another run's (`against`) or with the
 run's amendments, and `GET /api/cases/{name}/plan` returns the latest plan of a saved case.
 
+### Running a folder
+
+**Run folder** (a folder's **•••** menu on the Cases screen, or **Folder** in the start-run
+dialog) queues one run per case in the folder, its subfolders included unless you clear
+**Include subfolders**. Drafts and cases that do not load are skipped. The runs share a
+batch: the Runs screen opens filtered to it (`/?batch=<id>`). Each case runs in its own
+environment unless you pick one for all of them.
+
+Over HTTP: `POST /api/runs/batch` with `folder`, `subfolders` and the usual run options
+returns the batch id, the queued runs and the skipped cases; `GET /api/runs?batch=<id>`
+lists the batch's runs.
+
 ## The tester UI: `hercules ui`
 
 With the daemon running:
@@ -239,8 +251,8 @@ The UI has four sections:
 
 - **Runs**: recent runs; start a run from a saved case, pasted Gherkin, or plain-language
   steps (a draft).
-- **Cases**: browse, write and validate cases in `.hercules/cases/`, as a form or as
-  Gherkin.
+- **Cases**: browse, write and validate cases in `.hercules/cases/` and its
+  [folders](writing-tests.md#folders), as a form or as Gherkin.
 - **Environments**: saved environments (base URL, viewport, browser, expected secret
   names).
 - **Models**: the model server settings, the egress policy, and whether the hybrid-mode

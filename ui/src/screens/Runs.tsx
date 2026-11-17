@@ -44,6 +44,7 @@ function useFilters() {
   const status = (FILTERS.some((item) => item.id === params.get("status")) ? params.get("status") : "all") as FilterId;
   const query = params.get("q") ?? "";
   const mode = params.get("mode") ?? "any";
+  const batch = params.get("batch") ?? "";
   const set = (key: string, value: string, fallback: string) => {
     const next = new URLSearchParams(search);
     if (value === fallback) next.delete(key);
@@ -51,7 +52,7 @@ function useFilters() {
     const text = next.toString();
     navigate(`${location}${text ? `?${text}` : ""}`, { replace: true });
   };
-  return { status, query, mode, setStatus: (value: FilterId) => set("status", value, "all"), setQuery: (value: string) => set("q", value, ""), setMode: (value: string) => set("mode", value, "any") };
+  return { status, query, mode, batch, clearBatch: () => set("batch", "", ""), setStatus: (value: FilterId) => set("status", value, "all"), setQuery: (value: string) => set("q", value, ""), setMode: (value: string) => set("mode", value, "any") };
 }
 
 export function RunsScreen() {
@@ -71,7 +72,9 @@ export function RunsScreen() {
     onSuccess: () => void client.invalidateQueries({ queryKey: ["runs"] }),
   });
 
-  const all = runs.data?.runs ?? [];
+  const loaded = runs.data?.runs ?? [];
+  const all = useMemo(() => (filters.batch ? loaded.filter((run) => run.batch === filters.batch) : loaded), [loaded, filters.batch]);
+  const batchFolder = filters.batch ? (all.find((run) => run.folder !== undefined && run.folder !== null)?.folder ?? null) : null;
   const visible = useMemo(() => {
     const needle = filters.query.trim().toLowerCase();
     return all.filter((run) => {
@@ -119,7 +122,18 @@ export function RunsScreen() {
         </label>
       </div>
 
-      {all.length >= RUN_LIMIT ? (
+      {filters.batch ? (
+        <p className="callout callout-note batch-note" role="note">
+          <span>
+            Showing the {all.length} {all.length === 1 ? "run" : "runs"} of one folder run{batchFolder !== null ? <> of <strong>{batchFolder || "all cases"}</strong></> : null}.
+          </span>
+          <button type="button" className="link-button" onClick={filters.clearBatch}>
+            Show all runs
+          </button>
+        </p>
+      ) : null}
+
+      {loaded.length >= RUN_LIMIT ? (
         <p className="callout callout-note" role="note">
           Showing the newest {RUN_LIMIT} runs; filters and counts cover these only. Older runs stay in <code>.hercules/runs</code> and open at <code>/runs/&lt;run id&gt;</code>.
         </p>
@@ -188,7 +202,7 @@ export function RunsScreen() {
                         {run.title ?? run.case_id ?? run.run_id}
                       </Link>
                       <span className="run-meta mono">
-                        {run.case_id} · {run.run_id}
+                        {run.run_id}
                         {run.parent_run_id ? " · re-run" : ""}
                         {run.started_by === "agent" ? ` · via ${agentName(run.agent)}` : ""}
                       </span>
@@ -223,15 +237,6 @@ export function RunsScreen() {
                       </button>
                       <button
                         type="button"
-                        className="button button-small button-ghost"
-                        disabled={!final || run.status === "passed"}
-                        onClick={() => setRerunOf({ run, scope: "failed_only" })}
-                        title="Re-run only if this run did not pass"
-                      >
-                        Failed only
-                      </button>
-                      <button
-                        type="button"
                         className="button button-small button-ghost button-danger-text"
                         disabled={!final || drop.isPending}
                         onClick={() => {
@@ -258,11 +263,11 @@ export function RunsScreen() {
             setStarting(false);
             setRerunOf(null);
           }}
-          onStarted={(runId) => {
+          onStarted={(runId, batch) => {
             setStarting(false);
             setRerunOf(null);
             void client.invalidateQueries({ queryKey: ["runs"] });
-            navigate(`/runs/${runId}`);
+            navigate(batch ? `/?batch=${encodeURIComponent(batch)}` : `/runs/${runId}`);
           }}
         />
       ) : null}

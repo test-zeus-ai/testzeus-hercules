@@ -4,6 +4,7 @@ import { Link, useLocation, useSearch } from "wouter";
 import { Field } from "../components/Field";
 import { Icon } from "../components/Icon";
 import { Modal } from "../components/Modal";
+import { OptionGroup } from "../components/RunOptionsFields";
 import { api, post } from "../lib/api";
 import {
   CASE_DECISIONS,
@@ -343,8 +344,7 @@ export function StartExploreDialog({ onClose, onStarted, initial }: { onClose: (
             <textarea rows={2} value={form.changed} onChange={(event) => set("changed", event.target.value)} />
           </Field>
         ) : null}
-        <details className="advanced">
-          <summary>Levers, limits and scope</summary>
+        <OptionGroup title="Levers, limits and scope" summary={null}>
           <fieldset className="field">
             <legend>Levers</legend>
             <div className="field-row">
@@ -371,7 +371,7 @@ export function StartExploreDialog({ onClose, onStarted, initial }: { onClose: (
           <label className="field-check">
             <input type="checkbox" checked={form.production_ok} onChange={(event) => set("production_ok", event.target.checked)} />I own this environment (explore a host that does not look like a test one)
           </label>
-        </details>
+        </OptionGroup>
 
         <div className="explore-estimate" role="status" aria-live="polite">
           {"error" in built ? (

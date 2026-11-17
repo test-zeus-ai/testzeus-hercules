@@ -1,7 +1,8 @@
 """Cases and environments on disk for the daemon: load, compile, save and list, with every path confined.
 
-Cases live in ``<project>/.hercules/cases`` (``<id>.json`` TestCases and ``.feature``
-files, each with its test data in ``<name>.data.json``), environments in ``<project>/.hercules/envs/<name>.json``.
+Cases live in ``<project>/.hercules/cases`` and its folders, up to 8 deep (``<id>.json`` TestCases and ``.feature``
+files, each with its test data in ``<name>.data.json``); a case's name is its path there (``Checkout/login.feature``) and
+its id is unique across folders. Environments live in ``<project>/.hercules/envs/<name>.json``.
 """
 
 from __future__ import annotations
@@ -11,9 +12,10 @@ import os
 import re
 import secrets
 import shutil
+import unicodedata
 from collections.abc import Callable
 from pathlib import Path
-from typing import AbstractSet, Any
+from typing import AbstractSet, Any, Literal
 
 from pydantic import ValidationError
 
@@ -27,7 +29,7 @@ _CASE_NAME = re.compile(r"^[a-z0-9][a-z0-9._-]{0,99}\.(json|feature)$")
 _ENV_NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 _LIST_MARKER = re.compile(r"^\s*(?:[-*•]|\d+[.)])\s+")
 _MAX_FILE_BYTES = 2 * 1024 * 1024
-_MAX_LISTED = 500
+_MAX_LISTED = 1000
 
 
 class CaseError(ValueError):
@@ -142,35 +144,136 @@ def apply_environment(case: TestCase, envs_dir: Path, *, environment: str | None
     return case.model_copy(update={"environment": environment_ref, "test_data": test_data})
 
 
-# --------------------------------------------------------------------------- saved cases
+# --------------------------------------------------------------------------- saved cases and folders
+
+MAX_FOLDER_DEPTH = 8
+MAX_FOLDER_NAME = 120
+_MAX_FOLDERS = 1000
+_FOLDER_FORBIDDEN = re.compile(r'[\\/:*?"<>|\x00-\x1f\x7f]')
+_RESERVED_NAMES = frozenset({"con", "prn", "aux", "nul", *(f"com{n}" for n in range(1, 10)), *(f"lpt{n}" for n in range(1, 10))})
+DeleteMode = Literal["move_up", "delete_cases"]
+
+
+def folder_name_error(name: str) -> str | None:
+    if not name:
+        return "enter a folder name"
+    if len(name) > MAX_FOLDER_NAME:
+        return f"a folder name has at most {MAX_FOLDER_NAME} characters"
+    if _FOLDER_FORBIDDEN.search(name):
+        return 'a folder name cannot contain / \\ : * ? " < > | or control characters'
+    if name.startswith("."):
+        return "a folder name cannot start with a dot"
+    if name != name.strip() or name.endswith("."):
+        return "a folder name cannot start or end with a space, or end with a dot"
+    if name.split(".")[0].lower() in _RESERVED_NAMES:
+        return f"{name} is a reserved name on Windows"
+    return None
+
+
+def _folder_parts(folder: str) -> list[str]:
+    if not folder:
+        return []
+    parts = folder.split("/")
+    if len(parts) > MAX_FOLDER_DEPTH:
+        raise CaseError(f"folders go {MAX_FOLDER_DEPTH} levels deep at most")
+    for part in parts:
+        problem = folder_name_error(part)
+        if problem:
+            raise CaseError(f"invalid folder {folder!r}: {problem}")
+    return parts
+
+
+def folder_dir(cases_dir: Path, folder: str) -> Path:
+    path = cases_dir
+    for part in _folder_parts(folder):
+        path = path / part
+        if path.is_symlink():
+            raise CaseError(f"{folder} is a symbolic link")
+    return path
+
+
+def _existing_folder(cases_dir: Path, folder: str) -> Path:
+    path = folder_dir(cases_dir, folder)
+    if not path.is_dir():
+        raise FileNotFoundError(folder)
+    return path
+
+
+def _parent(folder: str) -> str:
+    return folder.rpartition("/")[0]
+
+
+def _joined(parent: str, name: str) -> str:
+    return f"{parent}/{name}" if parent else name
 
 
 def case_file(cases_dir: Path, name: str) -> Path:
-    if not _CASE_NAME.match(name) or ".." in name:
+    folder, _, file = name.rpartition("/")
+    if not _CASE_NAME.match(file) or ".." in file:
         raise CaseError("invalid case name")
-    return cases_dir / name
+    return folder_dir(cases_dir, folder) / file
 
 
 def is_feature_data(path: Path) -> bool:
     return path.name.endswith(DATA_SUFFIX) and path.with_name(path.name.removesuffix(DATA_SUFFIX) + ".feature").is_file()
 
 
-def list_cases(cases_dir: Path, project_dir: Path) -> list[dict[str, Any]]:
+def list_folders(cases_dir: Path) -> list[str]:
+    found: list[str] = []
+
+    def walk(directory: Path, prefix: str, depth: int) -> None:
+        if depth >= MAX_FOLDER_DEPTH or len(found) >= _MAX_FOLDERS:
+            return
+        try:
+            entries = sorted(directory.iterdir(), key=lambda entry: entry.name.casefold())
+        except OSError:
+            return
+        for entry in entries:
+            if entry.is_symlink() or not entry.is_dir() or folder_name_error(entry.name) or len(found) >= _MAX_FOLDERS:
+                continue
+            found.append(prefix + entry.name)
+            walk(entry, f"{prefix}{entry.name}/", depth + 1)
+
+    if cases_dir.is_dir():
+        walk(cases_dir, "", 0)
+    return found
+
+
+def _case_paths(cases_dir: Path, folder: str) -> list[Path]:
+    directory = folder_dir(cases_dir, folder)
+    if not directory.is_dir():
+        return []
+    return [
+        path
+        for path in sorted(directory.iterdir(), key=lambda entry: entry.name.casefold())
+        if not path.is_symlink() and path.is_file() and path.suffix.lower() in CASE_SUFFIXES and not is_feature_data(path)
+    ]
+
+
+def list_cases(cases_dir: Path, project_dir: Path, folders: list[str] | None = None) -> list[dict[str, Any]]:
     found: list[dict[str, Any]] = []
     if not cases_dir.is_dir():
         return found
-    for path in sorted(cases_dir.iterdir())[:_MAX_LISTED]:
-        if path.is_symlink() or not path.is_file() or path.suffix.lower() not in CASE_SUFFIXES or is_feature_data(path):
-            continue
-        entry: dict[str, Any] = {"name": path.name, "path": _relative(path, project_dir), "kind": path.suffix.lstrip(".")}
-        try:
-            case = load_case_file(path)
-        except CaseError as exc:
-            entry.update(valid=False, error=str(exc))
-        else:
-            entry.update(valid=True, id=case.id, title=case.title, status=case.status, steps=len(case.steps), environment=case.environment.ref)
-        found.append(entry)
+    for folder in ["", *(list_folders(cases_dir) if folders is None else folders)]:
+        for path in _case_paths(cases_dir, folder):
+            if len(found) >= _MAX_LISTED:
+                return found
+            entry: dict[str, Any] = {"name": _joined(folder, path.name), "folder": folder, "path": _relative(path, project_dir), "kind": path.suffix.lstrip(".")}
+            try:
+                case = load_case_file(path)
+            except CaseError as exc:
+                entry.update(valid=False, error=str(exc))
+            else:
+                entry.update(valid=True, id=case.id, title=case.title, status=case.status, steps=len(case.steps), environment=case.environment.ref)
+            found.append(entry)
     return found
+
+
+def _folder_holding(cases_dir: Path, file: str, *, besides: str) -> str | None:
+    for folder in ["", *list_folders(cases_dir)]:
+        if folder != besides and (folder_dir(cases_dir, folder) / file).is_file():
+            return folder
+    return None
 
 
 def read_saved_case(cases_dir: Path, name: str) -> tuple[Path, TestCase]:
@@ -180,19 +283,29 @@ def read_saved_case(cases_dir: Path, name: str) -> tuple[Path, TestCase]:
     return path, load_case_file(path)
 
 
-def save_case(cases_dir: Path, *, test_case: TestCase | None, gherkin: str | None, overwrite: bool, test_data: dict[str, TestDataValue] | None = None) -> tuple[Path, TestCase]:
+def save_case(cases_dir: Path, *, test_case: TestCase | None, gherkin: str | None, overwrite: bool, test_data: dict[str, TestDataValue] | None = None, folder: str = "") -> tuple[Path, TestCase]:
+    directory = folder_dir(cases_dir, folder)
+    if folder and not directory.is_dir():
+        raise CaseError(f"there is no folder {folder}")
     cases_dir.mkdir(parents=True, exist_ok=True)
     if gherkin is not None:
         case = compile_gherkin(gherkin, test_data=test_data)
-        path, data = cases_dir / f"{case.id}.feature", gherkin if gherkin.endswith("\n") else gherkin + "\n"
+        path, data = directory / f"{case.id}.feature", gherkin if gherkin.endswith("\n") else gherkin + "\n"
     else:
         assert test_case is not None
         case = test_case
-        path, data = cases_dir / f"{case.id}.json", case.model_dump_json(indent=2, exclude_none=True) + "\n"
+        path, data = directory / f"{case.id}.json", case.model_dump_json(indent=2, exclude_none=True) + "\n"
+    elsewhere = _folder_holding(cases_dir, path.name, besides=folder)
+    if elsewhere is not None:
+        raise CaseError(f"a case named {path.name} is already in {elsewhere or 'the top level'}: case ids are unique across folders, so give this one another id or open that one")
     _write_new(path, data, overwrite)
     if gherkin is not None:
         _save_feature_data(path, case.test_data)
     return path, case
+
+
+def case_name(cases_dir: Path, path: Path) -> str:
+    return path.relative_to(cases_dir).as_posix()
 
 
 def delete_case(cases_dir: Path, project_dir: Path, name: str) -> Path:
@@ -210,6 +323,124 @@ def delete_case(cases_dir: Path, project_dir: Path, name: str) -> Path:
     if case_id and not any(entry.get("id") == case_id for entry in list_cases(cases_dir, project_dir)):
         _remove_tree(files_dir(project_dir, case_id, "case"))
     return path
+
+
+def move_cases(cases_dir: Path, names: list[str], folder: str) -> list[str]:
+    target = _existing_folder(cases_dir, folder) if folder else cases_dir
+    moves: list[tuple[Path, Path]] = []
+    for name in dict.fromkeys(names):
+        source = case_file(cases_dir, name)
+        if source.is_symlink() or not source.is_file() or is_feature_data(source):
+            raise FileNotFoundError(name)
+        if source.parent == target:
+            continue
+        destination = target / source.name
+        if destination.exists():
+            raise CaseExists(f"{folder or 'the top level'} already has a case named {source.name}")
+        moves.append((source, destination))
+    moved = []
+    for source, destination in moves:
+        os.replace(source, destination)
+        sidecar = data_file(source)
+        if source.suffix == ".feature" and sidecar.is_file() and not sidecar.is_symlink():
+            os.replace(sidecar, data_file(destination))
+        moved.append(case_name(cases_dir, destination))
+    return moved
+
+
+def _sibling_named(directory: Path, name: str, *, besides: Path | None = None) -> Path | None:
+    if not directory.is_dir():
+        return None
+    wanted = unicodedata.normalize("NFC", name).casefold()
+    return next((entry for entry in directory.iterdir() if entry != besides and unicodedata.normalize("NFC", entry.name).casefold() == wanted), None)
+
+
+def _checked_name(raw: str) -> str:
+    name = unicodedata.normalize("NFC", raw).strip()
+    problem = folder_name_error(name)
+    if problem:
+        raise CaseError(problem)
+    return name
+
+
+def create_folder(cases_dir: Path, parent: str, raw_name: str) -> str:
+    name = _checked_name(raw_name)
+    if len(_folder_parts(parent)) + 1 > MAX_FOLDER_DEPTH:
+        raise CaseError(f"folders go {MAX_FOLDER_DEPTH} levels deep at most")
+    directory = _existing_folder(cases_dir, parent) if parent else cases_dir
+    clash = _sibling_named(directory, name)
+    if clash is not None:
+        raise CaseExists(f"{parent or 'the top level'} already has {'a folder' if clash.is_dir() else 'a file'} named {clash.name}")
+    (directory / name).mkdir(parents=True)
+    return _joined(parent, name)
+
+
+def rename_folder(cases_dir: Path, folder: str, raw_name: str) -> str:
+    if not folder:
+        raise CaseError("the top level cannot be renamed")
+    source = _existing_folder(cases_dir, folder)
+    name = _checked_name(raw_name)
+    clash = _sibling_named(source.parent, name, besides=source)
+    if clash is not None:
+        raise CaseExists(f"{_parent(folder) or 'the top level'} already has a folder named {clash.name}")
+    os.rename(source, source.parent / name)
+    return _joined(_parent(folder), name)
+
+
+def _height(cases_dir: Path, folder: str) -> int:
+    below = [other for other in list_folders(cases_dir) if other.startswith(folder + "/")]
+    return 1 + max((other.count("/") - folder.count("/") for other in below), default=0)
+
+
+def move_folder(cases_dir: Path, folder: str, parent: str) -> str:
+    if not folder:
+        raise CaseError("the top level cannot be moved")
+    source = _existing_folder(cases_dir, folder)
+    if parent == folder or parent.startswith(folder + "/"):
+        raise CaseError("a folder cannot go inside itself")
+    if parent == _parent(folder):
+        raise CaseError(f"{folder} is already there")
+    target = _existing_folder(cases_dir, parent) if parent else cases_dir
+    if len(_folder_parts(parent)) + _height(cases_dir, folder) > MAX_FOLDER_DEPTH:
+        raise CaseError(f"folders go {MAX_FOLDER_DEPTH} levels deep at most")
+    clash = _sibling_named(target, source.name)
+    if clash is not None:
+        raise CaseExists(f"{parent or 'the top level'} already has a folder named {clash.name}")
+    os.rename(source, target / source.name)
+    return _joined(parent, source.name)
+
+
+def delete_folder(cases_dir: Path, project_dir: Path, folder: str, mode: DeleteMode = "move_up") -> dict[str, Any]:
+    if not folder:
+        raise CaseError("the top level cannot be deleted")
+    source = _existing_folder(cases_dir, folder)
+    held = [entry for entry in sorted(source.iterdir()) if not entry.name.startswith(".")]
+    if mode == "move_up":
+        target = source.parent
+        clashes = [entry.name for entry in held if _sibling_named(target, entry.name, besides=source) is not None]
+        if clashes:
+            raise CaseExists(f"{_parent(folder) or 'the top level'} already has {', '.join(clashes[:3])}{' and more' if len(clashes) > 3 else ''}; rename or move those first")
+        for entry in held:
+            os.rename(entry, target / entry.name)
+        _remove_tree(source)
+        return {"folder": folder, "mode": mode, "moved": len(held), "deleted": 0}
+    names = [entry["name"] for entry in list_cases(cases_dir, project_dir) if entry["folder"] == folder or entry["folder"].startswith(folder + "/")]
+    keep = {case_file(cases_dir, name) for name in names}
+    keep |= {data_file(path) for path in keep if path.suffix == ".feature"}
+    others = [path for path in source.rglob("*") if path.is_file() and path not in keep and not any(part.startswith(".") for part in path.relative_to(source).parts)]
+    if others:
+        listed = ", ".join(path.relative_to(source).as_posix() for path in others[:3])
+        raise CaseError(f"{folder} also holds files that are not cases ({listed}{' and more' if len(others) > 3 else ''}); move them out first, or keep the cases")
+    for name in names:
+        delete_case(cases_dir, project_dir, name)
+    _remove_tree(source)
+    return {"folder": folder, "mode": mode, "moved": 0, "deleted": len(names)}
+
+
+def cases_in_folder(cases_dir: Path, project_dir: Path, folder: str, *, subfolders: bool) -> list[dict[str, Any]]:
+    if folder:
+        _existing_folder(cases_dir, folder)
+    return [entry for entry in list_cases(cases_dir, project_dir) if entry["folder"] == folder or (subfolders and entry["folder"].startswith(folder + "/" if folder else ""))]
 
 
 def delete_environment(envs_dir: Path, project_dir: Path, name: str) -> bool:

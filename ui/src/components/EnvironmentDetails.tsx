@@ -13,7 +13,21 @@ function shown(value: unknown): string {
   return typeof value === "string" ? value : JSON.stringify(value);
 }
 
-export function EnvironmentDetails({ env, onEdit, onDelete, deleting, error }: { env: Environment; onEdit: () => void; onDelete: () => void; deleting: boolean; error: string | null }) {
+export function EnvironmentDetails({
+  env,
+  onEdit,
+  onDelete,
+  onClose,
+  deleting,
+  error,
+}: {
+  env: Environment;
+  onEdit: () => void;
+  onDelete: () => void;
+  onClose?: () => void;
+  deleting: boolean;
+  error: string | null;
+}) {
   const variables = environmentVariables(env);
   const secrets = secretVariables(variables);
   const status = useQuery({
@@ -58,6 +72,11 @@ export function EnvironmentDetails({ env, onEdit, onDelete, deleting, error }: {
           <button type="button" className="button button-small button-danger" onClick={onDelete} disabled={deleting}>
             Delete environment
           </button>
+          {onClose ? (
+            <button type="button" className="icon-button" onClick={onClose} aria-label="Close" title="Close">
+              <Icon name="cross" size={14} />
+            </button>
+          ) : null}
         </div>
       </div>
       {error ? (

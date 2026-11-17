@@ -4,9 +4,9 @@ A Hercules test case is a JSON file: where the app runs, the data the test uses,
 ordered steps in plain language. You can also write a single Gherkin scenario in a
 `.feature` file.
 
-Save cases in `.hercules/cases/` inside your project. The tester UI lists and edits cases
-there, and the coding-agent setup tells agents to save cases there. `hercules run` accepts
-a case file from any path.
+Save cases in `.hercules/cases/` inside your project, in [folders](#folders) if you like.
+The tester UI lists and edits cases there, and the coding-agent setup tells agents to save
+cases there. `hercules run` accepts a case file from any path.
 
 ## A complete example
 
@@ -465,6 +465,41 @@ of the **Cases** screen, or write it by hand:
 `gherkin` (`POST /api/cases`, `/api/cases/validate`, `/api/runs`, `/api/plans`). TestZeus references
 `[$.environment.<env>.<key>]` and `[$.testdata.<name>.<key>]` are read as `{{key}}`, so
 features copied from TestZeus run unchanged once the environment defines `key`.
+
+## Folders
+
+Group cases in folders: directories under `.hercules/cases/`, up to 8 levels deep.
+
+```text
+.hercules/cases/
+├── Checkout/
+│   ├── Payments/
+│   │   └── card-declined.feature
+│   ├── place-an-order.feature
+│   └── place-an-order.data.json
+└── login-success.json
+```
+
+- A saved case is named by its path there, such as `Checkout/Payments/card-declined.feature`.
+  The UI's address for it is `/cases/Checkout/Payments/card-declined.feature`.
+- A case's id (its file name) is unique across all folders: saving a case whose id another
+  folder already has is refused. Its test data (`<name>.data.json`) and its
+  [files for upload steps](#files-for-upload-steps) follow it when it moves, so it keeps
+  them and its past runs.
+- A folder name has at most 120 characters, does not start with a dot, does not end with a
+  dot or a space, and holds none of `/ \ : * ? " < > |`. Names are unique within a folder,
+  ignoring case. Folders starting with a dot (`.git`) and symbolic links are not listed.
+
+On the **Cases** screen the folders and cases form one tree; click a case to open it. The
+**New** button and each folder's **•••** menu make, rename, move and delete folders, add
+existing cases, start a case in the folder, and run the folder (see
+[Running a folder](running-tests.md#running-a-folder)). Deleting a folder moves what it
+holds into its parent unless you choose to delete its cases too.
+
+Through the HTTP API: `GET /api/cases` lists `folders` and each case's `folder`;
+`POST /api/folders` makes one, `PATCH /api/folders/{folder}` renames (`name`) or moves
+(`parent`) it, `DELETE /api/folders/{folder}?mode=move_up|delete_cases` deletes it,
+`POST /api/cases/move` moves cases, and `POST /api/cases` takes a `folder` to save into.
 
 ## Draft and ready cases
 

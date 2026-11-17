@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { EnvironmentsScreen } from "./Environments";
+import { EnvironmentsScreen, whereOf } from "./Environments";
 
 const fetchMock = vi.fn();
 
@@ -28,6 +28,7 @@ describe("EnvironmentsScreen", () => {
         <EnvironmentsScreen />
       </QueryClientProvider>,
     );
+    await screen.findByLabelText("Name");
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "staging" } });
     fireEvent.change(screen.getByLabelText("Base URL"), { target: { value: "http://localhost:3000" } });
     fireEvent.click(screen.getByRole("button", { name: /save environment/i }));
@@ -38,13 +39,38 @@ describe("EnvironmentsScreen", () => {
   });
 });
 
-describe("EnvironmentsScreen native apps", () => {
-  it("marks the fields each target requires", () => {
+describe("EnvironmentsScreen list", () => {
+  it("opens on the list alone, views a row, closes it, and opens and cancels a new one", async () => {
+    fetchMock.mockImplementation((url: string) => {
+      if (url === "/api/environments") return respond({ environments: [{ name: "shop", base_url: "http://127.0.0.1:8201", secret_names: [] }] });
+      if (url === "/api/environments/shop/files") return respond({ environment: "shop", files: [], max_files: 20, max_bytes: 26214400 });
+      return respond({ error: "not found" }, 404);
+    });
     render(
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
         <EnvironmentsScreen />
       </QueryClientProvider>,
     );
+    fireEvent.click(await screen.findByRole("button", { name: "View shop" }));
+    expect(screen.getByRole("heading", { name: "shop" })).toBeTruthy();
+    expect(screen.queryByLabelText("Name")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "shop" })).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: /new environment/i }));
+    expect(screen.getByRole("heading", { name: "New environment" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByLabelText("Name")).toBeNull());
+  });
+});
+
+describe("EnvironmentsScreen native apps", () => {
+  it("marks the fields each target requires", async () => {
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <EnvironmentsScreen />
+      </QueryClientProvider>,
+    );
+    await screen.findByLabelText("Name");
     const required = (label: string) => screen.getByLabelText(label).getAttribute("aria-required") === "true";
     expect(screen.getByText("Required")).toBeTruthy();
     expect([required("Name"), required("Base URL"), required("Viewport")]).toEqual([true, true, false]);
@@ -62,6 +88,7 @@ describe("EnvironmentsScreen native apps", () => {
         <EnvironmentsScreen />
       </QueryClientProvider>,
     );
+    await screen.findByLabelText("Name");
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "android" } });
     fireEvent.change(screen.getByLabelText("Target"), { target: { value: "app" } });
     fireEvent.change(screen.getByLabelText("Package"), { target: { value: "com.android.settings" } });
@@ -81,6 +108,7 @@ describe("EnvironmentsScreen browser options", () => {
         <EnvironmentsScreen />
       </QueryClientProvider>,
     );
+    await screen.findByLabelText("Name");
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "firefox-de" } });
     fireEvent.change(screen.getByLabelText("Base URL"), { target: { value: "http://localhost:3000" } });
     fireEvent.change(screen.getByLabelText("Browser"), { target: { value: "firefox" } });
@@ -112,6 +140,7 @@ describe("EnvironmentsScreen browser options", () => {
         <EnvironmentsScreen />
       </QueryClientProvider>,
     );
+    await screen.findByLabelText("Name");
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "bad" } });
     fireEvent.change(screen.getByLabelText("Base URL"), { target: { value: "http://localhost:3000" } });
     fireEvent.change(screen.getByLabelText("Signed-in state (auth JSON)"), { target: { value: "../secrets.json" } });
@@ -134,6 +163,7 @@ describe("EnvironmentsScreen variables and secrets", () => {
 
   it("saves variables and secrets the base URL can use", async () => {
     renderScreen();
+    await screen.findByLabelText("Name");
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "sf" } });
     fireEvent.change(screen.getByLabelText("Base URL"), { target: { value: "https://acme.example/secur/frontdoor.jsp?sid={{sid}}" } });
     fireEvent.click(screen.getByRole("button", { name: /save environment/i }));
@@ -195,8 +225,11 @@ describe("EnvironmentsScreen files for upload steps", () => {
         <EnvironmentsScreen />
       </QueryClientProvider>,
     );
+    expect(await screen.findByRole("button", { name: "View shop" })).toBeTruthy();
+    expect(screen.queryByLabelText("Name")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /new environment/i }));
     expect(screen.getByText(/only to the app under test, never to a model/)).toBeTruthy();
-    fireEvent.click(await screen.findByRole("button", { name: /edit/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^edit$/i }));
     expect(await screen.findByText("case.png")).toBeTruthy();
     expect(screen.getByText("2.0 KB")).toBeTruthy();
 
@@ -230,6 +263,7 @@ describe("EnvironmentsScreen files for upload steps on a new environment", () =>
         <EnvironmentsScreen />
       </QueryClientProvider>,
     );
+    await screen.findByLabelText("Name");
     fireEvent.change(screen.getByLabelText("Add files for upload steps"), { target: { files: [new File(["png"], "case.png", { type: "image/png" })] } });
     expect(screen.getByText(/added when you save the environment/)).toBeTruthy();
     expect(uploaded).toEqual([]);
@@ -275,7 +309,19 @@ describe("EnvironmentsScreen view and edit", () => {
     fireEvent.click(screen.getByRole("button", { name: "Delete environment" }));
     expect(confirm.mock.calls[0][0]).toMatch(/Delete the environment shop/);
     await waitFor(() => expect(fetchMock.mock.calls.some(([url, call]) => url === "/api/environments/shop" && (call as RequestInit | undefined)?.method === "DELETE")).toBe(true));
-    await waitFor(() => expect(screen.getByLabelText("Name")).toBeTruthy());
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "shop" })).toBeNull());
+    expect(screen.queryByLabelText("Name")).toBeNull();
     confirm.mockRestore();
+  });
+});
+
+describe("whereOf", () => {
+  it("is the base URL of a web app and the app of a native one", () => {
+    expect(whereOf({ name: "web", base_url: "http://localhost:8000", secret_names: [] })).toBe("http://localhost:8000");
+    expect(whereOf({ name: "a", secret_names: [], mobile: { platform: "android", app: "apps/SiliconThread-debug.apk" } })).toBe("SiliconThread-debug.apk");
+    expect(whereOf({ name: "b", secret_names: [], mobile: { platform: "ios", app: "bs://4c7e9f" } })).toBe("bs://4c7e9f");
+    expect(whereOf({ name: "c", secret_names: [], mobile: { platform: "android", package: "com.siliconthread.marketplace" } })).toBe("com.siliconthread.marketplace");
+    expect(whereOf({ name: "d", secret_names: [], mobile: { platform: "ios", bundle_id: "com.example.shop" } })).toBe("com.example.shop");
+    expect(whereOf({ name: "e", secret_names: [] })).toBeNull();
   });
 });

@@ -1,7 +1,8 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
-import { Link, useLocation } from "wouter";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation } from "wouter";
 import { CaseForm, TestDataEditor } from "../components/CaseForm";
+import { CaseTree } from "../components/CaseTree";
 import { GherkinEditor } from "../components/GherkinEditor";
 import { Icon } from "../components/Icon";
 import { placeholderSuggestions } from "../components/PlaceholderSuggest";
@@ -11,8 +12,9 @@ import { ApiError, api, post, remove } from "../lib/api";
 import { emptyForm, environmentTag, errorLine, formUnquoted, gherkinUnquoted, quoteFormPlaceholders, quoteGherkinPlaceholders, fromForm, savedNamesIn, testDataOf, toForm, validTestData, validateCaseForm, validateTestData, withEnvironmentTag, type CaseFormValue, type FormDatum } from "../lib/caseForm";
 import { environmentNames, targetSummary } from "../lib/environmentForm";
 import { useDebounced } from "../lib/useDebounced";
+import { folderOptions, joinPath, leafOf, parentOf, pathUrl, relocated } from "../lib/caseTree";
 import { isCaseList, isSavedCase } from "../lib/guards";
-import type { CaseCheck, CaseEntry, Environment, SavedCase, TestCase } from "../lib/types";
+import type { CaseCheck, CaseListing, Environment, SavedCase, TestCase } from "../lib/types";
 
 type Kind = "feature" | "json";
 type Tab = "gherkin" | "form" | "json";
@@ -27,7 +29,8 @@ Feature: Sign in
 `;
 
 interface Draft {
-  name: string | null; // saved file name, null for a new case
+  name: string | null; // saved case path, null for a new case
+  folder: string;
   kind: Kind;
   gherkin: string;
   form: CaseFormValue;
@@ -41,7 +44,7 @@ interface Draft {
 // decodeURIComponent on top would decode twice and throws on a lone `%`.
 const RESERVED_ESCAPE = /%(23|24|26|2B|2C|2F|3A|3B|3D|3F|40)/gi;
 
-/** The case file name of a `/cases/:name` route param. */
+/** The case path of a `/cases/*` route param. */
 export function caseNameFromParam(param: string | undefined): string | null {
   if (!param) return null;
   return param.replace(RESERVED_ESCAPE, (_match, hex: string) => String.fromCharCode(Number.parseInt(hex, 16)));
@@ -58,51 +61,18 @@ export function caseHeading(name: string | null, title: string | null | undefine
 
 export const deleteCasePrompt = (name: string) => `Delete ${name} with its test data and its files for upload steps? This cannot be undone.`;
 
-function newDraft(kind: Kind): Draft {
-  return { name: null, kind, gherkin: kind === "feature" ? NEW_FEATURE : "", form: emptyForm(), data: [], base: undefined, dirty: true };
+const PANEL_KEY = "hercules.cases.panel";
+
+function newDraft(kind: Kind, folder = ""): Draft {
+  return { name: null, folder, kind, gherkin: kind === "feature" ? NEW_FEATURE : "", form: emptyForm(), data: [], base: undefined, dirty: true };
 }
 
 /** Whether leaving the draft loses something the tester typed (a fresh new case does not count). */
 function draftIsEdited(draft: Draft): boolean {
   if (!draft.dirty) return false;
   if (draft.name !== null) return true;
-  const fresh = newDraft(draft.kind);
+  const fresh = newDraft(draft.kind, draft.folder);
   return draft.gherkin !== fresh.gherkin || JSON.stringify(draft.form) !== JSON.stringify(fresh.form) || draft.data.length > 0;
-}
-
-function CaseList({ cases, selected, onNew, onOpen }: { cases: CaseEntry[]; selected: string | null; onNew: (kind: Kind) => void; onOpen: (event: MouseEvent) => void }) {
-  return (
-    <nav className="panel case-list" aria-label="Saved cases">
-      <div className="panel-head">
-        <h2>Saved cases</h2>
-        <span className="muted small">{cases.length}</span>
-      </div>
-      <div className="case-new">
-        <button type="button" className="button button-small" onClick={() => onNew("feature")}>
-          <Icon name="plus" size={13} /> Gherkin
-        </button>
-        <button type="button" className="button button-small button-ghost" onClick={() => onNew("json")}>
-          <Icon name="plus" size={13} /> Form
-        </button>
-      </div>
-      {cases.length === 0 ? <p className="muted small">No cases in .hercules/cases yet.</p> : null}
-      <ul>
-        {cases.map((entry) => (
-          <li key={entry.name}>
-            <Link href={`/cases/${encodeURIComponent(entry.name)}`} className={`case-item${entry.name === selected ? " case-item-on" : ""}`} title={entry.name} onClick={onOpen} aria-current={entry.name === selected ? "page" : undefined}>
-              <span className="case-item-title">{entry.title ?? entry.name}</span>
-              <span className="case-item-meta">
-                {entry.valid ? <span>
-                    {entry.steps} {entry.steps === 1 ? "step" : "steps"}
-                  </span> : <span className="text-fail">invalid</span>}
-                {entry.status === "draft" ? <span className="tag">draft</span> : null}
-              </span>
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </nav>
-  );
 }
 
 function GherkinEnvironment({ gherkin, environments, onChange }: { gherkin: string; environments: string[]; onChange: (gherkin: string) => void }) {
@@ -165,8 +135,15 @@ export function CasesScreen({ selected }: { selected?: string }) {
   const client = useQueryClient();
   const [, navigate] = useLocation();
   const name = caseNameFromParam(selected);
-  const list = useQuery({ queryKey: ["cases"], queryFn: () => api<{ cases: CaseEntry[] }>("/api/cases", { guard: isCaseList }) });
-  const saved = useQuery({ queryKey: ["case", name], queryFn: () => api<SavedCase>(`/api/cases/${encodeURIComponent(name ?? "")}`, { guard: isSavedCase }), enabled: Boolean(name) });
+  const list = useQuery({ queryKey: ["cases"], queryFn: () => api<CaseListing>("/api/cases", { guard: isCaseList }) });
+  const saved = useQuery({ queryKey: ["case", name], queryFn: () => api<SavedCase>(`/api/cases/${pathUrl(name ?? "")}`, { guard: isSavedCase }), enabled: Boolean(name) });
+  const [panelHidden, setPanelHidden] = useState(() => {
+    try {
+      return window.localStorage.getItem(PANEL_KEY) === "hidden";
+    } catch {
+      return false;
+    }
+  });
   const [draft, setDraft] = useState<Draft>(() => newDraft("feature"));
   const [tab, setTab] = useState<Tab>("gherkin");
   const [notice, setNotice] = useState<string | null>(null);
@@ -174,16 +151,16 @@ export function CasesScreen({ selected }: { selected?: string }) {
   const [showFormErrors, setShowFormErrors] = useState(false);
   const [session, setSession] = useState(0);
   const [quotePrompt, setQuotePrompt] = useState(false);
-  // The kind of new case asked for while a saved one was open: applied once the route is /cases.
-  const pendingNew = useRef<Kind | null>(null);
+  // The new case asked for while a saved one was open: applied once the route is /cases.
+  const pendingNew = useRef<{ kind: Kind; folder: string } | null>(null);
   const draftRef = useRef(draft);
   draftRef.current = draft;
 
   useEffect(() => {
     if (!name) {
-      const kind = pendingNew.current ?? "feature";
+      const { kind, folder } = pendingNew.current ?? { kind: "feature" as Kind, folder: "" };
       pendingNew.current = null;
-      setDraft(newDraft(kind));
+      setDraft(newDraft(kind, folder));
       setSession((value) => value + 1);
       setTab(kind === "feature" ? "gherkin" : "form");
       setShowFormErrors(false);
@@ -199,7 +176,7 @@ export function CasesScreen({ selected }: { selected?: string }) {
     const kind: Kind = saved.data.kind === "feature" ? "feature" : "json";
     const form = toForm(saved.data.test_case);
     if (current.name !== name) setSession((value) => value + 1);
-    setDraft({ name, kind, gherkin: kind === "feature" ? (saved.data.source ?? "") : "", form, data: kind === "feature" ? form.testData : [], base: saved.data.test_case, dirty: false });
+    setDraft({ name, folder: saved.data.folder ?? parentOf(name), kind, gherkin: kind === "feature" ? (saved.data.source ?? "") : "", form, data: kind === "feature" ? form.testData : [], base: saved.data.test_case, dirty: false });
     setTab(kind === "feature" ? "gherkin" : "form");
     setNotice(null);
     setShowFormErrors(false);
@@ -251,7 +228,9 @@ export function CasesScreen({ selected }: { selected?: string }) {
   const save = useMutation({
     mutationFn: async ({ overwrite, current }: { overwrite: boolean; current: Draft }) => {
       const body =
-        current.kind === "feature" ? { gherkin: current.gherkin, test_data: testDataOf(current.data), overwrite } : { test_case: fromForm(current.form, current.base), overwrite };
+        current.kind === "feature"
+          ? { gherkin: current.gherkin, test_data: testDataOf(current.data), overwrite, folder: current.folder }
+          : { test_case: fromForm(current.form, current.base), overwrite, folder: current.folder };
       return post<{ name: string; path: string; id: string }>("/api/cases", body);
     },
     onSuccess: (result) => {
@@ -259,7 +238,7 @@ export function CasesScreen({ selected }: { selected?: string }) {
       void client.invalidateQueries({ queryKey: ["cases"] });
       void client.invalidateQueries({ queryKey: ["case", result.name] });
       setDraft((current) => ({ ...current, name: result.name, dirty: false }));
-      if (result.name !== name) navigate(`/cases/${encodeURIComponent(result.name)}`);
+      if (result.name !== name) navigate(`/cases/${pathUrl(result.name)}`);
     },
   });
 
@@ -281,7 +260,8 @@ export function CasesScreen({ selected }: { selected?: string }) {
     setQuotePrompt(false);
     const current = quotes === "add" ? withQuotedPlaceholders(draft) : draft;
     if (current !== draft) setDraft(current);
-    const sameFile = current.name !== null && (current.kind === "feature" ? compiled?.id && `${compiled.id}.feature` === current.name : `${current.form.id.trim()}.json` === current.name);
+    const sameFile =
+      current.name !== null && (current.kind === "feature" ? compiled?.id && joinPath(current.folder, `${compiled.id}.feature`) === current.name : joinPath(current.folder, `${current.form.id.trim()}.json`) === current.name);
     save.mutate({ overwrite: Boolean(sameFile), current });
   };
 
@@ -290,7 +270,7 @@ export function CasesScreen({ selected }: { selected?: string }) {
   const entry = list.data?.cases.find((item) => item.name === name);
 
   const drop = useMutation({
-    mutationFn: (file: string) => remove<{ name: string; removed: boolean }>(`/api/cases/${encodeURIComponent(file)}`),
+    mutationFn: (file: string) => remove<{ name: string; removed: boolean }>(`/api/cases/${pathUrl(file)}`),
     onSuccess: (result) => {
       client.removeQueries({ queryKey: ["case", result.name] });
       void client.invalidateQueries({ queryKey: ["cases"] });
@@ -304,46 +284,122 @@ export function CasesScreen({ selected }: { selected?: string }) {
     if (draft.name && window.confirm(deleteCasePrompt(draft.name))) drop.mutate(draft.name);
   };
 
+  const startNew = (kind: Kind, folder: string) => {
+    if (!mayDiscard()) return;
+    save.reset();
+    setNotice(null);
+    if (name) {
+      pendingNew.current = { kind, folder }; // the route change to /cases creates the draft
+      navigate("/cases");
+      return;
+    }
+    setDraft(newDraft(kind, folder));
+    setSession((value) => value + 1);
+    setTab(kind === "feature" ? "gherkin" : "form");
+    setShowFormErrors(false);
+  };
+
+  const onRelocate = (from: string, to: string | null) => {
+    void client.invalidateQueries({ queryKey: ["cases"] });
+    if (!draft.name) {
+      const folder = relocated(draft.folder, from, to);
+      if (folder !== draft.folder) setDraft((current) => ({ ...current, folder: folder ?? parentOf(from) }));
+      return;
+    }
+    const moved = relocated(draft.name, from, to);
+    if (moved === draft.name) return;
+    client.removeQueries({ queryKey: ["case", draft.name] });
+    if (moved === null) {
+      setDraft((current) => ({ ...current, dirty: false }));
+      navigate("/cases");
+      return;
+    }
+    setDraft((current) => ({ ...current, name: moved, folder: parentOf(moved) }));
+    navigate(`/cases/${pathUrl(moved)}`, { replace: true });
+  };
+
+  const [panelMoving, setPanelMoving] = useState(false);
+  useEffect(() => {
+    if (!panelMoving) return undefined;
+    const timer = window.setTimeout(() => setPanelMoving(false), 320);
+    return () => window.clearTimeout(timer);
+  }, [panelMoving, panelHidden]);
+
+  const hidePanel = (hidden: boolean) => {
+    setPanelMoving(true);
+    setPanelHidden(hidden);
+    try {
+      window.localStorage.setItem(PANEL_KEY, hidden ? "hidden" : "shown");
+    } catch {
+      return;
+    }
+  };
+
+  const folders = list.data?.folders ?? [];
+  const newFolder = draft.folder;
+
   const onRun = () => {
     if (draft.kind === "feature" && (draft.dirty || !entry)) setRunning({ source: "gherkin", gherkin: draft.gherkin, testData: testDataOf(validTestData(draft.data)) });
     else if (entry) setRunning({ source: "saved", casePath: entry.path });
   };
+
 
   return (
     <section className="page page-cases" aria-labelledby="cases-title">
       <header className="page-head">
         <div>
           <h1 id="cases-title">Cases</h1>
-          <p className="page-sub">Test cases in .hercules/cases: Gherkin scenarios or TestCase JSON.</p>
+          <p className="page-sub">Test cases in .hercules/cases and its folders: Gherkin scenarios or TestCase JSON.</p>
+        </div>
+        <div className="editor-actions">
+          <button type="button" className="button" onClick={() => startNew("json", newFolder)}>
+            <Icon name="plus" size={13} /> Form case
+          </button>
+          <button type="button" className="button button-primary" onClick={() => startNew("feature", newFolder)}>
+            <Icon name="plus" size={13} /> Gherkin case
+          </button>
         </div>
       </header>
-      <div className="cases-grid">
-        <CaseList
+      <div className={`cases-grid${panelHidden ? " cases-grid-collapsed" : ""}${panelMoving ? " cases-grid-moving" : ""}`}>
+        <CaseTree
           cases={list.data?.cases ?? []}
+          folders={folders}
           selected={name}
+          collapsed={panelHidden}
+          onCollapse={hidePanel}
           onOpen={(event) => {
             if (!mayDiscard()) event.preventDefault();
           }}
-          onNew={(kind) => {
-            if (!mayDiscard()) return;
-            save.reset();
-            setNotice(null);
-            if (name) {
-              pendingNew.current = kind; // the route change to /cases creates the draft
-              navigate("/cases");
-              return;
-            }
-            setDraft(newDraft(kind));
-            setTab(kind === "feature" ? "gherkin" : "form");
-            setShowFormErrors(false);
-          }}
+          onNewCase={(folder, kind) => startNew(kind, folder)}
+          onRunCase={(chosen) => setRunning({ source: "saved", casePath: chosen.path })}
+          onRunFolder={(folder) => setRunning({ source: "folder", folder })}
+          onRelocate={onRelocate}
         />
         <div className="panel case-editor">
           <div className="panel-head">
-            <h2 title={draft.name ?? undefined}>
-              {caseHeading(draft.name, entry?.title ?? (draft.kind === "feature" ? compiled?.title : draft.form.title), draft.kind)}
-              {draft.dirty ? <span className="muted small"> · unsaved</span> : null}
-            </h2>
+            <div className="case-heading">
+              <h2 title={draft.name ?? undefined}>
+                {caseHeading(draft.name ? leafOf(draft.name) : null, entry?.title ?? (draft.kind === "feature" ? compiled?.title : draft.form.title), draft.kind)}
+                {draft.dirty ? <span className="muted small"> · unsaved</span> : null}
+              </h2>
+              {draft.name ? (
+                <p className="case-path mono">
+                  {["cases", ...(draft.folder ? draft.folder.split("/") : []), leafOf(draft.name)].join(" / ")}
+                </p>
+              ) : (
+                <label className="case-path case-path-pick">
+                  <span>Saves into</span>
+                  <select value={draft.folder} onChange={(event) => setDraft({ ...draft, folder: event.target.value })}>
+                    <option value="">the top level</option>
+                    {folderOptions(folders).map((option) => (
+                      <option key={option.path} value={option.path}>
+                        {option.path}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+            </div>
             <div className="editor-actions">
               <button type="button" className="button" onClick={onRun} disabled={draft.kind === "json" && (draft.dirty || !entry)} title={draft.kind === "json" && draft.dirty ? "Save the case first" : undefined}>
                 <Icon name="play" size={13} /> Run
@@ -469,9 +525,9 @@ export function CasesScreen({ selected }: { selected?: string }) {
         <StartRunDialog
           initial={running}
           onClose={() => setRunning(null)}
-          onStarted={(runId) => {
+          onStarted={(runId, batch) => {
             setRunning(null);
-            navigate(`/runs/${runId}`);
+            navigate(batch ? `/?batch=${encodeURIComponent(batch)}` : `/runs/${runId}`);
           }}
         />
       ) : null}

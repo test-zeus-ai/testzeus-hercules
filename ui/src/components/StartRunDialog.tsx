@@ -5,13 +5,14 @@ import { isCaseList, isModelsReport, isRunCase } from "../lib/guards";
 import { BASE_URL_PATTERN, environmentTag, errorLine } from "../lib/caseForm";
 import { targetSummary } from "../lib/environmentForm";
 import { formFromSettings, rerunOptionsBody, runOptionsBody, validateRunOptions, type RunOptions } from "../lib/runOptions";
-import type { CaseEntry, Environment, ModelsReport, RerunScope, RunView, TestCase } from "../lib/types";
+import { folderOptions, within } from "../lib/caseTree";
+import type { CaseListing, Environment, ModelsReport, RerunScope, RunView, TestCase } from "../lib/types";
 import { Field } from "./Field";
 import { GherkinEditor } from "./GherkinEditor";
 import { Modal } from "./Modal";
 import { OptionGroup, RunOptionsFields } from "./RunOptionsFields";
 
-type Source = "saved" | "gherkin" | "description";
+type Source = "saved" | "folder" | "gherkin" | "description";
 
 const SAMPLE = `Feature: Sign in
   Scenario: Registered user signs in
@@ -24,6 +25,7 @@ const SAMPLE = `Feature: Sign in
 export interface StartRunInitial {
   source?: Source;
   casePath?: string;
+  folder?: string;
   gherkin?: string;
   testData?: Record<string, string | { secret: string }>;
 }
@@ -34,12 +36,21 @@ export interface RerunOf {
   scope: RerunScope;
 }
 
-export function StartRunDialog({ onClose, onStarted, initial = {}, rerun }: { onClose: () => void; onStarted: (runId: string) => void; initial?: StartRunInitial; rerun?: RerunOf }) {
-  const cases = useQuery({ queryKey: ["cases"], queryFn: () => api<{ cases: CaseEntry[] }>("/api/cases", { guard: isCaseList }), enabled: !rerun });
+interface BatchCreated {
+  batch: string;
+  folder: string;
+  runs: { run_id: string }[];
+  skipped: { name: string; reason: string }[];
+}
+
+export function StartRunDialog({ onClose, onStarted, initial = {}, rerun }: { onClose: () => void; onStarted: (runId: string, batch?: string) => void; initial?: StartRunInitial; rerun?: RerunOf }) {
+  const cases = useQuery({ queryKey: ["cases"], queryFn: () => api<CaseListing>("/api/cases", { guard: isCaseList }), enabled: !rerun });
   const envs = useQuery({ queryKey: ["environments"], queryFn: () => api<{ environments: Environment[] }>("/api/environments") });
   const models = useQuery({ queryKey: ["models", false], queryFn: () => api<ModelsReport>("/api/models", { guard: isModelsReport }) });
   const [source, setSource] = useState<Source>(initial.source ?? "saved");
   const [casePath, setCasePath] = useState(initial.casePath ?? "");
+  const [folder, setFolder] = useState(initial.folder ?? "");
+  const [subfolders, setSubfolders] = useState(true);
   const [gherkin, setGherkin] = useState(initial.gherkin ?? SAMPLE);
   const [description, setDescription] = useState("");
   const [initialForm] = useState(() => formFromSettings(rerun?.run.settings));
@@ -53,6 +64,9 @@ export function StartRunDialog({ onClose, onStarted, initial = {}, rerun }: { on
 
   const validCases = (cases.data?.cases ?? []).filter((entry) => entry.valid);
   const chosenCase = casePath || validCases[0]?.path || "";
+  const folderCases = (cases.data?.cases ?? []).filter((entry) => (subfolders ? within(entry.folder ?? "", folder) : (entry.folder ?? "") === folder));
+  const folderReady = folderCases.filter((entry) => entry.valid && entry.status !== "draft").length;
+  const folderSkipped = folderCases.length - folderReady;
   const rerunCase = useQuery({
     queryKey: ["run-case", rerun?.run.run_id],
     queryFn: () => api<{ test_case: TestCase }>(`/api/runs/${encodeURIComponent(rerun?.run.run_id ?? "")}/case`, { guard: isRunCase }),
@@ -72,6 +86,13 @@ export function StartRunDialog({ onClose, onStarted, initial = {}, rerun }: { on
     mutationFn: (body: Record<string, unknown>) => post<{ run_id: string }>(rerun ? `/api/runs/${encodeURIComponent(rerun.run.run_id)}/rerun` : "/api/runs", body),
     onSuccess: (created) => onStarted(created.run_id),
   });
+  const startBatch = useMutation({
+    mutationFn: (body: Record<string, unknown>) => post<BatchCreated>("/api/runs/batch", body),
+    onSuccess: (created) => {
+      if (created.runs.length) onStarted(created.runs[0].run_id, created.batch);
+      else setLocalError(`Nothing ran: ${created.skipped.map((skip) => `${skip.name} (${skip.reason})`).join("; ")}`);
+    },
+  });
 
   const optionErrors = validateRunOptions(options);
 
@@ -89,6 +110,15 @@ export function StartRunDialog({ onClose, onStarted, initial = {}, rerun }: { on
       return;
     }
     const body: Record<string, unknown> = { mode };
+    if (source === "folder") {
+      if (!folderReady) return setLocalError(folderCases.length ? "Every case in this folder is a draft or does not load." : "This folder has no cases.");
+      if (baseUrl.trim()) body.base_url = baseUrl.trim();
+      if (requestedEnvironment) body.environment = requestedEnvironment;
+      if (egress) body.egress = egress;
+      if (headed) body.headed = true;
+      startBatch.mutate({ ...body, folder, subfolders, ...runOptionsBody(options) });
+      return;
+    }
     if (source === "saved") {
       if (!chosenCase) return setLocalError("Pick a saved case, or paste Gherkin instead.");
       body.case_path = chosenCase;
@@ -108,7 +138,7 @@ export function StartRunDialog({ onClose, onStarted, initial = {}, rerun }: { on
   };
 
   const hybrid = models.data?.modes.hybrid;
-  const error = localError ?? (start.error as Error | null)?.message ?? null;
+  const error = localError ?? (start.error as Error | null)?.message ?? (startBatch.error as Error | null)?.message ?? null;
   const savedEnvs = envs.data?.environments ?? [];
 
   return (
@@ -130,6 +160,7 @@ export function StartRunDialog({ onClose, onStarted, initial = {}, rerun }: { on
                 {(
                   [
                     ["saved", "Saved case"],
+                    ["folder", "Folder"],
                     ["gherkin", "Paste Gherkin"],
                     ["description", "Plain language (draft)"],
                   ] as const
@@ -170,6 +201,28 @@ export function StartRunDialog({ onClose, onStarted, initial = {}, rerun }: { on
                   ))}
                 </select>
               </Field>
+            ) : source === "folder" ? (
+              <div className="field-row">
+                <Field
+                  id="start-folder"
+                  label="Folder"
+                  required
+                  help={`${folderReady} ${folderReady === 1 ? "case runs" : "cases run"}, one run each${folderSkipped ? `; ${folderSkipped} ${folderSkipped === 1 ? "draft or broken case is" : "drafts or broken cases are"} skipped` : ""}.`}
+                >
+                  <select value={folder} onChange={(event) => setFolder(event.target.value)}>
+                    <option value="">All cases</option>
+                    {folderOptions(cases.data?.folders ?? []).map((option) => (
+                      <option key={option.path} value={option.path}>
+                        {option.path}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <label className="field field-check field-check-inline">
+                  <input type="checkbox" checked={subfolders} onChange={(event) => setSubfolders(event.target.checked)} />
+                  <span>Include subfolders</span>
+                </label>
+              </div>
             ) : source === "gherkin" ? (
               <div className="field">
                 <span className="field-label is-required">Scenario</span>
@@ -184,10 +237,20 @@ export function StartRunDialog({ onClose, onStarted, initial = {}, rerun }: { on
         )}
 
         <div className="field-row">
-          <Field id="start-environment" label="Environment" help={caseEnvironment ? `The case runs in ${caseEnvironment}; pick another to run it there instead.` : undefined}>
+          <Field
+            id="start-environment"
+            label="Environment"
+            help={
+              !rerun && source === "folder"
+                ? "Each case runs in its own environment; pick one to run them all there."
+                : caseEnvironment
+                  ? `The case runs in ${caseEnvironment}; pick another to run it there instead.`
+                  : undefined
+            }
+          >
             <select value={environment} onChange={(event) => setChosenEnvironment(event.target.value)}>
               <option value="" disabled={Boolean(caseEnvironment)}>
-                None
+                {!rerun && source === "folder" ? "Each case's own" : "None"}
               </option>
               {environment && envs.data && !savedEnvs.some((env) => env.name === environment) ? <option value={environment}>{environment} (not saved)</option> : null}
               {savedEnvs.map((env) => (
@@ -241,8 +304,8 @@ export function StartRunDialog({ onClose, onStarted, initial = {}, rerun }: { on
           <button type="button" className="button button-ghost" onClick={onClose}>
             Cancel
           </button>
-          <button type="submit" className="button button-primary" disabled={start.isPending}>
-            {start.isPending ? "Starting…" : rerun ? "Start re-run" : "Start run"}
+          <button type="submit" className="button button-primary" disabled={start.isPending || startBatch.isPending}>
+            {start.isPending || startBatch.isPending ? "Starting…" : rerun ? "Start re-run" : source === "folder" ? `Run ${folderReady} ${folderReady === 1 ? "case" : "cases"}` : "Start run"}
           </button>
         </footer>
       </form>

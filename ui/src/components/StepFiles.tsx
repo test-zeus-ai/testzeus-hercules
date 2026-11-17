@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { api, remove, upload } from "../lib/api";
 import type { StepFiles } from "../lib/types";
+import { pathUrl } from "../lib/caseTree";
 
 export function fileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -26,7 +27,7 @@ function StepFilesEditor({ owner, name }: { owner: Owner; name: string | null })
   const input = useRef<HTMLInputElement | null>(null);
   const [problems, setProblems] = useState<string[]>([]);
   const [pending, setPending] = useState<File[]>([]);
-  const path = name ? `/api/${ROUTE[owner]}/${encodeURIComponent(name)}/files` : "";
+  const path = name ? `/api/${ROUTE[owner]}/${pathUrl(name)}/files` : "";
   const queryKey = [`${owner}-files`, name];
   const listing = useQuery({ queryKey, queryFn: () => api<StepFiles>(path), enabled: Boolean(name) });
   const add = useMutation({

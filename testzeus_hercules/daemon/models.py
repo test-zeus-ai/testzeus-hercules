@@ -37,6 +37,7 @@ MAX_TEXT = 200_000
 
 EnvName = Annotated[str, StringConstraints(pattern=ENV_NAME_PATTERN)]
 BaseUrl = Annotated[str, StringConstraints(pattern=BASE_URL_PATTERN, max_length=2000)]
+FolderPath = Annotated[str, StringConstraints(max_length=1000)]
 
 
 class _Body(BaseModel):
@@ -269,6 +270,7 @@ class CaseSave(_Body):
     gherkin: Annotated[str, StringConstraints(min_length=1, max_length=MAX_TEXT)] | None = None
     test_data: dict[DataKey, TestDataValue] | None = Field(default=None, description="Test data of the Gherkin (a saved .feature keeps it in <name>.data.json)")
     overwrite: bool = False
+    folder: FolderPath = Field(default="", description="The folder to save into, such as Checkout/Payments (empty: the top level); it must exist")
 
     @model_validator(mode="after")
     def _one_source(self) -> CaseSave:
@@ -293,6 +295,41 @@ class CaseValidate(_Body):
         if self.test_data is not None and self.gherkin is None:
             raise ValueError("test_data goes with gherkin; a TestCase carries its own test_data")
         return self
+
+
+class FolderCreate(_Body):
+    """Make a folder for cases: ``name`` inside ``parent`` (empty: the top level)."""
+
+    parent: FolderPath = ""
+    name: Annotated[str, StringConstraints(min_length=1, max_length=200)]
+
+
+class FolderUpdate(_Body):
+    """Rename a folder (``name``) or move it into another folder (``parent``, empty: the top level); give exactly one."""
+
+    name: Annotated[str, StringConstraints(min_length=1, max_length=200)] | None = None
+    parent: FolderPath | None = None
+
+    @model_validator(mode="after")
+    def _one_change(self) -> FolderUpdate:
+        if (self.name is None) == (self.parent is None):
+            raise ValueError("give exactly one of name or parent")
+        return self
+
+
+class CasesMove(_Body):
+    """Move saved cases (by name, such as Checkout/login.feature) into ``folder`` (empty: the top level)."""
+
+    names: list[Annotated[str, StringConstraints(min_length=1, max_length=1000)]] = Field(min_length=1, max_length=500)
+    folder: FolderPath = ""
+
+
+class RunBatchCreate(RunSettings):
+    """Run every ready case of a folder: one queued run per case, sharing a batch. Drafts and cases that do not load are
+    skipped. ``environment`` and ``base_url``, when given, apply to every case; else each runs in its own."""
+
+    folder: FolderPath = Field(description="The folder, such as Checkout (empty: every saved case)")
+    subfolders: bool = True
 
 
 class CaseCheck(BaseModel):
@@ -432,6 +469,8 @@ class RunView(BaseModel):
     parent_run_id: str | None = None
     started_by: Literal["daemon", "agent"] | None = Field(default=None, description="daemon: the tester UI or HTTP API; agent: a coding agent over MCP")
     agent: str | None = Field(default=None, description="With started_by agent: claude-code, codex, cursor, copilot, gemini or other")
+    batch: str | None = Field(default=None, description="The batch of a folder run (POST /api/runs/batch) this run belongs to")
+    folder: str | None = Field(default=None, description="With batch: the folder that was run")
     worker_pid: int | None = None
     last_seq: int = 0
     mode: str | None = None
@@ -456,6 +495,18 @@ class RunCreated(BaseModel):
     status: RunStatus
     case_id: str | None = None
     ui_url: str
+
+
+class BatchSkip(BaseModel):
+    name: str
+    reason: str
+
+
+class RunBatchCreated(BaseModel):
+    batch: str
+    folder: str
+    runs: list[RunCreated]
+    skipped: list[BatchSkip]
 
 
 class ErrorBody(BaseModel):

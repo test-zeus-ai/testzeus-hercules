@@ -47,6 +47,8 @@ def case_location(finding_id: str, decision: str) -> str:
 def sync_case(project_dir: Path, finding: Finding) -> str | None:
     """Put the finding's case where its decision says; returns its project-relative path, or None when no copy exists."""
     target = case_location(finding.id, finding.case)
+    if finding.case in ("kept", "regression"):
+        target = _filed(project_dir, finding.id) or target
     copies = [target, *(case_location(finding.id, decision) for decision in CASE_DECISIONS), *([finding.case_path] if finding.case_path else [])]
     places = [project_dir / path for path in dict.fromkeys(copies)]
     source = next((path for path in places if _inside(project_dir, path) and path.is_file()), None)
@@ -73,10 +75,19 @@ def sync_case(project_dir: Path, finding: Finding) -> str | None:
     return target
 
 
+def _filed(project_dir: Path, finding_id: str) -> str | None:
+    suite = project_dir / SUITE_DIR
+    if not suite.is_dir():
+        return None
+    found = sorted(path for path in suite.rglob(f"explore-{finding_id}.json") if path.is_file() and _inside(project_dir, path))
+    return found[0].relative_to(project_dir).as_posix() if found else None
+
+
 def _prune_empty(folder: Path, *, stop: Path) -> None:
     """Remove folders a moved case left empty (an earlier version's per-session folders), up to ``.hercules/cases``."""
     keep = {stop, stop / "cases", stop / "explore", stop / "explore" / "cases"}
-    while folder not in keep and folder.is_relative_to(stop) and folder.is_dir() and not any(folder.iterdir()):
+    legacy = stop / "cases" / "explore"
+    while folder not in keep and folder.is_relative_to(stop) and (folder.is_relative_to(legacy) or not folder.is_relative_to(stop / "cases")) and folder.is_dir() and not any(folder.iterdir()):
         folder.rmdir()
         folder = folder.parent
 
