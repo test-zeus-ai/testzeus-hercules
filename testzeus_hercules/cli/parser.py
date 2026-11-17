@@ -12,7 +12,7 @@ import re
 import sys
 from collections.abc import Mapping
 from contextvars import ContextVar
-from typing import NoReturn
+from typing import Any, NoReturn
 
 from testzeus_hercules.cli.style import Style
 
@@ -33,8 +33,13 @@ def did_you_mean(message: str) -> str | None:
 
 
 class HerculesArgumentParser(argparse.ArgumentParser):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.suggest_on_error = False
+
     def error(self, message: str) -> NoReturn:
         style = Style.for_stream(sys.stderr, ERROR_ENV.get())
+        self.color = style.enabled
         self.print_usage(sys.stderr)
         hint = did_you_mean(message)
         suffix = f"\n{style.accent('hint:')} {hint}" if hint else ""
