@@ -100,6 +100,7 @@ class FakeModel:
         self.readings = {normalise_step_text(text): actions for text, actions in merged.items()}
         self.judge = judge
         self.schemas: list[str | None] = []
+        self.prompts: list[str] = []
         # Scripted continuation replies, in order (each a list of actions with "because"), and the prompts asked.
         self.continuations: list[list[dict[str, Any]]] = []
         self.continue_prompts: list[str] = []
@@ -132,6 +133,7 @@ class FakeModel:
         self.schemas.append(name)
         user = next((message["content"] for message in reversed(body["messages"]) if message["role"] == "user"), "")
         user = user if isinstance(user, str) else " ".join(part.get("text", "") for part in user if isinstance(part, dict))
+        self.prompts.append(json.dumps(body["messages"]))
         if name is None:
             return _completion("OK")
         if name == "CaseReadingReply":

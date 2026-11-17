@@ -103,13 +103,13 @@ from testzeus_hercules.engine.criteria import evaluate
 from testzeus_hercules.engine.data import CaseData
 from testzeus_hercules.engine.evidence import EvidenceStore
 from testzeus_hercules.engine.gate import GateResult, gate_target
-from testzeus_hercules.engine.intent import ASSERT_KINDS, QUALITY_KIND, SERVICE_KINDS, CaseReading, FieldProposal, FieldTrouble, Interpreter, ItemRole, StepIntent
+from testzeus_hercules.engine.intent import ASSERT_KINDS, QUALITY_KIND, SERVICE_KINDS, CaseReading, FieldProposal, FieldTrouble, Interpreter, ItemRole, StepIntent, upload_files
 from testzeus_hercules.engine.judge import SEMANTIC_PURPOSE, judge
 from testzeus_hercules.engine.ports import PerceptionFailed, Perceiver, TargetGone
 from testzeus_hercules.engine.quality import QualityReading, QualitySession
 from testzeus_hercules.engine.service import ServiceReading, ServiceSession
 from testzeus_hercules.engine.step_automation import AutomationRecorder
-from testzeus_hercules.engine.verify import Check, LedgerEntry, check_from_intent, run_check, semantic_check, verify_visible
+from testzeus_hercules.engine.verify import FILE_CHECK_KINDS, Check, LedgerEntry, check_from_intent, run_check, run_file_check, semantic_check, verify_visible
 from testzeus_hercules.kernel.run_context import EventSink, NullEventSink, RunCancelledError
 
 logger = logging.getLogger(__name__)
@@ -134,7 +134,7 @@ _MAX_OPTIONS = 25
 _CONTROL_CLIP = 80
 # Failures that only say "nothing (good enough) was found"; an earlier, specific reason beats them.
 _GENERIC_MISSES = frozenset({"TargetNotFound", "LowConfidence"})
-_ACTION_KINDS = frozenset({"navigate", "click", "fill", "select", "check", "uncheck", "hover", "press", "wait", "unknown"})
+_ACTION_KINDS = frozenset({"navigate", "click", "fill", "select", "upload", "download", "check", "uncheck", "hover", "press", "wait", "unknown"})
 # A visual judgement passes at or above this probability that the expectation holds, fails at or below 1 - it.
 _VISUAL_PASS = 0.6
 _VISUAL_PURPOSE = "visual"
@@ -199,6 +199,8 @@ class StepDeps:
     actions: Any = field(default_factory=BrowserActions)
     base_url: str | None = None
     file_roots: tuple[Path, ...] | None = None  # folders file: URLs may open (the project); None: the act layer's default
+    upload_roots: tuple[Path, ...] | None = None
+    downloads: list[Path] = field(default_factory=list)
     threshold: float = 0.5
     threshold_by_engine: Callable[[str], float] | None = None
     images: bool = False
@@ -720,6 +722,8 @@ class StepRunner(AutomationRecorder):
                     line += f" (options: {' | '.join(' '.join(option.split())[:_CONTROL_CLIP] for option in options[:_MAX_OPTIONS])})"
             if element.attrs.get("type") == "submit" and element.role == "button":
                 line += " (submits a form)"
+            if element.attrs.get("type") == "file":
+                line += " (file input)"
             if element.disabled:
                 line += " (disabled)"
             lines.append(line)
@@ -1023,7 +1027,7 @@ class StepRunner(AutomationRecorder):
             element = next((item for item in snapshot.elements if item.md == md), None)
             role = getattr(element, "role", "") or "element"
             text = f'{state.get("kind") or intent.kind} {role} "{_element_name(snapshot, md)}"'
-            if value is not None and (state.get("kind") or intent.kind) in ("fill", "select", "press"):
+            if value is not None and (state.get("kind") or intent.kind) in ("fill", "select", "upload", "download", "press"):
                 text += f' with "{value}"'
             if element is not None and element.role == "button" and element.attrs.get("type") == "submit":
                 text += " (submits a form)"
@@ -1044,6 +1048,10 @@ class StepRunner(AutomationRecorder):
         if intent.kind == "navigate":
             result = await deps.actions.open_url(deps.page, intent.url or "", base_url=deps.base_url, **_file_roots(deps.file_roots))
             failure = "NavigationFailed"
+        elif intent.kind == "download":
+            folder = self._download_folder(state["index"])
+            result = await deps.actions.download_from_url(deps.page, intent.url or "", folder, base_url=deps.base_url, expected_name=intent.value or None, **_file_roots(deps.file_roots))
+            failure = "DownloadFailed"
         elif intent.kind == "wait" and intent.expected is not None:
             result = await deps.actions.wait_for_text(deps.page, intent.expected, timeout_ms=deps.limits.wait_timeout_ms)
             failure = "WaitTimeout"
@@ -1058,8 +1066,10 @@ class StepRunner(AutomationRecorder):
         if not result.ok:
             update.update(outcome="fail", problem=deps.data.redact(result.detail), error_class=failure)
         else:
+            if intent.kind == "download":
+                update.update(self._downloaded(state, result))
             try:
-                record = self._direct_record(intent, before, str(getattr(result, "url_after", "") or ""))
+                record = self._direct_record(intent, before, str(getattr(result, "url_after", "") or ""), result)
             except Exception as exc:  # recording for the export never fails a step
                 record = AutomationAction(kind="wait_time", seconds=0.0, faithful=False, note=f"{intent.kind} was not recorded ({type(exc).__name__})")
             update["auto_actions"] = state.get("auto_actions", ()) + (record,)
@@ -1172,6 +1182,8 @@ class StepRunner(AutomationRecorder):
         value = intent.value
         if kind in ("fill", "select") and value is None:
             return {"outcome": "fail", "problem": "the step does not say which value to use", "error_class": "AmbiguousStep"}
+        if kind == "upload" and not upload_files(value):
+            return {"outcome": "fail", "problem": "the step does not say which file to upload", "error_class": "AmbiguousStep"}
         return {"md": result.md, "kind": kind, "value": value}
 
     async def _act(self, state: StepState) -> dict[str, Any]:
@@ -1198,7 +1210,7 @@ class StepRunner(AutomationRecorder):
         if deps.control is not None:
             await self._human_checks(state, md)
         before = self._page_url()
-        result = await self._perform(state["kind"], locator, intent, state.get("value"))
+        result = await self._perform(state["kind"], locator, intent, state.get("value"), index=state["index"])
         deps.events.emit("action", step=state["index"], action=state["kind"], target=f"md_{md}", ok=bool(result.ok))
         update: dict[str, Any] = {"locator": locator, "actions": state["actions"] + 1, **recorded}
         failure = getattr(result, "kind", None)
@@ -1216,6 +1228,8 @@ class StepRunner(AutomationRecorder):
                 return update
             failure = getattr(result, "kind", None)
         if result.ok:
+            if state["kind"] == "download":
+                update.update(self._downloaded(state, result))
             if entry:
                 update["fields"] = state.get("fields", ()) + ((locator, _element_name(state["snapshot"], md), expected_rejection),)
                 if state["kind"] == "fill" and not expected_rejection:
@@ -1234,7 +1248,10 @@ class StepRunner(AutomationRecorder):
         elif not getattr(result, "retry", True):
             update.update(outcome="fail", problem=deps.data.redact(result.detail), error_class="ActionFailed")
         else:
-            update.update(outcome="recover", problem=deps.data.redact(result.detail), error_class="ActionFailed", excluded=state["excluded"] | {_identity(state["snapshot"], md)}, scroll=False)
+            problem = deps.data.redact(result.detail)
+            update.update(outcome="recover", problem=problem, error_class="ActionFailed", excluded=state["excluded"] | {_identity(state["snapshot"], md)}, scroll=False)
+            if state["kind"] in ("upload", "download"):
+                update["primary"] = state.get("primary") or (problem, "ActionFailed")
         return update
 
     # ------------------------------------------------------------------ fields
@@ -1709,8 +1726,27 @@ class StepRunner(AutomationRecorder):
             return self.deps.data.redact(f"open {intent.url or ''}")
         return self.deps.data.redact(f"{intent.kind} {intent.value or intent.expected or ''}".strip())
 
-    async def _perform(self, kind: str, locator: Any, intent: StepIntent, value: str | None = None) -> Any:
+    def _download_folder(self, index: int) -> Path:
+        return self.deps.evidence.step_dir(index) / "downloads"
+
+    def _downloaded(self, state: StepState, result: Any) -> dict[str, Any]:
+        """Remember a downloaded file for later steps (``{{downloaded_file}}``, file checks) and list it as evidence."""
+        deps = self.deps
+        path = Path((getattr(result, "chosen", None) or {})["file"])
+        deps.downloads.append(path)
+        roots = deps.upload_roots or deps.file_roots or ()
+        project = Path(roots[-1]).resolve() if roots else None
+        resolved = path.resolve()
+        deps.data.capture("downloaded_file", resolved.relative_to(project).as_posix() if project is not None and resolved.is_relative_to(project) else str(resolved))
+        deps.data.capture("downloaded_file_name", path.name)
+        uri = deps.evidence.uri(state["index"], f"downloads/{path.name}")
+        return {"evidence": _merge(state["evidence"], (uri,))}
+
+    async def _perform(self, kind: str, locator: Any, intent: StepIntent, value: str | None = None, *, index: int | None = None) -> Any:
         actions, timeout = self.deps.actions, self.deps.limits.action_timeout_ms
+        if kind == "download":
+            folder = self._download_folder(index if index is not None else 0)
+            return await actions.download_by_click(locator, folder, expected_name=(value or intent.value or "").strip() or None)
         value = value or intent.value or ""
         if kind == "fill":
             return await actions.fill(locator, value, timeout_ms=timeout)
@@ -1724,6 +1760,8 @@ class StepRunner(AutomationRecorder):
             return await actions.hover(locator, timeout_ms=timeout)
         if kind == "press":
             return await actions.press(locator, value, timeout_ms=timeout)
+        if kind == "upload":
+            return await actions.upload(locator, upload_files(value), roots=self.deps.upload_roots or self.deps.file_roots or (), timeout_ms=timeout)
         return await actions.click(locator, timeout_ms=timeout)
 
     async def _service(self, state: StepState) -> dict[str, Any]:
@@ -1825,6 +1863,8 @@ class StepRunner(AutomationRecorder):
             if check.kind in ("visual", "semantic"):
                 entry, uris = await (self._judge_visual(check, index) if check.kind == "visual" else self._judge_semantic(check, index))
                 evidence = _merge(evidence, uris)
+            elif check.kind in FILE_CHECK_KINDS:
+                entry = run_file_check(check, deps.downloads, step=index, redact=deps.data.redact)
             else:
                 entry = await run_check(check, **options)
             ledger.append(entry)
@@ -2155,6 +2195,10 @@ def _reading_text(intent: StepIntent) -> str:
         return f"open {intent.url or ''}".strip()
     if intent.kind in ("fill", "select") and intent.value is not None:
         return f'{intent.kind} "{intent.target or ""}" with "{intent.value}"'
+    if intent.kind == "upload" and intent.value is not None:
+        return f'upload "{intent.value}" to "{intent.target or ""}"'
+    if intent.kind == "download":
+        return f"download from {intent.url}" if intent.url else f'download by clicking "{intent.target or ""}"'
     if intent.kind in ("press", "wait"):
         return f"{intent.kind} {intent.value or intent.expected or ''}".strip()
     return f"{intent.kind} {intent.role + ' ' if intent.role else ''}\"{intent.target or ''}\"".strip()
@@ -2299,6 +2343,8 @@ def _missing_value(intent: StepIntent) -> str | None:
     """What a direct action's reading lacks (an address, a key, a duration), or None when it is complete."""
     if intent.kind == "navigate" and not (intent.url or "").strip():
         return "the step's reading names no address to open"
+    if intent.kind == "download" and not (intent.url or "").strip():
+        return "the step's reading names neither a control to click nor an address to download from"
     if intent.kind == "press" and not (intent.value or "").strip():
         return "the step's reading names no key to press"
     if intent.kind == "wait" and intent.expected is None:
@@ -2318,7 +2364,7 @@ def _after_dispose(state: StepState) -> str:
 
 def _from_step(check: Check, text: str) -> bool:
     """True when a check's expected text or URL is taken from the step itself."""
-    if check.kind not in ("text", "not_text", "url"):
+    if check.kind not in ("text", "not_text", "url", "file_text", "file_not_text"):
         return True
     return " ".join(check.expected.split()).casefold() in " ".join(text.split()).casefold()
 

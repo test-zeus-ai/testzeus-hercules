@@ -242,6 +242,8 @@ export interface RunView {
   parent_run_id?: string | null;
   started_by?: "daemon" | "agent" | null;
   agent?: string | null;
+  batch?: string | null;
+  folder?: string | null;
   worker_pid?: number | null;
   last_seq: number;
   mode?: string | null;
@@ -305,6 +307,7 @@ export interface TestCase {
 
 export interface CaseEntry {
   name: string;
+  folder?: string;
   path: string;
   kind: "json" | "feature";
   valid: boolean;
@@ -313,10 +316,17 @@ export interface CaseEntry {
   title?: string;
   status?: string;
   steps?: number;
+  environment?: string | null;
+}
+
+export interface CaseListing {
+  cases: CaseEntry[];
+  folders?: string[];
 }
 
 export interface SavedCase {
   name: string;
+  folder?: string;
   kind: "json" | "feature";
   source: string | null;
   test_case: TestCase;
@@ -355,6 +365,14 @@ export interface Environment {
   device?: string | null;
   mobile?: MobileApp | null;
   secret_names: string[];
+  variables?: Record<string, string | { secret: string }>;
+}
+
+export type SecretSource = "env" | "file" | "none";
+
+export interface SecretStatus {
+  name: string;
+  source: SecretSource;
 }
 
 export interface OptionView {
@@ -449,6 +467,14 @@ export interface Health {
   project_dir: string;
   parallel_runs: number;
   queue: Record<string, number>;
+  pid?: number;
+  started_at?: string;
+  ui_url?: string;
+  /** The account the daemon runs as, the computer's name, and the Hercules home folder. */
+  user?: string | null;
+  host?: string | null;
+  home_dir?: string;
+  egress_policy?: string;
 }
 
 export interface RunEvent {
@@ -509,6 +535,10 @@ export interface Cloud {
   username_env: string;
   access_key_env: string;
   region: string | null;
+  /** Where the region comes from: SAUCE_REGION (read-only here), the keys file, the config, or the default. */
+  region_source: "env" | "file" | "config" | "default" | null;
+  /** The regions this cloud can be set to; empty when it has none to choose. */
+  regions: string[];
   problem: string | null;
   web_mode: "connect" | "saucectl";
   /** null: web tests can run on this cloud from here; otherwise why they cannot. */
@@ -538,6 +568,7 @@ export interface CloudCheck {
 }
 
 export type CloudSaved = Cloud & { check: CloudCheck; note: string | null };
+export type CloudRegionSaved = Cloud & { check: CloudCheck | null; note: string | null };
 export type CloudRemoved = Cloud & { removed: boolean; note: string | null };
 
 export type CloudRunStatus = "starting" | "running" | "passed" | "failed" | "error" | "cancelled";
@@ -569,3 +600,16 @@ export interface CloudRun {
 }
 
 export type CloudRunDetail = CloudRun & { log: string };
+
+export interface StepFile {
+  name: string;
+  size: number;
+}
+
+export interface StepFiles {
+  environment?: string;
+  case?: string;
+  files: StepFile[];
+  max_files: number;
+  max_bytes: number;
+}

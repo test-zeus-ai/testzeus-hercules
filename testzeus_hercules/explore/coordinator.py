@@ -21,7 +21,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import urlsplit
 
 from testzeus_hercules.cases.models import EnvironmentRef, RunResult, SecretRef, TestCase
 from testzeus_hercules.explore.charters import candidate_charters, choose_charter, dig_charter
@@ -29,6 +29,7 @@ from testzeus_hercules.explore.explorer import EXPLORE_DIR, ExploreJob, read_jso
 from testzeus_hercules.explore.ledger import Ledger
 from testzeus_hercules.explore.missions import Mission, load_mission, load_rubric, rank
 from testzeus_hercules.explore.models import Charter, Clue, EnvironmentInfo, ExploreSpec, Finding, Move, Promise, SessionView, Turn, now_iso
+from testzeus_hercules.explore.oracles import address_under
 from testzeus_hercules.explore.reproduce import FINDING_FILE, ReproJob
 from testzeus_hercules.explore.scope import production_host
 
@@ -290,7 +291,7 @@ class Session:
                 env["browser_options"] = source.browser_options.model_dump(mode="json", exclude_defaults=True)  # type: ignore[union-attr]
         self.case_env = env
         self.test_data = dict(start_case.test_data) if start_case is not None else {}
-        self.start_url = urljoin(self.base_url + "/", spec.start_url) if spec.start_url else self.base_url
+        self.start_url = address_under(self.base_url, spec.start_url) if spec.start_url else self.base_url
         self.promises = list(spec.promises) + _project_promises(self.project_dir)
         self.environment = EnvironmentInfo(
             build=await _build_id(self.base_url, spec),
@@ -510,7 +511,7 @@ class Session:
     async def _start_explorer(self, charter: Charter, *, explorer: int, judge: bool = True) -> str:
         assert self.mission is not None
         self.ran.add(charter.id)
-        start = urljoin(self.base_url + "/", charter.area.lstrip("/")) if charter.kind in ("explore", "dig") and charter.area not in ("", "/") else self.start_url
+        start = address_under(self.base_url, charter.area) if charter.kind in ("explore", "dig") and charter.area not in ("", "/") else self.start_url
         job = ExploreJob(
             session=self.id,
             charter=charter.model_copy(update={"status": "running", "explorer": explorer}),

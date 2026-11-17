@@ -73,10 +73,11 @@ from testzeus_hercules.cases.automation import AutomationCheck, AutomationSpec, 
 from testzeus_hercules.decide.engine import DecisionEngine
 from testzeus_hercules.engine.automation import build_spec
 from testzeus_hercules.cases.browser_options import BrowserOptions
+from testzeus_hercules.cases.step_files import step_file_roots
 from testzeus_hercules.engine.browser_launch import VIDEO_DIRNAME, BrowserSetupError, browser_launch
 from testzeus_hercules.engine.browser_process import forget_browser, record_browser
 from testzeus_hercules.engine.control import RetryStep, RunControl, SkipStep, StepBlocked
-from testzeus_hercules.engine.data import CaseData, protect_case
+from testzeus_hercules.engine.data import CaseData, MissingSecretError, protect_case
 from testzeus_hercules.engine.evidence import EvidenceStore
 from testzeus_hercules.engine.gate import threshold_for
 from testzeus_hercules.engine.failure import classify_failure, failure_summary
@@ -97,7 +98,7 @@ from testzeus_hercules.engine.ports import DefaultPerceiver, Perceiver
 from testzeus_hercules.engine.quality import QualitySession, RunQualityOptions, baseline_dir
 from testzeus_hercules.engine.quality_intent import QualityInterpreter
 from testzeus_hercules.engine.service import ServiceSession
-from testzeus_hercules.engine.service_intent import ServiceInterpreter, case_hint
+from testzeus_hercules.engine.service_intent import ServiceInterpreter, case_kind
 from testzeus_hercules.engine.step_graph import StepDeps, StepLimits, StepOutcome, StepRunner
 from testzeus_hercules.engine.verify import LedgerEntry
 from testzeus_hercules.kernel.run_context import CancelToken, RunCancelledError, RunContext
@@ -320,6 +321,17 @@ class RunState(TypedDict, total=False):
     # The plan: each criterion's result so far and every amendment made while the run ran.
     plan_results: tuple[CriterionResult, ...]
     amendments: tuple[Amendment, ...]
+    captured: dict[str, Any]
+    downloads: tuple[str, ...]
+
+
+def _resolved_base_url(template: str | None, data: CaseData) -> str | None:
+    if not template:
+        return None
+    try:
+        return data.resolve(template, captured=False)
+    except MissingSecretError:
+        return template
 
 
 class _Run:
@@ -331,6 +343,7 @@ class _Run:
         case, hidden = protect_case(case)
         self.case, self.ctx, self.deps, self.stack = case, ctx, deps, stack
         self.data = CaseData.from_case(case, env=deps.env, run_id=ctx.run_id, hidden=hidden)
+        self.base_url = _resolved_base_url(case.environment.base_url, self.data)
         # Every decision request leaves with the run's secrets and any URL credential masked.
         self.decider = MaskingDecider(deps.decider, self.data.redact)
         self.evidence = EvidenceStore(ctx.paths.run_dir(ctx.run_id), ctx.run_id, redact=self.data.redact)
@@ -338,9 +351,9 @@ class _Run:
             data=self.data,
             evidence=self.evidence,
             project_dir=ctx.paths.project_dir,
-            base_url=case.environment.base_url,
+            base_url=self.base_url,
             interpreter=ServiceInterpreter(llm=deps.interpreter.model if deps.interpreter is not None else None),
-            hint=case_hint(case.tags),
+            hint=case_kind(case),
             events=ctx.events,
             timeout_s=deps.limits.request_timeout_s,
             transport=deps.http_transport,
@@ -374,7 +387,7 @@ class _Run:
             env=deps.env,
             names=sorted(set(case.test_data) | set(self.data.hidden)),
             hidden=sorted(self.data.hidden),
-            service=case_hint(case.tags) is not None,
+            service=case_kind(case) is not None,
             options=PlanOptions(coverage=plan.coverage, strict=plan.strict, confirm_destructive=plan.confirm_destructive),
             redact=self.data.redact,
             given=plan.given,
@@ -538,8 +551,8 @@ class _Run:
             return {}
         assert self.runner is not None
         page, data = self.page, self.data
-        if str(getattr(page, "url", "") or "about:blank") == "about:blank" and case.environment.base_url:
-            opened = await deps.actions.open_url(page, case.environment.base_url, base_url=case.environment.base_url, file_roots=(self.ctx.paths.project_dir,))
+        if str(getattr(page, "url", "") or "about:blank") == "about:blank" and self.base_url:
+            opened = await deps.actions.open_url(page, self.base_url, base_url=self.base_url, file_roots=(self.ctx.paths.project_dir,))
             if not opened.ok:
                 return {"setup_error": f"preconditions could not be checked: the base URL did not open ({data.redact(opened.detail)})"}
         try:
@@ -697,8 +710,9 @@ class _Run:
                 data=self.data,
                 evidence=self.evidence,
                 actions=self.deps.actions,
-                base_url=self.case.environment.base_url,
+                base_url=self.base_url,
                 file_roots=(self.ctx.paths.project_dir,),
+                upload_roots=step_file_roots(self.ctx.paths.project_dir, self.case.environment.ref, self.case.id),
                 threshold=threshold_for(_engine_name(self.deps.decider)),
                 threshold_by_engine=threshold_for,
                 images=self.deps.images,
@@ -715,6 +729,9 @@ class _Run:
     async def _reopen(self, state: RunState) -> str | None:
         """On resume: a new step runner and, when the case needs one, a browser back on the page where the last completed step left it."""
         self._build_runner()
+        assert self.runner is not None
+        self.data.captured.update(state.get("captured") or {})
+        self.runner.deps.downloads.extend(Path(path) for path in state.get("downloads") or () if Path(path).is_file())
         self.resumed_plan = True  # the plan the run started with (plan.json); never asked about again
         stopped = await self._read_case()
         if stopped and stopped.get("setup_error"):
@@ -888,6 +905,8 @@ class _Run:
             "unreadable": tuple(item for item in state.get("unreadable") or () if item != number) + ((number,) if outcome.error_class == _UNREADABLE else ()),
             "plan_results": tuple(state.get("plan_results") or ()) + outcome.criteria + self.planner.outcome_results(number, outcome.ledger, ran=outcome.status != "skipped"),
             "amendments": tuple(state.get("amendments") or ()) + outcome.amendments,
+            "captured": dict(self.data.captured),
+            "downloads": tuple(str(path) for path in self.runner.deps.downloads) if self.runner is not None else tuple(state.get("downloads") or ()),
         }
 
     def _planned_automation(self, automation: AutomationStep, outcome: StepOutcome) -> AutomationStep:

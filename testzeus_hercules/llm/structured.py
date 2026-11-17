@@ -21,6 +21,7 @@ from pydantic import BaseModel, ValidationError
 from testzeus_hercules.llm.budget import DEFAULT_VISION_TOKENS, fit_messages
 from testzeus_hercules.llm.capabilities import Capabilities
 from testzeus_hercules.llm.client import DEFAULT_MAX_TOKENS, ChatClient, ChatResult, LLMError, LLMRequestError, Message, user_message
+from testzeus_hercules.llm.schema_limits import limits_from_refusal
 
 __all__ = ["DEFAULT_SEED", "StructuredLLM", "StructuredOutputError", "extract_json_object", "json_schema_for"]
 
@@ -36,7 +37,8 @@ _MAX_ERRORS = 8
 _SCHEMA_REJECTED_STATUSES = frozenset({400, 422})
 # Words a server's error uses when it is ``response_format`` / JSON-schema output it does not support (not, say, an
 # image or a prompt it refuses): only such an error switches the session to JSON in the prompt.
-_SCHEMA_ERROR_WORDS = ("response_format", "response format", "json_schema", "json schema", "schema", "structured output", "grammar", "guided")
+_SCHEMA_ERROR_WORDS = ("response_format", "response format", "json_schema", "json schema", "schema", "structured output", "grammar", "guided", "anyof", "additionalproperties", "object fields")
+_SCHEMA_SIZE_WORDS = ("exceed", "limit", "too many", "too large", "too long", "maximum")
 _SCHEMA_NAME = re.compile(r"[^A-Za-z0-9_-]")
 _CODE_FENCE = re.compile(r"```(?:json|JSON)?\s*(.*?)```", re.DOTALL)
 
@@ -131,10 +133,16 @@ class StructuredLLM:
         try:
             result = await self._send(messages, schema, json_schema, schema_mode=schema_mode)
         except LLMRequestError as exc:
-            if self._schema_mode is not None or not schema_mode or not _schema_unsupported(exc):
+            if not schema_mode or not _schema_unsupported(exc) or limits_from_refusal(exc.server_message) is not None:
                 raise
-            logger.info("server rejected response_format json_schema; using JSON in the prompt instead")
-            self._schema_mode = schema_mode = False
+            if self._schema_mode is not None and _schema_too_large(exc):
+                raise
+            if self._schema_mode is None:
+                logger.info("server rejected response_format json_schema; using JSON in the prompt instead")
+                self._schema_mode = False
+            else:
+                logger.info("server refused the %s reply schema; asking with the schema in the prompt for this request", schema.__name__)
+            schema_mode = False
             messages = self._messages(system, user, images, json_schema, schema_mode=False)
             result = await self._send(messages, schema, json_schema, schema_mode=False)
         else:
@@ -168,6 +176,11 @@ def _schema_unsupported(exc: LLMRequestError) -> bool:
         return False
     message = (exc.server_message or "").lower()
     return any(word in message for word in _SCHEMA_ERROR_WORDS)
+
+
+def _schema_too_large(exc: LLMRequestError) -> bool:
+    message = (exc.server_message or "").lower()
+    return any(word in message for word in _SCHEMA_SIZE_WORDS)
 
 
 def _schema_name(schema: type[BaseModel]) -> str:

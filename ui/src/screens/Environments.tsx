@@ -1,13 +1,25 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState, type FormEvent } from "react";
-import { Field } from "../components/Field";
-import { Icon } from "../components/Icon";
-import { ApiError, api, post } from "../lib/api";
-import { EMPTY_ENV, envToForm, environmentBody, targetSummary, validateEnvironment, type EnvForm } from "../lib/environmentForm";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { EnvironmentDetails } from "../components/EnvironmentDetails";
+import { collapseText, expandText } from "../lib/expandText";
+import { EnvironmentFiles } from "../components/StepFiles";
+import { EnvironmentVariables } from "../components/EnvironmentVariables";
+import { Field, RequiredNote } from "../components/Field";
+import { Icon, type IconName } from "../components/Icon";
+import { ApiError, api, post, remove } from "../lib/api";
+import { EMPTY_ENV, envToForm, environmentBody, environmentVariables, validateEnvironment, type EnvForm } from "../lib/environmentForm";
 import { BROWSER_CHOICES, browserOptionsBody, type BrowserOptionsForm } from "../lib/browserOptionsForm";
 import type { Environment } from "../lib/types";
 
 export { validateEnvironment };
+
+const PANEL_MOTION_MS = 300;
+
+function reducedMotion(): boolean {
+  return typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+export const deletePrompt = (name: string) => `Delete the environment ${name} and its files for upload steps? Cases that name it will no longer find it.`;
 
 export function EnvironmentsScreen() {
   const client = useQueryClient();
@@ -15,7 +27,13 @@ export function EnvironmentsScreen() {
   const devices = useQuery({ queryKey: ["devices"], queryFn: () => api<{ devices: string[] }>("/api/devices"), staleTime: Infinity });
   const [form, setForm] = useState<EnvForm>(EMPTY_ENV);
   const [editing, setEditing] = useState<string | null>(null);
+  const [opened, setOpened] = useState(0);
   const [touched, setTouched] = useState(false);
+  const [mode, setMode] = useState<"list" | "view" | "edit">("list");
+  const [leaving, setLeaving] = useState(false);
+  const leaveTimer = useRef<number | undefined>(undefined);
+  const lastViewed = useRef<Environment | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(leaveTimer.current), []);
   const errors = validateEnvironment(form);
   const save = useMutation({
     mutationFn: (overwrite: boolean) => post<Environment>("/api/environments", environmentBody(form, overwrite)),
@@ -28,6 +46,13 @@ export function EnvironmentsScreen() {
   // A save's outcome (a 409 "Replace it" in particular) belongs to the form it was made for:
   // editing the form or opening another environment drops it, so "Replace it" can never
   // overwrite with values the conflict was not about.
+  const drop = useMutation({
+    mutationFn: (name: string) => remove<{ name: string; removed: boolean }>(`/api/environments/${encodeURIComponent(name)}`),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["environments"] });
+      closePanel();
+    },
+  });
   const resetSave = save.reset;
   useEffect(() => resetSave(), [form, resetSave]);
 
@@ -39,72 +64,120 @@ export function EnvironmentsScreen() {
   const shown = touched ? errors : {};
   const saveError = save.error instanceof ApiError ? save.error : null;
   const list = envs.data?.environments ?? [];
+  const found = mode === "view" ? list.find((env) => env.name === editing) : undefined;
+  if (found) lastViewed.current = found;
+  const viewed = found ?? (leaving && mode === "view" ? lastViewed.current : undefined);
+  const creating = mode === "edit" || (mode === "list" && envs.isSuccess && list.length === 0);
+  const saved = Boolean(editing && list.some((env) => env.name === editing));
+
+  function closePanel() {
+    window.clearTimeout(leaveTimer.current);
+    setLeaving(true);
+    leaveTimer.current = window.setTimeout(() => {
+      setLeaving(false);
+      setForm(EMPTY_ENV);
+      setEditing(null);
+      setMode("list");
+      setTouched(false);
+    }, reducedMotion() ? 0 : PANEL_MOTION_MS);
+  }
+  function cancelLeaving() {
+    window.clearTimeout(leaveTimer.current);
+    setLeaving(false);
+  }
+  function startNew() {
+    cancelLeaving();
+    setForm(EMPTY_ENV);
+    setEditing(null);
+    setMode("edit");
+    setOpened((count) => count + 1);
+    setTouched(false);
+  }
+  const view = (env: Environment) => {
+    cancelLeaving();
+    setEditing(env.name);
+    setMode("view");
+    drop.reset();
+  };
+  const edit = (env: Environment) => {
+    cancelLeaving();
+    setForm(envToForm(env));
+    setEditing(env.name);
+    setMode("edit");
+    setOpened((count) => count + 1);
+    setTouched(false);
+  };
+  const confirmDelete = (name: string) => {
+    if (window.confirm(deletePrompt(name))) drop.mutate(name);
+  };
 
   return (
     <section className="page" aria-labelledby="envs-title">
       <header className="page-head">
         <div>
           <h1 id="envs-title">Environments</h1>
-          <p className="page-sub">Where cases run: a web app (on a desktop or an emulated phone) or a native app on a device, and the secrets they may use, by environment-variable name only.</p>
+          <p className="page-sub">Where cases run: a web app (on a desktop or an emulated phone) or a native app on a device, and the variables and secrets their cases use as {"{{name}}"}.</p>
         </div>
-        <button
-          type="button"
-          className="button"
-          onClick={() => {
-            setForm(EMPTY_ENV);
-            setEditing(null);
-            setTouched(false);
-          }}
-        >
+        <button type="button" className="button" onClick={startNew}>
           <Icon name="plus" size={13} /> New environment
         </button>
       </header>
-      <div className="split">
+      <div className={`split${(viewed || creating) && !leaving ? "" : " split-solo"}`}>
         <div className="panel">
           {list.length === 0 ? (
             <p className="empty-note">No environments yet. Cases can also carry a base URL of their own.</p>
           ) : (
             <div className="table-wrap">
-              <table className="table">
+              <table className="table env-table">
                 <thead>
                   <tr>
-                    <th scope="col">Name</th>
-                    <th scope="col">Target</th>
-                    <th scope="col">Viewport</th>
-                    <th scope="col">Secrets</th>
-                    <th scope="col">
+                    <th scope="col" className="env-col-name">Name</th>
+                    <th scope="col" className="env-col-where">URL or app</th>
+                    <th scope="col">Variables</th>
+                    <th scope="col" className="env-col-actions">
                       <span className="visually-hidden">Edit</span>
                     </th>
                   </tr>
                 </thead>
                 <tbody>
                   {list.map((env) => (
-                    <tr key={env.name} className={env.name === editing ? "row-selected" : undefined}>
-                      <td className="mono nowrap">{env.name}</td>
-                      <td className="mono">{targetSummary(env)}</td>
-                      <td>{env.mobile ? "device" : (env.viewport ?? "–")}</td>
+                    <tr key={env.name} className={`row-clickable${env.name === editing ? " row-selected" : ""}`} onClick={() => view(env)}>
+                      <td className="mono env-cell-name">
+                        <span className="env-name">
+                          <TargetIcon env={env} />
+                          <button type="button" className="link-button mono" onClick={() => view(env)} aria-label={`View ${env.name}`}>
+                            {env.name}
+                          </button>
+                        </span>
+                      </td>
+                      <td className="mono" onPointerEnter={(event) => expandText(event.currentTarget, ".env-where")} onPointerLeave={(event) => collapseText(event.currentTarget, ".env-where")}>
+                        <span className="env-where" title={whereOf(env) ?? undefined}>
+                          {whereOf(env) ?? <span className="muted">none</span>}
+                        </span>
+                      </td>
                       <td>
-                        {env.secret_names.length ? (
-                          env.secret_names.map((secret) => (
-                            <span key={secret} className="tag mono">
-                              <Icon name="key" size={11} /> {secret}
+                        {environmentVariables(env).length ? (
+                          environmentVariables(env).map((row) => (
+                            <span key={row.key} className="tag mono" title={row.secret ? `secret: ${row.value}` : undefined}>
+                              {row.secret ? <Icon name="key" size={11} /> : null} {row.key}
                             </span>
                           ))
                         ) : (
                           <span className="muted">none</span>
                         )}
                       </td>
-                      <td>
+                      <td className="nowrap" onClick={(event) => event.stopPropagation()}>
+                        <button type="button" className="button button-small button-ghost" onClick={() => edit(env)}>
+                          Edit
+                        </button>
                         <button
                           type="button"
-                          className="button button-small button-ghost"
-                          onClick={() => {
-                            setForm(envToForm(env));
-                            setEditing(env.name);
-                            setTouched(false);
-                          }}
+                          className="button button-small button-ghost button-danger-text"
+                          onClick={() => confirmDelete(env.name)}
+                          aria-label={`Delete ${env.name}`}
+                          disabled={drop.isPending}
                         >
-                          Edit
+                          Delete
                         </button>
                       </td>
                     </tr>
@@ -114,81 +187,123 @@ export function EnvironmentsScreen() {
             </div>
           )}
         </div>
-        <form className="panel form" onSubmit={submit} noValidate aria-labelledby="env-form-title">
-          <h2 id="env-form-title">{editing ? `Edit ${editing}` : "New environment"}</h2>
-          <Field id="env-name" label="Name" error={shown.name}>
-            <input className="mono" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="staging" />
-          </Field>
-          <Field id="env-target" label="Target">
-            <select value={form.target} onChange={(event) => setForm({ ...form, target: event.target.value as EnvForm["target"] })}>
-              <option value="web">Web app (browser)</option>
-              <option value="app">Native app (Android or iOS device)</option>
-            </select>
-          </Field>
-          <Field
-            id="env-base-url"
-            label="Base URL"
-            error={shown.baseUrl}
-            help={form.target === "app" ? "Optional: only API steps of the case use it." : undefined}
-          >
-            <input className="mono" value={form.baseUrl} onChange={(event) => setForm({ ...form, baseUrl: event.target.value })} placeholder="http://localhost:3000" />
-          </Field>
-          {form.target === "web" ? (
-            <>
-              <Field id="env-device" label="Phone or tablet" help="Emulate a device in the browser (a Playwright device profile). Leave empty for a desktop browser.">
-                <input className="mono" list="env-device-list" value={form.device} onChange={(event) => setForm({ ...form, device: event.target.value })} placeholder="iPhone 15" />
+        <div className="split-side">
+          {viewed ? (
+            <EnvironmentDetails
+              key={viewed.name}
+              env={viewed}
+              onEdit={() => edit(viewed)}
+              onDelete={() => confirmDelete(viewed.name)}
+              onClose={closePanel}
+              deleting={drop.isPending}
+              error={drop.error ? (drop.error as Error).message : null}
+            />
+          ) : creating ? (
+            <form className="panel form" onSubmit={submit} noValidate aria-labelledby="env-form-title">
+              <h2 id="env-form-title">{editing ? `Edit ${editing}` : "New environment"}</h2>
+              <RequiredNote />
+              <Field id="env-name" label="Name" error={shown.name} required>
+                <input className="mono" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="staging" />
               </Field>
-              <datalist id="env-device-list">
-                {(devices.data?.devices ?? []).map((name) => (
-                  <option key={name} value={name} />
-                ))}
-              </datalist>
-              <div className="field-row">
-                <Field id="env-viewport" label="Viewport" error={shown.viewport} help={form.device ? "Empty: the device's own viewport." : undefined}>
-                  <input className="mono" value={form.viewport} onChange={(event) => setForm({ ...form, viewport: event.target.value })} />
-                </Field>
-                <Field id="env-browser" label="Browser">
-                  <select value={form.browser} onChange={(event) => setForm({ ...form, browser: event.target.value })}>
-                    {BROWSER_CHOICES.map((choice) => (
-                      <option key={choice.value} value={choice.value}>
-                        {choice.label}
-                      </option>
+              <Field id="env-target" label="Target">
+                <select value={form.target} onChange={(event) => setForm({ ...form, target: event.target.value as EnvForm["target"] })}>
+                  <option value="web">Web app (browser)</option>
+                  <option value="app">Native app (Android or iOS device)</option>
+                </select>
+              </Field>
+              <Field
+                id="env-base-url"
+                label="Base URL"
+                error={shown.baseUrl}
+                required={form.target === "web"}
+                help={form.target === "app" ? "Optional: only API steps of the case use it." : undefined}
+              >
+                <input className="mono" value={form.baseUrl} onChange={(event) => setForm({ ...form, baseUrl: event.target.value })} placeholder="http://localhost:3000" />
+              </Field>
+              {form.target === "web" ? (
+                <>
+                  <Field id="env-device" label="Phone or tablet" help="Emulate a device in the browser (a Playwright device profile). Leave empty for a desktop browser.">
+                    <input className="mono" list="env-device-list" value={form.device} onChange={(event) => setForm({ ...form, device: event.target.value })} placeholder="iPhone 15" />
+                  </Field>
+                  <datalist id="env-device-list">
+                    {(devices.data?.devices ?? []).map((name) => (
+                      <option key={name} value={name} />
                     ))}
-                  </select>
-                </Field>
-              </div>
-              <BrowserOptionsFields form={form} setForm={setForm} errors={shown} />
-            </>
-          ) : (
-            <AppFields form={form} setForm={setForm} errors={shown} />
-          )}
-          <Field
-            id="env-secrets"
-            label="Secret references"
-            error={shown.secrets}
-            help="Names of environment variables in the daemon's environment. Values are read at run time and never stored or shown here."
-          >
-            <input className="mono" value={form.secrets} onChange={(event) => setForm({ ...form, secrets: event.target.value })} placeholder="SHOP_USER, SHOP_PASSWORD" />
-          </Field>
-          {saveError ? (
-            <p className="callout callout-fail" role="alert">
-              {saveError.message}
-              {saveError.status === 409 ? (
-                <button type="button" className="link-button" onClick={() => save.mutate(true)}>
-                  Replace it
-                </button>
+                  </datalist>
+                  <div className="field-row">
+                    <Field id="env-viewport" label="Viewport" error={shown.viewport} help={form.device ? "Empty: the device's own viewport." : undefined}>
+                      <input className="mono" value={form.viewport} onChange={(event) => setForm({ ...form, viewport: event.target.value })} />
+                    </Field>
+                    <Field id="env-browser" label="Browser">
+                      <select value={form.browser} onChange={(event) => setForm({ ...form, browser: event.target.value })}>
+                        {BROWSER_CHOICES.map((choice) => (
+                          <option key={choice.value} value={choice.value}>
+                            {choice.label}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  </div>
+                  <BrowserOptionsFields form={form} setForm={setForm} errors={shown} />
+                </>
+              ) : (
+                <AppFields form={form} setForm={setForm} errors={shown} />
+              )}
+              <EnvironmentVariables rows={form.variables} errors={shown} onChange={(variables) => setForm({ ...form, variables })} />
+              <EnvironmentFiles key={opened} environment={editing || null} />
+              {saveError ? (
+                <p className="callout callout-fail" role="alert">
+                  {saveError.message}
+                  {saveError.status === 409 ? (
+                    <button type="button" className="link-button" onClick={() => save.mutate(true)}>
+                      Replace it
+                    </button>
+                  ) : null}
+                </p>
               ) : null}
-            </p>
+              {save.isSuccess && !touched ? <p className="notice" role="status">Saved .hercules/envs/{form.name}.json</p> : null}
+              <footer className="form-actions">
+                <button type="submit" className="button button-primary" disabled={save.isPending}>
+                  <Icon name="save" size={14} /> Save environment
+                </button>
+                {saved ? (
+                  <button type="button" className="button" onClick={() => setMode("view")}>
+                    Close editor
+                  </button>
+                ) : list.length ? (
+                  <button type="button" className="button button-ghost" onClick={closePanel}>
+                    Cancel
+                  </button>
+                ) : null}
+              </footer>
+            </form>
           ) : null}
-          {save.isSuccess && !touched ? <p className="notice" role="status">Saved .hercules/envs/{form.name}.json</p> : null}
-          <footer className="form-actions">
-            <button type="submit" className="button button-primary" disabled={save.isPending}>
-              <Icon name="save" size={14} /> Save environment
-            </button>
-          </footer>
-        </form>
+        </div>
       </div>
     </section>
+  );
+}
+
+export function whereOf(env: Environment): string | null {
+  const app = env.mobile;
+  if (!app) return env.base_url ?? null;
+  const file = app.app?.trim();
+  if (file) return /^[a-z][a-z0-9+.-]*:\/\//i.test(file) ? file : file.split(/[\\/]/).pop() || file;
+  return (app.platform === "ios" ? app.bundle_id : app.package) ?? null;
+}
+
+const BROWSER_ICONS: Record<string, IconName> = { "": "chrome", chromium: "chrome", chrome: "chrome", msedge: "edge", firefox: "firefox", webkit: "compass" };
+
+function TargetIcon({ env }: { env: Environment }) {
+  const browser = env.browser ?? "";
+  const kind = env.mobile ? (env.mobile.platform === "ios" ? "ios" : "android") : "web";
+  const browserName = BROWSER_CHOICES.find((choice) => choice.value === browser)?.label ?? browser;
+  const label = kind === "ios" ? "Native app (iOS)" : kind === "android" ? "Native app (Android)" : `Web app in ${browserName}: ${env.base_url ?? ""}`;
+  const icon: IconName = kind === "ios" ? "apple" : kind === "android" ? "android" : (BROWSER_ICONS[browser] ?? "envs");
+  return (
+    <span className={`env-target env-target-${kind}`} title={label}>
+      <Icon name={icon} size={16} label={label} />
+    </span>
   );
 }
 
@@ -274,7 +389,7 @@ function AppFields({ form, setForm, errors }: { form: EnvForm; setForm: (form: E
           </select>
         </Field>
       </div>
-      <Field id="env-app" label="App" error={errors.app} help="A file inside the project, a device cloud app id, or leave empty and name the installed app below.">
+      <Field id="env-app" label="App" error={errors.app} required={Boolean(form.cloud)} help={form.cloud ? "A file inside the project or the device cloud's app id." : "A file inside the project, a device cloud app id, or leave empty and name the installed app below (one of them is required)."}>
         <input className="mono" value={form.app} onChange={(event) => setForm({ ...form, app: event.target.value })} placeholder={android ? "apps/demo.apk" : "apps/Demo.app"} />
       </Field>
       {android ? (

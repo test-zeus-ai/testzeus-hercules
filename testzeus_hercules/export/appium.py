@@ -661,7 +661,19 @@ class AppiumWriter(PythonWriter):
             lines.append("from pathlib import Path")
         lines.append("from typing import Any")
         parse = sorted(
-            {name for name, helper in (("urljoin", "url"), ("parse_qsl", "with_query"), ("urlencode", "with_query"), ("urlsplit", "with_query"), ("urlunsplit", "with_query")) if helper in used}
+            {
+                name
+                for name, helper in (
+                    ("urljoin", "url"),
+                    ("parse_qsl", "with_query"),
+                    ("urlencode", "with_query"),
+                    ("urlsplit", "with_query"),
+                    ("urlunsplit", "with_query"),
+                    ("urlsplit", "api_url"),
+                    ("urlunsplit", "api_url"),
+                )
+                if helper in used
+            }
         )
         if parse:
             lines.append(f"from urllib.parse import {', '.join(parse)}")

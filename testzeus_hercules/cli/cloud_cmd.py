@@ -1,8 +1,8 @@
 """``hercules cloud``: connect BrowserStack, Sauce Labs and TestMu AI, and run passed runs' exported tests on them.
 
 * ``hercules cloud list``: each cloud, whether it is connected and what it can run here;
-* ``hercules cloud connect CLOUD --username NAME`` reads the access key from standard input (never an argument),
-  saves both to ``~/.hercules/clouds.env`` (mode 600) and checks them;
+* ``hercules cloud connect CLOUD --username NAME [--region REGION]`` reads the access key from standard input (never
+  an argument), saves both (and the Sauce Labs region) to ``~/.hercules/clouds.env`` (mode 600) and checks them;
 * ``hercules cloud check CLOUD`` and ``hercules cloud disconnect CLOUD``;
 * ``hercules cloud run RUN --cloud CLOUD`` runs the run's exported test on the cloud and waits for it (exit code 0
   when it passed, 1 when it failed, 2 when it could not start);
@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from testzeus_hercules.kernel.settings import Settings
 
 CLOUD_CHOICES = ("browserstack", "saucelabs", "testmu")
+SAUCELABS_REGION_CHOICES = ("us-west-1", "us-east-4", "eu-central-1")
 _CLOUD_HELP = "browserstack, saucelabs or testmu (TestMu AI, formerly LambdaTest)"
 
 
@@ -44,6 +45,7 @@ def add_cloud_command(commands: argparse._SubParsersAction[argparse.ArgumentPars
     )
     connect.add_argument("cloud", choices=CLOUD_CHOICES, help=_CLOUD_HELP)
     connect.add_argument("--username", required=True, help="the cloud user name (from its account page, not an example)")
+    connect.add_argument("--region", choices=SAUCELABS_REGION_CHOICES, default=None, help="Sauce Labs only: the data center of the account (default us-west-1)")
     for name, text in (("check", "check that the cloud accepts the current credentials"), ("disconnect", "remove the saved credentials of a cloud")):
         actions.add_parser(name, help=text, description=text[0].upper() + text[1:] + ".").add_argument("cloud", choices=CLOUD_CHOICES, help=_CLOUD_HELP)
     for name, text in (("run", "run a passed run's exported test on a cloud and wait for it"), ("bundle", "write a passed run's test as a project for a cloud (ZIP)")):
@@ -90,7 +92,7 @@ def run_cloud_command(args: argparse.Namespace, *, env: Mapping[str, str] | None
     if action == "list":
         return _list(settings, environ, out, as_json=args.json)
     if action == "connect":
-        return _connect(args.cloud, args.username, settings, environ, stdin or sys.stdin, out, err)
+        return _connect(args.cloud, args.username, args.region, settings, environ, stdin or sys.stdin, out, err)
     if action == "check":
         return _check(args.cloud, settings, environ, out)
     if action == "disconnect":
@@ -144,7 +146,7 @@ def _readiness(text: str, style: Any) -> str:
     return style.dim(text) if text == "not connected" else style.warn(text)
 
 
-def _connect(cloud: "CloudId", username: str, settings: "Settings", env: Mapping[str, str], stdin: TextIO, out: TextIO, err: TextIO) -> int:
+def _connect(cloud: "CloudId", username: str, region: str | None, settings: "Settings", env: Mapping[str, str], stdin: TextIO, out: TextIO, err: TextIO) -> int:
     from testzeus_hercules.clouds.credentials import CredentialError, save_credentials
 
     key = stdin.readline().strip()
@@ -152,7 +154,7 @@ def _connect(cloud: "CloudId", username: str, settings: "Settings", env: Mapping
         err.write('hercules: error: pipe the access key on standard input, for example: echo "$KEY" | hercules cloud connect ...\n')
         return 2
     try:
-        path = save_credentials(cloud, settings, username, key)
+        path = save_credentials(cloud, settings, username, key, region)
     except CredentialError as exc:
         err.write(f"hercules: error: {exc}\n")
         return 2

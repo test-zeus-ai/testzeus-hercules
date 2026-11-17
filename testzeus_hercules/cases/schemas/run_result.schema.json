@@ -41,6 +41,22 @@
           "title": "Faithful",
           "type": "boolean"
         },
+        "files": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "upload: the files attached, relative to the project",
+          "title": "Files"
+        },
         "key": {
           "anyOf": [
             {
@@ -60,6 +76,8 @@
             "click",
             "fill",
             "select",
+            "upload",
+            "download",
             "check",
             "uncheck",
             "hover",
@@ -139,6 +157,19 @@
           "default": null,
           "description": "select (custom drop-down): the role of the option clicked",
           "title": "Option Role"
+        },
+        "saved_as": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "download: the file's name as the run saved it",
+          "title": "Saved As"
         },
         "seconds": {
           "anyOf": [
@@ -225,7 +256,7 @@
             }
           ],
           "default": null,
-          "description": "fill/select: the value as a template; {{name}} names an entry of the spec's data",
+          "description": "fill/select: the value as a template; {{name}} names an entry of the spec's data. upload: the file names, \" | \" between several",
           "title": "Value"
         }
       },
@@ -248,6 +279,28 @@
           "default": true,
           "title": "Faithful",
           "type": "boolean"
+        },
+        "file_check": {
+          "anyOf": [
+            {
+              "enum": [
+                "name",
+                "type",
+                "text",
+                "not_text",
+                "rows",
+                "column",
+                "json"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "file: what is checked in the run's latest downloaded file",
+          "title": "File Check"
         },
         "form": {
           "anyOf": [
@@ -276,7 +329,8 @@
             "visible_text",
             "element_visible",
             "semantic",
-            "visual"
+            "visual",
+            "file"
           ],
           "title": "Kind",
           "type": "string"
@@ -324,6 +378,19 @@
           "title": "Source",
           "type": "string"
         },
+        "subject": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "file column: the column; file json: the JSON path",
+          "title": "Subject"
+        },
         "target": {
           "anyOf": [
             {
@@ -345,6 +412,19 @@
           ],
           "title": "Verdict",
           "type": "string"
+        },
+        "where": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "file column: the row checked, as \"<column> = <value>\" (None: every row)",
+          "title": "Where"
         }
       },
       "required": [

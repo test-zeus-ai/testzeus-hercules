@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Claim upload</title>
+<style>
+  body { font-family: sans-serif; margin: 0; padding: 24px; }
+  .group { margin: 12px 0; }
+  .drop { display: inline-block; border: 2px dashed #888; padding: 16px 24px; cursor: pointer; }
+</style>
+</head>
+<body>
+<h1>Claim upload</h1>
+<form id="claim" onsubmit="event.preventDefault(); send();">
+  <div class="group">
+    <label for="photo">Case clearance photo</label>
+    <input id="photo" name="photo" type="file" accept="image/*">
+  </div>
+  <div class="group">
+    <label for="documents">Supporting documents</label>
+    <input id="documents" name="documents" type="file" multiple>
+  </div>
+  <div class="group">
+    <label for="receipt" class="drop">Drop the receipt here</label>
+    <input id="receipt" name="receipt" type="file" style="display:none">
+  </div>
+  <div class="group">
+    <button type="button" id="choose" onclick="document.getElementById('extras').click()">Choose extra files</button>
+    <input id="extras" name="extras" type="file" multiple style="display:none">
+  </div>
+  <div class="group">
+    <button type="button" id="single-picker" onclick="document.getElementById('signature').click()">Choose signature</button>
+    <input id="signature" name="signature" type="file" style="display:none">
+  </div>
+  <div class="group">
+    <button type="button" id="help">Help</button>
+  </div>
+  <button type="submit">Submit claim</button>
+</form>
+<p id="result" role="status"></p>
+<script>
+  const names = (id) => Array.from(document.getElementById(id).files, (file) => file.name).join(", ") || "none";
+  function send() {
+    document.getElementById("result").textContent =
+      `Received: photo ${names("photo")}; documents ${names("documents")}; receipt ${names("receipt")}; extras ${names("extras")}`;
+  }
+</script>
+</body>
+</html>

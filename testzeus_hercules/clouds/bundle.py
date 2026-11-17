@@ -29,7 +29,7 @@ from testzeus_hercules.cases.browser_options import engine_of
 from testzeus_hercules.cases.models import RunResult
 from testzeus_hercules.clouds.registry import CloudId, cloud_info
 from testzeus_hercules.export import export_run
-from testzeus_hercules.export.common import EnvVar, ExportError, ExportResult, safe_id
+from testzeus_hercules.export.common import EnvVar, ExportError, ExportResult, safe_id, uploads_download
 
 Browser = Literal["chrome", "edge", "chromium", "firefox", "webkit"]
 OsName = Literal["windows", "macos"]
@@ -87,7 +87,7 @@ class Bundle:
     cloud: CloudId
     kind: Literal["web", "mobile"]
     mode: Literal["connect", "saucectl", "appium"]
-    files: dict[str, str]
+    files: dict[str, str | bytes]
     export: ExportResult
     test_path: str
     env: tuple[EnvVar, ...] = field(default_factory=tuple)
@@ -136,7 +136,7 @@ def web_bundle(
         raise ExportError(f"run {result.run_id} tested a native app: run it on a cloud as a native app test, not in a cloud browser")
     options = options.for_run(result)
     names = credentials or credential_env(cloud)
-    auth = _auth_files(result, project_dir)
+    auth = {**_auth_files(result, project_dir), **_upload_files(result, project_dir)}
     if cloud_info(cloud).web_mode == "saucectl":
         if options.browser == "edge":
             raise ExportError("Sauce Labs runs Playwright tests in Chromium, Chrome, Firefox or WebKit, not Edge; choose chrome or chromium")
@@ -174,6 +174,24 @@ def _auth_files(result: RunResult, project_dir: Path | None) -> dict[str, str]:
     if not path.is_relative_to(root) or not path.is_file():
         raise ExportError(f"the run's auth state file {state} is not in the project any more; save it again before running on a cloud")
     return {state: path.read_text(encoding="utf-8")}
+
+
+def _upload_files(result: RunResult, project_dir: Path | None) -> dict[str, str | bytes]:
+    """The files the run's upload steps attached, at the same paths in the cloud project as in this one."""
+    spec = result.automation
+    wanted = sorted({path for step in (spec.steps if spec is not None else []) for action in step.actions if action.kind == "upload" and not uploads_download(action) for path in action.files or []})
+    if not wanted:
+        return {}
+    if project_dir is None:
+        raise ExportError(f"run {result.run_id} uploads {', '.join(wanted)}: the cloud project needs those files; build it from the project folder")
+    root = project_dir.resolve()
+    found: dict[str, str | bytes] = {}
+    for relative in wanted:
+        path = (root / relative).resolve()
+        if not path.is_relative_to(root) or not path.is_file():
+            raise ExportError(f"the file {relative} that the run uploaded is not in the project any more; add it again before running on a cloud")
+        found[relative] = path.read_bytes()
+    return found
 
 
 def connect_conftest(cloud: CloudId, options: WebOptions, names: tuple[str, str], build: str) -> str:

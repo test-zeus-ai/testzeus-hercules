@@ -347,3 +347,90 @@ def test_unknown_names_stay_as_written() -> None:
     )
     code = export_run(result(automation=plain), "playwright-ts").code
     assert '.fill("{{nobody}} x");' in code
+
+
+def _upload_result(files: list[str] | None) -> RunResult:
+    target = TargetSpec(role="button", name="Photo", locator=LocatorSpec(strategy="label", value="Photo"))
+    steps = [AutomationStep(index=1, action='I upload "case.png" to "Photo"', status="passed", actions=[AutomationAction(kind="upload", value="case.png", files=files, target=target)])]
+    return result(automation=spec().model_copy(update={"steps": steps}))
+
+
+def test_an_upload_exports_the_files_it_attached() -> None:
+    attached = _upload_result(["fixtures/case.png", ".hercules/case-files/claim/scan.pdf"])
+
+    typescript = export_run(attached, "playwright-ts").code
+    python = export_run(attached, "playwright-py").code
+
+    assert '.setInputFiles(["fixtures/case.png", ".hercules/case-files/claim/scan.pdf"]);' in typescript
+    assert '.set_input_files(["fixtures/case.png", ".hercules/case-files/claim/scan.pdf"])' in python
+    ast.parse(python)
+    assert "the files attached here were not recorded" in export_run(_upload_result(None), "playwright-py", allow_failed=True).code
+
+
+def _download_result() -> RunResult:
+    link = TargetSpec(role="link", name="Export CSV", locator=role("Export CSV", "link"))
+    checks = [
+        AutomationCheck(kind="file", file_check="name", expected="report.csv", match="equals"),
+        AutomationCheck(kind="file", file_check="type", expected="CSV"),
+        AutomationCheck(kind="file", file_check="rows", expected=">= 3"),
+        AutomationCheck(kind="file", file_check="column", expected="Paid", match="equals", subject="Status", where="Order ID = 1002"),
+        AutomationCheck(kind="file", file_check="text", expected="Grace"),
+    ]
+    steps = [
+        AutomationStep(index=1, action='I click "Export CSV"', status="passed", actions=[AutomationAction(kind="download", target=link, saved_as="report.csv")], checks=checks),
+        AutomationStep(
+            index=2,
+            action='I download "/data/orders.json"',
+            status="passed",
+            actions=[AutomationAction(kind="download", url="/data/orders.json")],
+            checks=[AutomationCheck(kind="file", file_check="json", expected="2", match="equals", subject="$.count"), AutomationCheck(kind="file", file_check="type", expected="PDF")],
+        ),
+        AutomationStep(
+            index=3,
+            action="check the PDF",
+            status="passed",
+            checks=[AutomationCheck(kind="file", file_check="text", expected="Total", faithful=False, note="the export does not read the text of a pdf file; check it by hand")],
+        ),
+    ]
+    return result(automation=spec().model_copy(update={"steps": steps}))
+
+
+def test_downloads_and_file_checks_export_to_both_languages(tmp_path: Path) -> None:
+    typescript = export_run(_download_result(), "playwright-ts").code
+    python = export_run(_download_result(), "playwright-py").code
+
+    assert 'await keepDownload(page, () => page.getByRole("link", { name: "Export CSV", exact: true }).click());' in typescript
+    assert 'await fetchDownload(page, url("/data/orders.json"));' in typescript and "page.request.get(address)" in typescript
+    assert 'expect(folded(downloadedFile.split(/[\\\\/]/).pop() ?? "")).toBe(folded("report.csv"));' in typescript
+    assert "expect((await downloadedRows()).rows.length).toBeGreaterThanOrEqual(3);" in typescript
+    assert 'const cells = await downloadedCells("Status", ["Order ID", "1002"]);' in typescript and 'expect(folded(cell)).toBe(folded("Paid"));' in typescript
+    assert 'expect(folded(await downloadedValue(["count"]))).toBe(folded("2"));' in typescript
+    assert 'expect(await downloadedType()).toBe("pdf");' in typescript and "TODO" in typescript and "check that the downloaded file is a CSV" in typescript
+    assert 'keep_download(page, lambda: page.get_by_role("link", name="Export CSV", exact=True).click())' in python
+    assert 'fetch_download(page, url("/data/orders.json"))' in python and "from urllib.parse import unquote, urljoin, urlsplit" in python
+    assert "assert len(downloaded_rows()[1]) >= 3" in python
+    assert 'cells = downloaded_cells("Status", ("Order ID", "1002"))' in python and 'assert all(folded(cell) == folded("Paid") for cell in cells)' in python
+    assert "assert folded(downloaded_value(['count'])) == folded(\"2\")" in python
+    assert 'assert downloaded_type() == "pdf"' in python
+    assert "check it by hand" in python and "check it by hand" in typescript
+    ast.parse(python)
+    for name in ("import csv", "import io", "import tempfile", "import json", "import zipfile", "from pathlib import Path"):
+        assert name in python
+    if node() is not None and UI_TYPESCRIPT.is_dir():
+        assert typescript_syntax_errors(typescript, tmp_path) == []
+
+
+def test_an_upload_of_the_downloaded_file_attaches_the_tests_own_download() -> None:
+    target = TargetSpec(role="button", name="Photo", locator=LocatorSpec(strategy="label", value="Photo"))
+    run_copy = [".hercules/runs/r_1/steps/3/downloads/guide.pdf"]
+    steps = [
+        AutomationStep(index=1, action="download", status="passed", actions=[AutomationAction(kind="download", url="/files/guide.pdf")]),
+        AutomationStep(index=2, action="upload", status="passed", actions=[AutomationAction(kind="upload", value="{{downloaded_file}}", files=run_copy, target=target)]),
+    ]
+    attached = result(automation=spec().model_copy(update={"steps": steps}))
+
+    typescript = export_run(attached, "playwright-ts").code
+    python = export_run(attached, "playwright-py").code
+
+    assert ".setInputFiles([downloadedFile]);" in typescript and ".set_input_files([downloaded[-1]])" in python
+    assert ".hercules/runs" not in typescript + python

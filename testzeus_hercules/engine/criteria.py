@@ -140,6 +140,8 @@ async def _evaluate(
     expected = resolve(criterion.expected) if criterion.expected else ""
     target = resolve(criterion.target) if criterion.target else ""
     options = {"page": page, "actions": actions, "step": step, "timeout_ms": timeout_ms, "redact": redact}
+    if criterion.check.startswith("file_"):
+        return Evaluation("unverified", "a downloaded file is checked by the step's own outcome, not as a criterion of an action")
     if criterion.check in ("text_visible", "text_absent", "url_matches"):
         kind = {"text_visible": "text", "text_absent": "not_text", "url_matches": "url"}[criterion.check]
         entry = await run_check(Check(kind=kind, expected=expected, match=criterion.match), **options)  # type: ignore[arg-type]

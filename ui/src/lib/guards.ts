@@ -2,7 +2,7 @@
 // read exist with the right type. A daemon of another version (or a proxy's HTML error page)
 // then fails with a clear message instead of a crash deep inside a screen.
 
-import type { CaseEntry, Cloud, CloudRun, CloudsReport, ModelsReport, RunResult, RunView, SavedCase, TestCase } from "./types";
+import type { CaseListing, Cloud, CloudRun, CloudsReport, ModelsReport, RunResult, RunView, SavedCase, TestCase } from "./types";
 
 export type Guard<T> = (value: unknown) => value is T;
 
@@ -36,8 +36,13 @@ export function isSavedCase(value: unknown): value is SavedCase {
   return isObject(value) && isString(value.name) && isString(value.kind) && optional(value.source, isString) && isTestCase(value.test_case);
 }
 
-export function isCaseList(value: unknown): value is { cases: CaseEntry[] } {
-  return isObject(value) && Array.isArray(value.cases) && value.cases.every((entry) => isObject(entry) && isString(entry.name) && isString(entry.path) && typeof entry.valid === "boolean");
+export function isCaseList(value: unknown): value is CaseListing {
+  return (
+    isObject(value) &&
+    Array.isArray(value.cases) &&
+    value.cases.every((entry) => isObject(entry) && isString(entry.name) && isString(entry.path) && typeof entry.valid === "boolean") &&
+    (value.folders === undefined || (Array.isArray(value.folders) && value.folders.every(isString)))
+  );
 }
 
 export function isModelsReport(value: unknown): value is ModelsReport {

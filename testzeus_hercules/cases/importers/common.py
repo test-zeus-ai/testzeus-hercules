@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Literal
 
 from testzeus_hercules.cases.gherkin import slugify
-from testzeus_hercules.cases.models import BUILTIN_PLACEHOLDERS, SECRET_NAME_PATTERN, TestCase
+from testzeus_hercules.cases.models import RESERVED_PLACEHOLDERS, SECRET_NAME_PATTERN, TestCase
 
 PROJECT_DIRNAME = ".hercules"
 FileKind = Literal["case", "env", "data", "doc"]
@@ -191,7 +191,7 @@ def data_key(raw: str) -> str | None:
         return None
     if key[0].isdigit():
         key = "_" + key
-    return None if key in BUILTIN_PLACEHOLDERS else key
+    return None if key in RESERVED_PLACEHOLDERS else key
 
 
 def unique_case_id(base: str, taken: set[str]) -> str:

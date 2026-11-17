@@ -7,7 +7,23 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
 
 from testzeus_hercules.cases.browser_options import BrowserOptions
-from testzeus_hercules.cases.models import BASE_URL_PATTERN, SECRET_NAME_PATTERN, VIEWPORT_PATTERN, Browser, EnvironmentRef, MobileApp, RunResult, TestCase, check_web_settings
+from testzeus_hercules.cases.models import (
+    BASE_URL_PATTERN,
+    BUILTIN_PLACEHOLDERS,
+    RESERVED_PLACEHOLDERS,
+    SECRET_NAME_PATTERN,
+    VIEWPORT_PATTERN,
+    Browser,
+    DataKey,
+    EnvironmentRef,
+    MobileApp,
+    RunResult,
+    SecretRef,
+    TestCase,
+    TestDataValue,
+    check_web_settings,
+    placeholder_names_in,
+)
 from testzeus_hercules.cases.plan import Plan
 from testzeus_hercules.quality.findings import Impact
 
@@ -22,6 +38,7 @@ MAX_TEXT = 200_000
 
 EnvName = Annotated[str, StringConstraints(pattern=ENV_NAME_PATTERN)]
 BaseUrl = Annotated[str, StringConstraints(pattern=BASE_URL_PATTERN, max_length=2000)]
+FolderPath = Annotated[str, StringConstraints(max_length=1000)]
 
 
 class _Body(BaseModel):
@@ -85,6 +102,7 @@ class RunCreate(RunSettings):
 
     test_case: TestCase | None = None
     gherkin: Annotated[str, StringConstraints(min_length=1, max_length=MAX_TEXT)] | None = None
+    test_data: dict[DataKey, TestDataValue] | None = Field(default=None, description="Test data of the Gherkin (a saved .feature keeps it in <name>.data.json)")
     case_path: Annotated[str, StringConstraints(min_length=1, max_length=1000)] | None = None
     description: Annotated[str, StringConstraints(min_length=1, max_length=20_000)] | None = None
     auto_approve: bool = False
@@ -95,6 +113,8 @@ class RunCreate(RunSettings):
         given = [name for name in ("test_case", "gherkin", "case_path", "description") if getattr(self, name) is not None]
         if len(given) != 1:
             raise ValueError(f"give exactly one of test_case, gherkin, case_path or description (got {', '.join(given) or 'none'})")
+        if self.test_data is not None and self.gherkin is None:
+            raise ValueError("test_data goes with gherkin; a TestCase carries its own test_data")
         return self
 
 
@@ -103,6 +123,7 @@ class PlanCreate(_Body):
 
     test_case: TestCase | None = None
     gherkin: Annotated[str, StringConstraints(min_length=1, max_length=MAX_TEXT)] | None = None
+    test_data: dict[DataKey, TestDataValue] | None = Field(default=None, description="Test data of the Gherkin (a saved .feature keeps it in <name>.data.json)")
     case_path: Annotated[str, StringConstraints(min_length=1, max_length=1000)] | None = None
     environment: EnvName | None = None
     base_url: BaseUrl | None = None
@@ -117,6 +138,8 @@ class PlanCreate(_Body):
         given = [name for name in ("test_case", "gherkin", "case_path") if getattr(self, name) is not None]
         if len(given) != 1:
             raise ValueError(f"give exactly one of test_case, gherkin or case_path (got {', '.join(given) or 'none'})")
+        if self.test_data is not None and self.gherkin is None:
+            raise ValueError("test_data goes with gherkin; a TestCase carries its own test_data")
         return self
 
 
@@ -246,12 +269,16 @@ class CaseSave(_Body):
 
     test_case: TestCase | None = None
     gherkin: Annotated[str, StringConstraints(min_length=1, max_length=MAX_TEXT)] | None = None
+    test_data: dict[DataKey, TestDataValue] | None = Field(default=None, description="Test data of the Gherkin (a saved .feature keeps it in <name>.data.json)")
     overwrite: bool = False
+    folder: FolderPath = Field(default="", description="The folder to save into, such as Checkout/Payments (empty: the top level); it must exist")
 
     @model_validator(mode="after")
     def _one_source(self) -> CaseSave:
         if (self.test_case is None) == (self.gherkin is None):
             raise ValueError("give exactly one of test_case or gherkin")
+        if self.test_data is not None and self.gherkin is None:
+            raise ValueError("test_data goes with gherkin; a TestCase carries its own test_data")
         return self
 
 
@@ -260,12 +287,50 @@ class CaseValidate(_Body):
 
     test_case: dict[str, Any] | None = None
     gherkin: Annotated[str, StringConstraints(min_length=1, max_length=MAX_TEXT)] | None = None
+    test_data: dict[DataKey, TestDataValue] | None = Field(default=None, description="Test data of the Gherkin (a saved .feature keeps it in <name>.data.json)")
 
     @model_validator(mode="after")
     def _one_source(self) -> CaseValidate:
         if (self.test_case is None) == (self.gherkin is None):
             raise ValueError("give exactly one of test_case or gherkin")
+        if self.test_data is not None and self.gherkin is None:
+            raise ValueError("test_data goes with gherkin; a TestCase carries its own test_data")
         return self
+
+
+class FolderCreate(_Body):
+    """Make a folder for cases: ``name`` inside ``parent`` (empty: the top level)."""
+
+    parent: FolderPath = ""
+    name: Annotated[str, StringConstraints(min_length=1, max_length=200)]
+
+
+class FolderUpdate(_Body):
+    """Rename a folder (``name``) or move it into another folder (``parent``, empty: the top level); give exactly one."""
+
+    name: Annotated[str, StringConstraints(min_length=1, max_length=200)] | None = None
+    parent: FolderPath | None = None
+
+    @model_validator(mode="after")
+    def _one_change(self) -> FolderUpdate:
+        if (self.name is None) == (self.parent is None):
+            raise ValueError("give exactly one of name or parent")
+        return self
+
+
+class CasesMove(_Body):
+    """Move saved cases (by name, such as Checkout/login.feature) into ``folder`` (empty: the top level)."""
+
+    names: list[Annotated[str, StringConstraints(min_length=1, max_length=1000)]] = Field(min_length=1, max_length=500)
+    folder: FolderPath = ""
+
+
+class RunBatchCreate(RunSettings):
+    """Run every ready case of a folder: one queued run per case, sharing a batch. Drafts and cases that do not load are
+    skipped. ``environment`` and ``base_url``, when given, apply to every case; else each runs in its own."""
+
+    folder: FolderPath = Field(description="The folder, such as Checkout (empty: every saved case)")
+    subfolders: bool = True
 
 
 class CaseCheck(BaseModel):
@@ -357,6 +422,9 @@ class Environment(_Body):
     device: Annotated[str, StringConstraints(min_length=1, max_length=100)] | None = Field(default=None, description="Mobile web emulation: a Playwright device profile")
     mobile: MobileApp | None = Field(default=None, description="A native app on a device (Appium)")
     secret_names: list[Annotated[str, StringConstraints(pattern=SECRET_NAME_PATTERN)]] = Field(default_factory=list, max_length=50)
+    variables: dict[DataKey, TestDataValue] = Field(
+        default_factory=dict, max_length=100, description="Values and secrets every case run with this environment can use as {{name}}; a case's own test_data wins"
+    )
 
     _known_device = field_validator("device")(EnvironmentRef._known_device.__func__)  # type: ignore[attr-defined]
 
@@ -365,7 +433,18 @@ class Environment(_Body):
         if self.mobile is None and self.base_url is None:
             raise ValueError("a web environment needs base_url (a native app environment sets mobile instead)")
         check_web_settings(self.mobile, self.device, self.viewport, self.browser, self.browser_options)
+        reserved = sorted(RESERVED_PLACEHOLDERS.intersection(self.variables))
+        if reserved:
+            raise ValueError(f"variable(s) {', '.join(reserved)} are reserved for built-in placeholders")
+        unknown = sorted(set(placeholder_names_in(self.base_url or "")) - set(self.data()) - BUILTIN_PLACEHOLDERS)
+        if unknown:
+            raise ValueError(f"base_url uses {', '.join('{{' + name + '}}' for name in unknown)}, which this environment does not define: add it as a variable or secret")
         return self
+
+    def data(self) -> dict[str, TestDataValue]:
+        found: dict[str, TestDataValue] = {name: SecretRef(secret=name) for name in self.secret_names}
+        found.update(self.variables)
+        return found
 
 
 class EnvironmentSave(Environment):
@@ -391,6 +470,8 @@ class RunView(BaseModel):
     parent_run_id: str | None = None
     started_by: Literal["daemon", "agent"] | None = Field(default=None, description="daemon: the tester UI or HTTP API; agent: a coding agent over MCP")
     agent: str | None = Field(default=None, description="With started_by agent: claude-code, codex, cursor, copilot, gemini or other")
+    batch: str | None = Field(default=None, description="The batch of a folder run (POST /api/runs/batch) this run belongs to")
+    folder: str | None = Field(default=None, description="With batch: the folder that was run")
     worker_pid: int | None = None
     last_seq: int = 0
     mode: str | None = None
@@ -415,6 +496,18 @@ class RunCreated(BaseModel):
     status: RunStatus
     case_id: str | None = None
     ui_url: str
+
+
+class BatchSkip(BaseModel):
+    name: str
+    reason: str
+
+
+class RunBatchCreated(BaseModel):
+    batch: str
+    folder: str
+    runs: list[RunCreated]
+    skipped: list[BatchSkip]
 
 
 class ErrorBody(BaseModel):

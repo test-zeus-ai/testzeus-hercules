@@ -14,6 +14,10 @@ its expected outcome (see :mod:`testzeus_hercules.cases.scan_phrases`).
 Two tags set where the case runs: ``@env:<name>`` names a saved environment (a web app, a
 phone to emulate, or a native app on a device), and ``@device:<profile>`` emulates a phone or
 tablet in the browser, with ``_`` for spaces (``@device:iPhone_15``, ``@device:Pixel_7``).
+
+``{{name}}`` names a value of the case's test data, of its environment (variables and secrets) or a built-in. TestZeus
+references ``[$.environment.<env>.<key>]`` and ``[$.testdata.<name>.<key>]`` are read as ``{{key}}``. The test data of
+``<name>.feature`` is kept beside it in ``<name>.data.json`` as ``{"test_data": {...}}``.
 """
 
 from __future__ import annotations
@@ -23,9 +27,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Mapping
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from testzeus_hercules.cases.models import EnvironmentRef, Step, TestCase, TestDataValue
+from testzeus_hercules.cases.models import DataKey, EnvironmentRef, Step, TestCase, TestDataValue
 from testzeus_hercules.cases.scan_phrases import fold_scan_steps
 
 VERIFY_ACTION = "verify"
@@ -35,6 +39,16 @@ _DOC_FENCES = ('"""', "```")
 _SECTION = re.compile(r"^(Feature|Background|Scenario|Example|Scenario Outline|Scenario Template|Examples|Scenarios|Rule):\s*(.*)$")
 _SLUG_INVALID = re.compile(r"[^a-z0-9]+")
 _MAX_SLUG = 100
+
+
+DATA_SUFFIX = ".data.json"
+MAX_DATA_BYTES = 256 * 1024
+
+
+class FeatureData(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    test_data: dict[DataKey, TestDataValue] = Field(default_factory=dict)
 
 
 class GherkinError(ValueError):
@@ -147,6 +161,9 @@ class _Parser:
         target.append(step)
 
 
+TESTZEUS_REFERENCE = re.compile(r"\[\$\.(?:environment|testdata)\.[A-Za-z0-9_-]+\.([A-Za-z_][A-Za-z0-9_]*)\]")
+
+
 def slugify(name: str) -> str:
     """Case id derived from a scenario name: lowercase words joined by '-'."""
     slug = _SLUG_INVALID.sub("-", name.lower()).strip("-")[:_MAX_SLUG].strip("-")
@@ -161,6 +178,7 @@ def compile_feature(
     test_data: Mapping[str, TestDataValue] | None = None,
 ) -> TestCase:
     """Compile feature text with exactly one scenario into a ready :class:`TestCase`."""
+    text = TESTZEUS_REFERENCE.sub(lambda match: "{{" + match.group(1) + "}}", text)
     parser = _Parser(source=source_name)
     for number, raw in enumerate(text.splitlines(), start=1):
         parser.feed(number, raw)
@@ -197,10 +215,31 @@ def _environment(tags: list[str], base_url: str | None, source_name: str) -> Env
         raise GherkinError(f"{source_name}: {problem}") from None
 
 
+def data_file(path: Path) -> Path:
+    return path.with_name(path.stem + DATA_SUFFIX)
+
+
+def read_feature_data(path: Path) -> dict[str, TestDataValue]:
+    """The test data kept beside the ``.feature`` file ``path`` (none when there is no data file)."""
+    sidecar = data_file(path)
+    if sidecar.is_symlink() or not sidecar.is_file():
+        return {}
+    try:
+        if sidecar.stat().st_size > MAX_DATA_BYTES:
+            raise GherkinError(f"{sidecar.name}: the test data file is too large")
+        return FeatureData.model_validate_json(sidecar.read_bytes()).test_data
+    except OSError as exc:
+        raise GherkinError(f"{sidecar.name}: cannot read the test data ({exc.__class__.__name__})") from None
+    except ValidationError as exc:
+        problem = "; ".join(f"{'.'.join(str(part) for part in error['loc'])}: {error['msg']}" for error in exc.errors()[:3])
+        raise GherkinError(f"{sidecar.name}: invalid test data ({problem})") from None
+
+
 def load_feature(path: Path, *, base_url: str | None = None, test_data: Mapping[str, TestDataValue] | None = None) -> TestCase:
-    """Read and compile a ``.feature`` file."""
+    """Read and compile a ``.feature`` file with the test data kept beside it."""
     try:
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
         raise GherkinError(f"{path.name}: cannot read feature file ({exc.__class__.__name__})") from None
-    return compile_feature(text, source_name=path.name, base_url=base_url, test_data=test_data)
+    data = test_data if test_data is not None else read_feature_data(path)
+    return compile_feature(text, source_name=path.name, base_url=base_url, test_data=data)

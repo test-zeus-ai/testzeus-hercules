@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { post, put, remove } from "../lib/api";
 import { cloudMonogram, connectionLabel } from "../lib/clouds";
-import type { Cloud, CloudCheck, CloudRemoved, CloudSaved } from "../lib/types";
+import type { Cloud, CloudCheck, CloudRegionSaved, CloudRemoved, CloudSaved } from "../lib/types";
 import { CloudLogo } from "./CloudLogo";
 import { Field } from "./Field";
 import { Icon } from "./Icon";
@@ -66,10 +66,10 @@ function ConnectForm({ cloud, onOutcome }: { cloud: Cloud; onOutcome: (outcomes:
   return (
     <form className="form cloud-form" onSubmit={submit} noValidate aria-label={`Connect ${cloud.name}`}>
       <div className="field-row">
-        <Field id={`cloud-${cloud.id}-username`} label="User name" error={touched ? errors.username : undefined}>
+        <Field id={`cloud-${cloud.id}-username`} label="User name" error={touched ? errors.username : undefined} required>
           <input className="mono" value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="off" spellCheck={false} autoCapitalize="off" placeholder={cloud.username ?? ""} />
         </Field>
-        <Field id={`cloud-${cloud.id}-key`} label="Access key" error={touched ? errors.accessKey : undefined}>
+        <Field id={`cloud-${cloud.id}-key`} label="Access key" error={touched ? errors.accessKey : undefined} required>
           <input className="mono" type="password" value={accessKey} onChange={(event) => setAccessKey(event.target.value)} autoComplete="off" spellCheck={false} autoCapitalize="off" />
         </Field>
       </div>
@@ -92,6 +92,33 @@ function ConnectForm({ cloud, onOutcome }: { cloud: Cloud; onOutcome: (outcomes:
         </button>
       </footer>
     </form>
+  );
+}
+
+function RegionPicker({ cloud, onOutcome }: { cloud: Cloud; onOutcome: (outcomes: Outcome[]) => void }) {
+  const client = useQueryClient();
+  const save = useMutation({
+    mutationFn: (region: string) => put<CloudRegionSaved>(`/api/clouds/${cloud.id}/region`, { region }),
+    onSuccess: (saved) => {
+      const checked: Outcome[] = saved.check ? [{ tone: saved.check.ok ? "ok" : "fail", text: saved.check.ok ? `Region ${saved.region} saved. ${saved.check.message}` : `Region saved, but the check failed: ${saved.check.message}` }] : [{ tone: "note", text: `Region ${saved.region} saved.` }];
+      onOutcome([...checked, ...(saved.note ? [{ tone: "note" as const, text: saved.note }] : [])]);
+      void client.invalidateQueries({ queryKey: ["clouds"] });
+    },
+    onError: (error) => onOutcome([{ tone: "fail", text: (error as Error).message }]),
+  });
+  const fromEnv = cloud.region_source === "env";
+  return (
+    <div className="cloud-region">
+      <Field id={`cloud-${cloud.id}-region`} label="Region" help={fromEnv ? <>Set by the environment variable <code>SAUCE_REGION</code>, which wins over a region chosen here.</> : "The data center of your account; the keys are refused in any other."}>
+        <select className="mono" value={cloud.region ?? ""} onChange={(event) => save.mutate(event.target.value)} disabled={fromEnv || save.isPending}>
+          {cloud.regions.map((region) => (
+            <option key={region} value={region}>
+              {region}
+            </option>
+          ))}
+        </select>
+      </Field>
+    </div>
   );
 }
 
@@ -147,7 +174,7 @@ export function CloudCard({ cloud }: { cloud: Cloud }) {
         <Readiness label="Web" reason={cloud.web_ready} />
         <Readiness label="Native apps" reason={cloud.mobile_ready} />
       </dl>
-      {cloud.region ? <p className="small muted">Region {cloud.region}</p> : null}
+      {cloud.regions.length ? <RegionPicker cloud={cloud} onOutcome={setOutcomes} /> : cloud.region ? <p className="small muted">Region {cloud.region}</p> : null}
       {cloud.problem ? (
         <p className="callout callout-warn">
           <Icon name="alert" size={13} /> {cloud.problem}

@@ -15,14 +15,54 @@ from testzeus_hercules.act.api import text_content_type
 from testzeus_hercules.cases.automation import AutomationAction, AutomationCheck, AutomationStep, LocatorSpec
 from testzeus_hercules.cases.models import ApiCall
 from testzeus_hercules.export import browser_setup
-from testzeus_hercules.export.common import BASE_URL_ENV, BROWSER_ENV, Helpers, Writer, address_pattern, json_path_keys, one_line, safe_id, snake, status_codes
+from testzeus_hercules.export.common import (
+    BASE_URL_ENV,
+    BROWSER_ENV,
+    DOWNLOADED_FILE,
+    Helpers,
+    Writer,
+    address_pattern,
+    file_type_kinds,
+    json_path_keys,
+    one_line,
+    row_comparison,
+    safe_id,
+    snake,
+    status_codes,
+    uploads_download,
+)
 from testzeus_hercules.export.common import viewport_size as _viewport
 from testzeus_hercules.perceive.locators import css_string
 
 WAIT_TEXT_MS = 10_000
 
 HELPERS = Helpers(
-    order=("base", "url", "api_url", "text", "missing", "at", "exists", "same", "contains", "matches", "filled", "number", "size", "bounded", "status_in", "with_query", "sqlite"),
+    order=(
+        "base",
+        "url",
+        "api_url",
+        "text",
+        "missing",
+        "at",
+        "exists",
+        "same",
+        "contains",
+        "matches",
+        "filled",
+        "number",
+        "size",
+        "bounded",
+        "status_in",
+        "with_query",
+        "sqlite",
+        "folded",
+        "download",
+        "download_type",
+        "download_text",
+        "download_rows",
+        "download_cells",
+        "download_value",
+    ),
     requires={
         "url": ("base",),
         "api_url": ("base",),
@@ -34,6 +74,11 @@ HELPERS = Helpers(
         "filled": ("missing",),
         "size": ("missing",),
         "bounded": ("number", "missing"),
+        "download_type": ("download",),
+        "download_text": ("download",),
+        "download_rows": ("download",),
+        "download_cells": ("download_rows", "folded"),
+        "download_value": ("download", "at"),
     },
     source={
         "base": "",  # written by the header (it needs the run's base URL)
@@ -44,8 +89,11 @@ def url(path: str) -> str:
 ''',
         "api_url": '''
 def api_url(path: str) -> str:
-    """An API address: relative paths are appended to BASE_URL, as the run did."""
-    return BASE_URL.rstrip("/") + "/" + path.lstrip("/")
+    """An API address: relative paths go under BASE_URL's folder (a page at its end, such as /index.html, is left out), as the run did."""
+    base = urlsplit(BASE_URL)
+    page = base.path.rsplit("/", 1)[-1].lower().endswith((".html", ".htm", ".php", ".asp", ".aspx", ".jsp"))
+    folder = base.path[: base.path.rfind("/") + 1] if page else base.path
+    return urlunsplit((base.scheme, base.netloc, folder.rstrip("/"), "", "")) + "/" + path.lstrip("/")
 ''',
         "text": """
 def text(value: Any) -> str:
@@ -123,6 +171,99 @@ def bounded(value: Any, bound: Any, kind: str) -> bool:
         "status_in": """
 def status_in(status: int, codes: list[str]) -> bool:
     return any(code == str(status) or (code.endswith("xx") and code[0] == str(status)[0]) for code in codes)
+""",
+        "folded": """
+def folded(text: str) -> str:
+    \"\"\"Text with its whitespace folded and in lower case, as the run compares file contents.\"\"\"
+    return " ".join(text.split()).casefold()
+""",
+        "download": """
+DOWNLOADS = Path(tempfile.mkdtemp(prefix="hercules-downloads-"))
+downloaded: list[Path] = []
+
+
+def keep_download(page: Page, start: Any) -> Path:
+    \"\"\"Start a download (a click, or opening its address) and keep the file, as the run did.\"\"\"
+    with page.expect_download() as info:
+        try:
+            start()
+        except Exception as error:
+            if "Download is starting" not in str(error):
+                raise
+    path = DOWNLOADS / info.value.suggested_filename
+    info.value.save_as(path)
+    downloaded.append(path)
+    return path
+
+
+def fetch_download(page: Page, address: str) -> Path:
+    \"\"\"Fetch a file from its address with the page's cookies and keep it, as the run did.\"\"\"
+    response = page.request.get(address)
+    assert response.ok, f"{address} answered HTTP {response.status}"
+    disposition = response.headers.get("content-disposition", "")
+    named = disposition.split("filename", 1)[1].lstrip("*= ").split(";")[0].split("''")[-1].strip('"') if "filename" in disposition else ""
+    path = DOWNLOADS / (unquote(named or urlsplit(response.url).path.rsplit("/", 1)[-1]) or "download")
+    path.write_bytes(response.body())
+    downloaded.append(path)
+    return path
+""",
+        "download_type": """
+def downloaded_type() -> str:
+    \"\"\"The latest download's type from its first bytes, and a ZIP file's entries, as the run tells it.\"\"\"
+    with downloaded[-1].open("rb") as handle:
+        head = handle.read(8)
+    if head.startswith(b"PK\\x03\\x04"):
+        try:
+            with zipfile.ZipFile(downloaded[-1]) as archive:
+                names = set(archive.namelist())
+        except (zipfile.BadZipFile, OSError):
+            return "binary"
+        return "docx" if "word/document.xml" in names else "xlsx" if "xl/workbook.xml" in names else "zip"
+    starts = {"pdf": (b"%PDF",), "png": (b"\\x89PNG",), "jpeg": (b"\\xff\\xd8\\xff",), "gif": (b"GIF87a", b"GIF89a")}
+    return next((kind for kind, prefixes in starts.items() if head.startswith(prefixes)), "other")
+""",
+        "download_text": """
+def downloaded_text() -> str:
+    \"\"\"The latest download's text, whitespace folded and lower case.\"\"\"
+    return " ".join(downloaded[-1].read_text(encoding="utf-8-sig", errors="replace").split()).casefold()
+""",
+        "download_rows": """
+def downloaded_rows() -> tuple[list[str], list[list[str]]]:
+    \"\"\"The latest download's column names and data rows (a CSV, its delimiter found as the run finds it).\"\"\"
+    text = downloaded[-1].read_text(encoding="utf-8-sig", errors="replace")
+    try:
+        dialect: Any = csv.Sniffer().sniff("\\n".join(text.splitlines()[:20]), delimiters=",;\\t|")
+    except csv.Error:
+        dialect = "excel-tab" if downloaded[-1].suffix.lower() == ".tsv" else "excel"
+    rows = [[cell.strip() for cell in row] for row in csv.reader(io.StringIO(text), dialect) if any(cell.strip() for cell in row)]
+    return (rows[0], rows[1:]) if rows else ([], [])
+""",
+        "download_cells": """
+def downloaded_cells(name: str, where: tuple[str, str] | None = None) -> list[str]:
+    \"\"\"One column's cells in the latest download's rows (with where, only the rows whose where[0] column holds where[1]), matched as the run matches them.\"\"\"
+    names, rows = downloaded_rows()
+
+    def column(wanted: str) -> int:
+        found = next((index for index, named in enumerate(names) if folded(named) == folded(wanted)), None)
+        assert found is not None, f"{downloaded[-1].name} has no column {wanted!r} (columns: {', '.join(names)})"
+        return found
+
+    at_column = column(name)
+    if where is not None:
+        by = column(where[0])
+        rows = [row for row in rows if by < len(row) and folded(row[by]) == folded(where[1])]
+    return [row[at_column] if at_column < len(row) else "" for row in rows]
+""",
+        "download_value": """
+def downloaded_value(path: list[str | int]) -> str:
+    \"\"\"The value at a JSON path in the latest download, written as the run writes it to compare.\"\"\"
+    value = at(json.loads(downloaded[-1].read_text(encoding="utf-8-sig")), path)
+    assert value is not MISSING, f"{downloaded[-1].name} has no value at {path}"
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False)
+    return "" if value is None else str(value)
 """,
         "with_query": '''
 def with_query(address: str, pairs: list[tuple[str, str]]) -> str:
@@ -267,13 +408,19 @@ class PythonWriter(Writer):
             lines.append(self.docstring("Environment: " + ", ".join(env) + "."))
         lines += ['"""', "", "from __future__ import annotations", ""]
         modules = {"os"} if ("base" in used or self.secrets or spec.browser) else set()
-        if used & {"text"}:
+        if used & {"text", "download_value"}:
             modules.add("json")
         generated = any(action.navigated_to and not action.navigated_from and address_pattern(action.navigated_to) for step in spec.steps for action in step.actions)
         if used & {"matches", "escape_url"} or generated or any(check.kind == "url" and check.match == "contains" for step in spec.steps for check in step.checks):
             modules.add("re")
         if "sqlite" in used:
             modules.add("sqlite3")
+        if "download" in used:
+            modules.add("tempfile")
+        if "download_rows" in used:
+            modules.update({"csv", "io"})
+        if "download_type" in used:
+            modules.add("zipfile")
         if any(entry.kind == "builtin" for entry in spec.data.values()):
             modules.add("datetime")
         if self.timed:
@@ -283,14 +430,25 @@ class PythonWriter(Writer):
         lines += [f"import {name}" for name in sorted(modules)]
         if self.api_used:
             lines.append("from collections.abc import Iterator")
-        if "sqlite" in used:
+        if used & {"sqlite", "download"}:
             lines.append("from pathlib import Path")
-        if used & {"text", "missing", "sqlite"} or self.saved_used:
+        if used & {"text", "missing", "sqlite", "download"} or self.saved_used:
             lines.append("from typing import Any")
         parse = sorted(
             {
                 name
-                for name, helper in (("urljoin", "url"), ("urlsplit", "wait"), ("parse_qsl", "with_query"), ("urlencode", "with_query"), ("urlsplit", "with_query"), ("urlunsplit", "with_query"))
+                for name, helper in (
+                    ("urljoin", "url"),
+                    ("urlsplit", "wait"),
+                    ("urlsplit", "download"),
+                    ("unquote", "download"),
+                    ("parse_qsl", "with_query"),
+                    ("urlencode", "with_query"),
+                    ("urlsplit", "with_query"),
+                    ("urlsplit", "api_url"),
+                    ("urlunsplit", "api_url"),
+                    ("urlunsplit", "with_query"),
+                )
                 if helper in used
             }
         )
@@ -410,6 +568,14 @@ class PythonWriter(Writer):
             self.emit(f"page.wait_for_timeout({int((action.seconds or 0) * 1000)})")
         elif kind == "press" and action.target is None:
             self.emit(f"page.keyboard.press({self.string(action.key or '')})")
+        elif kind == "download":
+            self.helpers.add("download")
+            if action.target is not None:
+                self.emit(f"keep_download(page, lambda: {self.target_expr(step, action.target, kind)}.click())")
+            elif action.url is not None:
+                self.emit(f"fetch_download(page, {self.url_expr(action.url)})")
+            else:
+                self.todo(step, "the download this step started was not recorded")
         else:
             self.element_action(step, action)
         if action.navigated_to:
@@ -442,6 +608,17 @@ class PythonWriter(Writer):
             self.emit(f"{locator}.fill({self.expr(action.value)})")
         elif kind == "select":
             self.select(step, action, locator)
+        elif kind == "upload" and uploads_download(action):
+            if "".join((action.value or "").split()) != DOWNLOADED_FILE:
+                self.todo(step, "attach the file the test downloaded together with the other files here")
+                return
+            self.helpers.add("download")
+            self.emit(f"{locator}.set_input_files([downloaded[-1]])")
+        elif kind == "upload":
+            if not action.files:
+                self.todo(step, "the files attached here were not recorded")
+                return
+            self.emit(f"{locator}.set_input_files([{', '.join(self.string(path) for path in action.files)}])")
 
     def select(self, step: AutomationStep, action: AutomationAction, locator: str) -> None:
         if action.option is None:
@@ -499,6 +676,54 @@ class PythonWriter(Writer):
             self.emit(f"expect(page.get_by_text({expected}).first).to_be_visible()")
         elif check.kind == "element_visible":
             self.emit(f"expect({self.target_expr(step, check.target, 'check')}).to_be_visible()")
+        elif check.kind == "file":
+            self.file_check(step, check, expected)
+
+    def file_check(self, step: AutomationStep, check: AutomationCheck, expected: str) -> None:
+        if not check.faithful:
+            return
+        self.helpers.add("download")
+
+        def same(actual: str) -> str:
+            self.helpers.add("folded")
+            return f"folded({actual}) == folded({expected})" if check.match == "equals" else f"folded({expected}) in folded({actual})"
+
+        if check.file_check == "name":
+            self.emit(f"assert {same('downloaded[-1].name')}")
+        elif check.file_check == "type":
+            kinds = file_type_kinds(check.expected)
+            if kinds is None:
+                self.todo(step, f"check that the downloaded file is a {check.expected}")
+                return
+            self.helpers.add("download_type")
+            accepted = f"== {self.string(kinds[0])}" if len(kinds) == 1 else f"in ({', '.join(self.string(kind) for kind in kinds)})"
+            self.emit(f"assert downloaded_type() {accepted}")
+        elif check.file_check in ("text", "not_text"):
+            self.helpers.add("download_text")
+            self.emit(f'assert " ".join(({expected}).split()).casefold() {"not in" if check.file_check == "not_text" else "in"} downloaded_text()')
+        elif check.file_check == "rows":
+            found = row_comparison(check.expected)
+            if found is None:
+                self.todo(step, f"check that the downloaded file has {check.expected} rows")
+                return
+            self.helpers.add("download_rows")
+            self.emit(f"assert len(downloaded_rows()[1]) {found[0]} {found[1]}")
+        elif check.file_check == "column":
+            self.helpers.add("download_cells")
+            where = ""
+            if check.where:
+                key, _, value = check.where.partition("=")
+                where = f", ({self.string(key.strip())}, {self.string(value.strip())})"
+            self.emit(f"cells = downloaded_cells({self.string(check.subject or '')}{where})")
+            self.emit("assert cells")
+            self.emit(f"assert all({same('cell')} for cell in cells)")
+        elif check.file_check == "json":
+            keys = json_path_keys(check.subject or "")
+            if keys is None:
+                self.todo(step, f"check {check.subject} in the downloaded JSON")
+                return
+            self.helpers.add("download_value")
+            self.emit(f"assert {same(f'downloaded_value({keys!r})')}")
 
     # ------------------------------------------------------------------ API, SQL and quality steps
 

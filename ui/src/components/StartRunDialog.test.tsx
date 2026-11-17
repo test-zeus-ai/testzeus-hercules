@@ -281,3 +281,110 @@ describe("StartRunDialog re-run", () => {
     expect(onStarted).not.toHaveBeenCalled();
   });
 });
+
+describe("StartRunDialog environment", () => {
+  function renderSaved() {
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === "/api/runs" && init?.method === "POST") return respond({ run_id: "r_1", status: "queued", ui_url: "/runs/r_1" }, 201);
+      if (url === "/api/cases")
+        return respond({
+          cases: [
+            { name: "a.feature", path: ".hercules/cases/a.feature", kind: "feature", valid: true, id: "a", title: "A", steps: 1, environment: "staging" },
+            { name: "b.feature", path: ".hercules/cases/b.feature", kind: "feature", valid: true, id: "b", title: "B", steps: 1, environment: null },
+          ],
+        });
+      if (url === "/api/environments") return respond({ environments: [{ name: "staging", base_url: "http://127.0.0.1:8124" }, { name: "prod", base_url: "https://shop.example" }] });
+      if (url === "/api/models") return respond(MODELS);
+      return respond({ error: "not found" }, 404);
+    });
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <StartRunDialog onClose={() => undefined} onStarted={() => undefined} />
+      </QueryClientProvider>,
+    );
+  }
+  const select = () => screen.getByLabelText("Environment") as HTMLSelectElement;
+
+  it("starts on the case's own environment, with None unavailable, and sends nothing extra", async () => {
+    renderSaved();
+    await waitFor(() => expect(select().value).toBe("staging"));
+    expect(screen.queryByText("From the case")).toBeNull();
+    expect((screen.getByRole("option", { name: "None" }) as HTMLOptionElement).disabled).toBe(true);
+    expect(screen.getByText(/The case runs in staging/)).toBeTruthy();
+    fireEvent.click(startButton());
+    await waitFor(() => expect(runPosted()).toBe(true));
+    expect(postedBody()).not.toHaveProperty("environment");
+  });
+
+  it("shows None for a case without one and sends a picked environment", async () => {
+    renderSaved();
+    await waitFor(() => expect(select().value).toBe("staging"));
+    fireEvent.change(screen.getByLabelText(/^Case/), { target: { value: ".hercules/cases/b.feature" } });
+    expect(select().value).toBe("");
+    expect((screen.getByRole("option", { name: "None" }) as HTMLOptionElement).disabled).toBe(false);
+    fireEvent.change(select(), { target: { value: "prod" } });
+    fireEvent.click(startButton());
+    await waitFor(() => expect(runPosted()).toBe(true));
+    expect(postedBody().environment).toBe("prod");
+  });
+
+  it("reads the environment from pasted Gherkin", async () => {
+    renderDialog();
+    fireEvent.change(screen.getByLabelText("Gherkin"), { target: { value: `@env:staging\n${GHERKIN}` } });
+    await waitFor(() => expect(select().value).toBe("staging"));
+  });
+});
+
+describe("StartRunDialog option groups", () => {
+  const group = (title: string) => screen.getByText(title, { selector: ".option-group-title" }).closest("details") as HTMLDetailsElement;
+
+  it("starts with quality checks, plan, human in the loop and advanced collapsed", () => {
+    renderDialog();
+    for (const title of ["Quality checks", "Plan", "Human in the loop", "Advanced"]) expect(group(title).open).toBe(false);
+    fireEvent.click(screen.getByText("Quality checks", { selector: ".option-group-title" }));
+    expect(group("Quality checks").open).toBe(true);
+  });
+
+  it("opens a group that already holds a choice and summarises the closed ones", () => {
+    renderRerun("whole");
+    expect(group("Quality checks").open).toBe(true);
+    expect(group("Human in the loop").open).toBe(true);
+    expect(group("Plan").open).toBe(false);
+  });
+});
+
+describe("StartRunDialog folder runs", () => {
+  it("runs every ready case of a folder as one batch", async () => {
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === "/api/runs/batch" && init?.method === "POST") return respond({ batch: "b_1", folder: "Checkout", runs: [{ run_id: "r_a" }, { run_id: "r_b" }], skipped: [] }, 201);
+      if (url === "/api/cases")
+        return respond({
+          cases: [
+            { name: "Checkout/a.json", folder: "Checkout", path: ".hercules/cases/Checkout/a.json", kind: "json", valid: true, status: "ready" },
+            { name: "Checkout/Payments/b.json", folder: "Checkout/Payments", path: ".hercules/cases/Checkout/Payments/b.json", kind: "json", valid: true, status: "ready" },
+            { name: "Checkout/c.json", folder: "Checkout", path: ".hercules/cases/Checkout/c.json", kind: "json", valid: true, status: "draft" },
+          ],
+          folders: ["Checkout", "Checkout/Payments"],
+        });
+      if (url === "/api/environments") return respond({ environments: [] });
+      if (url === "/api/models") return respond(MODELS);
+      return respond({ error: "not found" }, 404);
+    });
+    const onStarted = vi.fn();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <StartRunDialog onClose={() => undefined} onStarted={onStarted} initial={{ source: "folder", folder: "Checkout" }} />
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByRole("button", { name: "Run 2 cases" })).toBeTruthy();
+    expect(screen.getByText(/1 draft or broken case is skipped/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Include subfolders" }));
+    expect(screen.getByRole("button", { name: "Run 1 case" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Include subfolders" }));
+    fireEvent.click(screen.getByRole("button", { name: "Run 2 cases" }));
+    await waitFor(() => expect(onStarted).toHaveBeenCalledWith("r_a", "b_1"));
+    const call = fetchMock.mock.calls.find(([url]) => url === "/api/runs/batch");
+    expect(JSON.parse((call![1] as RequestInit).body as string)).toMatchObject({ folder: "Checkout", subfolders: true, mode: "auto" });
+  });
+});

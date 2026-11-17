@@ -30,7 +30,7 @@ from pydantic import ValidationError
 
 from testzeus_hercules.act.redact import mask_url_credentials
 from testzeus_hercules.cases.gherkin import GherkinError, load_feature
-from testzeus_hercules.cases.models import CostInfo, EnvironmentRef, RunResult, TestCase
+from testzeus_hercules.cases.models import CostInfo, EnvironmentRef, RunResult, TestCase, placeholder_names, set_environment_names
 from testzeus_hercules.cli.progress import StepProgress
 from testzeus_hercules.cli.style import Style
 from testzeus_hercules.cli.deciders import DeciderSetup, fallback_notice, key_origin, prepare
@@ -40,6 +40,7 @@ from testzeus_hercules.cases.plan import Plan
 from testzeus_hercules.engine.run_graph import PageLauncher, ResumeError, RunDeps, RunPlanOptions, run_case
 from testzeus_hercules.engine.step_graph import StepLimits
 from testzeus_hercules.kernel.paths import HerculesPaths
+from testzeus_hercules.kernel.secrets_store import with_saved_secrets
 from testzeus_hercules.kernel.run_context import CancelToken, EventSink, RunContext
 from testzeus_hercules.kernel.settings import EgressPolicy, Settings, SettingsError
 from testzeus_hercules.kernel.telemetry import TelemetryClient, run_origin_from_env
@@ -107,8 +108,19 @@ class RunOptions:
     explore_path: Path | None = None  # an exploration job (explorer or reproducer) the daemon wrote; the case gives the environment
 
 
-def load_case(path: Path) -> TestCase:
-    """Load a ``.json`` TestCase or compile a single-scenario ``.feature`` file."""
+def load_case(path: Path, *, envs_dir: Path | None = None, environment: str | None = None) -> TestCase:
+    """Load a ``.json`` TestCase or compile a single-scenario ``.feature`` file; with ``envs_dir``, ``{{name}}``s that
+    the saved environment (``environment``, else the case's own) defines are known names."""
+    if envs_dir is None:
+        return _load_case(path)
+    from testzeus_hercules.daemon.cases import environment_data, environment_names
+
+    set_environment_names(environment_names(envs_dir))
+    with placeholder_names(set(environment_data(envs_dir, environment))):
+        return _load_case(path)
+
+
+def _load_case(path: Path) -> TestCase:
     if not path.is_file():
         raise CaseLoadError(f"case file not found: {path}")
     suffix = path.suffix.lower()
@@ -173,9 +185,10 @@ def run_command(options: RunOptions, *, env: Mapping[str, str] | None = None, de
     errors = err if err is not None else sys.stderr
     environ: Mapping[str, str] = dict(os.environ) if env is None else env
     try:
-        case = load_case(options.case_path)
         overrides = {"egress": {"policy": options.egress}} if options.egress is not None else None
         settings = Settings.load(options.project_dir, env=environ, overrides=overrides)
+        environ = with_saved_secrets(environ, settings.home_dir)
+        case = load_case(options.case_path, envs_dir=HerculesPaths.from_settings(settings).envs_dir, environment=options.environment)
         case = with_environment(case, HerculesPaths.from_settings(settings), options)
     except (CaseLoadError, SettingsError) as exc:
         out.write(f"error: {exc}\n")

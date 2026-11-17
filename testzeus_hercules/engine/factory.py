@@ -50,6 +50,7 @@ from testzeus_hercules.llm.aliases import ModelNotFound, resolve_model
 from testzeus_hercules.llm.capabilities import Capabilities, CapabilityCache, capability_url
 from testzeus_hercules.llm.client import ChatClient, ChatResult, LLMError, Message
 from testzeus_hercules.llm.providers import PROVIDERS, VERBATIM_MODEL_PROVIDERS, EgressBlocked, Endpoint, EndpointError, check_egress, redact_url, resolve_endpoint
+from testzeus_hercules.llm.schema_limits import known_schema_limits
 from testzeus_hercules.llm.server_info import auth_headers, read_server_version
 from testzeus_hercules.llm.structured import StructuredLLM
 from testzeus_hercules.llm.tiers import TierProfile, detect_memory_bytes, select_tier
@@ -395,7 +396,10 @@ def _model_engines(
     # A long case is read in parts the model's context and output budget hold; a hosted endpoint reads a few at once.
     part_items = case_part_size(context_tokens=context, max_output_tokens=CASE_READING_MAX_TOKENS, items=_CASE_TITLES_BUDGET)
     parallel = 1 if connection.endpoint.is_local else HOSTED_PARALLEL_PARTS
-    interpreter = StepInterpreter(LLMInterpreter(connection.structured, model_id=connection.model_id, cache_dir=cache_dir, case_llm=case_llm, part_items=part_items, parallel=parallel))
+    limits = known_schema_limits(connection.endpoint.base_url)
+    interpreter = StepInterpreter(
+        LLMInterpreter(connection.structured, model_id=connection.model_id, cache_dir=cache_dir, case_llm=case_llm, part_items=part_items, parallel=parallel, schema_limits=limits)
+    )
     notes: tuple[str, ...] = ()
     if connection.capabilities_source == "defaults":
         notes += ("capabilities not measured yet; using the provider's defaults (run `hercules doctor` to measure them)",)

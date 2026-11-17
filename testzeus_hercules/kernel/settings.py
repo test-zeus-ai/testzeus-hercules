@@ -202,7 +202,6 @@ class DeviceCloudSettings(_Section):
 class SauceLabsSettings(DeviceCloudSettings):
     username_env: str = Field(default="SAUCE_USERNAME", pattern=_ENV_VAR_NAME)
     access_key_env: str = Field(default="SAUCE_ACCESS_KEY", pattern=_ENV_VAR_NAME)
-    region: str | None = Field(default="us-west-1", pattern=r"^[a-z0-9-]{1,40}$")
 
 
 class TestMuSettings(DeviceCloudSettings):

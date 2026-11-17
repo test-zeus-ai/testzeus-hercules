@@ -166,9 +166,9 @@ def test_the_playwright_test_export_uses_test_use(tmp_path: Path) -> None:
     assert 'locale: "de-DE", timezoneId: "Asia/Tokyo", colorScheme: "dark"' in code
     assert 'extraHTTPHeaders: {"X-Test": "hello", "Authorization": env("API_TOKEN")}' in code
     assert 'storageState: process.env.STORAGE_STATE ?? "auth/state.json"' in code and "contextOptions: { strictSelectors: true }" in code
-    from tests.v2.export_harness import node, typescript_syntax_errors
+    from tests.v2.export_harness import UI_TYPESCRIPT, node, typescript_syntax_errors
 
-    if node() is not None:
+    if node() is not None and UI_TYPESCRIPT.is_dir():
         assert typescript_syntax_errors(code, tmp_path) == []
 
 

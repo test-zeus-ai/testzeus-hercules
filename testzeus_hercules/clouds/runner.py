@@ -45,8 +45,7 @@ from testzeus_hercules.clouds.bundle import (
     mobile_bundle,
     web_bundle,
 )
-from testzeus_hercules.clouds.check import sauce_region
-from testzeus_hercules.clouds.credentials import CloudCredentials, find_credentials
+from testzeus_hercules.clouds.credentials import CloudCredentials, find_credentials, sauce_region
 from testzeus_hercules.clouds.registry import CloudId, cloud_info
 from testzeus_hercules.export.common import ExportError
 from testzeus_hercules.kernel.child_env import child_environment
@@ -227,7 +226,7 @@ class CloudRuns:
         try:
             if is_app:
                 return mobile_bundle(result, cloud, mobile, allow_failed=allow_failed)
-            return web_bundle(result, cloud, web, credentials=names, allow_failed=allow_failed, sauce_region=sauce_region(self.settings), project_dir=self.project_dir)
+            return web_bundle(result, cloud, web, credentials=names, allow_failed=allow_failed, sauce_region=sauce_region(credentials), project_dir=self.project_dir)
         except (ExportError, ValueError) as exc:
             raise CloudRunError(str(exc)) from None
 
@@ -281,10 +280,13 @@ class CloudRuns:
             owner_pid=os.getpid(),
         )
         project = self._dir(record.id) / "project"
-        for relative, text in bundle.files.items():
+        for relative, content in bundle.files.items():
             path = project / relative
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(text, encoding="utf-8")
+            if isinstance(content, bytes):
+                path.write_bytes(content)
+            else:
+                path.write_text(content, encoding="utf-8")
         self._write(record)
         return record, bundle, credentials
 

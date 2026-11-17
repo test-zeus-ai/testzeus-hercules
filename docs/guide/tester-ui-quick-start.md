@@ -39,8 +39,10 @@ step links to the full description.
      do (`Click the "Sign in" button`), each with an optional expected outcome (`I should
      see "Welcome back"`). Under **Test data**, add values for `{{placeholders}}`; pick
      **Environment variable** for a password or token so the case holds only its name.
-   - **Gherkin**: paste or type one scenario. `Then` lines become checks. A `.feature`
-     file has no test data, so write values into the steps or use the form for secrets.
+   - **Gherkin**: paste or type one scenario. `Then` lines become checks. Its test data
+     (and secret references) is kept beside the file in `<name>.data.json`; edit it in the
+     **Form** tab. See [Writing Gherkin](gherkin.md) for quoting, `@env:` and the editor's
+     suggestions and keys.
 
    The editor checks the case while you type and highlights what is wrong. **TestCase
    JSON** shows the file that will be saved. See [Writing tests](writing-tests.md).

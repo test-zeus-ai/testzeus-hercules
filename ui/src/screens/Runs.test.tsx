@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Router } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
@@ -34,5 +34,54 @@ describe("RunsScreen", () => {
       </QueryClientProvider>,
     );
     expect((await screen.findByRole("note")).textContent).toMatch(new RegExp(`newest ${RUN_LIMIT} runs`));
+  });
+
+  it("asks the daemon for every run of a folder run", async () => {
+    const urls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        urls.push(url);
+        const runs = [
+          { ...run(1), batch: "b_1", folder: "Checkout" },
+          { ...run(2), batch: "b_1", folder: "Checkout" },
+        ];
+        return Promise.resolve(new Response(JSON.stringify({ runs }), { status: 200 }));
+      }),
+    );
+    const location = memoryLocation({ path: "/?batch=b_1" });
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <Router hook={location.hook} searchHook={location.searchHook}>
+          <RunsScreen />
+        </Router>
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(screen.getByText(/one folder run/).textContent).toBe("Showing the 2 runs of one folder run of Checkout."));
+    expect(urls[0]).toBe(`/api/runs?limit=${RUN_LIMIT}&with_result=true&batch=b_1`);
+  });
+
+  it("deletes a finished run after asking, and not a running one", async () => {
+    const calls: [string, string][] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string, init?: RequestInit) => {
+        calls.push([init?.method ?? "GET", url]);
+        const body = init?.method === "DELETE" ? { run_id: "r_1", removed: true } : { runs: [run(1), run(2, "running")] };
+        return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
+      }),
+    );
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <Router hook={memoryLocation({ path: "/" }).hook}>
+          <RunsScreen />
+        </Router>
+      </QueryClientProvider>,
+    );
+    expect((await screen.findByRole("button", { name: "Delete run r_2" })).hasAttribute("disabled")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Delete run r_1" }));
+    expect(confirm.mock.calls[0][0]).toMatch(/Delete run r_1 with its screenshots/);
+    await waitFor(() => expect(calls).toContainEqual(["DELETE", "/api/runs/r_1"]));
   });
 });

@@ -264,3 +264,20 @@ def test_body_redaction_by_content_type() -> None:
     multipart = '--b\r\nContent-Disposition: form-data; name="api_key"\r\n\r\nk-9\r\n--b--'
     assert "k-9" not in redact_body_text(multipart, "multipart/form-data; boundary=b")
     assert redact_body_text("not json {", "application/json") == "not json {"
+
+
+@pytest.mark.parametrize(
+    ("base", "path", "url"),
+    [
+        ("http://localhost:8000/index.html", "/api/health", "http://localhost:8000/api/health"),
+        ("http://host/app", "/api/x", "http://host/app/api/x"),
+        ("http://host/app/", "api/x", "http://host/app/api/x"),
+        ("http://127.0.0.1:8000", "/api/x", "http://127.0.0.1:8000/api/x"),
+        ("http://127.0.0.1:8000/v1.2", "orders", "http://127.0.0.1:8000/v1.2/orders"),
+        ("https://shop.test/store/home.PHP", "api/cart", "https://shop.test/store/api/cart"),
+    ],
+)
+def test_an_api_path_goes_under_the_base_urls_folder(base: str, path: str, url: str) -> None:
+    from testzeus_hercules.act.api import api_url
+
+    assert api_url(base, path) == url

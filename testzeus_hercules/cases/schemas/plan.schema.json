@@ -214,7 +214,14 @@
             "field_value",
             "element_state",
             "count",
-            "judged"
+            "judged",
+            "file_name",
+            "file_type",
+            "file_text",
+            "file_not_text",
+            "file_rows",
+            "file_column",
+            "file_json"
           ],
           "title": "Check",
           "type": "string"
@@ -385,7 +392,14 @@
             "field_value",
             "element_state",
             "count",
-            "judged"
+            "judged",
+            "file_name",
+            "file_type",
+            "file_text",
+            "file_not_text",
+            "file_rows",
+            "file_column",
+            "file_json"
           ],
           "title": "Check",
           "type": "string"
@@ -649,6 +663,8 @@
             "click",
             "fill",
             "select",
+            "upload",
+            "download",
             "check",
             "uncheck",
             "hover",

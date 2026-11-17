@@ -124,11 +124,24 @@ class RunStore:
             row = self._db.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
         return _run(row) if row is not None else None
 
-    def list_runs(self, *, status: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
-        query, params = "SELECT * FROM runs", []
+    def delete_run(self, run_id: str) -> bool:
+        with self._lock:
+            self._db.execute("DELETE FROM run_events WHERE run_id = ?", (run_id,))
+            deleted = self._db.execute("DELETE FROM runs WHERE id = ?", (run_id,)).rowcount
+        return deleted > 0
+
+    def list_runs(self, *, status: str | None = None, limit: int = 50, batch: str | None = None) -> list[dict[str, Any]]:
+        query = "SELECT * FROM runs"
+        params: list[Any] = []
+        where: list[str] = []
         if status is not None:
-            query += " WHERE status = ?"
+            where.append("status = ?")
             params.append(status)
+        if batch is not None:
+            where.append("json_extract(source_json, '$.batch') = ?")
+            params.append(batch)
+        if where:
+            query += " WHERE " + " AND ".join(where)
         query += " ORDER BY created_at DESC, rowid DESC LIMIT ?"
         params.append(limit)
         with self._lock:

@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any, Iterable, Literal
 from urllib.parse import quote, urlsplit, urlunsplit
 
+from testzeus_hercules.act.api import api_url
 from testzeus_hercules.act.api_schema import SpecError, load_document
 from testzeus_hercules.act.files import PathConfinementError, confine
 from testzeus_hercules.act.redact import redact_url
@@ -88,7 +89,7 @@ def url_target(base_url: str | None, path: str | None = None) -> ScanTarget:
         elif scheme or text.startswith("//"):
             raise ScopeError(f"refused: {redact_url(text)} is not a path under the base URL")
         else:
-            url = base.rstrip("/") + "/" + text.lstrip("/")
+            url = api_url(base, text)
     return ScanTarget(input="url", shown=redact_url(url), url=url, origins=(scope,))
 
 

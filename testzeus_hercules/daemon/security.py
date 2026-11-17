@@ -11,7 +11,9 @@
   (``Sec-Fetch-Site: cross-site`` or ``same-site``; top-level page navigations excepted), and a cookie-authenticated
   request that is not GET or HEAD must carry the same ``Origin``.
 * A request body must be ``application/json`` (415 otherwise) and at most ``MAX_BODY_BYTES`` (413), counted
-  from ``Content-Length`` and from the bytes actually received.
+  from ``Content-Length`` and from the bytes actually received. The one exception is a reference file upload
+  (``PUT /api/environments/{name}/files/{file}`` and ``PUT /api/cases/{name}/files/{file}``): ``application/octet-stream`` up to
+  ``MAX_UPLOAD_BYTES``.
 
 WebSocket requests (the live view) pass the same checks; a browser's WebSocket always
 carries an ``Origin``, which must be the daemon's own, and authenticates with the session cookie.
@@ -26,6 +28,7 @@ from __future__ import annotations
 import hmac
 import ipaddress
 import json
+import re
 import secrets
 import time
 from dataclasses import dataclass, field
@@ -46,6 +49,8 @@ LOGIN_CODE_TTL_S = 300.0
 SESSION_TTL_S = 12 * 3600.0
 MAX_SESSIONS = 64
 MAX_BODY_BYTES = 2 * 1024 * 1024
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024
+_UPLOAD_PATH = re.compile(r"^/api/(?:environments/[a-z0-9][a-z0-9_-]{0,63}|cases/(?:[^/]{1,120}/){0,8}[a-z0-9][a-z0-9._-]{0,99}\.(?:json|feature))/files/[^/]{1,240}$")
 _LOOPBACK_NAMES = frozenset({"localhost", "localhost."})
 _WILDCARD_HOSTS = frozenset({"", "0.0.0.0", "::"})
 _SAFE_METHODS = frozenset({"GET", "HEAD"})
@@ -178,11 +183,16 @@ class GuardMiddleware:
         if method in _SAFE_METHODS:
             await self.app(scope, receive, send)
             return
-        body = await self._read_body(receive, headers)
+        upload = method == "PUT" and _UPLOAD_PATH.match(str(scope.get("path", ""))) is not None
+        limit = max(self.max_body_bytes, MAX_UPLOAD_BYTES) if upload else self.max_body_bytes
+        body = await self._read_body(receive, headers, limit)
         if body is None:
-            await _deny(send, 413, f"the request body is larger than {self.max_body_bytes // 1024} KiB")
+            await _deny(send, 413, f"the request body is larger than {limit // 1024} KiB")
             return
-        if body and not _is_json(headers.get("content-type", "")):
+        if upload and body and headers.get("content-type", "").split(";", 1)[0].strip().lower() != "application/octet-stream":
+            await _deny(send, 415, "a file upload must be application/octet-stream")
+            return
+        if not upload and body and not _is_json(headers.get("content-type", "")):
             await _deny(send, 415, "the request body must be application/json")
             return
         await self.app(scope, _replay(body, receive), send)
@@ -240,10 +250,10 @@ class GuardMiddleware:
         own = _host_and_port(headers.get("host", ""), scheme)
         return own is not None and own == (parts.hostname.lower().rstrip("."), port if port is not None else _DEFAULT_PORTS[scheme])
 
-    async def _read_body(self, receive: Receive, headers: dict[str, str]) -> bytes | None:
-        """The whole request body, or None when it is larger than allowed (by ``Content-Length`` or by what arrived)."""
+    async def _read_body(self, receive: Receive, headers: dict[str, str], limit: int) -> bytes | None:
+        """The whole request body, or None when it is larger than ``limit`` (by ``Content-Length`` or by what arrived)."""
         declared = headers.get("content-length", "").strip()
-        if declared.isdigit() and int(declared) > self.max_body_bytes:
+        if declared.isdigit() and int(declared) > limit:
             return None
         chunks: list[bytes] = []
         size = 0
@@ -253,7 +263,7 @@ class GuardMiddleware:
                 break
             chunk = message.get("body", b"")
             size += len(chunk)
-            if size > self.max_body_bytes:
+            if size > limit:
                 return None
             chunks.append(chunk)
             if not message.get("more_body", False):

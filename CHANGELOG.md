@@ -23,6 +23,9 @@ See [Migrating from v1](docs/guide/migrating-from-v1.md).
 - **Daemon and UI**: `hercules serve` (loopback, token, SQLite queue, one worker process
   per run), a React tester UI with live screencast, pause, step, skip, retry, approvals,
   edit and take over, checkpoints and resume after a crash.
+- **Case folders**: cases in folders under `.hercules/cases/` (up to 8 deep), shown as a
+  tree on the Cases screen with make, rename, move and delete, and **Run folder**, which
+  queues one run per case as a batch.
 - **Coding agents**: `hercules mcp` and `hercules init --agent claude|codex|cursor`.
 - **Tests beyond the UI**: structured API and read-only SQL steps; accessibility, visual
   baseline and layout checks with fixes verified in the page (axe-core bundled).

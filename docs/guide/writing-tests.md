@@ -4,9 +4,9 @@ A Hercules test case is a JSON file: where the app runs, the data the test uses,
 ordered steps in plain language. You can also write a single Gherkin scenario in a
 `.feature` file.
 
-Save cases in `.hercules/cases/` inside your project. The tester UI lists and edits cases
-there, and the coding-agent setup tells agents to save cases there. `hercules run` accepts
-a case file from any path.
+Save cases in `.hercules/cases/` inside your project, in [folders](#folders) if you like.
+The tester UI lists and edits cases there, and the coding-agent setup tells agents to save
+cases there. `hercules run` accepts a case file from any path.
 
 ## A complete example
 
@@ -79,12 +79,19 @@ A saved environment is a small JSON file in `.hercules/envs/`:
   "base_url": "http://localhost:3000",
   "viewport": "1280x800",
   "browser": "chromium",
-  "secret_names": ["APP_TEST_PASSWORD"]
+  "variables": {
+    "user": "ana",
+    "password": {"secret": "APP_TEST_PASSWORD"}
+  }
 }
 ```
 
-`secret_names` only lists the variables the environment's cases expect; values are never
-stored. You can create environments in the tester UI.
+`variables` are values and secrets that every case run with the environment can use as
+`{{name}}`, in JSON cases, `.feature` files and the base URL. A case's own `test_data`
+entry with the same name wins. A secret names an environment variable; its value is never
+stored in the environment (see [Secrets](#secrets)). Older environments list
+`secret_names`, which still work: each name is a secret of the same name. You can create
+environments in the tester UI.
 
 Every way of running a case (`hercules run`, the daemon, the UI and the coding-agent
 tools) applies a saved environment the same way:
@@ -152,6 +159,8 @@ Phrasings like these are read reliably:
 | Click | `Click the "Save" button`, `Click on "Profile"`, `Tap "Menu"` |
 | Fill | `Fill "{{email}}" in "Email"`, `Type "hello" into "Message"`, `Fill "Name" with "Ada"` |
 | Select | `Select "Germany" from "Country"`, `Choose "Large" in "Size"` |
+| Upload | `Upload "case.png" to "Photo"`, `Attach "fixtures/invoice.pdf" and "case.png" to "Documents"` ([Files for upload steps](#files-for-upload-steps)) |
+| Download | `Click "Export CSV" to download the report`, `Download the file from "/reports/q3.pdf"` ([Downloading and checking files](#downloading-and-checking-files)) |
 | Check boxes | `Check "I agree"`, `Uncheck "Subscribe"` |
 | Hover | `Hover over "Account"` |
 | Keys | `Press Enter`, `Press the key "Escape"` |
@@ -299,6 +308,11 @@ variable instead:
 - The value is read from the environment of the process that runs the case: your shell
   for `hercules run`, or the environment `hercules serve` was started in for runs through
   the daemon, the UI and coding agents.
+- Otherwise it is read from `~/.hercules/secrets.env` (readable by you only), where the
+  tester UI saves values pasted on the **Environments** screen. A value saved there is
+  used by the next run without restarting `hercules serve`; an environment variable of
+  the same name wins. The UI shows each secret as set in the environment, saved in
+  Hercules, or not set, and never shows a value again.
 - If the variable is not set, the step fails with an error that names the variable.
 - Secret values never reach the model, and they are replaced with `******` in
   observations, decision records and `run.json`.
@@ -315,14 +329,91 @@ secret too. Keep the token in a secret and build the address from it:
 ]
 ```
 
+The same works in an environment's base URL, so every case on that environment starts
+signed in: set the base URL to
+`https://acme.my.salesforce.com/secur/frontdoor.jsp?sid={{sid}}` and add `sid` to the
+environment's variables as a secret. The browser opens the address with the value; exported
+code keeps `{{sid}}`.
+
 A token written straight into a step still never reaches a model or the evidence (it is
 replaced with a `{{url_credential_N}}` placeholder for the run and masked by name; see
 [Credentials in URLs](modes-and-privacy.md#credentials-in-urls)), but the case file itself
 then holds it, and an exported test cannot know which variable to read it from.
 
+## Files for upload steps
+
+A step that uploads names its files: `I upload "case.png" to "Case clearance photo"`, or
+several at once, `I upload "fixtures/invoice.pdf" and "case.png" to "Documents"` (the
+field must accept several). Hercules looks for each name in this order:
+
+1. the case's own files, `.hercules/case-files/<case id>/`;
+2. the files of the case's environment, `.hercules/files/<environment>/`;
+3. the project folder, for a path such as `fixtures/invoice.pdf`.
+
+Add files to a case on the **Form** tab of the **Cases** screen, and to an environment on
+the **Environments** screen (**Add files**; files picked before the first save are added
+when it is saved), or with `PUT /api/cases/<saved file name>/files/<file>` and
+`PUT /api/environments/<name>/files/<file>` (the raw file, `application/octet-stream`).
+
+- Any file type, up to 20 files of 25 MB each per case and per environment.
+- Key and credential files (`.env`, `*.pem`, private keys by content) are refused, and a
+  step can never attach a file outside these folders or the project.
+- **Never read by a model.** The files go only to the app under test; no model, local or
+  hosted, receives their contents. The file's name is part of the step's text, which is read
+  like any other step.
+- The field can be a file input, a label of one (also when the input itself is hidden), or a
+  button that opens the browser's file picker. A file that cannot be found fails the step at
+  once; a field that takes one file fails when the step names several.
+- Exported code attaches the same files by their path in the project
+  (`setInputFiles([...])`, `set_input_files([...])`), and a cloud run's project carries them.
+
+## Downloading and checking files
+
+A step that downloads a file clicks the control that starts it, or names the file's
+address:
+
+```gherkin
+When I click "Export CSV" to download the report
+When I download the file from "/reports/q3.pdf"
+When I download "invoice.pdf" by clicking "Invoice"
+```
+
+The file is saved in the run's evidence, in `steps/<n>/downloads/`, under the name the
+site gives it (letters, digits, `.`, `_` and `-` only; `_2`, `_3` when a name repeats), and
+listed with the step on the run page. A step that names the file fails when the site sends
+another name. A click that starts no download (and opens no file in a new tab) within 30
+seconds counts as the wrong control: Hercules tries another, then fails the step. An address
+is fetched with the browser's cookies and the page stays where it is; an address that answers
+with a web page or an error fails the step. Files are kept up to 50 MB.
+
+Later steps check the newest download, in code:
+
+| Check | Example |
+|---|---|
+| Name | `Then the downloaded file is named "report.csv"` |
+| Type | `Then the downloaded file is a PDF` (read from the file's first bytes, not its name) |
+| Text | `Then the downloaded file contains "Total Due: $950"`, `... does not contain "Refunded"` |
+| Rows | `Then the downloaded CSV has 12 rows`, `... has at least 3 rows` (CSV or the first sheet of an XLSX, without the header row) |
+| Column | `Then column "Status" is "Paid" in every row`, `Then column "Status" is "Paid" for Order ID 1002` |
+| JSON | `Then the downloaded JSON has "$.total" equal to "1240"` |
+
+Text is read from PDF, DOCX, XLSX, CSV, JSON and plain text files (a PDF with no text in it,
+such as a scan, fails a text check). `{{downloaded_file}}` (the newest download's path) and
+`{{downloaded_file_name}}` work in later steps, for example to upload it again:
+`When I upload "{{downloaded_file}}" to "Attachment"`.
+
+- **Never read by a model.** Downloaded files are checked in code only; no model, local or
+  hosted, receives their contents. An outcome only a reader could judge ("the report says
+  the order was approved") is not a file check: write what the file should contain instead.
+- Exported code downloads with `waitForEvent("download")` / `expect_download()` and repeats
+  the name, type, text, row, column and JSON checks on text and CSV files. Text inside a PDF,
+  DOCX or XLSX, and a file the site showed in the browser instead of downloading, become TODO
+  lines in the export.
+
 ## Gherkin `.feature` files
 
-A `.feature` file with exactly one scenario can be run directly:
+A `.feature` file with exactly one scenario can be run directly. [Writing Gherkin](gherkin.md)
+shows how to write one that reads reliably and how the Gherkin editor helps.
 
 ```gherkin
 @smoke
@@ -360,9 +451,56 @@ Outline` and `Examples`, `Rule`, doc strings (`"""`) except after a step that en
 names the file and line. `hercules import v1` accepts all of these and writes one case
 per scenario or example row; see [Importing](importing.md).
 
-A `.feature` file has no `test_data`, so only the built-in placeholders `{{run_id}}` and
-`{{timestamp}}` work in it. Put values directly in the step, or convert the scenario to a
-JSON case.
+A `.feature` file's `{{name}}` placeholders come from its test data, its environment's
+variables and secrets (from its `@env:` tag, or the environment chosen for the run) and the
+built-ins `{{run_id}}` and `{{timestamp}}`. The test data of `sign-in.feature` is kept
+beside it in `sign-in.data.json`, so the Gherkin stays plain; edit it in the **Form** tab
+of the **Cases** screen, or write it by hand:
+
+```json
+{"test_data": {"user": "demo@example.com", "password": {"secret": "SHOP_PASSWORD"}}}
+```
+
+`hercules run sign-in.feature` reads it too. Over the API, send `test_data` next to
+`gherkin` (`POST /api/cases`, `/api/cases/validate`, `/api/runs`, `/api/plans`). TestZeus references
+`[$.environment.<env>.<key>]` and `[$.testdata.<name>.<key>]` are read as `{{key}}`, so
+features copied from TestZeus run unchanged once the environment defines `key`.
+
+## Folders
+
+Group cases in folders: directories under `.hercules/cases/`, up to 8 levels deep.
+
+```text
+.hercules/cases/
+├── Checkout/
+│   ├── Payments/
+│   │   └── card-declined.feature
+│   ├── place-an-order.feature
+│   └── place-an-order.data.json
+└── login-success.json
+```
+
+- A saved case is named by its path there, such as `Checkout/Payments/card-declined.feature`.
+  The UI's address for it is `/cases/Checkout/Payments/card-declined.feature`.
+- A case's id (its file name) is unique across all folders and both file types: saving a
+  case whose id another case already has (`login.json` beside `login.feature`, or in another
+  folder) is refused. Its test data (`<name>.data.json`) and its
+  [files for upload steps](#files-for-upload-steps) follow it when it moves, so it keeps
+  them and its past runs.
+- A folder name has at most 120 characters, does not start with a dot, does not end with a
+  dot or a space, and holds none of `/ \ : * ? " < > |`. Names are unique within a folder,
+  ignoring case. Folders starting with a dot (`.git`) and symbolic links are not listed.
+
+On the **Cases** screen the folders and cases form one tree; click a case to open it. The
+**New** button and each folder's **•••** menu make, rename, move and delete folders, add
+existing cases, start a case in the folder, and run the folder (see
+[Running a folder](running-tests.md#running-a-folder)). Deleting a folder moves what it
+holds into its parent unless you choose to delete its cases too.
+
+Through the HTTP API: `GET /api/cases` lists `folders` and each case's `folder`;
+`POST /api/folders` makes one, `PATCH /api/folders/{folder}` renames (`name`) or moves
+(`parent`) it, `DELETE /api/folders/{folder}?mode=move_up|delete_cases` deletes it,
+`POST /api/cases/move` moves cases, and `POST /api/cases` takes a `folder` to save into.
 
 ## Draft and ready cases
 
@@ -505,6 +643,16 @@ count beyond that is reported as not exact. Connection strings never appear in e
 A value a step saves is available to later steps as `{{name}}`. In a JSON value, an exact
 `"{{name}}"` keeps the saved value's type (a number stays a number). A saved value whose
 name looks secret (`token`, `password`, `api_key`...) is masked like a secret.
+
+In plain language, a step that says it saves something `as "<name>"` (save, store, remember,
+keep or capture) defines `{{<name>}}` for the steps after it, without test data:
+
+```gherkin
+When I save the response JSON "$.code" as "order_code"
+And I send a GET request to "/api/orders/{{order_code}}"
+```
+
+Using the name before the step that saves it is reported as an unknown placeholder.
 
 ### Plain-language API and SQL steps
 

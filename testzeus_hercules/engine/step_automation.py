@@ -10,8 +10,10 @@ templates (see :func:`~testzeus_hercules.engine.automation.value_template`), nev
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
+from testzeus_hercules.act.file_contents import file_type
 from testzeus_hercules.cases.automation import AutomationAction, AutomationCheck, AutomationStep, LocatorSpec, TargetSpec
 from testzeus_hercules.cases.models import ApiCall, SecurityScan, Step, StepStatus
 from testzeus_hercules.engine.automation import navigated_from, navigated_path, relative_url, value_template
@@ -22,7 +24,7 @@ if TYPE_CHECKING:
     from testzeus_hercules.engine.step_graph import StepDeps, StepState
 
 # Element actions as the automation spec records them; any other kind is performed as a click.
-ELEMENT_KINDS = frozenset({"click", "fill", "select", "check", "uncheck", "hover", "press"})
+ELEMENT_KINDS = frozenset({"click", "fill", "select", "upload", "download", "check", "uncheck", "hover", "press"})
 
 
 class AutomationRecorder:
@@ -61,9 +63,14 @@ class AutomationRecorder:
     def _page_url(self) -> str:
         return str(getattr(self.deps.page, "url", "") or "")
 
-    def _direct_record(self, intent: StepIntent, before: str, url_after: str) -> AutomationAction:
-        """A direct action (navigation, wait, key press) as it ran."""
+    def _direct_record(self, intent: StepIntent, before: str, url_after: str, result: Any = None) -> AutomationAction:
+        """A direct action (navigation, download from an address, wait, key press) as it ran."""
         data = self.deps.data
+        if intent.kind == "download":
+            template, problem = value_template(intent.template("url"), intent.url, data)
+            chosen = getattr(result, "chosen", None) or {}
+            url = relative_url(template, self.deps.base_url) if template is not None else None
+            return AutomationAction(kind="download", url=url, value=intent.value, saved_as=chosen.get("name"), faithful=problem is None, note=problem)
         if intent.kind == "navigate":
             template, problem = value_template(intent.template("url"), intent.url, data)
             if template is None:
@@ -89,7 +96,7 @@ class AutomationRecorder:
         value: str | None = None
         option: str | None = None
         select_by: Any = None
-        if kind in ("fill", "select"):
+        if kind in ("fill", "select", "upload"):
             # A value the run re-entered the way the field asks for (see the step graph) is recorded as it was entered.
             rewritten = state.get("value") is not None and intent.value is not None and state.get("value") != intent.value
             value, problem = value_template(None if rewritten else intent.template("value"), state.get("value"), data)
@@ -104,6 +111,11 @@ class AutomationRecorder:
                 problems.append("the drop-down's option was found by a partial name")
             if select_by == "text":
                 problems.append("the drop-down's option was found by its text; check that the text is unique on the page")
+        files = self._project_files(getattr(result, "chosen", None) or {}, problems) if kind == "upload" and "downloaded_file" not in (intent.template("value") or "") else None
+        chosen = getattr(result, "chosen", None) or {}
+        saved_as = chosen.get("name") if kind == "download" else None
+        if kind == "download" and chosen.get("via") not in (None, "download"):
+            problems.append("the site showed this file in the browser instead of downloading it; the export waits for a download")
         key = (state.get("value") or intent.value or "") if kind == "press" else None
         after = str(getattr(result, "url_after", "") or self._page_url())
         chosen = (getattr(result, "chosen", None) or {}) if kind == "select" else {}
@@ -113,7 +125,9 @@ class AutomationRecorder:
             typed=bool(chosen.get("typed", False)),
             kind=kind,  # type: ignore[arg-type]
             target=target,
-            value=value if kind == "fill" else None,
+            value=value if kind in ("fill", "upload") else None,
+            files=files,
+            saved_as=saved_as,
             key=key,
             select_by=select_by,
             option=option,
@@ -122,6 +136,19 @@ class AutomationRecorder:
             faithful=not problems,
             note="; ".join(problems) or None,
         )
+
+    def _project_files(self, chosen: dict[str, Any], problems: list[str]) -> list[str] | None:
+        """The attached files relative to the project (the last upload root), as the export names them."""
+        roots = self.deps.upload_roots or self.deps.file_roots or ()
+        attached = [Path(item) for item in chosen.get("files") or []]
+        if not roots or not attached:
+            problems.append("the attached files were not recorded")
+            return None
+        project = Path(roots[-1]).resolve()
+        if not all(path.is_relative_to(project) for path in attached):
+            problems.append("an attached file is outside the project")
+            return None
+        return [path.relative_to(project).as_posix() for path in attached]
 
     async def _record_target(self, state: StepState, md: int, locator: Any) -> dict[str, Any]:
         """Record the element's unique locators on the live page (when the perceiver can), and log every candidate tried."""
@@ -160,6 +187,13 @@ class AutomationRecorder:
                 note = f"{entry.actual}; write an assertion for it in code"
                 records.append(AutomationCheck(kind=check.kind, observed=observed, faithful=False, note=note, **base))
                 continue
+            if check.kind.startswith("file_"):
+                subject, _ = value_template(check.subject, check.subject, deps.data) if check.subject is not None else (None, None)
+                where, _ = value_template(check.where, check.where, deps.data) if check.where is not None else (None, None)
+                file_check = check.kind.removeprefix("file_")
+                problem = problem or _unexported_file_check(file_check, deps.downloads)
+                records.append(AutomationCheck(kind="file", file_check=file_check, match=check.match, subject=subject, where=where, faithful=problem is None, note=problem, **base))  # type: ignore[arg-type]
+                continue
             kind = {"text": "text", "not_text": "not_text", "url": "url", "visible": "visible_text"}[check.kind]
             form, frames = None, []
             if check.kind in ("text", "not_text") and entry.verdict == "passed":
@@ -185,6 +219,25 @@ class AutomationRecorder:
         address = relative_url(self._page_url(), self.deps.base_url)
         text = f'page "{" ".join(title.split())[:120]}" at {address}' if title else f"page at {address}"
         return self.deps.data.redact(text)
+
+
+def _unexported_file_check(file_check: str, downloads: list[Path]) -> str | None:
+    """Why the export cannot repeat a file check on the run's latest download (it reads text and simple CSV files only)."""
+    if not downloads or file_check in ("name", "type"):
+        return None
+    try:
+        kind = file_type(downloads[-1])
+    except OSError:
+        return None
+    if file_check in ("text", "not_text") and kind in ("pdf", "docx", "xlsx"):
+        return f"the export does not read the text of a {kind} file; check it by hand"
+    if file_check in ("text", "not_text") and kind not in ("csv", "json", "text"):
+        return f"the download is a {kind} file, which has no text to check"
+    if file_check in ("rows", "column") and kind != "csv":
+        return f"the export reads rows from CSV files only, and this download is a {kind} file; check it by hand"
+    if file_check == "json" and kind != "json":
+        return f"the download is a {kind} file, not JSON"
+    return None
 
 
 def _without_secrets(spec: TargetSpec, redact: Callable[[str], str]) -> TargetSpec:

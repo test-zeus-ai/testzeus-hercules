@@ -10,6 +10,7 @@ import pytest
 from testzeus_hercules.cases.models import MobileApp
 from testzeus_hercules.kernel.settings import Settings
 from testzeus_hercules.mobile.screen import parse, xpath_literal
+from testzeus_hercules.clouds.credentials import save_region
 from testzeus_hercules.mobile.target import TargetError, capabilities, resolve_target
 
 ANDROID = """<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
@@ -167,6 +168,21 @@ def test_sauce_labs_regions_are_known_data_centers_only(tmp_path: Path) -> None:
     (tmp_path / ".hercules" / "config.yaml").write_text("mobile:\n  saucelabs:\n    region: evil-example\n")
     with pytest.raises(TargetError, match="region must be one of"):
         resolve_target(cloud, Settings.load(tmp_path, env={"HERCULES_HOME": str(tmp_path / "home")}), env, tmp_path)
+
+
+def test_a_saved_or_environment_sauce_region_picks_the_data_center(tmp_path: Path) -> None:
+    cloud = MobileApp(platform="android", app="storage:f00d", cloud="saucelabs", device="Google Pixel 7 Emulator", platform_version="13")
+    current = settings(tmp_path)
+    save_region("saucelabs", current, "eu-central-1")
+    env = {"SAUCE_USERNAME": "u", "SAUCE_ACCESS_KEY": "k"}
+
+    saved = resolve_target(cloud, current, env, tmp_path)
+    from_env = resolve_target(cloud, current, {**env, "SAUCE_REGION": "us-east-4"}, tmp_path)
+
+    assert saved.region == "eu-central-1" and saved.hub_url == "https://ondemand.eu-central-1.saucelabs.com:443/wd/hub"
+    assert from_env.api_url == "https://api.us-east-4.saucelabs.com"
+    with pytest.raises(TargetError, match="region must be one of"):
+        resolve_target(cloud, current, {**env, "SAUCE_REGION": "evil.example"}, tmp_path)
 
 
 def test_app_files_must_be_inside_the_project(tmp_path: Path) -> None:

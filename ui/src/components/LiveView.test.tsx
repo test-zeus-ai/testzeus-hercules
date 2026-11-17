@@ -5,7 +5,7 @@ const post = vi.fn((..._args: unknown[]) => Promise.resolve({}));
 vi.mock("../lib/api", () => ({ post: (...args: unknown[]) => post(...args), evidenceUrl: () => "" }));
 vi.mock("../lib/screencast", () => ({ useScreencast: () => ({ state: "live", frames: 3, fps: 4, size: { width: 393, height: 659 } }) }));
 
-import { LiveView } from "./LiveView";
+import { fitWidth, LiveView } from "./LiveView";
 
 function drive() {
   render(<LiveView runId="r_1" active paused fallbackRef={null} />);
@@ -36,7 +36,15 @@ describe("LiveView take-over", () => {
   });
 
   it("shows a phone's page at the phone's width", () => {
+    vi.stubGlobal("innerHeight", 1000);
     render(<LiveView runId="r_1" active paused={false} fallbackRef={null} />);
     expect(screen.getByRole("img", { name: "Live browser view" }).style.maxWidth).toBe("393px");
+    vi.unstubAllGlobals();
+  });
+
+  it("keeps a tall device screen within the window's height", () => {
+    expect(fitWidth({ width: 1080, height: 2400 }, 800)).toBe(270);
+    expect(fitWidth({ width: 393, height: 659 }, 1000)).toBe(393);
+    expect(fitWidth({ width: 1280, height: 0 }, 800)).toBe(1280);
   });
 });

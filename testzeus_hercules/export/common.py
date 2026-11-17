@@ -547,3 +547,35 @@ class Helpers:
                 lines.extend(self.source[name].strip("\n").splitlines())
                 lines.append("")
         return lines
+
+
+_CONTENT_TYPES = frozenset({"pdf", "docx", "xlsx", "zip", "png", "jpeg", "gif"})
+_ROW_OPS = {"": "==", "=": "==", "==": "==", "exactly": "==", ">=": ">=", "at least": ">=", "<=": "<=", "at most": "<=", ">": ">", "more than": ">", "<": "<", "fewer than": "<", "less than": "<"}
+_ROW_COUNT = re.compile(r"^\s*(>=|<=|==|=|>|<|at least|at most|more than|fewer than|less than|exactly)?\s*(\d[\d,]*)\s*(?:rows?)?\s*$", re.IGNORECASE)
+
+
+DOWNLOADED_FILE = "{{downloaded_file}}"
+
+
+def uploads_download(action: Any) -> bool:
+    """True when an upload attaches the file an earlier step downloaded (``{{downloaded_file}}``)."""
+    return action.kind == "upload" and DOWNLOADED_FILE in "".join((action.value or "").split())
+
+
+def file_type_kinds(expected: str) -> tuple[str, ...] | None:
+    """The file types a check of the named type accepts (``PDF``, ``an Excel file``), each told by its content; None for text types."""
+    from testzeus_hercules.act.file_contents import TYPE_NAMES
+
+    words = [word.strip(".").lower() for word in expected.replace("-", " ").split()]
+    kinds = set().union(*(TYPE_NAMES.get(word, frozenset()) for word in words)) if words else set()
+    if not kinds or kinds - _CONTENT_TYPES:
+        return None
+    return tuple(sorted(kinds))
+
+
+def row_comparison(expected: str) -> tuple[str, int] | None:
+    """A file_rows check's operator (``==``, ``>=``, ...) and number."""
+    found = _ROW_COUNT.match(expected)
+    if found is None:
+        return None
+    return _ROW_OPS[(found.group(1) or "").lower()], int(found.group(2).replace(",", ""))

@@ -1,14 +1,14 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { Bugsy } from "../components/Brand";
 import { Icon } from "../components/Icon";
 import { StartRunDialog, type RerunOf } from "../components/StartRunDialog";
 import { StatusChip } from "../components/StatusChip";
-import { api } from "../lib/api";
+import { api, remove } from "../lib/api";
 import { isRunList } from "../lib/guards";
 import { stepLabel } from "../lib/timeline";
-import { agentName, failingStep, formatCost, formatDuration, formatTime, runMode, runSeconds } from "../lib/format";
+import { agentName, deleteRunPrompt, failingStep, formatCost, formatDateTime, formatDuration, localZoneName, runMode, runSeconds } from "../lib/format";
 import { FINAL_STATUSES, type RunView } from "../lib/types";
 
 const FILTERS = [
@@ -44,6 +44,7 @@ function useFilters() {
   const status = (FILTERS.some((item) => item.id === params.get("status")) ? params.get("status") : "all") as FilterId;
   const query = params.get("q") ?? "";
   const mode = params.get("mode") ?? "any";
+  const batch = params.get("batch") ?? "";
   const set = (key: string, value: string, fallback: string) => {
     const next = new URLSearchParams(search);
     if (value === fallback) next.delete(key);
@@ -51,7 +52,7 @@ function useFilters() {
     const text = next.toString();
     navigate(`${location}${text ? `?${text}` : ""}`, { replace: true });
   };
-  return { status, query, mode, setStatus: (value: FilterId) => set("status", value, "all"), setQuery: (value: string) => set("q", value, ""), setMode: (value: string) => set("mode", value, "any") };
+  return { status, query, mode, batch, clearBatch: () => set("batch", "", ""), setStatus: (value: FilterId) => set("status", value, "all"), setQuery: (value: string) => set("q", value, ""), setMode: (value: string) => set("mode", value, "any") };
 }
 
 export function RunsScreen() {
@@ -61,12 +62,18 @@ export function RunsScreen() {
   const [starting, setStarting] = useState(false);
   const [rerunOf, setRerunOf] = useState<RerunOf | null>(null);
   const runs = useQuery({
-    queryKey: ["runs"],
-    queryFn: () => api<{ runs: RunView[] }>(`/api/runs?limit=${RUN_LIMIT}&with_result=true`, { guard: isRunList }),
+    queryKey: ["runs", filters.batch],
+    queryFn: () => api<{ runs: RunView[] }>(`/api/runs?limit=${RUN_LIMIT}&with_result=true${filters.batch ? `&batch=${encodeURIComponent(filters.batch)}` : ""}`, { guard: isRunList }),
     refetchInterval: (query) => runsPollInterval(query.state.data?.runs),
   });
 
-  const all = runs.data?.runs ?? [];
+  const drop = useMutation({
+    mutationFn: (runId: string) => remove<{ run_id: string; removed: boolean }>(`/api/runs/${encodeURIComponent(runId)}`),
+    onSuccess: () => void client.invalidateQueries({ queryKey: ["runs"] }),
+  });
+
+  const all = useMemo(() => runs.data?.runs ?? [], [runs.data]);
+  const batchFolder = filters.batch ? (all.find((run) => run.folder !== undefined && run.folder !== null)?.folder ?? null) : null;
   const visible = useMemo(() => {
     const needle = filters.query.trim().toLowerCase();
     return all.filter((run) => {
@@ -114,6 +121,17 @@ export function RunsScreen() {
         </label>
       </div>
 
+      {filters.batch ? (
+        <p className="callout callout-note batch-note" role="note">
+          <span>
+            Showing the {all.length} {all.length === 1 ? "run" : "runs"} of one folder run{batchFolder !== null ? <> of <strong>{batchFolder || "all cases"}</strong></> : null}.
+          </span>
+          <button type="button" className="link-button" onClick={filters.clearBatch}>
+            Show all runs
+          </button>
+        </p>
+      ) : null}
+
       {all.length >= RUN_LIMIT ? (
         <p className="callout callout-note" role="note">
           Showing the newest {RUN_LIMIT} runs; filters and counts cover these only. Older runs stay in <code>.hercules/runs</code> and open at <code>/runs/&lt;run id&gt;</code>.
@@ -121,6 +139,11 @@ export function RunsScreen() {
       ) : null}
 
       {runs.isError ? <p className="callout callout-fail">Could not load runs: {(runs.error as Error).message}</p> : null}
+      {drop.error ? (
+        <p className="callout callout-fail" role="alert">
+          {(drop.error as Error).message}
+        </p>
+      ) : null}
       {runs.isPending ? <p className="muted">Loading runs…</p> : null}
 
       {runs.data && visible.length === 0 ? (
@@ -148,7 +171,7 @@ export function RunsScreen() {
                 <th scope="col">Status</th>
                 <th scope="col">Case</th>
                 <th scope="col">Mode</th>
-                <th scope="col">Started</th>
+                <th scope="col">Started ({localZoneName()})</th>
                 <th scope="col" className="num">
                   Duration
                 </th>
@@ -178,7 +201,7 @@ export function RunsScreen() {
                         {run.title ?? run.case_id ?? run.run_id}
                       </Link>
                       <span className="run-meta mono">
-                        {run.case_id} · {run.run_id}
+                        {run.run_id}
                         {run.parent_run_id ? " · re-run" : ""}
                         {run.started_by === "agent" ? ` · via ${agentName(run.agent)}` : ""}
                       </span>
@@ -191,7 +214,7 @@ export function RunsScreen() {
                     <td>
                       <span className={`tag tag-${runMode(run)}`}>{runMode(run)}</span>
                     </td>
-                    <td className="nowrap">{formatTime(run.started_at ?? run.created_at)}</td>
+                    <td className="nowrap">{formatDateTime(run.started_at ?? run.created_at)}</td>
                     <td className="num">{formatDuration(runSeconds(run))}</td>
                     <td className="num">{formatCost(run.result?.cost.usd)}</td>
                     <td className="cell-failing">
@@ -213,12 +236,15 @@ export function RunsScreen() {
                       </button>
                       <button
                         type="button"
-                        className="button button-small button-ghost"
-                        disabled={!final || run.status === "passed"}
-                        onClick={() => setRerunOf({ run, scope: "failed_only" })}
-                        title="Re-run only if this run did not pass"
+                        className="button button-small button-ghost button-danger-text"
+                        disabled={!final || drop.isPending}
+                        onClick={() => {
+                          if (window.confirm(deleteRunPrompt(run.run_id))) drop.mutate(run.run_id);
+                        }}
+                        aria-label={`Delete run ${run.run_id}`}
+                        title={final ? "Delete this run and its evidence" : "Cancel the run before deleting it"}
                       >
-                        Failed only
+                        Delete
                       </button>
                     </td>
                   </tr>
@@ -236,11 +262,11 @@ export function RunsScreen() {
             setStarting(false);
             setRerunOf(null);
           }}
-          onStarted={(runId) => {
+          onStarted={(runId, batch) => {
             setStarting(false);
             setRerunOf(null);
             void client.invalidateQueries({ queryKey: ["runs"] });
-            navigate(`/runs/${runId}`);
+            navigate(batch ? `/?batch=${encodeURIComponent(batch)}` : `/runs/${runId}`);
           }}
         />
       ) : null}

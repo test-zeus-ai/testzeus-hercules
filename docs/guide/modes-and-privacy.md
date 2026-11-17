@@ -157,6 +157,13 @@ this machine and to listed hosts never goes through an `HTTP_PROXY` / `ALL_PROXY
 What never leaves the machine in any mode: your case files, the evidence folder, and
 the secret values in your test data (models see the `{{placeholder}}`, not the value).
 
+### Files for upload steps
+
+Files that upload steps attach ([Files for upload steps](writing-tests.md#files-for-upload-steps))
+are never read by any model, in any mode: they go only to the app under test. The same holds
+for files a run downloads ([Downloading and checking files](writing-tests.md#downloading-and-checking-files)):
+their checks run in code, and their contents never reach a model.
+
 ## Credentials in URLs
 
 A session id or token in an address (`/login?sid=...`, `#access_token=...`, a password in

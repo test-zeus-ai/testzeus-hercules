@@ -15,13 +15,14 @@ import { SecurityPanel } from "../components/SecurityPanel";
 import { StartRunDialog } from "../components/StartRunDialog";
 import { Icon } from "../components/Icon";
 import { StatusChip } from "../components/StatusChip";
-import { api, evidenceName, evidenceUrl, post } from "../lib/api";
-import { agentName, engineLabels, formatCost, formatDuration, formatMs, formatTime, runSeconds, shortPath } from "../lib/format";
+import { api, evidenceName, evidenceUrl, post, remove } from "../lib/api";
+import { agentName, deleteRunPrompt, engineLabels, formatCost, formatDuration, formatMs, formatTime, runSeconds, shortPath } from "../lib/format";
 import type { DebugAction } from "../lib/control";
 import { mergeResult, orderedSteps, stepLabel, type ApprovalRequest, type PlannedStep, type TimelineStep } from "../lib/timeline";
-import { FINAL_STATUSES, type ApprovalView, type CloudRun, type DecisionView, type RerunScope, type RunView, type TestCase } from "../lib/types";
+import { FINAL_STATUSES, type ApprovalView, type CaseEntry, type CloudRun, type DecisionView, type RerunScope, type RunView, type TestCase } from "../lib/types";
 import { useRunTimeline } from "../lib/useRunTimeline";
-import { isRunCase, isRunView } from "../lib/guards";
+import { pathUrl } from "../lib/caseTree";
+import { isCaseList, isRunCase, isRunView } from "../lib/guards";
 import type { PlanView } from "../lib/plan";
 
 type ShotKind = "som" | "plain";
@@ -166,9 +167,13 @@ export function RunDetailScreen({ runId }: { runId: string }) {
   });
   const caseQuery = useQuery({
     queryKey: ["run-case", runId],
-    queryFn: () => api<{ test_case: TestCase }>(`/api/runs/${encodeURIComponent(runId)}/case`, { guard: isRunCase }),
+    queryFn: () => api<{ test_case: TestCase; source?: { kind?: string; path?: string } | null }>(`/api/runs/${encodeURIComponent(runId)}/case`, { guard: isRunCase }),
     staleTime: Infinity,
   });
+  const savedCases = useQuery({ queryKey: ["cases"], queryFn: () => api<{ cases: CaseEntry[] }>("/api/cases", { guard: isCaseList }) });
+  const sourcePath = caseQuery.data?.source?.kind === "case_path" ? caseQuery.data.source.path : undefined;
+  const sameId = (savedCases.data?.cases ?? []).filter((entry) => entry.valid && entry.id === caseQuery.data?.test_case.id);
+  const savedCase = sourcePath ? savedCases.data?.cases.find((entry) => entry.path === sourcePath) : sameId.length === 1 ? sameId[0] : undefined;
   const plan: PlannedStep[] | undefined = caseQuery.isPending ? undefined : (caseQuery.data?.test_case.steps ?? []);
   const onFinished = useCallback(() => {
     void client.invalidateQueries({ queryKey: ["run", runId] });
@@ -196,6 +201,14 @@ export function RunDetailScreen({ runId }: { runId: string }) {
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: ["run", runId] });
       void client.invalidateQueries({ queryKey: ["runs"] });
+    },
+  });
+  const drop = useMutation({
+    mutationFn: () => remove<{ run_id: string; removed: boolean }>(`/api/runs/${encodeURIComponent(runId)}`),
+    onSuccess: () => {
+      client.removeQueries({ queryKey: ["run", runId] });
+      void client.invalidateQueries({ queryKey: ["runs"] });
+      navigate("/runs");
     },
   });
   const debug = useMutation({
@@ -285,6 +298,11 @@ export function RunDetailScreen({ runId }: { runId: string }) {
           </div>
         </div>
         <div className="run-actions">
+          {savedCase ? (
+            <Link href={`/cases/${pathUrl(savedCase.name)}`} className="button" title={`Edit ${savedCase.name}`}>
+              <Icon name="cases" size={13} /> Edit case
+            </Link>
+          ) : null}
           {isDraft ? (
             <>
               <button type="button" className="button button-primary" onClick={() => act.mutate({ path: "approve" })} disabled={act.isPending}>
@@ -322,6 +340,16 @@ export function RunDetailScreen({ runId }: { runId: string }) {
               </button>
               <button type="button" className="button button-ghost" onClick={() => setRerunScope("failed_only")} disabled={act.isPending || view?.status === "passed"} title="Re-run only if this run did not pass">
                 Re-run if failed
+              </button>
+              <button
+                type="button"
+                className="button button-danger"
+                onClick={() => {
+                  if (window.confirm(deleteRunPrompt(runId))) drop.mutate();
+                }}
+                disabled={drop.isPending}
+              >
+                Delete run
               </button>
             </>
           ) : null}
@@ -395,6 +423,7 @@ export function RunDetailScreen({ runId }: { runId: string }) {
         />
       ) : null}
       {act.error ? <p className="callout callout-fail" role="alert">{(act.error as Error).message}</p> : null}
+      {drop.error ? <p className="callout callout-fail" role="alert">{(drop.error as Error).message}</p> : null}
       {view?.reason && view.status !== "passed" ? (
         <p className={`callout ${view.status === "cancelled" ? "callout-note" : "callout-fail"}`}>
           <Icon name="alert" size={14} /> {view.reason}

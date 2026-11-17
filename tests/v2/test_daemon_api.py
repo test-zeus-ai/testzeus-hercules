@@ -265,7 +265,17 @@ def test_environments_crud_and_validation(config) -> None:  # type: ignore[no-un
 
     assert created.status_code == 201
     assert listing == [
-        {"name": "staging", "base_url": "https://staging.example.test", "viewport": None, "browser": None, "browser_options": None, "device": None, "mobile": None, "secret_names": ["SHOP_PASSWORD"]}
+        {
+            "name": "staging",
+            "base_url": "https://staging.example.test",
+            "viewport": None,
+            "browser": None,
+            "browser_options": None,
+            "device": None,
+            "mobile": None,
+            "secret_names": ["SHOP_PASSWORD"],
+            "variables": {},
+        }
     ]
     assert bad_name.status_code == 422 and bad_url.status_code == 422 and secret_value.status_code == 422
     assert duplicate.status_code == 409
@@ -318,6 +328,8 @@ def test_health_and_openapi(config) -> None:  # type: ignore[no-untyped-def]
         spec = client.get("/api/openapi.json").json()
     assert health["project_dir"] == str(config.settings.project_dir)
     assert health["queue"] == {"queued": 0, "running": 0, "paused": 0, "needs_approval": 0, "needs_plan_approval": 0}
+    assert health["home_dir"] == str(config.paths.home_dir) and health["egress_policy"] == config.settings.egress.policy
+    assert "user" in health and "host" in health
     assert spec["openapi"].startswith("3.")
     for path in (
         "/api/runs",

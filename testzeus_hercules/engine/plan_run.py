@@ -29,7 +29,7 @@ from testzeus_hercules.cases.plan import Amendment, Criterion, CriterionResult, 
 from testzeus_hercules.decide.engine import DecisionEngine
 from testzeus_hercules.engine.intent import CaseReading, Interpreter
 from testzeus_hercules.engine.masking import masked_json
-from testzeus_hercules.engine.plan import PlanError, PlanStore, approved, case_hash, check_plan, outcome_extras, plan_key, plan_reading
+from testzeus_hercules.engine.plan import PlanError, PlanStore, approved, case_hash, check_plan, kept_criteria, outcome_extras, plan_key, plan_reading
 from testzeus_hercules.engine.planning import PlanOptions, apply_edits, approve_plan, make_plan
 
 logger = logging.getLogger(__name__)
@@ -39,7 +39,20 @@ __all__ = ["PLAN_FILE", "EDITED_PLAN_FILE", "PlanRun", "read_plan"]
 PLAN_FILE = "plan.json"
 EDITED_PLAN_FILE = "plan.edited.json"
 # A step's outcome checks as the ledger names them, per criterion check form.
-_LEDGER_CHECKS = {"text_visible": ("text_contains",), "text_absent": ("text_absent",), "url_matches": ("url_contains", "url_equals"), "element_state": ("visible",), "judged": ("semantic", "visual")}
+_LEDGER_CHECKS = {
+    "text_visible": ("text_contains",),
+    "text_absent": ("text_absent",),
+    "url_matches": ("url_contains", "url_equals"),
+    "element_state": ("visible",),
+    "judged": ("semantic", "visual"),
+    "file_name": ("file_name_equals", "file_name_contains"),
+    "file_type": ("file_type",),
+    "file_text": ("file_text",),
+    "file_not_text": ("file_not_text",),
+    "file_rows": ("file_rows",),
+    "file_column": ("file_column",),
+    "file_json": ("file_json",),
+}
 
 
 def read_plan(run_dir: Path, name: str = PLAN_FILE) -> Plan | None:
@@ -123,6 +136,8 @@ class PlanRun:
                 redact=self.redact,
             )
             self.plan, self.origin, self.records = outcome.plan, outcome.origin, outcome.records
+        if self.plan is not None:
+            self.plan = kept_criteria(self.plan)
         self.write()
         return self.reading()
 
@@ -137,7 +152,7 @@ class PlanRun:
         found = read_plan(self.run_dir)
         if found is not None:
             try:
-                self.plan = check_plan(found, self.case)
+                self.plan = kept_criteria(check_plan(found, self.case))
                 self.origin = "given"
             except PlanError:
                 self.plan = None

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 import time
 import urllib.parse
 from dataclasses import dataclass, field
@@ -93,6 +94,25 @@ class HttpResponse:
         if self._json is _NOT_JSON:
             raise ValueError("the response body is not JSON" if self.content.strip() else "the response body is empty")
         return self._json
+
+
+PAGE_NAME = re.compile(r"\.(?:html?|php|aspx?|jsp)$", re.IGNORECASE)
+
+
+def api_base(base_url: str) -> str:
+    """Where an API path goes: ``base_url`` without a page at its end (``/index.html``) and without a trailing slash, so
+    ``http://host/app`` keeps ``/app`` and ``http://host/index.html`` becomes ``http://host``."""
+    parts = urllib.parse.urlsplit(base_url)
+    path = parts.path
+    last = path.rsplit("/", 1)[-1]
+    if PAGE_NAME.search(last):
+        path = path[: len(path) - len(last)]
+    return urllib.parse.urlunsplit((parts.scheme, parts.netloc, path.rstrip("/"), "", ""))
+
+
+def api_url(base_url: str, path: str) -> str:
+    """``path`` (relative) under :func:`api_base` of ``base_url``."""
+    return api_base(base_url) + "/" + path.lstrip("/")
 
 
 def auth_headers(kind: str | None, value: Any) -> tuple[dict[str, str], str | None]:

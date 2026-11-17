@@ -203,6 +203,8 @@ def _describe(row: Mapping[str, Any]) -> str:
     text = f'{row.get("role") or "element"} "{name}"'
     if row.get("role") == "button" and attrs.get("type") == "submit":
         text += f' (submits the form with {attrs["form"]})' if attrs.get("form") else " (submits a form)"
+    elif attrs.get("type") == "file":
+        text += " (file input)"
     elif attrs.get("form"):
         text += f' (in the form with {attrs["form"]})'
     states = [f"{key[5:]}" for key in ("aria-selected", "aria-pressed", "aria-current", "aria-expanded") if attrs.get(key) and attrs[key] != "false"]

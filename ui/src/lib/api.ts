@@ -23,6 +23,7 @@ export const INVALID_RESPONSE = 0;
 interface RequestOptions<T> {
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: unknown;
+  raw?: Blob;
   signal?: AbortSignal;
   /** Checks the payload's key fields; a mismatch throws an ApiError instead of returning it. */
   guard?: Guard<T>;
@@ -30,7 +31,10 @@ interface RequestOptions<T> {
 
 export async function api<T>(path: string, options: RequestOptions<T> = {}): Promise<T> {
   const init: RequestInit = { method: options.method ?? "GET", credentials: "same-origin", signal: options.signal, headers: { Accept: "application/json" } };
-  if (options.body !== undefined) {
+  if (options.raw !== undefined) {
+    init.body = options.raw;
+    init.headers = { ...init.headers, "Content-Type": "application/octet-stream" };
+  } else if (options.body !== undefined) {
     init.body = JSON.stringify(options.body);
     init.headers = { ...init.headers, "Content-Type": "application/json" };
   }
@@ -62,6 +66,7 @@ export const post = <T>(path: string, body?: unknown, guard?: Guard<T>) => api<T
 export const put = <T>(path: string, body: unknown, guard?: Guard<T>) => api<T>(path, { method: "PUT", body, guard });
 export const patch = <T>(path: string, body: unknown, guard?: Guard<T>) => api<T>(path, { method: "PATCH", body, guard });
 export const remove = <T>(path: string, guard?: Guard<T>) => api<T>(path, { method: "DELETE", guard });
+export const upload = <T>(path: string, raw: Blob, guard?: Guard<T>) => api<T>(path, { method: "PUT", raw, guard });
 
 /** What `evidenceUrl` returns for a reference that would leave the run's directory. */
 export const BLOCKED_EVIDENCE_URL = "about:blank";

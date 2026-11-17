@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -10,7 +11,7 @@ from testzeus_hercules.cases.automation import AutomationAction, AutomationStep,
 from testzeus_hercules.cases.models import SecretRef, Step, TestCase
 from testzeus_hercules.engine.automation import build_spec, navigated_path, references, relative_url, value_template
 from testzeus_hercules.engine.data import CaseData
-from testzeus_hercules.engine.step_automation import _without_secrets
+from testzeus_hercules.engine.step_automation import _unexported_file_check, _without_secrets
 
 from tests.v2.engine_fixtures.fakes import FakeActions, FakePerceiver, FakeResult
 from tests.v2.test_engine_step_graph import SECRET, Harness
@@ -196,3 +197,17 @@ class _Chosen(FakeResult):
     def __init__(self, *, chosen: dict[str, Any], **kwargs: Any) -> None:
         super().__init__(**kwargs)
         object.__setattr__(self, "chosen", chosen)
+
+
+def test_a_text_check_on_a_download_without_text_is_not_exported(tmp_path: Path) -> None:
+    archive = tmp_path / "bundle.zip"
+    with zipfile.ZipFile(archive, "w") as handle:
+        handle.writestr("notes.txt", "Total 42")
+    image = tmp_path / "logo.png"
+    image.write_bytes(b"\x89PNG\r\n\x1a\nTotal 42")
+    notes = tmp_path / "notes.txt"
+    notes.write_text("Total 42")
+
+    assert _unexported_file_check("text", [archive]) == "the download is a zip file, which has no text to check"
+    assert _unexported_file_check("not_text", [image]) == "the download is a png file, which has no text to check"
+    assert _unexported_file_check("text", [notes]) is None

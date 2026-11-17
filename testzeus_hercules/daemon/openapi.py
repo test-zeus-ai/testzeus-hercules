@@ -7,21 +7,27 @@ from typing import Any
 
 from pydantic.json_schema import models_json_schema
 
-from testzeus_hercules.daemon.clouds import CloudKeys, CloudRunCreate
+from testzeus_hercules.daemon.clouds import CloudKeys, CloudRegion, CloudRunCreate
+from testzeus_hercules.daemon.secrets import SecretValue
 from testzeus_hercules.daemon.models import (
     ApprovalRequest,
     CaseCheck,
     CaseSave,
+    CasesMove,
     CaseValidate,
     ControlRequest,
     Environment,
     EnvironmentSave,
     ErrorBody,
     ExportView,
+    FolderCreate,
+    FolderUpdate,
     InputRequest,
     PlanCreate,
     PlanView,
     RerunRequest,
+    RunBatchCreate,
+    RunBatchCreated,
     RunCreate,
     RunCreated,
     RunList,
@@ -46,9 +52,16 @@ _MODELS = (
     CaseSave,
     CaseValidate,
     CaseCheck,
+    CasesMove,
+    FolderCreate,
+    FolderUpdate,
+    RunBatchCreate,
+    RunBatchCreated,
     StepDecisions,
     ExportView,
     CloudKeys,
+    CloudRegion,
+    SecretValue,
     CloudRunCreate,
     Environment,
     EnvironmentSave,
@@ -65,7 +78,16 @@ def _json(schema: dict[str, Any], description: str = "OK") -> dict[str, Any]:
 
 
 def _errors(*codes: int) -> dict[str, Any]:
-    texts = {400: "Body is not JSON", 401: "Missing or wrong token", 403: "Forbidden Host or Origin", 404: "Not found", 409: "Conflicts with the run's state", 422: "Invalid input"}
+    texts = {
+        400: "Body is not JSON",
+        401: "Missing or wrong token",
+        403: "Forbidden Host or Origin",
+        404: "Not found",
+        409: "Conflicts with the run's state",
+        413: "Body too large",
+        415: "Wrong content type",
+        422: "Invalid input",
+    }
     return {str(code): _json(_ref("ErrorBody"), texts[code]) for code in (401, 403, *codes)}
 
 
@@ -100,6 +122,7 @@ def _paths() -> dict[str, Any]:
                     ),
                     _param("limit", "query", {"type": "integer", "minimum": 1, "maximum": 200}, "At most this many runs (default 50)"),
                     _param("with_result", "query", {"type": "boolean"}, "Include each finished run's RunResult (duration, cost, failing step)"),
+                    _param("batch", "query", {"type": "string"}, "Only the runs of this folder run (the batch id from POST /api/runs/batch)"),
                 ],
                 "responses": {"200": _json(_ref("RunList")), **_errors(422)},
             },
@@ -107,6 +130,13 @@ def _paths() -> dict[str, Any]:
                 "summary": "Queue a run from a TestCase, Gherkin text, a case file in the project or a plain-language description",
                 "requestBody": {"required": True, "content": {"application/json": {"schema": _ref("RunCreate")}}},
                 "responses": {"201": _json(_ref("RunCreated"), "Queued (or waiting for approval)"), **_errors(400, 422)},
+            },
+        },
+        "/api/runs/batch": {
+            "post": {
+                "summary": "Run a folder: queue one run per ready case of the folder (and its subfolders), sharing a batch; drafts and cases that do not load are skipped",
+                "requestBody": {"required": True, "content": {"application/json": {"schema": _ref("RunBatchCreate")}}},
+                "responses": {"201": _json(_ref("RunBatchCreated"), "Queued"), "200": _json(_ref("RunBatchCreated"), "Nothing to run: every case was skipped"), **_errors(400, 404, 422)},
             },
         },
         "/api/runs/{run_id}": {
@@ -119,6 +149,7 @@ def _paths() -> dict[str, Any]:
                 ],
                 "responses": {"200": _json(_ref("RunView")), **_errors(404, 422)},
             },
+            "delete": {"summary": "Delete a finished run: its record, events and evidence folder", "responses": {"200": _json({"type": "object"}), **_errors(404, 409)}},
         },
         "/api/runs/{run_id}/events": {
             **run_ops,
@@ -232,11 +263,11 @@ def _paths() -> dict[str, Any]:
             },
         },
         "/api/cases/{name}/plan": {
-            "parameters": [_param("name", "path", {"type": "string"}, "File name such as login.json")],
+            "parameters": [_param("name", "path", {"type": "string"}, "The case's path under .hercules/cases, such as Checkout/login.feature")],
             "get": {"summary": "The latest plan made for a saved case, and whether it is current", "responses": {"200": _json(_ref("PlanView")), **_errors(404, 422)}},
         },
         "/api/cases": {
-            "get": {"summary": "Cases in .hercules/cases with validation status", "responses": {"200": _json({"type": "object"}), **_errors()}},
+            "get": {"summary": "Cases in .hercules/cases and its folders with validation status, and every folder", "responses": {"200": _json({"type": "object"}), **_errors()}},
             "post": {
                 "summary": "Save a TestCase (<id>.json) or import Gherkin (<scenario>.feature)",
                 "requestBody": {"required": True, "content": {"application/json": {"schema": _ref("CaseSave")}}},
@@ -250,9 +281,37 @@ def _paths() -> dict[str, Any]:
                 "responses": {"200": _json(_ref("CaseCheck")), **_errors(400, 422)},
             },
         },
+        "/api/cases/move": {
+            "post": {
+                "summary": "Move saved cases (with a Gherkin case's test data) into a folder",
+                "requestBody": {"required": True, "content": {"application/json": {"schema": _ref("CasesMove")}}},
+                "responses": {"200": _json({"type": "object"}), **_errors(400, 404, 409, 422)},
+            },
+        },
+        "/api/folders": {
+            "post": {
+                "summary": "Make a folder for cases under .hercules/cases",
+                "requestBody": {"required": True, "content": {"application/json": {"schema": _ref("FolderCreate")}}},
+                "responses": {"201": _json({"type": "object"}), **_errors(400, 404, 409, 422)},
+            },
+        },
+        "/api/folders/{folder}": {
+            "parameters": [_param("folder", "path", {"type": "string"}, "The folder's path, such as Checkout/Payments", required=True)],
+            "patch": {
+                "summary": "Rename a folder or move it into another folder",
+                "requestBody": {"required": True, "content": {"application/json": {"schema": _ref("FolderUpdate")}}},
+                "responses": {"200": _json({"type": "object"}), **_errors(400, 404, 409, 422)},
+            },
+            "delete": {
+                "summary": "Delete a folder: move what it holds into its parent (mode=move_up, the default) or delete its cases too (mode=delete_cases)",
+                "parameters": [_param("mode", "query", {"type": "string", "enum": ["move_up", "delete_cases"]}, "What happens to what the folder holds")],
+                "responses": {"200": _json({"type": "object"}), **_errors(404, 409, 422)},
+            },
+        },
         "/api/cases/{name}": {
-            "parameters": [_param("name", "path", {"type": "string"}, "File name such as login.json")],
+            "parameters": [_param("name", "path", {"type": "string"}, "The case's path under .hercules/cases, such as Checkout/login.feature")],
             "get": {"summary": "One saved case: the TestCase, the file kind and its source text", "responses": {"200": _json({"type": "object"}), **_errors(404, 422)}},
+            "delete": {"summary": "Delete a saved case with its test data file and its files for upload steps", "responses": {"200": _json({"type": "object"}), **_errors(404, 422)}},
         },
         "/api/environments": {
             "get": {"summary": "Saved environments", "responses": {"200": _json({"type": "object"}), **_errors()}},
@@ -265,6 +324,7 @@ def _paths() -> dict[str, Any]:
         "/api/environments/{name}": {
             "parameters": [_param("name", "path", {"type": "string"}, "Environment name")],
             "get": {"summary": "One environment", "responses": {"200": _json(_ref("Environment")), **_errors(404)}},
+            "delete": {"summary": "Delete an environment and its files for upload steps (cases that name it no longer load it)", "responses": {"200": _json({"type": "object"}), **_errors(404)}},
         },
         "/api/devices": {
             "get": {"summary": "Device profiles for mobile web emulation (Playwright's names, for environment.device)", "responses": {"200": _json({"type": "object"}), **_errors()}},
@@ -295,6 +355,62 @@ def _cloud_paths(run_ops: dict[str, Any]) -> dict[str, Any]:
         "/api/clouds/{cloud}/check": {
             "parameters": [cloud],
             "post": {"summary": "Check that the cloud accepts the current credentials", "responses": {"200": _json({"type": "object"}), **_errors(404)}},
+        },
+        "/api/clouds/{cloud}/region": {
+            "parameters": [cloud],
+            "put": {
+                "summary": "Save the Sauce Labs region (us-west-1, us-east-4, eu-central-1) to <hercules home>/clouds.env and check the saved keys there",
+                "requestBody": {"required": True, "content": {"application/json": {"schema": _ref("CloudRegion")}}},
+                "responses": {"200": _json({"type": "object"}), **_errors(404, 422)},
+            },
+        },
+        "/api/environments/{name}/files": {
+            "parameters": [_param("name", "path", {"type": "string"}, "The environment")],
+            "get": {
+                "summary": "The environment's files for upload steps (name, size); never read by a model",
+                "responses": {"200": _json({"type": "object"}), **_errors(404)},
+            },
+        },
+        "/api/environments/{name}/files/{filename}": {
+            "parameters": [_param("name", "path", {"type": "string"}, "The environment"), _param("filename", "path", {"type": "string"}, "The file name")],
+            "put": {
+                "summary": "Add or replace a file for upload steps (raw body, application/octet-stream, at most 25 MB; no credential or configuration files)",
+                "requestBody": {"required": True, "content": {"application/octet-stream": {"schema": {"type": "string", "format": "binary"}}}},
+                "responses": {"200": _json({"type": "object"}), **_errors(404, 413, 415, 422)},
+            },
+            "delete": {"summary": "Remove a file for upload steps", "responses": {"200": _json({"type": "object"}), **_errors(404, 422)}},
+        },
+        "/api/cases/{name}/files": {
+            "parameters": [_param("name", "path", {"type": "string"}, "The saved case file name")],
+            "get": {
+                "summary": "The case's files for upload steps (name, size); found before the environment's, never read by a model",
+                "responses": {"200": _json({"type": "object"}), **_errors(404, 422)},
+            },
+        },
+        "/api/cases/{name}/files/{filename}": {
+            "parameters": [_param("name", "path", {"type": "string"}, "The saved case file name"), _param("filename", "path", {"type": "string"}, "The file name")],
+            "put": {
+                "summary": "Add or replace a case file for upload steps (raw body, application/octet-stream, at most 25 MB; no credential or configuration files)",
+                "requestBody": {"required": True, "content": {"application/octet-stream": {"schema": {"type": "string", "format": "binary"}}}},
+                "responses": {"200": _json({"type": "object"}), **_errors(404, 413, 415, 422)},
+            },
+            "delete": {"summary": "Remove a case file for upload steps", "responses": {"200": _json({"type": "object"}), **_errors(404, 422)}},
+        },
+        "/api/secrets": {
+            "get": {
+                "summary": "Where each named secret comes from (env, file or none); values are never returned",
+                "parameters": [_param("names", "query", {"type": "string"}, "Comma-separated environment variable names")],
+                "responses": {"200": _json({"type": "object"}), **_errors(422)},
+            },
+        },
+        "/api/secrets/{name}": {
+            "parameters": [_param("name", "path", {"type": "string", "pattern": "^[A-Z_][A-Z0-9_]*$"}, "The environment variable name")],
+            "put": {
+                "summary": "Save a secret's value to <hercules home>/secrets.env (mode 600); the environment variable of the same name wins; the value is never returned",
+                "requestBody": {"required": True, "content": {"application/json": {"schema": _ref("SecretValue")}}},
+                "responses": {"200": _json({"type": "object"}), **_errors(422)},
+            },
+            "delete": {"summary": "Remove a saved secret value (environment variables are not touched)", "responses": {"200": _json({"type": "object"}), **_errors(409, 422)}},
         },
         "/api/runs/{run_id}/cloud-runs": {
             **run_ops,

@@ -29,8 +29,9 @@ from testzeus_hercules.engine.factory import EngineFactoryError, FactoryOptions,
 from testzeus_hercules.engine.masking import MaskingDecider
 from testzeus_hercules.engine.plan import PlanStore, render_plan
 from testzeus_hercules.engine.planning import PlanOptions, approve_plan, make_plan
-from testzeus_hercules.engine.service_intent import case_hint
+from testzeus_hercules.engine.service_intent import case_kind
 from testzeus_hercules.kernel.paths import HerculesPaths
+from testzeus_hercules.kernel.secrets_store import with_saved_secrets
 from testzeus_hercules.kernel.settings import Settings, SettingsError
 
 EXIT_OK = 0
@@ -83,9 +84,10 @@ def plan_command(options: PlanCommandOptions, *, env: Mapping[str, str] | None =
     deps = deps or RunCommandDeps()
     environ: Mapping[str, str] = dict(os.environ) if env is None else env
     try:
-        case = load_case(options.case_path)
         overrides = {"egress": {"policy": options.egress}} if options.egress is not None else None
         settings = Settings.load(options.project_dir, env=environ, overrides=overrides)
+        environ = with_saved_secrets(environ, settings.home_dir)
+        case = load_case(options.case_path, envs_dir=HerculesPaths.from_settings(settings).envs_dir, environment=options.environment)
         case = with_environment(case, HerculesPaths.from_settings(settings), RunOptions(case_path=options.case_path, base_url=options.base_url, environment=options.environment))
     except (CaseLoadError, SettingsError) as exc:
         out.write(f"error: {exc}\n")
@@ -141,7 +143,7 @@ async def _make(case: Any, settings: Settings, env: Mapping[str, str], options: 
             env=env,
             names=sorted(set(protected.test_data) | set(hidden)),
             hidden=sorted(hidden),
-            service=case_hint(protected.tags) is not None,
+            service=case_kind(protected) is not None,
             options=plan_options,
             redact=data.redact,
         )

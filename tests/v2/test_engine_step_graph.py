@@ -1453,3 +1453,51 @@ def test_a_disabled_field_asks_whether_a_later_field_step_must_run_first(tmp_pat
     assert (outcome.status, outcome.error_class, outcome.run_first) == ("failed", "NeedsEarlierStep", 4)
     (call,) = interpreter.first_calls
     assert "the element is disabled" in call[1] and call[2] == ((4, 'fill "alice" in "Username"'),)
+
+
+def test_an_upload_passes_every_file_it_names_and_an_upload_without_a_file_is_ambiguous(tmp_path: Path) -> None:
+    readings = {
+        **READINGS,
+        'I upload "a.png" and "b.pdf" to "Password"': intent("upload", target="Password", value="a.png | b.pdf"),
+        'I upload to "Password"': intent("upload", target="Password", value=" | "),
+    }
+    h = Harness(tmp_path, interpreter=ScriptedInterpreter(readings))
+
+    attached = h.run(Step(action='I upload "a.png" and "b.pdf" to "Password"'))
+    nothing = h.run(Step(action='I upload to "Password"'), index=2)
+
+    assert attached.status == "passed", attached.actual
+    assert h.actions.calls == [("upload", 3, ("a.png", "b.pdf"))]
+    assert nothing.status == "failed" and "which file to upload" in (nothing.actual or "")
+
+
+def test_a_download_is_kept_remembered_and_checked_in_code(tmp_path: Path) -> None:
+    readings = {
+        **READINGS,
+        'I click "Password" to download the report': intent("download", target="Password"),
+        'I download "orders.csv" from "/reports/orders.csv"': intent("download", url="/reports/orders.csv", value="orders.csv"),
+        "the downloaded file has 2 rows": intent("assert_file_rows", expected="2"),
+        'column "Status" is "Paid" in the downloaded file': intent("assert_file_column", expected="Paid", target="Status", match="equals"),
+    }
+    h = Harness(tmp_path, interpreter=ScriptedInterpreter(readings))
+
+    clicked = h.run(Step(action='I click "Password" to download the report', expected="the downloaded file has 2 rows"))
+    opened = h.run(Step(action='I download "orders.csv" from "/reports/orders.csv"', expected='column "Status" is "Paid" in the downloaded file'), index=2)
+
+    assert clicked.status == "passed", clicked.actual
+    assert opened.status == "passed", opened.actual
+    assert h.actions.calls[0] == ("download", 3, None) and h.actions.calls[1] == ("download_from_url", "/reports/orders.csv", "orders.csv")
+    assert [path.name for path in h.deps.downloads] == ["report.csv", "orders.csv"]
+    assert h.deps.downloads[0].parent == h.run_dir / "steps" / "1" / "downloads"
+    assert "hercules://runs/r_1/steps/1/downloads/report.csv" in clicked.evidence
+    assert h.data.lookup("downloaded_file_name") == "orders.csv"
+    assert [entry.check for entry in opened.ledger] == ["file_column"] and opened.ledger[0].source == "deterministic"
+
+
+def test_a_file_check_before_any_download_fails(tmp_path: Path) -> None:
+    readings = {**READINGS, "the downloaded file is a PDF": intent("assert_file_type", expected="PDF")}
+    h = Harness(tmp_path, interpreter=ScriptedInterpreter(readings))
+
+    outcome = h.run(Step(action="verify", expected="the downloaded file is a PDF"))
+
+    assert outcome.status == "failed" and "no file was downloaded" in (outcome.actual or "")

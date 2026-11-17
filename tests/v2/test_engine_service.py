@@ -305,3 +305,34 @@ def test_step_interpreter_routes_api_steps_to_the_service(tmp_path: Path) -> Non
     assert [call[0] for call in model.calls] == ["IntentPlan", "ServicePlan"]
     plan = (tmp_path / "run" / "steps" / "1" / "plan.jsonl").read_text().splitlines()
     assert json.loads(plan[-1])["stage"] == "service" and json.loads(plan[-1])["payload"]["path"] == "/pets/1"
+
+
+def test_an_untagged_case_of_requests_is_an_api_case() -> None:
+    from testzeus_hercules.cases.models import TestCase
+    from testzeus_hercules.engine.service_intent import case_kind
+
+    def case(*actions: str, tags: tuple[str, ...] = ()) -> TestCase:
+        steps = [{"action": action} for action in actions] + [{"action": "verify", "expected": "the response status code should be 200"}]
+        return TestCase.model_validate({"id": "c", "title": "t", "tags": list(tags), "environment": {"base_url": "http://127.0.0.1:9"}, "steps": steps})
+
+    assert case_kind(case('I send a GET request to "/api/health"', 'When I save the response JSON "$.code" as "code"', "Send a DELETE request to /api/orders")) == "api"
+    assert case_kind(case('I open "/login"', 'I send a GET request to "/api/health"')) is None
+    assert case_kind(case('I click the "Get started" button')) is None
+    assert case_kind(case('I open "/login"', tags=("kind:api",))) == "api"
+    assert case_kind(case('I open "/reports"', tags=("kind:sql",))) == "sql"
+    assert case_kind(case("GET /api/orders/7", "I send a post request to https://shop.example/api/orders", 'the response field "$.id" should be saved as "id"')) == "api"
+    for ui_step in ("When I delete the pending leave request", "I post a request for approval", "I check the response from the manager", "I get the request form"):
+        assert case_kind(case(ui_step)) is None, ui_step
+
+
+def test_the_plan_of_an_untagged_api_case_lists_api_steps_without_lint() -> None:
+    from testzeus_hercules.cases.models import TestCase
+    from testzeus_hercules.engine.intent import CaseReading
+    from testzeus_hercules.engine.lint import lint_plan
+    from testzeus_hercules.engine.plan import build_plan, source_steps
+
+    steps = [{"action": 'I send a GET request to "/api/health"'}, {"action": "verify", "expected": "the response status code should be 200"}]
+    case = TestCase.model_validate({"id": "c", "title": "t", "environment": {"base_url": "http://127.0.0.1:9"}, "steps": steps})
+
+    assert [source.kind for source in source_steps(case)] == ["api", "api"]
+    assert lint_plan(case, build_plan(case, CaseReading(), model="m"), env={}).lint == []

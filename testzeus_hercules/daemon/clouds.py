@@ -1,9 +1,10 @@
 """The daemon's cloud API: connect BrowserStack, Sauce Labs and TestMu AI, and run exported tests on them.
 
 * ``GET /api/clouds``: each cloud, whether it is connected (and from where), and what it can run here.
-* ``PUT /api/clouds/{cloud}``: save a user name and access key to ``<hercules home>/clouds.env`` (mode 0600) and
-  check them. ``POST /api/clouds/{cloud}/check`` checks the current ones; ``DELETE`` removes the saved ones.
-  Access keys are accepted, never returned.
+* ``PUT /api/clouds/{cloud}``: save a user name and access key (and Sauce Labs region) to
+  ``<hercules home>/clouds.env`` (mode 0600) and check them. ``PUT /api/clouds/saucelabs/region`` saves only the
+  region and checks the current keys there. ``POST /api/clouds/{cloud}/check`` checks the current ones; ``DELETE``
+  removes the saved ones. Access keys are accepted, never returned.
 * ``POST /api/runs/{run_id}/cloud-runs``: run a passed run's exported test on a cloud;
   ``GET /api/runs/{run_id}/cloud-runs`` lists them, ``GET /api/cloud-runs/{id}`` is one with its output,
   ``POST /api/cloud-runs/{id}/cancel`` stops it.
@@ -29,12 +30,15 @@ from testzeus_hercules.clouds.bundle import (
 )
 from testzeus_hercules.clouds.check import check_credentials
 from testzeus_hercules.clouds.credentials import (
+    SAUCE_REGION_ENV,
+    SAUCELABS_REGIONS,
     CredentialError,
     clouds_file,
     find_credentials,
     placeholder_problem,
     remove_credentials,
     save_credentials,
+    save_region,
 )
 from testzeus_hercules.clouds.registry import CLOUD_IDS, CLOUDS, CloudId
 from testzeus_hercules.clouds.runner import CloudRunError, CloudRuns, requirements
@@ -46,6 +50,7 @@ if TYPE_CHECKING:
 check_client_factory: Any = None
 
 _DEVICE = r"^[A-Za-z0-9 ._()+-]{1,80}$"
+_REGION = r"^[a-z0-9-]{1,40}$"
 _VERSION = r"^[A-Za-z0-9._-]{1,20}$"
 
 
@@ -53,6 +58,12 @@ class CloudKeys(BaseModel):
     model_config = ConfigDict(extra="forbid")
     username: str = Field(min_length=1, max_length=512)
     access_key: str = Field(min_length=1, max_length=512)
+    region: str | None = Field(default=None, pattern=_REGION)
+
+
+class CloudRegion(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    region: str = Field(pattern=_REGION)
 
 
 class CloudRunCreate(BaseModel):
@@ -82,7 +93,6 @@ def cloud_view(daemon: Daemon, cloud: CloudId) -> dict[str, Any]:
     settings = daemon.config.settings
     info = CLOUDS[cloud]
     found = find_credentials(cloud, settings, daemon.config.env)
-    config = getattr(settings.mobile, cloud)
     return {
         "id": cloud,
         "name": info.name,
@@ -91,7 +101,9 @@ def cloud_view(daemon: Daemon, cloud: CloudId) -> dict[str, Any]:
         "username": found.username,
         "username_env": found.username_env,
         "access_key_env": found.access_key_env,
-        "region": config.region,
+        "region": found.region,
+        "region_source": found.region_source,
+        "regions": list(SAUCELABS_REGIONS) if cloud == "saucelabs" else [],
         "problem": placeholder_problem(found) or found.problem,
         "web_mode": info.web_mode,
         "web_ready": requirements("web", info.web_mode),
@@ -125,7 +137,7 @@ async def save_cloud(request: Request, daemon: Daemon) -> Response:
     keys: CloudKeys = _parse(CloudKeys, await _body(request))
     settings = daemon.config.settings
     try:
-        await asyncio.to_thread(save_credentials, cloud, settings, keys.username, keys.access_key)
+        await asyncio.to_thread(save_credentials, cloud, settings, keys.username, keys.access_key, keys.region)
     except CredentialError as exc:
         raise _api_error(422, str(exc)) from None
     view = cloud_view(daemon, cloud)
@@ -135,6 +147,25 @@ async def save_cloud(request: Request, daemon: Daemon) -> Response:
     if found.source == "env":
         note = f"saved, but the environment variables {found.username_env} and {found.access_key_env} are set and win over the saved keys"
     return JSONResponse({**view, "check": {"ok": check.ok, "message": check.message}, "note": note})
+
+
+async def save_cloud_region(request: Request, daemon: Daemon) -> Response:
+    from testzeus_hercules.daemon.app import _body, _parse
+
+    cloud = _cloud(request)
+    body: CloudRegion = _parse(CloudRegion, await _body(request))
+    settings = daemon.config.settings
+    try:
+        await asyncio.to_thread(save_region, cloud, settings, body.region)
+    except CredentialError as exc:
+        raise _api_error(422, str(exc)) from None
+    view = cloud_view(daemon, cloud)
+    found = find_credentials(cloud, settings, daemon.config.env)
+    check = await _check(cloud, found, settings) if found.found else None
+    note = None
+    if found.region_source == "env":
+        note = f"saved, but the environment variable {SAUCE_REGION_ENV} is set to {found.region} and wins over the saved region"
+    return JSONResponse({**view, "check": None if check is None else {"ok": check.ok, "message": check.message}, "note": note})
 
 
 async def check_cloud(request: Request, daemon: Daemon) -> Response:

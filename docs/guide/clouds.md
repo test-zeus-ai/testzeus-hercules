@@ -47,10 +47,22 @@ Where to find your key:
 - **Sauce Labs:** User settings → Access key.
 - **TestMu AI:** Account settings → Password & Security → Access key.
 
+### Sauce Labs region
+
+A Sauce Labs account lives in one data center, `us-west-1`, `us-east-4` or `eu-central-1`, and
+its keys are refused in the others. Pick yours under **Region** on the Sauce Labs card: Hercules
+saves it and checks the keys there. When the keys are refused, the check also asks the other
+regions and names the one that accepts them.
+
+The region is taken from, in order: the `SAUCE_REGION` environment variable, the region saved
+from the card or with `hercules cloud connect saucelabs --region`, `mobile.saucelabs.region` in
+the config, else `us-west-1`.
+
 ### From the command line
 
 ```bash
 echo "$MY_ACCESS_KEY" | hercules cloud connect browserstack --username my_user
+echo "$MY_ACCESS_KEY" | hercules cloud connect saucelabs --username my_user --region eu-central-1
 hercules cloud check browserstack
 hercules cloud list
 hercules cloud disconnect browserstack
@@ -177,6 +189,7 @@ flow in the tester UI.
 |---|---|
 | "… is not connected" | Connect the cloud on the Integrations screen, or set its variables and restart the daemon |
 | "… refused the credentials (HTTP 401)" | Copy the access key again from the cloud's settings; it changes when you regenerate it |
+| "Sauce Labs refused the credentials in region … but accepts them in …" | Choose that region on the Sauce Labs card, or connect again with `--region` |
 | "running the exported test needs pytest and pytest-playwright" | `pip install 'testzeus-hercules[cloud]'` |
 | "Sauce Labs runs Playwright tests with saucectl, which is not installed" | `npm i -g saucectl`, or run native app tests only |
 | "egress policy 'local' forbids sending tests to a cloud" | Set `egress.policy: hybrid-text` (or `hybrid`) |

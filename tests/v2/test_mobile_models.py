@@ -146,7 +146,7 @@ def test_mobile_settings_name_credential_variables_only(tmp_path: Path) -> None:
     settings = Settings.load(tmp_path, env={**home, "HERCULES_APPIUM_URL": "http://127.0.0.1:4800"})
     assert settings.mobile.appium_url == "http://127.0.0.1:4800"
     assert settings.mobile.browserstack.username_env == "BROWSERSTACK_USERNAME"
-    assert settings.mobile.saucelabs.region == "us-west-1"
+    assert settings.mobile.saucelabs.region is None
     config = tmp_path / ".hercules" / "config.yaml"
     config.parent.mkdir()
     config.write_text("mobile:\n  browserstack:\n    hub_url: http://127.0.0.1:9/wd/hub\n  saucelabs:\n    access_key_env: MY_SAUCE_KEY\n")

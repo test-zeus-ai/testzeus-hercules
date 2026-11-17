@@ -81,7 +81,7 @@ def _url_credentials(case_id: str, case_path: Path | None, project: Path, env: M
     from testzeus_hercules.kernel.paths import HerculesPaths
     from testzeus_hercules.kernel.settings import Settings
 
-    candidates = [case_path] if case_path is not None else sorted(HerculesPaths.from_settings(Settings.load(project, env=env)).cases_dir.glob("*"))
+    candidates = [case_path] if case_path is not None else sorted(HerculesPaths.from_settings(Settings.load(project, env=env)).cases_dir.rglob("*"))
     for path in candidates:
         if path is None or not path.is_file():
             continue

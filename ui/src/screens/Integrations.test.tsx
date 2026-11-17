@@ -117,6 +117,37 @@ describe("IntegrationsScreen", () => {
     expect(fetchMock.mock.calls.some(([url, init]) => url === "/api/clouds/browserstack" && (init as RequestInit | undefined)?.method === "DELETE")).toBe(true);
   });
 
+  it("saves the Sauce Labs region and shows the check that follows", async () => {
+    report = cloudsReport();
+    report.clouds[1] = { ...report.clouds[1], connected: true, source: "file", username: "carol" };
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === "/api/clouds/saucelabs/region" && init?.method === "PUT") {
+        return respond({ ...report.clouds[1], region: "eu-central-1", region_source: "file", check: { ok: true, message: "connected to Sauce Labs as carol" }, note: null });
+      }
+      if (url === "/api/clouds") return respond(report);
+      return respond({ error: "not found" }, 404);
+    });
+    renderScreen();
+    const sauce = await card("Sauce Labs");
+    const region = sauce.getByLabelText("Region") as HTMLSelectElement;
+    expect(region.value).toBe("us-west-1");
+    expect(Array.from(region.options).map((option) => option.value)).toEqual(["us-west-1", "us-east-4", "eu-central-1"]);
+    fireEvent.change(region, { target: { value: "eu-central-1" } });
+    await waitFor(() => expect(sauce.getByRole("status").textContent).toMatch(/Region eu-central-1 saved\. connected to Sauce Labs as carol/));
+    const put = fetchMock.mock.calls.find(([url]) => url === "/api/clouds/saucelabs/region");
+    expect(JSON.parse(String((put?.[1] as RequestInit).body))).toEqual({ region: "eu-central-1" });
+    expect((await card("BrowserStack")).queryByLabelText("Region")).toBeNull();
+  });
+
+  it("locks the region set by SAUCE_REGION", async () => {
+    report = cloudsReport();
+    report.clouds[1] = { ...report.clouds[1], region: "eu-central-1", region_source: "env" };
+    renderScreen();
+    const sauce = await card("Sauce Labs");
+    expect((sauce.getByLabelText("Region") as HTMLSelectElement).disabled).toBe(true);
+    expect(sauce.getByText("SAUCE_REGION")).toBeTruthy();
+  });
+
   it("warns when the egress policy keeps everything local", async () => {
     report = cloudsReport({ egress_allows: false });
     renderScreen();

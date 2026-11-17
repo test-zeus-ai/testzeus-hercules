@@ -11,10 +11,12 @@ values never reach the model; results are cached by step text and hint.
 from __future__ import annotations
 
 import logging
-from typing import Literal
+import re
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
+from testzeus_hercules.cases.gherkin import VERIFY_ACTION
 from testzeus_hercules.cases.models import ApiCall, SqlCall
 from testzeus_hercules.engine.intent import normalise_step_text
 from testzeus_hercules.engine.ports import IntentLLM
@@ -35,6 +37,9 @@ kind "api": an HTTP request and/or checks on its response. api fields:
   spec.yaml#/components/schemas/Pet, or an inline schema), openapi (a spec file the response must match), json_path
   (a list of {"path": JSONPath like $.items[0].id, "op": eq|ne|contains|not_contains|matches|exists|not_exists|not_empty|gt|lt|all_gte|all_lte|count_eq|eq_path,
   "value": expected JSON value}), headers (a list of {"name", "op", "value"}), body_contains (texts), max_time_ms.
+  Choosing op: "should be", "is", "equals" -> eq with the value as JSON (a number stays a number: 12, not "12"); count_eq only
+  when the step counts elements ("has 3 items", "the list holds 2 entries"); a shape such as "LB- followed by 4 digits" ->
+  matches with an anchored regular expression ("^LB-\\d{4}$"); "should contain" -> contains.
 - save: a list of {"name": a name later steps use as {{name}}, "json_path": JSONPath into the body} or {"name", "header": header name}.
 kind "sql": one read-only SELECT. sql fields: db (the name of the database entry as written), query (the SELECT text; null when
 the step only checks the previous rows), params, expect ({"rows": exact count, "min_rows", "max_rows", "json_path": checks on the
@@ -62,6 +67,35 @@ def case_hint(tags: list[str] | tuple[str, ...]) -> str | None:
     """``api`` or ``sql`` when the case is tagged ``kind:api``/``kind:sql``, else None."""
     lowered = {tag.strip().lower() for tag in tags}
     return "api" if "kind:api" in lowered else "sql" if "kind:sql" in lowered else None
+
+
+_HTTP_VERB = re.compile(r"\b(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\b")
+_HTTP_TARGET = re.compile(r"\brequest\b|(?:^|[\s\"'`(])/[\w{]|\bhttps?://", re.IGNORECASE)
+_SENT_REQUEST = re.compile(r"\b(?:send|sends|sending|sent|make|makes|issue|issues|call|calls)\b[^\n]*\b(?:get|post|put|patch|delete|head|options)\s+request\b", re.IGNORECASE)
+_READS_RESPONSE = re.compile(
+    r"\bthe (?:previous |last )?response(?:'s)?\s+(?:json|body|status|headers?|code)\b|\bthe (?:previous |last )?response\b[^\n]*[\"'`]\$[.\[]",
+    re.IGNORECASE,
+)
+
+
+def _api_action(text: str) -> bool:
+    return bool((_HTTP_VERB.search(text) and _HTTP_TARGET.search(text)) or _SENT_REQUEST.search(text) or _READS_RESPONSE.search(text))
+
+
+def case_kind(case: Any) -> str | None:
+    """``api`` or ``sql`` for an API/SQL case: tagged ``kind:api``/``kind:sql``, or (untagged) a case whose every action is an
+    HTTP request or reads the response (``I send a GET request to "/api/health"``, ``I save the response JSON ...``)."""
+    tagged = case_hint(case.tags)
+    if tagged is not None:
+        return tagged
+    if getattr(case.environment, "mobile", None) is not None:
+        return None
+    actions = [step for step in case.steps if step.action.strip().lower() != VERIFY_ACTION]
+    if not actions:
+        return None
+    if all(step.api is not None or (step.sql is None and step.security is None and _api_action(step.action)) for step in actions):
+        return "api"
+    return None
 
 
 class ServiceInterpreter:

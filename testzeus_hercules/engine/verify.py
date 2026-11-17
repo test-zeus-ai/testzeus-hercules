@@ -12,15 +12,19 @@ not confident either way is ``unverified``, never passed.
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 from dataclasses import dataclass, field
-from typing import Any, Callable, Literal
+from pathlib import Path
+from typing import Any, Callable, Literal, Sequence
 
 from pydantic import BaseModel, ConfigDict
 
+from testzeus_hercules.act.file_contents import FileReadError, file_json, file_table, file_text, file_type, type_matches
 from testzeus_hercules.engine.intent import StepIntent
 
-CheckKind = Literal["text", "not_text", "url", "visible", "visual", "semantic"]
+CheckKind = Literal["text", "not_text", "url", "visible", "visual", "semantic", "file_name", "file_type", "file_text", "file_not_text", "file_rows", "file_column", "file_json"]
+FILE_CHECK_KINDS: frozenset[str] = frozenset({"file_name", "file_type", "file_text", "file_not_text", "file_rows", "file_column", "file_json"})
 LedgerVerdict = Literal["passed", "failed", "unverified"]
 Redactor = Callable[[str], str]
 
@@ -47,6 +51,10 @@ class Check:
     expected: str
     match: Literal["contains", "equals"] = "contains"
     reason: str = ""
+    # File checks: the column (file_column) or JSON path (file_json) checked, and the row a file_column check looks at
+    # ("<column> = <value>"; None: every row).
+    subject: str | None = None
+    where: str | None = None
     # ``expected`` as the step wrote it, placeholders kept (set by ``resolved``; for exporting the run as code).
     template: str | None = field(default=None, compare=False)
 
@@ -58,10 +66,20 @@ class Check:
             return "text_absent"
         if self.kind == "url":
             return f"url_{self.match}"
+        if self.kind == "file_name":
+            return f"file_name_{self.match}"
         return self.kind
 
     def resolved(self, resolve: Callable[[str], str]) -> Check:
-        return Check(kind=self.kind, expected=resolve(self.expected), match=self.match, reason=self.reason, template=self.template if self.template is not None else self.expected)
+        return Check(
+            kind=self.kind,
+            expected=resolve(self.expected),
+            match=self.match,
+            reason=self.reason,
+            subject=resolve(self.subject) if self.subject is not None else None,
+            where=resolve(self.where) if self.where is not None else None,
+            template=self.template if self.template is not None else self.expected,
+        )
 
 
 def check_from_intent(intent: StepIntent) -> Check | None:
@@ -74,7 +92,24 @@ def check_from_intent(intent: StepIntent) -> Check | None:
         return Check(kind="url", expected=intent.expected, match=intent.match or "contains")
     if intent.kind == "assert_looks" and intent.expected is not None:
         return Check(kind="visual", expected=intent.expected, reason="an expectation about how the page looks is judged on a screenshot")
+    if intent.kind in _FILE_ASSERTS and intent.expected is not None:
+        kind = _FILE_ASSERTS[intent.kind]
+        if kind in ("file_column", "file_json") and not (intent.target or "").strip():
+            return None
+        match = intent.match or ("equals" if kind in ("file_name", "file_column", "file_json") else "contains")
+        return Check(kind=kind, expected=intent.expected, match=match, subject=intent.target, where=intent.value)  # type: ignore[arg-type]
     return None
+
+
+_FILE_ASSERTS: dict[str, str] = {
+    "assert_file_name": "file_name",
+    "assert_file_type": "file_type",
+    "assert_file_text": "file_text",
+    "assert_file_not_text": "file_not_text",
+    "assert_file_rows": "file_rows",
+    "assert_file_column": "file_column",
+    "assert_file_json": "file_json",
+}
 
 
 def semantic_check(text: str) -> Check:
@@ -160,3 +195,105 @@ async def verify_visible(locator: Any | None, target: str, *, page: Any, actions
         return await run_check(check, page=page, actions=actions, step=step, timeout_ms=timeout_ms, redact=redact)
     ok = await actions.is_visible(locator, timeout_ms=timeout_ms)
     return _entry(step, check, "visible" if ok else "the element is present but not visible", "passed" if ok else "failed", redact)
+
+
+_COUNT = re.compile(r"^\s*(>=|<=|==|=|>|<|at least|at most|more than|fewer than|less than|exactly)?\s*(\d[\d,]*)\s*(?:rows?)?\s*$", re.IGNORECASE)
+_COMPARE: dict[str, Callable[[int, int], bool]] = {
+    ">=": lambda seen, wanted: seen >= wanted,
+    "at least": lambda seen, wanted: seen >= wanted,
+    "<=": lambda seen, wanted: seen <= wanted,
+    "at most": lambda seen, wanted: seen <= wanted,
+    ">": lambda seen, wanted: seen > wanted,
+    "more than": lambda seen, wanted: seen > wanted,
+    "<": lambda seen, wanted: seen < wanted,
+    "fewer than": lambda seen, wanted: seen < wanted,
+    "less than": lambda seen, wanted: seen < wanted,
+}
+
+
+def _same(seen: str, wanted: str, match: str) -> bool:
+    return _norm(wanted) in _norm(seen) if match == "contains" else _norm(seen) == _norm(wanted)
+
+
+def _shown_value(value: Any) -> str:
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    if isinstance(value, (dict, list)):
+        import json
+
+        return json.dumps(value, ensure_ascii=False)
+    return "" if value is None else str(value)
+
+
+def _column(names: list[str], wanted: str, file: Path) -> int:
+    found = next((index for index, name in enumerate(names) if _norm(name) == _norm(wanted)), None)
+    if found is None:
+        raise FileReadError(f"{file.name} has no column {wanted!r} (columns: {', '.join(names)})")
+    return found
+
+
+def _file_verdict(check: Check, file: Path) -> tuple[bool, str]:
+    """Whether the check holds on ``file``, and what was seen."""
+    if check.kind == "file_name":
+        return _same(file.name, check.expected, check.match), file.name
+    if check.kind == "file_type":
+        kind = file_type(file)
+        return type_matches(kind, check.expected), f"a {kind} file"
+    if check.kind in ("file_text", "file_not_text"):
+        text = file_text(file)
+        found = _norm(check.expected) in _norm(text)
+        if check.kind == "file_text":
+            return found, "found in the file" if found else f'not found; the file starts: "{_clip(text)}"'
+        return not found, "the file holds this text" if found else "not in the file"
+    if check.kind == "file_rows":
+        parsed = _COUNT.match(check.expected)
+        if parsed is None:
+            raise FileReadError(f"{check.expected!r} is not a number of rows")
+        _, rows = file_table(file)
+        wanted = int(parsed.group(2).replace(",", ""))
+        compare = _COMPARE.get((parsed.group(1) or "").lower(), lambda seen, number: seen == number)
+        return compare(len(rows), wanted), f"{len(rows)} rows"
+    if check.kind == "file_column":
+        names, rows = file_table(file)
+        column = _column(names, check.subject or "", file)
+        picked = rows
+        if check.where:
+            key, _, value = check.where.partition("=")
+            by = _column(names, key.strip(), file)
+            picked = [row for row in rows if by < len(row) and _norm(row[by]) == _norm(value)]
+            if not picked:
+                return False, f"no row has {key.strip()} = {value.strip()}"
+        if not picked:
+            return False, "the file has no data rows"
+        cells = [row[column] if column < len(row) else "" for row in picked]
+        wrong = [cell for cell in cells if not _same(cell, check.expected, check.match)]
+        if wrong:
+            return False, f"{len(wrong)} of {len(cells)} rows differ, for example {wrong[0]!r}"
+        return True, f"{len(cells)} row{'s' if len(cells) != 1 else ''} hold it"
+    if check.kind == "file_json":
+        from testzeus_hercules.export.common import json_path_keys
+
+        keys = json_path_keys(check.subject or "")
+        if keys is None:
+            raise FileReadError(f"{check.subject!r} is not a JSON path of names and indexes")
+        value: Any = file_json(file)
+        for key in keys:
+            try:
+                value = value[key]
+            except (KeyError, IndexError, TypeError):
+                return False, f"the file has no value at {check.subject}"
+        shown = _shown_value(value)
+        return _same(shown, check.expected, check.match), shown
+    raise FileReadError(f"unknown file check {check.kind}")
+
+
+def run_file_check(check: Check, downloads: Sequence[Path], *, step: int, redact: Redactor) -> LedgerEntry:
+    """Run one file check on the run's latest downloaded file, in code; the file never reaches a model."""
+    if not downloads:
+        return _entry(step, check, "no file was downloaded before this check", "failed", redact)
+    file = downloads[-1]
+    try:
+        held, seen = _file_verdict(check, file)
+    except (FileReadError, OSError) as exc:
+        return _entry(step, check, str(exc), "failed", redact)
+    return _entry(step, check, f"{file.name}: {seen}", "passed" if held else "failed", redact)

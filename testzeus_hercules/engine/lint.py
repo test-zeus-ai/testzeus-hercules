@@ -22,7 +22,7 @@ from __future__ import annotations
 import re
 from typing import Any, Iterable, Mapping
 
-from testzeus_hercules.cases.models import BUILTIN_PLACEHOLDERS, SecretRef, TestCase
+from testzeus_hercules.cases.models import BUILTIN_PLACEHOLDERS, DOWNLOAD_PLACEHOLDERS, SecretRef, TestCase, saved_names_in
 from testzeus_hercules.cases.plan import LintFinding, Plan
 
 __all__ = ["fact_findings", "model_findings", "lint_plan"]
@@ -57,6 +57,7 @@ def _saved_names(case: TestCase) -> set[str]:
         payload = step.api or step.sql
         if payload is not None:
             names |= {capture.name for capture in payload.save}
+        names |= saved_names_in(step.action)
     return names
 
 
@@ -73,7 +74,7 @@ def fact_findings(case: TestCase, plan: Plan, *, env: Mapping[str, str], hidden:
                     code="missing_secret",
                     step=steps[0] if steps else None,
                     message=f"test data {name!r} is the secret {value.secret}, and {value.secret} is not set in the environment",
-                    suggestion=f"set {value.secret} before the run (in the shell, CI secrets or the daemon's environment)",
+                    suggestion=f"set {value.secret} before the run (in the shell, CI secrets or the daemon's environment), or save its value on the Environments screen (kept in ~/.hercules/secrets.env)",
                 )
             )
     for name in sorted(set(hidden)):
@@ -85,10 +86,10 @@ def fact_findings(case: TestCase, plan: Plan, *, env: Mapping[str, str], hidden:
                 code="credential_in_url",
                 step=steps[0] if steps else None,
                 message=f"a credential is written in a URL in {where} (masked as {{{{{name}}}}} for this run)",
-                suggestion='move it to test_data as a secret reference ({"secret": "ENV_VAR_NAME"}) and use the {{name}} placeholder in the URL',
+                suggestion='make it a secret of the environment (or of the case\'s test_data: {"secret": "ENV_VAR_NAME"}) and write {{name}} in the URL; this works in .feature files too',
             )
         )
-    known = set(BUILTIN_PLACEHOLDERS) | set(case.test_data) | set(hidden) | _saved_names(case)
+    known = set(BUILTIN_PLACEHOLDERS) | set(case.test_data) | set(hidden) | _saved_names(case) | (set(DOWNLOAD_PLACEHOLDERS) if any(item.kind == "download" for item in plan.steps) else set())
     for item in plan.steps:
         texts = [item.target, item.value, item.url, item.expected, *(criterion.expected for criterion in item.criteria), *(criterion.value for criterion in item.criteria)]
         unknown = sorted({name for text in texts if text for name in _PLACEHOLDER.findall(text) if name not in known and not _HIDDEN.match(name)})
@@ -99,7 +100,7 @@ def fact_findings(case: TestCase, plan: Plan, *, env: Mapping[str, str], hidden:
                     code="unresolved_placeholder",
                     step=item.step,
                     message=f"plan step {item.id} uses {', '.join('{{' + name + '}}' for name in unknown)}, which no test data, built-in or earlier step provides",
-                    suggestion="add the value to the case's test_data, or write the value in the step",
+                    suggestion="add it to the case's test_data or to its environment's variables and secrets, or write the value in the step",
                 )
             )
     findings += _unsupported(case, plan, env)

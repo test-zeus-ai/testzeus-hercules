@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { DEFAULT_APPROVAL_TIMEOUT_S, MAX_APPROVAL_TIMEOUT_S, MAX_TERM_LENGTH, MAX_TERMS, type OptionErrors, type RunOptions } from "../lib/runOptions";
 import type { Impact } from "../lib/types";
 import { Field } from "./Field";
@@ -30,8 +30,7 @@ export function RunOptionsFields({ value, errors, onChange }: { value: RunOption
   const asking = value.confirmDestructive || value.askOnFailure;
   return (
     <>
-      <fieldset className="field option-group">
-        <legend>Quality checks</legend>
+      <OptionGroup title="Quality checks" summary={qualitySummary(value)}>
         <div className="check-options">
           <CheckOption id="start-a11y" label="Accessibility" help="Audit every page the run reaches (WCAG) and suggest fixes." checked={value.a11y} onChange={(checked) => set("a11y", checked)} />
           <CheckOption id="start-visual" label="Visual" help="Compare each page with its baseline screenshot and check the layout." checked={value.visual} onChange={(checked) => set("visual", checked)} />
@@ -45,10 +44,9 @@ export function RunOptionsFields({ value, errors, onChange }: { value: RunOption
             ))}
           </select>
         </Field>
-      </fieldset>
+      </OptionGroup>
 
-      <fieldset className="field option-group">
-        <legend>Plan</legend>
+      <OptionGroup title="Plan" summary={planSummary(value)}>
         <Field id="start-plan-review" label="Review the plan" help="Ask: the run waits for you to approve, edit or reject its plan before the browser starts. Default: ask for drafted cases and for plans with lint errors.">
           <select value={value.planReview} onChange={(event) => set("planReview", event.target.value as RunOptions["planReview"])}>
             <option value="">Default</option>
@@ -65,10 +63,9 @@ export function RunOptionsFields({ value, errors, onChange }: { value: RunOption
             onChange={(checked) => set("strict", checked)}
           />
         </div>
-      </fieldset>
+      </OptionGroup>
 
-      <fieldset className="field option-group">
-        <legend>Human in the loop</legend>
+      <OptionGroup title="Human in the loop" summary={askingSummary(value)}>
         <div className="check-options">
           <CheckOption
             id="start-confirm-destructive"
@@ -97,7 +94,40 @@ export function RunOptionsFields({ value, errors, onChange }: { value: RunOption
             <input type="number" inputMode="numeric" min={1} max={MAX_APPROVAL_TIMEOUT_S} step="any" value={value.approvalTimeout} onChange={(event) => set("approvalTimeout", event.target.value)} placeholder={String(DEFAULT_APPROVAL_TIMEOUT_S)} disabled={!asking} />
           </Field>
         </div>
-      </fieldset>
+      </OptionGroup>
     </>
   );
+}
+
+/** A collapsible group of options: closed unless it already holds a choice, with what is set beside its title. */
+export function OptionGroup({ title, summary, children }: { title: string; summary: string | null; children: ReactNode }) {
+  const [open, setOpen] = useState(summary !== null);
+  return (
+    <details className="field option-group option-details" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
+      <summary>
+        <span className="option-group-title">{title}</span>
+        {!open && summary ? <span className="option-group-summary">{summary}</span> : null}
+      </summary>
+      <fieldset className="option-group-body">
+        <legend className="visually-hidden">{title}</legend>
+        {children}
+      </fieldset>
+    </details>
+  );
+}
+
+function qualitySummary(value: RunOptions): string | null {
+  const on = [value.a11y ? "Accessibility" : "", value.visual ? "Visual" : ""].filter(Boolean);
+  if (!on.length) return null;
+  return on.join(", ") + (value.failOn ? ` · fail on ${value.failOn}` : "");
+}
+
+function planSummary(value: RunOptions): string | null {
+  const on = [value.planReview === "ask" ? "ask before the run" : value.planReview === "auto" ? "run as made" : "", value.strict ? "strict" : ""].filter(Boolean);
+  return on.length ? on.join(", ") : null;
+}
+
+function askingSummary(value: RunOptions): string | null {
+  const on = [value.confirmDestructive ? "confirm destructive clicks" : "", value.askOnFailure ? "ask when a step fails" : ""].filter(Boolean);
+  return on.length ? on.join(", ") : null;
 }
