@@ -44,7 +44,7 @@ function Summary({ quality }: { quality: QualitySection }) {
         <div className="quality-count">
           <dt>Fixes</dt>
           <dd>
-            {counts.fixes} <span className="muted small">{counts.verified_fixes} verified</span>
+            {counts.fixes} <span className="quality-count-detail">{counts.verified_fixes} verified</span>
           </dd>
         </div>
         <div className="quality-count">

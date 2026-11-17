@@ -38,6 +38,19 @@ export function formatTime(iso: string | null | undefined): string {
   return sameDay ? time : `${date.toLocaleDateString(undefined, { month: "short", day: "numeric" })} ${time}`;
 }
 
+/** A date and time in full, as "Nov 16, 2026, 9:22 AM" (local time). */
+export function formatDateTime(iso: string | null | undefined): string {
+  if (!iso) return "–";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "–";
+  return date.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true });
+}
+
+/** The device's time zone as a short name ("IST", "PST", or "GMT+5:30" where no short name exists). */
+export function localZoneName(at: Date = new Date()): string {
+  return new Intl.DateTimeFormat(undefined, { timeZoneName: "short" }).formatToParts(at).find((part) => part.type === "timeZoneName")?.value ?? "local time";
+}
+
 /** Seconds a run took (result), or has been running so far. */
 export function runSeconds(run: RunView, now: number = Date.now()): number | null {
   if (run.result) return run.result.duration_s;

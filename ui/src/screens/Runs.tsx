@@ -8,7 +8,7 @@ import { StatusChip } from "../components/StatusChip";
 import { api, remove } from "../lib/api";
 import { isRunList } from "../lib/guards";
 import { stepLabel } from "../lib/timeline";
-import { agentName, deleteRunPrompt, failingStep, formatCost, formatDuration, formatTime, runMode, runSeconds } from "../lib/format";
+import { agentName, deleteRunPrompt, failingStep, formatCost, formatDateTime, formatDuration, localZoneName, runMode, runSeconds } from "../lib/format";
 import { FINAL_STATUSES, type RunView } from "../lib/types";
 
 const FILTERS = [
@@ -158,7 +158,7 @@ export function RunsScreen() {
                 <th scope="col">Status</th>
                 <th scope="col">Case</th>
                 <th scope="col">Mode</th>
-                <th scope="col">Started</th>
+                <th scope="col">Started ({localZoneName()})</th>
                 <th scope="col" className="num">
                   Duration
                 </th>
@@ -201,7 +201,7 @@ export function RunsScreen() {
                     <td>
                       <span className={`tag tag-${runMode(run)}`}>{runMode(run)}</span>
                     </td>
-                    <td className="nowrap">{formatTime(run.started_at ?? run.created_at)}</td>
+                    <td className="nowrap">{formatDateTime(run.started_at ?? run.created_at)}</td>
                     <td className="num">{formatDuration(runSeconds(run))}</td>
                     <td className="num">{formatCost(run.result?.cost.usd)}</td>
                     <td className="cell-failing">
