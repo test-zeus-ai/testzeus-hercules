@@ -39,7 +39,7 @@ from playwright.async_api import Error as PlaywrightError
 from testzeus_hercules.act.files import PathConfinementError, confine
 
 if TYPE_CHECKING:
-    from playwright.async_api import Locator, Page
+    from playwright.async_api import APIResponse, Locator, Page
 
 DEFAULT_TIMEOUT_MS = 5_000
 NAVIGATION_TIMEOUT_MS = 30_000
@@ -421,14 +421,32 @@ async def open_url(page: Page, url: str, *, base_url: str | None = None, timeout
     return result
 
 
+_OFF_THE_PAGE_JS = """
+el => {
+  const box = el.getBoundingClientRect();
+  if (!box.width && !box.height) return false;
+  let top = box.top;
+  let left = box.left;
+  for (let node = el; node && getComputedStyle(node).position !== 'fixed'; ) {
+    const parent = node.assignedSlot || node.parentElement || (node.parentNode instanceof ShadowRoot ? node.parentNode.host : null);
+    if (parent) {
+      top += Math.max(0, parent.scrollTop);
+      left += Math.max(0, parent.scrollLeft);
+    }
+    node = parent;
+  }
+  return top + box.height <= 0 || left + box.width <= 0;
+}
+"""
+
+
 async def _off_the_page(locator: Locator, timeout_ms: int) -> bool:
     """True when the element lies wholly above or left of the page, where no scrolling reaches it (a skip link that
     appears only when it has keyboard focus)."""
     try:
-        box = await locator.bounding_box(timeout=timeout_ms)
+        return bool(await locator.evaluate(_OFF_THE_PAGE_JS, timeout=timeout_ms))
     except PlaywrightError:
         return False
-    return box is not None and (box["y"] + box["height"] <= 0 or box["x"] + box["width"] <= 0)
 
 
 async def _press_enter(locator: Locator) -> None:
@@ -1073,6 +1091,24 @@ def _is_page(headers: dict[str, str]) -> bool:
     return kind in _PAGE_TYPES or (not kind and "attachment" not in headers.get("content-disposition", "").lower())
 
 
+def _too_large(wanted: str, page_url: str) -> ActionResult:
+    return ActionResult(ok=False, detail=f"download failed: '{wanted}' is larger than {MAX_DOWNLOAD_BYTES // (1024 * 1024)} MB", url_after=page_url, kind="wrong_file", retry=False)
+
+
+def _declared_too_large(headers: dict[str, str]) -> bool:
+    length = headers.get("content-length", "").strip()
+    encoded = headers.get("content-encoding", "").strip().lower() not in ("", "identity")
+    return not encoded and length.isdigit() and int(length) > MAX_DOWNLOAD_BYTES
+
+
+async def _response_body(response: APIResponse, headers: dict[str, str]) -> bytes | None:
+    try:
+        return None if _declared_too_large(headers) else await response.body()
+    finally:
+        with contextlib.suppress(PlaywrightError):
+            await response.dispose()
+
+
 def _kept(path: Path, wanted: str, expected_name: str | None, via: str, page_url: str) -> ActionResult:
     from testzeus_hercules.act.file_contents import file_type
 
@@ -1082,7 +1118,7 @@ def _kept(path: Path, wanted: str, expected_name: str | None, via: str, page_url
         return ActionResult(ok=False, detail=f"download failed: '{wanted}' arrived empty (0 bytes)", url_after=page_url, kind="wrong_file", retry=False)
     if size > MAX_DOWNLOAD_BYTES:
         path.unlink(missing_ok=True)
-        return ActionResult(ok=False, detail=f"download failed: '{wanted}' is larger than {MAX_DOWNLOAD_BYTES // (1024 * 1024)} MB", url_after=page_url, kind="wrong_file", retry=False)
+        return _too_large(wanted, page_url)
     if expected_name and expected_name.strip().casefold() not in (wanted.casefold(), download_name(wanted).casefold()):
         return ActionResult(ok=False, detail=f"download failed: the file is named '{wanted}', not '{expected_name.strip()}'", url_after=page_url, kind="wrong_file", retry=False)
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
@@ -1104,15 +1140,17 @@ async def _save_download(item: Any, folder: Path, expected_name: str | None, pag
     return _kept(path, wanted, expected_name, "download", page_url)
 
 
-def _save_bytes(body: bytes, wanted: str, folder: Path, expected_name: str | None, via: str, page_url: str) -> ActionResult:
+def _save_bytes(body: bytes | None, wanted: str, folder: Path, expected_name: str | None, via: str, page_url: str) -> ActionResult:
+    if body is None:
+        return _too_large(wanted, page_url)
     folder.mkdir(parents=True, exist_ok=True)
     path = _unique(folder, download_name(wanted))
     path.write_bytes(body[: MAX_DOWNLOAD_BYTES + 1])
     return _kept(path, wanted, expected_name, via, page_url)
 
 
-async def _fetched_file(page: Page, url: str, timeout_ms: int) -> tuple[bytes, str] | None:
-    """The file at ``url`` fetched with the browser's cookies, or None when it is a web page or cannot be fetched."""
+async def _fetched_file(page: Page, url: str, timeout_ms: int) -> tuple[bytes | None, str] | None:
+    """The file at ``url`` fetched with the browser's cookies (no bytes when it says it is larger than ``MAX_DOWNLOAD_BYTES``), or None when it is a web page or cannot be fetched."""
     if urlsplit(url).scheme.lower() not in _WEB_SCHEMES:
         return None
     try:
@@ -1120,7 +1158,7 @@ async def _fetched_file(page: Page, url: str, timeout_ms: int) -> tuple[bytes, s
         headers = {key.lower(): value for key, value in response.headers.items()}
         if response.status >= 400 or _is_page(headers):
             return None
-        return await response.body(), _response_name(response.url, headers)
+        return await _response_body(response, headers), _response_name(response.url, headers)
     except PlaywrightError:
         return None
 
@@ -1196,7 +1234,7 @@ async def download_from_url(
             return ActionResult(ok=False, detail=f"download of {target} failed: the server answered HTTP {response.status}", url_after=page.url, kind="not_a_file", retry=False)
         if _is_page(headers):
             return ActionResult(ok=False, detail=f"download failed: {target} is a web page, not a file", url_after=page.url, kind="not_a_file", retry=False)
-        body = await response.body()
+        body = await _response_body(response, headers)
     except PlaywrightError as exc:
         return ActionResult(ok=False, detail=f"download of {target} failed: {_first_line(exc)}", url_after=page.url, retry=False)
     via = "download" if "attachment" in headers.get("content-disposition", "").lower() else "response"

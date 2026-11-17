@@ -693,6 +693,33 @@ def test_download_from_url_keeps_attachments_and_inline_files_and_refuses_pages(
     _downloads(body)
 
 
+def test_a_file_that_says_it_is_too_large_is_refused_before_its_bytes_are_read(tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    from playwright.async_api import APIResponse
+
+    folder = tmp_path / "downloads"
+    read: list[str] = []
+    real_body = APIResponse.body
+
+    async def counted_body(self: APIResponse) -> bytes:
+        read.append(self.url)
+        return await real_body(self)
+
+    monkeypatch.setattr(APIResponse, "body", counted_body)
+    monkeypatch.setattr(act, "MAX_DOWNLOAD_BYTES", 64)
+
+    async def body(page: Any, base: str) -> None:
+        shown = await act.download_from_url(page, f"{base}/data/orders.json", folder)
+        assert (shown.ok, shown.kind, shown.retry) == (False, "wrong_file", False) and "'orders.json' is larger than" in shown.detail
+        notes = await act.download_by_click(page.locator("#notes"), folder)
+        assert (notes.ok, notes.kind, notes.retry) == (False, "wrong_file", False) and "'notes.txt' is larger than" in notes.detail
+        assert len(page.context.pages) == 1 and read == [] and not folder.exists()
+        unsized = await act.download_from_url(page, f"{base}/data/unsized.txt", folder)
+        assert (unsized.ok, unsized.kind) == (False, "wrong_file") and "'unsized.txt' is larger than" in unsized.detail
+        assert read == [f"{base}/data/unsized.txt"] and list(folder.iterdir()) == []
+
+    _downloads(body)
+
+
 SKIP_LINK_PAGE = """
 <html><head><style>
   .skip { position: absolute; left: 1rem; top: -3rem; }
@@ -715,3 +742,51 @@ def test_a_link_off_the_page_until_focused_is_activated_with_the_keyboard() -> N
         assert shop.ok and shop.detail == "clicked" and page.url.endswith("#nav")
 
     run(body, SKIP_LINK_PAGE)
+
+
+SCROLLED_PAGE = """
+<html><head><style>
+  .skip { position: absolute; left: 1rem; top: -3rem; }
+  .skip:focus { top: 1rem; }
+  #list { height: 80px; overflow: auto; }
+  #list p { height: 60px; margin: 0; }
+</style></head><body>
+  <a class="skip" href="#main">Skip to content</a>
+  <input type="checkbox" id="agree"><label for="agree">Agree</label>
+  <div id="menu" onclick="this.textContent = 'Menu opened'">Menu</div>
+  <div id="list"><p onclick="this.textContent = 'First picked'">First</p><p>Second</p><p>Third</p><p>Fourth</p></div>
+  <div id="host"></div>
+  <div style="height: 3000px"></div>
+  <main id="main" tabindex="-1"><h1>Quote</h1></main>
+  <script>
+    const save = document.createElement('button');
+    save.textContent = 'Save';
+    save.onclick = () => { save.textContent = 'Saved'; };
+    document.getElementById('host').attachShadow({ mode: 'open' }).append(save);
+  </script>
+</body></html>
+"""
+
+
+def test_an_element_scrolled_above_the_view_is_clicked_and_a_skip_link_still_gets_the_keyboard() -> None:
+    async def scroll_away(page: Any) -> None:
+        await page.evaluate("document.getElementById('list').scrollTop = 200; window.scrollTo(0, document.body.scrollHeight)")
+
+    async def body(page: Any) -> None:
+        await scroll_away(page)
+        agree = await act.click(page.locator("#agree"))
+        assert agree.detail == "clicked" and await page.locator("#agree").is_checked()
+        await scroll_away(page)
+        menu = await act.click(page.locator("#menu"))
+        assert menu.detail == "clicked" and await page.locator("#menu").inner_text() == "Menu opened"
+        await scroll_away(page)
+        first = await act.click(page.get_by_text("First"))
+        assert first.detail == "clicked" and await page.locator("#list p").first.inner_text() == "First picked"
+        await scroll_away(page)
+        save = await act.click(page.get_by_role("button", name="Save"))
+        assert save.detail == "clicked" and await page.get_by_role("button", name="Saved").count() == 1
+        await scroll_away(page)
+        skip = await act.click(page.get_by_role("link", name="Skip to content"))
+        assert skip.ok and "keyboard" in skip.detail and page.url.endswith("#main"), skip.detail
+
+    run(body, SCROLLED_PAGE)

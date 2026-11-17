@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import os
+import secrets
 import stat
+import threading
 from collections.abc import Mapping
 from pathlib import Path
 
 PRIVATE_FILE = 0o600
 PRIVATE_DIR = 0o700
 MAX_FILE_BYTES = 16_384
+EDIT_LOCK = threading.RLock()
 
 
 def parse_env(text: str) -> dict[str, str]:
@@ -47,17 +50,20 @@ def read_private_env(path: Path, max_bytes: int = MAX_FILE_BYTES) -> tuple[dict[
 
 
 def write_private_env(path: Path, values: Mapping[str, str], header: str) -> Path:
-    path.parent.mkdir(parents=True, exist_ok=True, mode=PRIVATE_DIR)
-    temporary = path.with_name(path.name + ".tmp")
-    lines = [f"# {header}"] + [f"{name}={value}" for name, value in sorted(values.items())]
-    temporary.unlink(missing_ok=True)  # never write through a file or link left behind
-    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), PRIVATE_FILE)
-    try:
-        if hasattr(os, "fchmod"):
-            os.fchmod(descriptor, PRIVATE_FILE)
-        os.write(descriptor, ("\n".join(lines) + "\n").encode("utf-8"))
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
-    os.replace(temporary, path)
+    with EDIT_LOCK:
+        path.parent.mkdir(parents=True, exist_ok=True, mode=PRIVATE_DIR)
+        temporary = path.with_name(f"{path.name}.{os.getpid()}.{secrets.token_hex(4)}.tmp")
+        lines = [f"# {header}"] + [f"{name}='{value}'" for name, value in sorted(values.items())]
+        descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), PRIVATE_FILE)
+        try:
+            try:
+                if hasattr(os, "fchmod"):
+                    os.fchmod(descriptor, PRIVATE_FILE)
+                os.write(descriptor, ("\n".join(lines) + "\n").encode("utf-8"))
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
+            os.replace(temporary, path)
+        finally:
+            temporary.unlink(missing_ok=True)
     return path

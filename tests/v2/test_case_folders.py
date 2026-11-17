@@ -69,6 +69,28 @@ def test_a_case_id_is_unique_across_folders(config) -> None:  # type: ignore[no-
     assert same_place.status_code == 201
 
 
+def test_a_case_id_is_unique_across_file_types(config) -> None:  # type: ignore[no-untyped-def]
+    with client_for(config) as client:
+        client.post("/api/folders", json={"name": "Checkout"})
+        client.post("/api/cases", json={"test_case": case_dict(case_id="shopper-pays-by-card"), "folder": "Checkout"})
+        feature = client.post("/api/cases", json={"gherkin": FEATURE, "folder": "Checkout", "overwrite": True})
+
+    assert feature.status_code == 422 and "already in Checkout (shopper-pays-by-card.json)" in feature.text
+
+
+def test_a_case_in_a_folder_takes_reference_files(config) -> None:  # type: ignore[no-untyped-def]
+    with client_for(config) as client:
+        client.post("/api/folders", json={"name": "Checkout"})
+        client.post("/api/cases", json={"test_case": case_dict(), "folder": "Checkout"})
+        added = client.put("/api/cases/Checkout/demo-login.json/files/invoice.png", content=b"\x89PNG\r\n\x1a\n", headers={"Content-Type": "application/octet-stream"})
+        as_json = client.put("/api/cases/Checkout/demo-login.json/files/invoice.png", content=b"\x89PNG\r\n\x1a\n", headers={"Content-Type": "application/json"})
+        listed = client.get("/api/cases/Checkout/demo-login.json/files").json()
+
+    assert added.status_code == 200 and added.json()["case"] == "demo-login"
+    assert as_json.status_code == 415
+    assert [item["name"] for item in listed["files"]] == ["invoice.png"]
+
+
 @pytest.mark.parametrize(
     "name, problem",
     [
@@ -184,7 +206,7 @@ def test_deleting_a_folder_with_its_cases_removes_their_data_and_files(config) -
         client.post("/api/folders", json={"parent": "Old", "name": "Older"})
         client.post("/api/cases", json={"gherkin": FEATURE, "test_data": {"card": "4242"}, "folder": "Old/Older"})
         client.post("/api/cases", json={"test_case": case_dict(), "folder": "Old"})
-        client.put("/api/cases/Old/demo-login.json/files/photo.png", content=b"\x89PNG\r\n\x1a\n")
+        uploaded = client.put("/api/cases/Old/demo-login.json/files/photo.png", content=b"\x89PNG\r\n\x1a\n", headers={"Content-Type": "application/octet-stream"})
         (_cases_dir(config) / "Old" / "notes.txt").write_text("keep me")
         refused = client.delete("/api/folders/Old?mode=delete_cases")
         (_cases_dir(config) / "Old" / "notes.txt").unlink()
@@ -192,6 +214,7 @@ def test_deleting_a_folder_with_its_cases_removes_their_data_and_files(config) -
         bad_mode = client.delete("/api/folders/Old?mode=shred")
         listing = client.get("/api/cases").json()
 
+    assert uploaded.status_code == 200 and uploaded.json()["case"] == "demo-login"
     assert refused.status_code == 422 and "notes.txt" in refused.text
     assert deleted.json() == {"folder": "Old", "mode": "delete_cases", "moved": 0, "deleted": 2}
     assert listing == {"cases": [], "folders": []}
@@ -273,3 +296,149 @@ def test_a_kept_explore_case_stays_in_the_folder_it_was_filed_in(tmp_path: Path)
     assert json.loads((filed / "explore-f0123456789.json").read_text())["status"] == "ready"
     assert not (project / ".hercules" / "cases" / "explore-f0123456789.json").exists()
     assert filed.is_dir()
+
+
+def _explore_finding(decision: str):  # type: ignore[no-untyped-def]
+    from testzeus_hercules.explore.models import Finding
+
+    return Finding(
+        id="f0123456789", title="Badge shows a stale count", signature="invariant|/cart|badge", oracle="invariant", tier="invariant", proposed_severity="P2", proposed_priority="P2", case=decision
+    )
+
+
+def test_rejecting_an_explore_case_takes_it_out_of_the_folder_it_was_filed_in(tmp_path: Path) -> None:
+    from testzeus_hercules.explore.cases import sync_case
+
+    project = tmp_path / "project"
+    filed = project / ".hercules" / "cases" / "Bugs"
+    filed.mkdir(parents=True)
+    (filed / "explore-f0123456789.json").write_text(json.dumps(case_dict(case_id="explore-f0123456789", status="known_bug")))
+
+    where = sync_case(project, _explore_finding("rejected"))
+
+    assert where == ".hercules/explore/cases/rejected/f0123456789.json"
+    assert json.loads((project / where).read_text())["id"] == "explore-f0123456789"
+    assert not (filed / "explore-f0123456789.json").exists()
+    assert filed.is_dir()
+
+
+def test_a_tester_folder_named_explore_stays_when_its_explore_case_leaves(tmp_path: Path) -> None:
+    from testzeus_hercules.explore.cases import sync_case
+
+    project = tmp_path / "project"
+    mine = project / ".hercules" / "cases" / "explore"
+    mine.mkdir(parents=True)
+    (mine / "explore-f0123456789.json").write_text(json.dumps(case_dict(case_id="explore-f0123456789", status="known_bug")))
+
+    sync_case(project, _explore_finding("rejected"))
+
+    assert mine.is_dir() and not any(mine.iterdir())
+
+
+def test_moving_up_works_when_a_subfolder_has_the_folder_name(config) -> None:  # type: ignore[no-untyped-def]
+    cases_dir = _cases_dir(config)
+    with client_for(config) as client:
+        client.post("/api/folders", json={"name": "Smoke"})
+        client.post("/api/folders", json={"parent": "Smoke", "name": "Smoke"})
+        client.post("/api/cases", json={"test_case": case_dict(), "folder": "Smoke/Smoke"})
+        client.post("/api/cases", json={"test_case": case_dict(case_id="outer"), "folder": "Smoke"})
+        deleted = client.delete("/api/folders/Smoke")
+        listing = client.get("/api/cases").json()
+
+    assert deleted.status_code == 200 and deleted.json()["moved"] == 2
+    assert listing["folders"] == ["Smoke"]
+    assert [entry["name"] for entry in listing["cases"]] == ["outer.json", "Smoke/demo-login.json"]
+    assert sorted(path.name for path in cases_dir.iterdir()) == ["Smoke", "outer.json"]
+
+
+def test_a_move_up_that_fails_part_way_puts_everything_back(config, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
+    cases_dir = _cases_dir(config)
+    for name in ("a", "b", "c"):
+        (cases_dir / "Old" / name).mkdir(parents=True)
+    real = os.rename
+
+    def flaky(source: Path, destination: Path) -> None:
+        if Path(source).name == "c":
+            raise PermissionError("busy")
+        real(source, destination)
+
+    monkeypatch.setattr(case_files.os, "rename", flaky)
+    with pytest.raises(case_files.CaseError, match="nothing was changed"):
+        case_files.delete_folder(cases_dir, config.settings.project_dir, "Old")
+    monkeypatch.undo()
+
+    assert sorted(path.name for path in cases_dir.iterdir()) == ["Old"]
+    assert sorted(path.name for path in (cases_dir / "Old").iterdir()) == ["a", "b", "c"]
+
+
+def test_two_cases_with_one_file_name_cannot_move_into_one_folder(config) -> None:  # type: ignore[no-untyped-def]
+    cases_dir = _cases_dir(config)
+    for folder in ("A", "B", "C"):
+        (cases_dir / folder).mkdir(parents=True)
+    for folder in ("A", "B"):
+        (cases_dir / folder / "login.json").write_text(json.dumps(case_dict(case_id="login")))
+    with client_for(config) as client:
+        response = client.post("/api/cases/move", json={"names": ["A/login.json", "B/login.json"], "folder": "C"})
+
+    assert response.status_code == 409 and "both named login.json" in response.text
+    assert (cases_dir / "A" / "login.json").is_file() and (cases_dir / "B" / "login.json").is_file()
+    assert not any((cases_dir / "C").iterdir())
+
+
+def _ignores_case(directory: Path) -> bool:
+    probe = directory / "CaseProbe"
+    probe.mkdir()
+    try:
+        return (directory / "caseprobe").exists()
+    finally:
+        probe.rmdir()
+
+
+def test_a_folder_named_with_other_letter_case_is_the_same_folder(config) -> None:  # type: ignore[no-untyped-def]
+    cases_dir = _cases_dir(config)
+    cases_dir.mkdir(parents=True, exist_ok=True)
+    if not _ignores_case(cases_dir):
+        pytest.skip("this file system tells names apart by letter case")
+    with client_for(config) as client:
+        client.post("/api/folders", json={"name": "Checkout"})
+        client.post("/api/folders", json={"parent": "Checkout", "name": "Payments"})
+        client.post("/api/cases", json={"test_case": case_dict(), "folder": "Checkout"})
+        again = client.post("/api/cases", json={"test_case": case_dict(), "folder": "checkout", "overwrite": True})
+        inside = client.patch("/api/folders/Checkout", json={"parent": "checkout/payments"})
+        opened = client.get("/api/cases/CHECKOUT/demo-login.json")
+        deleted = client.delete("/api/folders/checkout/payments")
+
+    assert again.status_code == 201 and again.json()["name"] == "Checkout/demo-login.json"
+    assert inside.status_code == 422 and "inside itself" in inside.text
+    assert opened.json()["name"] == "Checkout/demo-login.json"
+    assert deleted.status_code == 200 and deleted.json()["folder"] == "Checkout/Payments"
+
+
+def test_folder_work_covers_every_case_and_reads_each_one_a_bounded_number_of_times(config, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
+    cases_dir, project = _cases_dir(config), config.settings.project_dir
+    (cases_dir / "Big" / "Inner").mkdir(parents=True)
+    (cases_dir / "Zed").mkdir()
+    for index in range(3):
+        (cases_dir / f"top-{index}.json").write_text(json.dumps(case_dict(case_id=f"top-{index}")))
+        (cases_dir / "Big" / f"big-{index}.json").write_text(json.dumps(case_dict(case_id=f"big-{index}")))
+        (cases_dir / "Big" / "Inner" / f"inner-{index}.json").write_text(json.dumps(case_dict(case_id=f"inner-{index}")))
+    (cases_dir / "a-shared.json").write_text(json.dumps(case_dict(case_id="shared")))
+    (cases_dir / "Zed" / "shared.json").write_text(json.dumps(case_dict(case_id="shared")))
+    attached = project / ".hercules" / "case-files" / "shared"
+    attached.mkdir(parents=True)
+    (attached / "photo.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    monkeypatch.setattr(case_files, "_MAX_LISTED", 2)
+    loads: list[Path] = []
+    real = case_files.load_case_file
+    monkeypatch.setattr(case_files, "load_case_file", lambda path: loads.append(path) or real(path))
+
+    in_folder = case_files.cases_in_folder(cases_dir, project, "Big", subfolders=True)
+    assert len(in_folder) == 6 and len(loads) == 6
+
+    case_files.delete_case(cases_dir, project, "a-shared.json")
+    assert attached.is_dir()
+
+    loads.clear()
+    result = case_files.delete_folder(cases_dir, project, "Big", "delete_cases")
+    assert result["deleted"] == 6 and not (cases_dir / "Big").exists()
+    assert len(loads) <= 6 + 4

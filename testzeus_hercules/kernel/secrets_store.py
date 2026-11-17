@@ -5,7 +5,7 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Literal
 
-from testzeus_hercules.kernel.private_env import read_private_env, write_private_env
+from testzeus_hercules.kernel.private_env import EDIT_LOCK, read_private_env, write_private_env
 
 SECRETS_FILENAME = "secrets.env"
 SECRET_NAME = re.compile(r"^[A-Z_][A-Z0-9_]*$")
@@ -44,21 +44,23 @@ def save_secret(home: Path, name: str, value: str) -> Path:
     _checked_name(name)
     if not value or len(value) > MAX_SECRET_CHARS or any(ch in value for ch in "\r\n\0") or value != value.strip():
         raise SecretStoreError(f"the value must be one line of at most {MAX_SECRET_CHARS} characters, without leading or trailing spaces")
-    values = _saved(home)
-    values[name] = value
-    return write_private_env(secrets_file(home), values, "Secrets saved by Hercules (readable by you only). Environment variables win.")
+    with EDIT_LOCK:
+        values = _saved(home)
+        values[name] = value
+        return write_private_env(secrets_file(home), values, "Secrets saved by Hercules (readable by you only). Environment variables win.")
 
 
 def remove_secret(home: Path, name: str) -> bool:
     _checked_name(name)
-    values = _saved(home)
-    if name not in values:
-        return False
-    del values[name]
-    if values:
-        write_private_env(secrets_file(home), values, "Secrets saved by Hercules (readable by you only). Environment variables win.")
-    else:
-        secrets_file(home).unlink(missing_ok=True)
+    with EDIT_LOCK:
+        values = _saved(home)
+        if name not in values:
+            return False
+        del values[name]
+        if values:
+            write_private_env(secrets_file(home), values, "Secrets saved by Hercules (readable by you only). Environment variables win.")
+        else:
+            secrets_file(home).unlink(missing_ok=True)
     return True
 
 

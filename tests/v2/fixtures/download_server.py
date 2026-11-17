@@ -10,6 +10,7 @@ from typing import Iterator
 
 REPORT_CSV = b"Order ID,Customer,Status,Total\n1001,Ada,Paid,120.00\n1002,Grace,Paid,80.50\n1003,Linus,Pending,40\n"
 ORDERS_JSON = b'{"orders": [{"id": 1001, "total": 120.0}, {"id": 1002, "total": 80.5}], "count": 2, "currency": "USD"}'
+NOTES_TXT = b"Notes: orders 1001 and 1002 are paid, order 1003 waits for the customer's card to clear."
 
 PAGE = b"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Reports</title></head>
@@ -19,6 +20,7 @@ PAGE = b"""<!doctype html>
 <p><a id="csv-again" href="/files/report.csv">Export CSV again</a></p>
 <p><a id="invoice" href="/files/invoice.pdf">Download invoice</a></p>
 <p><a id="statement" href="/view/statement.pdf" target="_blank">Open statement</a></p>
+<p><a id="notes" href="/view/notes.txt" target="_blank">Open notes</a></p>
 <p><a id="sheet" href="/files/orders.xlsx">Download spreadsheet</a></p>
 <p><a id="empty" href="/files/empty.csv">Export empty report</a></p>
 <p><button id="summary" type="button" onclick="makeSummary()">Generate summary</button></p>
@@ -85,6 +87,8 @@ FILES: dict[str, tuple[bytes, str, str]] = {
     "/files/orders.xlsx": (b"", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 'attachment; filename="orders.xlsx"'),
     "/files/empty.csv": (b"", "text/csv", 'attachment; filename="empty.csv"'),
     "/data/orders.json": (ORDERS_JSON, "application/json", ""),
+    "/view/notes.txt": (NOTES_TXT, "text/plain", "inline"),
+    "/data/unsized.txt": (NOTES_TXT, "text/plain", ""),
 }
 
 
@@ -102,7 +106,8 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             body = orders_xlsx()
         self.send_response(200)
         self.send_header("Content-Type", kind)
-        self.send_header("Content-Length", str(len(body)))
+        if not self.path.startswith("/data/unsized"):
+            self.send_header("Content-Length", str(len(body)))
         if disposition:
             self.send_header("Content-Disposition", disposition)
         self.end_headers()

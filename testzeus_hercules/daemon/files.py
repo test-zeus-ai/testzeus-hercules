@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import urllib.parse
 from dataclasses import asdict
 from typing import TYPE_CHECKING
 
@@ -54,7 +53,7 @@ def _owner(request: Request, daemon: Daemon) -> tuple[str, Scope]:
 
 
 def _filename(request: Request) -> str:
-    return urllib.parse.unquote(str(request.path_params["filename"]))
+    return str(request.path_params["filename"])
 
 
 def _listing(daemon: Daemon, owner: str, scope: Scope) -> dict[str, object]:

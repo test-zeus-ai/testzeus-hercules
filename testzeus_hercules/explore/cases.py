@@ -46,10 +46,11 @@ def case_location(finding_id: str, decision: str) -> str:
 
 def sync_case(project_dir: Path, finding: Finding) -> str | None:
     """Put the finding's case where its decision says; returns its project-relative path, or None when no copy exists."""
+    filed = _filed(project_dir, finding.id)
     target = case_location(finding.id, finding.case)
     if finding.case in ("kept", "regression"):
-        target = _filed(project_dir, finding.id) or target
-    copies = [target, *(case_location(finding.id, decision) for decision in CASE_DECISIONS), *([finding.case_path] if finding.case_path else [])]
+        target = filed or target
+    copies = [target, *([filed] if filed else []), *(case_location(finding.id, decision) for decision in CASE_DECISIONS), *([finding.case_path] if finding.case_path else [])]
     places = [project_dir / path for path in dict.fromkeys(copies)]
     source = next((path for path in places if _inside(project_dir, path) and path.is_file()), None)
     if source is None:
@@ -71,7 +72,7 @@ def sync_case(project_dir: Path, finding: Finding) -> str | None:
     for place in places:
         if place != destination and _inside(project_dir, place) and place.is_file():
             place.unlink()
-            _prune_empty(place.parent, stop=project_dir / ".hercules")
+            _prune_empty(place, stop=project_dir / ".hercules")
     return target
 
 
@@ -83,11 +84,14 @@ def _filed(project_dir: Path, finding_id: str) -> str | None:
     return found[0].relative_to(project_dir).as_posix() if found else None
 
 
-def _prune_empty(folder: Path, *, stop: Path) -> None:
+def _prune_empty(removed: Path, *, stop: Path) -> None:
     """Remove folders a moved case left empty (an earlier version's per-session folders), up to ``.hercules/cases``."""
-    keep = {stop, stop / "cases", stop / "explore", stop / "explore" / "cases"}
-    legacy = stop / "cases" / "explore"
-    while folder not in keep and folder.is_relative_to(stop) and (folder.is_relative_to(legacy) or not folder.is_relative_to(stop / "cases")) and folder.is_dir() and not any(folder.iterdir()):
+    suite = stop / "cases"
+    if removed.is_relative_to(suite) and (removed.name.startswith("explore-") or not removed.is_relative_to(suite / "explore")):
+        return
+    keep = {stop, suite, stop / "explore", stop / "explore" / "cases"}
+    folder = removed.parent
+    while folder not in keep and folder.is_relative_to(stop) and folder.is_dir() and not any(folder.iterdir()):
         folder.rmdir()
         folder = folder.parent
 

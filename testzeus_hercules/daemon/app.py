@@ -342,7 +342,8 @@ async def create_batch(request: Request, daemon: Daemon) -> Response:
     with placeholder_names(_chosen_environment_names(daemon, raw)):
         body = _parse(RunBatchCreate, raw)
         try:
-            entries = case_files.cases_in_folder(paths.cases_dir, project, body.folder, subfolders=body.subfolders)
+            folder = case_files.spelled_folder(paths.cases_dir, body.folder)
+            entries = case_files.cases_in_folder(paths.cases_dir, project, folder, subfolders=body.subfolders)
         except FileNotFoundError:
             raise ApiError(404, "folder not found") from None
         except case_files.CaseError as exc:
@@ -363,12 +364,12 @@ async def create_batch(request: Request, daemon: Daemon) -> Response:
             except case_files.CaseError as exc:
                 skipped.append(BatchSkip(name=entry["name"], reason=str(exc)))
                 continue
-            source = {"environment": body.environment, "base_url": body.base_url, "kind": "case_path", "path": entry["path"], "batch": batch, "folder": body.folder, **origin}
+            source = {"environment": body.environment, "base_url": body.base_url, "kind": "case_path", "path": entry["path"], "batch": batch, "folder": folder, **origin}
             record = daemon.runs.submit(case, options=body.run_options(), source=source)
             runs.append(RunCreated(run_id=record["id"], status=record["status"], case_id=record.get("case_id"), ui_url=daemon.ui_url(record["id"])))
     if not entries:
-        raise ApiError(422, f"{body.folder or 'the top level'} has no saved cases")
-    created = RunBatchCreated(batch=batch, folder=body.folder, runs=runs, skipped=skipped)
+        raise ApiError(422, f"{folder or 'the top level'} has no saved cases")
+    created = RunBatchCreated(batch=batch, folder=folder, runs=runs, skipped=skipped)
     return JSONResponse(created.model_dump(mode="json"), status_code=201 if runs else 200)
 
 

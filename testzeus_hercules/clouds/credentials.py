@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Literal
 
 from testzeus_hercules.clouds.registry import CLOUD_IDS, CloudId
-from testzeus_hercules.kernel.private_env import read_private_env, write_private_env
+from testzeus_hercules.kernel.private_env import EDIT_LOCK, read_private_env, write_private_env
 from testzeus_hercules.kernel.settings import DeviceCloudSettings, Settings
 
 CLOUDS_FILENAME = "clouds.env"
@@ -161,33 +161,32 @@ def save_credentials(cloud: CloudId, settings: Settings, username: str, access_k
     other clouds' lines."""
     config = cloud_settings(settings, cloud)
     checked = _checked_region(cloud, region) if region is not None else None
-    values = _saved_values(settings)
-    values[config.username_env] = _clean(username, "user name")
-    values[config.access_key_env] = _clean(access_key, "access key")
+    cleaned = {config.username_env: _clean(username, "user name"), config.access_key_env: _clean(access_key, "access key")}
     if checked is not None:
-        values[SAUCE_REGION_ENV] = checked
-    return _write(settings.home_dir, values)
+        cleaned[SAUCE_REGION_ENV] = checked
+    with EDIT_LOCK:
+        return _write(settings.home_dir, {**_saved_values(settings), **cleaned})
 
 
 def save_region(cloud: CloudId, settings: Settings, region: str) -> Path:
     checked = _checked_region(cloud, region)
-    values = _saved_values(settings)
-    values[SAUCE_REGION_ENV] = checked
-    return _write(settings.home_dir, values)
+    with EDIT_LOCK:
+        return _write(settings.home_dir, {**_saved_values(settings), SAUCE_REGION_ENV: checked})
 
 
 def remove_credentials(cloud: CloudId, settings: Settings) -> bool:
     """Remove the cloud's lines from ``clouds.env``; True when there were any. The environment is not touched."""
     config = cloud_settings(settings, cloud)
-    values, problem = read_clouds_file(settings.home_dir)
-    if problem:
-        raise CredentialError(problem)
-    removed = {name for name in (config.username_env, config.access_key_env) if name in values}
-    if not removed:
-        return False
-    remaining = {name: value for name, value in values.items() if name not in removed}
-    if remaining:
-        _write(settings.home_dir, remaining)
-    else:
-        clouds_file(settings.home_dir).unlink(missing_ok=True)
+    with EDIT_LOCK:
+        values, problem = read_clouds_file(settings.home_dir)
+        if problem:
+            raise CredentialError(problem)
+        removed = {name for name in (config.username_env, config.access_key_env) if name in values}
+        if not removed:
+            return False
+        remaining = {name: value for name, value in values.items() if name not in removed}
+        if remaining:
+            _write(settings.home_dir, remaining)
+        else:
+            clouds_file(settings.home_dir).unlink(missing_ok=True)
     return True

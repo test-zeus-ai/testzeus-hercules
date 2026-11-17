@@ -320,6 +320,9 @@ def test_an_untagged_case_of_requests_is_an_api_case() -> None:
     assert case_kind(case('I click the "Get started" button')) is None
     assert case_kind(case('I open "/login"', tags=("kind:api",))) == "api"
     assert case_kind(case('I open "/reports"', tags=("kind:sql",))) == "sql"
+    assert case_kind(case("GET /api/orders/7", "I send a post request to https://shop.example/api/orders", 'the response field "$.id" should be saved as "id"')) == "api"
+    for ui_step in ("When I delete the pending leave request", "I post a request for approval", "I check the response from the manager", "I get the request form"):
+        assert case_kind(case(ui_step)) is None, ui_step
 
 
 def test_the_plan_of_an_untagged_api_case_lists_api_steps_without_lint() -> None:

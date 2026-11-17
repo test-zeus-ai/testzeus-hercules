@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import stat
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,7 @@ from testzeus_hercules.engine.data import CaseData
 from testzeus_hercules.engine.run_graph import _resolved_base_url
 from testzeus_hercules.kernel.secrets_store import (
     SecretStoreError,
+    read_saved_secrets,
     remove_secret,
     save_secret,
     secret_sources,
@@ -130,6 +132,27 @@ def test_saved_secrets_are_private_and_the_environment_wins(tmp_path: Path) -> N
     assert remove_secret(home, "SF_SID") is True and remove_secret(home, "SF_SID") is False
     remove_secret(home, "SHOP_PASSWORD")
     assert not secrets_file(home).exists()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permissions")
+@pytest.mark.parametrize("value", ['"abc123"', "'abc123'", "it's", 'a"b', "#not-a-comment", "x=y"])
+def test_a_saved_secret_comes_back_exactly_as_it_was_given(tmp_path: Path, value: str) -> None:
+    home = tmp_path / "home"
+    save_secret(home, "SHOP_TOKEN", value)
+    save_secret(home, "OTHER", "kept")
+
+    assert read_saved_secrets(home) == ({"OTHER": "kept", "SHOP_TOKEN": value}, None)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permissions")
+def test_secrets_saved_at_the_same_time_are_all_kept(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    names = [f"SECRET_{index}" for index in range(24)]
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(lambda name: save_secret(home, name, name.lower()), names))
+
+    assert read_saved_secrets(home) == ({name: name.lower() for name in names}, None)
+    assert [path.name for path in home.iterdir()] == ["secrets.env"]
 
 
 @pytest.mark.parametrize(("name", "value"), [("lower", "s3cret-value"), ("OK", ""), ("OK", "two\nlines"), ("OK", " padded "), ("OK", "x" * 5000)])

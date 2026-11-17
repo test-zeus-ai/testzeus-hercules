@@ -62,8 +62,8 @@ export function RunsScreen() {
   const [starting, setStarting] = useState(false);
   const [rerunOf, setRerunOf] = useState<RerunOf | null>(null);
   const runs = useQuery({
-    queryKey: ["runs"],
-    queryFn: () => api<{ runs: RunView[] }>(`/api/runs?limit=${RUN_LIMIT}&with_result=true`, { guard: isRunList }),
+    queryKey: ["runs", filters.batch],
+    queryFn: () => api<{ runs: RunView[] }>(`/api/runs?limit=${RUN_LIMIT}&with_result=true${filters.batch ? `&batch=${encodeURIComponent(filters.batch)}` : ""}`, { guard: isRunList }),
     refetchInterval: (query) => runsPollInterval(query.state.data?.runs),
   });
 
@@ -72,8 +72,7 @@ export function RunsScreen() {
     onSuccess: () => void client.invalidateQueries({ queryKey: ["runs"] }),
   });
 
-  const loaded = runs.data?.runs ?? [];
-  const all = useMemo(() => (filters.batch ? loaded.filter((run) => run.batch === filters.batch) : loaded), [loaded, filters.batch]);
+  const all = useMemo(() => runs.data?.runs ?? [], [runs.data]);
   const batchFolder = filters.batch ? (all.find((run) => run.folder !== undefined && run.folder !== null)?.folder ?? null) : null;
   const visible = useMemo(() => {
     const needle = filters.query.trim().toLowerCase();
@@ -133,7 +132,7 @@ export function RunsScreen() {
         </p>
       ) : null}
 
-      {loaded.length >= RUN_LIMIT ? (
+      {all.length >= RUN_LIMIT ? (
         <p className="callout callout-note" role="note">
           Showing the newest {RUN_LIMIT} runs; filters and counts cover these only. Older runs stay in <code>.hercules/runs</code> and open at <code>/runs/&lt;run id&gt;</code>.
         </p>

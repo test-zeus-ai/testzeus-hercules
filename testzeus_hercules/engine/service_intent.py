@@ -69,10 +69,17 @@ def case_hint(tags: list[str] | tuple[str, ...]) -> str | None:
     return "api" if "kind:api" in lowered else "sql" if "kind:sql" in lowered else None
 
 
-_API_ACTION = re.compile(
-    r"\b(?:get|post|put|patch|delete|head|options)\b[^\n]*\brequest\b|\brequest\b[^\n]*\b(?:get|post|put|patch|delete|head|options)\b|\bthe (?:previous |last )?response\b",
+_HTTP_VERB = re.compile(r"\b(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\b")
+_HTTP_TARGET = re.compile(r"\brequest\b|(?:^|[\s\"'`(])/[\w{]|\bhttps?://", re.IGNORECASE)
+_SENT_REQUEST = re.compile(r"\b(?:send|sends|sending|sent|make|makes|issue|issues|call|calls)\b[^\n]*\b(?:get|post|put|patch|delete|head|options)\s+request\b", re.IGNORECASE)
+_READS_RESPONSE = re.compile(
+    r"\bthe (?:previous |last )?response(?:'s)?\s+(?:json|body|status|headers?|code)\b|\bthe (?:previous |last )?response\b[^\n]*[\"'`]\$[.\[]",
     re.IGNORECASE,
 )
+
+
+def _api_action(text: str) -> bool:
+    return bool((_HTTP_VERB.search(text) and _HTTP_TARGET.search(text)) or _SENT_REQUEST.search(text) or _READS_RESPONSE.search(text))
 
 
 def case_kind(case: Any) -> str | None:
@@ -86,7 +93,7 @@ def case_kind(case: Any) -> str | None:
     actions = [step for step in case.steps if step.action.strip().lower() != VERIFY_ACTION]
     if not actions:
         return None
-    if all(step.api is not None or (step.sql is None and step.security is None and _API_ACTION.search(step.action)) for step in actions):
+    if all(step.api is not None or (step.sql is None and step.security is None and _api_action(step.action)) for step in actions):
         return "api"
     return None
 

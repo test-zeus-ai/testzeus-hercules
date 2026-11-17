@@ -482,8 +482,9 @@ Group cases in folders: directories under `.hercules/cases/`, up to 8 levels dee
 
 - A saved case is named by its path there, such as `Checkout/Payments/card-declined.feature`.
   The UI's address for it is `/cases/Checkout/Payments/card-declined.feature`.
-- A case's id (its file name) is unique across all folders: saving a case whose id another
-  folder already has is refused. Its test data (`<name>.data.json`) and its
+- A case's id (its file name) is unique across all folders and both file types: saving a
+  case whose id another case already has (`login.json` beside `login.feature`, or in another
+  folder) is refused. Its test data (`<name>.data.json`) and its
   [files for upload steps](#files-for-upload-steps) follow it when it moves, so it keeps
   them and its past runs.
 - A folder name has at most 120 characters, does not start with a dot, does not end with a

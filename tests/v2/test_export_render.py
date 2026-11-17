@@ -401,19 +401,20 @@ def test_downloads_and_file_checks_export_to_both_languages(tmp_path: Path) -> N
 
     assert 'await keepDownload(page, () => page.getByRole("link", { name: "Export CSV", exact: true }).click());' in typescript
     assert 'await fetchDownload(page, url("/data/orders.json"));' in typescript and "page.request.get(address)" in typescript
-    assert 'expect(downloadedFile.split(/[\\\\/]/).pop()).toBe("report.csv");' in typescript
+    assert 'expect(folded(downloadedFile.split(/[\\\\/]/).pop() ?? "")).toBe(folded("report.csv"));' in typescript
     assert "expect((await downloadedRows()).rows.length).toBeGreaterThanOrEqual(3);" in typescript
-    assert 'expect(text(at(JSON.parse(await downloadedText()), ["count"]))).toBe("2");' in typescript
-    assert 'start.startsWith("%PDF")' in typescript and "TODO" in typescript and "check that the downloaded file is a CSV" in typescript
+    assert 'const cells = await downloadedCells("Status", ["Order ID", "1002"]);' in typescript and 'expect(folded(cell)).toBe(folded("Paid"));' in typescript
+    assert 'expect(folded(await downloadedValue(["count"]))).toBe(folded("2"));' in typescript
+    assert 'expect(await downloadedType()).toBe("pdf");' in typescript and "TODO" in typescript and "check that the downloaded file is a CSV" in typescript
     assert 'keep_download(page, lambda: page.get_by_role("link", name="Export CSV", exact=True).click())' in python
     assert 'fetch_download(page, url("/data/orders.json"))' in python and "from urllib.parse import unquote, urljoin, urlsplit" in python
     assert "assert len(downloaded_rows()[1]) >= 3" in python
-    assert 'rows = [row for row in rows if row[names.index("Order ID")] == "1002"]' in python
-    assert 'assert text(at(json.loads(downloaded[-1].read_text(encoding="utf-8-sig")), [\'count\'])) == "2"' in python
-    assert "assert downloaded[-1].read_bytes().startswith((b'%PDF',))" in python
+    assert 'cells = downloaded_cells("Status", ("Order ID", "1002"))' in python and 'assert all(folded(cell) == folded("Paid") for cell in cells)' in python
+    assert "assert folded(downloaded_value(['count'])) == folded(\"2\")" in python
+    assert 'assert downloaded_type() == "pdf"' in python
     assert "check it by hand" in python and "check it by hand" in typescript
     ast.parse(python)
-    for name in ("import csv", "import tempfile", "import json", "from pathlib import Path"):
+    for name in ("import csv", "import io", "import tempfile", "import json", "import zipfile", "from pathlib import Path"):
         assert name in python
     if node() is not None:
         assert typescript_syntax_errors(typescript, tmp_path) == []

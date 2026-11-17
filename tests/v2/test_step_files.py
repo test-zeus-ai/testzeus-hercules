@@ -99,3 +99,11 @@ def test_case_files_api_uses_the_saved_case(tmp_path: Path) -> None:
     assert added.status_code == 200 and added.json()["case"] == "checkout"
     assert [item["name"] for item in listed.json()["files"]] == ["case.png"]
     assert removed.json()["removed"] is True and removed.json()["files"] == []
+
+
+def test_a_file_name_in_the_url_is_decoded_once() -> None:
+    from starlette.requests import Request
+
+    from testzeus_hercules.daemon.files import _filename
+
+    assert _filename(Request({"type": "http", "path_params": {"filename": "%41.png"}})) == "%41.png"

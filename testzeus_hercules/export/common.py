@@ -549,15 +549,7 @@ class Helpers:
         return lines
 
 
-_TYPE_PREFIXES: dict[str, tuple[bytes, ...]] = {
-    "pdf": (b"%PDF",),
-    "docx": (b"PK\x03\x04",),
-    "xlsx": (b"PK\x03\x04",),
-    "zip": (b"PK\x03\x04",),
-    "png": (b"\x89PNG",),
-    "jpeg": (b"\xff\xd8\xff",),
-    "gif": (b"GIF87a", b"GIF89a"),
-}
+_CONTENT_TYPES = frozenset({"pdf", "docx", "xlsx", "zip", "png", "jpeg", "gif"})
 _ROW_OPS = {"": "==", "=": "==", "==": "==", "exactly": "==", ">=": ">=", "at least": ">=", "<=": "<=", "at most": "<=", ">": ">", "more than": ">", "<": "<", "fewer than": "<", "less than": "<"}
 _ROW_COUNT = re.compile(r"^\s*(>=|<=|==|=|>|<|at least|at most|more than|fewer than|less than|exactly)?\s*(\d[\d,]*)\s*(?:rows?)?\s*$", re.IGNORECASE)
 
@@ -570,15 +562,15 @@ def uploads_download(action: Any) -> bool:
     return action.kind == "upload" and DOWNLOADED_FILE in "".join((action.value or "").split())
 
 
-def file_type_prefixes(expected: str) -> tuple[bytes, ...] | None:
-    """The first bytes a file of the named type starts with (``PDF``, ``an Excel file``); None for text types."""
+def file_type_kinds(expected: str) -> tuple[str, ...] | None:
+    """The file types a check of the named type accepts (``PDF``, ``an Excel file``), each told by its content; None for text types."""
     from testzeus_hercules.act.file_contents import TYPE_NAMES
 
     words = [word.strip(".").lower() for word in expected.replace("-", " ").split()]
     kinds = set().union(*(TYPE_NAMES.get(word, frozenset()) for word in words)) if words else set()
-    if not kinds or kinds - set(_TYPE_PREFIXES):
+    if not kinds or kinds - _CONTENT_TYPES:
         return None
-    return tuple(sorted({prefix for kind in kinds for prefix in _TYPE_PREFIXES[kind]}))
+    return tuple(sorted(kinds))
 
 
 def row_comparison(expected: str) -> tuple[str, int] | None:

@@ -22,7 +22,7 @@ from testzeus_hercules.export.common import (
     Helpers,
     Writer,
     address_pattern,
-    file_type_prefixes,
+    file_type_kinds,
     json_path_keys,
     one_line,
     row_comparison,
@@ -55,9 +55,13 @@ HELPERS = Helpers(
         "status_in",
         "with_query",
         "sqlite",
+        "folded",
         "download",
+        "download_type",
         "download_text",
         "download_rows",
+        "download_cells",
+        "download_value",
     ),
     requires={
         "url": ("base",),
@@ -70,8 +74,11 @@ HELPERS = Helpers(
         "filled": ("missing",),
         "size": ("missing",),
         "bounded": ("number", "missing"),
+        "download_type": ("download",),
         "download_text": ("download",),
         "download_rows": ("download",),
+        "download_cells": ("download_rows", "folded"),
+        "download_value": ("download", "at"),
     },
     source={
         "base": "",  # written by the header (it needs the run's base URL)
@@ -165,6 +172,11 @@ def bounded(value: Any, bound: Any, kind: str) -> bool:
 def status_in(status: int, codes: list[str]) -> bool:
     return any(code == str(status) or (code.endswith("xx") and code[0] == str(status)[0]) for code in codes)
 """,
+        "folded": """
+def folded(text: str) -> str:
+    \"\"\"Text with its whitespace folded and in lower case, as the run compares file contents.\"\"\"
+    return " ".join(text.split()).casefold()
+""",
         "download": """
 DOWNLOADS = Path(tempfile.mkdtemp(prefix="hercules-downloads-"))
 downloaded: list[Path] = []
@@ -195,6 +207,21 @@ def fetch_download(page: Page, address: str) -> Path:
     downloaded.append(path)
     return path
 """,
+        "download_type": """
+def downloaded_type() -> str:
+    \"\"\"The latest download's type from its first bytes, and a ZIP file's entries, as the run tells it.\"\"\"
+    with downloaded[-1].open("rb") as handle:
+        head = handle.read(8)
+    if head.startswith(b"PK\\x03\\x04"):
+        try:
+            with zipfile.ZipFile(downloaded[-1]) as archive:
+                names = set(archive.namelist())
+        except (zipfile.BadZipFile, OSError):
+            return "binary"
+        return "docx" if "word/document.xml" in names else "xlsx" if "xl/workbook.xml" in names else "zip"
+    starts = {"pdf": (b"%PDF",), "png": (b"\\x89PNG",), "jpeg": (b"\\xff\\xd8\\xff",), "gif": (b"GIF87a", b"GIF89a")}
+    return next((kind for kind, prefixes in starts.items() if head.startswith(prefixes)), "other")
+""",
         "download_text": """
 def downloaded_text() -> str:
     \"\"\"The latest download's text, whitespace folded and lower case.\"\"\"
@@ -202,10 +229,41 @@ def downloaded_text() -> str:
 """,
         "download_rows": """
 def downloaded_rows() -> tuple[list[str], list[list[str]]]:
-    \"\"\"The latest download's column names and data rows (a CSV).\"\"\"
-    with downloaded[-1].open(newline="", encoding="utf-8-sig") as handle:
-        rows = [[cell.strip() for cell in row] for row in csv.reader(handle) if any(cell.strip() for cell in row)]
+    \"\"\"The latest download's column names and data rows (a CSV, its delimiter found as the run finds it).\"\"\"
+    text = downloaded[-1].read_text(encoding="utf-8-sig", errors="replace")
+    try:
+        dialect: Any = csv.Sniffer().sniff("\\n".join(text.splitlines()[:20]), delimiters=",;\\t|")
+    except csv.Error:
+        dialect = "excel-tab" if downloaded[-1].suffix.lower() == ".tsv" else "excel"
+    rows = [[cell.strip() for cell in row] for row in csv.reader(io.StringIO(text), dialect) if any(cell.strip() for cell in row)]
     return (rows[0], rows[1:]) if rows else ([], [])
+""",
+        "download_cells": """
+def downloaded_cells(name: str, where: tuple[str, str] | None = None) -> list[str]:
+    \"\"\"One column's cells in the latest download's rows (with where, only the rows whose where[0] column holds where[1]), matched as the run matches them.\"\"\"
+    names, rows = downloaded_rows()
+
+    def column(wanted: str) -> int:
+        found = next((index for index, named in enumerate(names) if folded(named) == folded(wanted)), None)
+        assert found is not None, f"{downloaded[-1].name} has no column {wanted!r} (columns: {', '.join(names)})"
+        return found
+
+    at_column = column(name)
+    if where is not None:
+        by = column(where[0])
+        rows = [row for row in rows if by < len(row) and folded(row[by]) == folded(where[1])]
+    return [row[at_column] if at_column < len(row) else "" for row in rows]
+""",
+        "download_value": """
+def downloaded_value(path: list[str | int]) -> str:
+    \"\"\"The value at a JSON path in the latest download, written as the run writes it to compare.\"\"\"
+    value = at(json.loads(downloaded[-1].read_text(encoding="utf-8-sig")), path)
+    assert value is not MISSING, f"{downloaded[-1].name} has no value at {path}"
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False)
+    return "" if value is None else str(value)
 """,
         "with_query": '''
 def with_query(address: str, pairs: list[tuple[str, str]]) -> str:
@@ -350,7 +408,7 @@ class PythonWriter(Writer):
             lines.append(self.docstring("Environment: " + ", ".join(env) + "."))
         lines += ['"""', "", "from __future__ import annotations", ""]
         modules = {"os"} if ("base" in used or self.secrets or spec.browser) else set()
-        if used & {"text"}:
+        if used & {"text", "download_value"}:
             modules.add("json")
         generated = any(action.navigated_to and not action.navigated_from and address_pattern(action.navigated_to) for step in spec.steps for action in step.actions)
         if used & {"matches", "escape_url"} or generated or any(check.kind == "url" and check.match == "contains" for step in spec.steps for check in step.checks):
@@ -360,7 +418,9 @@ class PythonWriter(Writer):
         if "download" in used:
             modules.add("tempfile")
         if "download_rows" in used:
-            modules.add("csv")
+            modules.update({"csv", "io"})
+        if "download_type" in used:
+            modules.add("zipfile")
         if any(entry.kind == "builtin" for entry in spec.data.values()):
             modules.add("datetime")
         if self.timed:
@@ -623,15 +683,21 @@ class PythonWriter(Writer):
         if not check.faithful:
             return
         self.helpers.add("download")
-        equals = check.match == "equals"
+
+        def same(actual: str) -> str:
+            self.helpers.add("folded")
+            return f"folded({actual}) == folded({expected})" if check.match == "equals" else f"folded({expected}) in folded({actual})"
+
         if check.file_check == "name":
-            self.emit(f"assert downloaded[-1].name == {expected}" if equals else f"assert {expected} in downloaded[-1].name")
+            self.emit(f"assert {same('downloaded[-1].name')}")
         elif check.file_check == "type":
-            prefixes = file_type_prefixes(check.expected)
-            if prefixes is None:
+            kinds = file_type_kinds(check.expected)
+            if kinds is None:
                 self.todo(step, f"check that the downloaded file is a {check.expected}")
                 return
-            self.emit(f"assert downloaded[-1].read_bytes().startswith({prefixes!r})")
+            self.helpers.add("download_type")
+            accepted = f"== {self.string(kinds[0])}" if len(kinds) == 1 else f"in ({', '.join(self.string(kind) for kind in kinds)})"
+            self.emit(f"assert downloaded_type() {accepted}")
         elif check.file_check in ("text", "not_text"):
             self.helpers.add("download_text")
             self.emit(f'assert " ".join(({expected}).split()).casefold() {"not in" if check.file_check == "not_text" else "in"} downloaded_text()')
@@ -643,22 +709,21 @@ class PythonWriter(Writer):
             self.helpers.add("download_rows")
             self.emit(f"assert len(downloaded_rows()[1]) {found[0]} {found[1]}")
         elif check.file_check == "column":
-            self.helpers.add("download_rows")
-            self.emit("names, rows = downloaded_rows()")
+            self.helpers.add("download_cells")
+            where = ""
             if check.where:
                 key, _, value = check.where.partition("=")
-                self.emit(f"rows = [row for row in rows if row[names.index({self.string(key.strip())})] == {self.string(value.strip())}]")
-            self.emit("assert rows")
-            cell = f"row[names.index({self.string(check.subject or '')})]"
-            self.emit(f"assert all({cell} == {expected} for row in rows)" if equals else f"assert all({expected} in {cell} for row in rows)")
+                where = f", ({self.string(key.strip())}, {self.string(value.strip())})"
+            self.emit(f"cells = downloaded_cells({self.string(check.subject or '')}{where})")
+            self.emit("assert cells")
+            self.emit(f"assert all({same('cell')} for cell in cells)")
         elif check.file_check == "json":
             keys = json_path_keys(check.subject or "")
             if keys is None:
                 self.todo(step, f"check {check.subject} in the downloaded JSON")
                 return
-            self.helpers.update({"at", "text"})
-            value = f'text(at(json.loads(downloaded[-1].read_text(encoding="utf-8-sig")), {keys!r}))'
-            self.emit(f"assert {value} == {expected}" if equals else f"assert {expected} in {value}")
+            self.helpers.add("download_value")
+            self.emit(f"assert {same(f'downloaded_value({keys!r})')}")
 
     # ------------------------------------------------------------------ API, SQL and quality steps
 

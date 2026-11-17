@@ -76,7 +76,7 @@ def test_saved_file_is_private_and_keeps_other_clouds(tmp_path: Path) -> None:
     path = clouds_file(settings.home_dir)
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
     text = path.read_text(encoding="utf-8")
-    assert "BROWSERSTACK_USERNAME=bs_user" in text and "LT_ACCESS_KEY=lt-key" in text
+    assert "BROWSERSTACK_USERNAME='bs_user'" in text and "LT_ACCESS_KEY='lt-key'" in text
 
     assert remove_credentials("browserstack", settings) is True
     assert find_credentials("browserstack", settings, {}).source == "none"

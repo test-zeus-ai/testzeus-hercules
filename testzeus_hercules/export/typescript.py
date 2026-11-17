@@ -22,7 +22,7 @@ from testzeus_hercules.export.common import (
     Helpers,
     Writer,
     address_pattern,
-    file_type_prefixes,
+    file_type_kinds,
     json_path_keys,
     one_line,
     row_comparison,
@@ -54,10 +54,13 @@ HELPERS = Helpers(
         "status_in",
         "escape",
         "with_query",
+        "folded",
         "download",
-        "download_start",
+        "download_type",
         "download_text",
         "download_rows",
+        "download_cells",
+        "download_value",
     ),
     requires={
         "url": ("base",),
@@ -66,9 +69,11 @@ HELPERS = Helpers(
         "contains": ("same",),
         "matches": ("text",),
         "bounded": ("number",),
-        "download_start": ("download",),
+        "download_type": ("download",),
         "download_text": ("download",),
         "download_rows": ("download_text",),
+        "download_cells": ("download_rows", "folded"),
+        "download_value": ("download_text", "at"),
     },
     source={
         "base": "",  # written by the header (it needs the run's base URL)
@@ -170,6 +175,12 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&");
 }
 """,
+        "folded": """
+/** Text with its whitespace folded and in lower case, as the run compares file contents. */
+function folded(value: string): string {
+  return value.replace(/\\s+/g, " ").trim().toLowerCase();
+}
+""",
         "download": """
 let downloadedFile = "";
 
@@ -197,11 +208,33 @@ async function fetchDownload(page: import("@playwright/test").Page, address: str
   return downloadedFile;
 }
 """,
-        "download_start": """
-/** The first bytes of the latest download, to tell its type. */
-async function downloadedStart(): Promise<string> {
+        "download_type": """
+/** The names of a ZIP archive's entries, from its central directory (null when it has none). */
+function zipEntries(bytes: Buffer): Set<string> | null {
+  const end = bytes.lastIndexOf(Buffer.from("PK\\u0005\\u0006", "latin1"));
+  if (end < 0 || end + 22 > bytes.length) return null;
+  const names = new Set<string>();
+  let offset = bytes.readUInt32LE(end + 16);
+  for (let left = bytes.readUInt16LE(end + 10); left > 0; left--) {
+    if (offset + 46 > bytes.length || bytes.readUInt32LE(offset) !== 0x02014b50) return null;
+    const length = bytes.readUInt16LE(offset + 28);
+    names.add(bytes.subarray(offset + 46, offset + 46 + length).toString("utf8"));
+    offset += 46 + length + bytes.readUInt16LE(offset + 30) + bytes.readUInt16LE(offset + 32);
+  }
+  return names;
+}
+
+/** The latest download's type from its first bytes, and a ZIP file's entries, as the run tells it. */
+async function downloadedType(): Promise<string> {
   const { readFileSync } = await import("node:fs");
-  return readFileSync(downloadedFile).subarray(0, 8).toString("latin1");
+  const bytes = readFileSync(downloadedFile);
+  const head = bytes.subarray(0, 8).toString("latin1");
+  if (head.startsWith("PK\\u0003\\u0004")) {
+    const names = zipEntries(bytes);
+    return names === null ? "binary" : names.has("word/document.xml") ? "docx" : names.has("xl/workbook.xml") ? "xlsx" : "zip";
+  }
+  const starts: Array<[string, string[]]> = [["pdf", ["%PDF"]], ["png", ["\\u0089PNG"]], ["jpeg", ["\\u00ff\\u00d8\\u00ff"]], ["gif", ["GIF87a", "GIF89a"]]];
+  return starts.find(([, prefixes]) => prefixes.some((prefix) => head.startsWith(prefix)))?.[0] ?? "other";
 }
 """,
         "download_text": """
@@ -212,11 +245,92 @@ async function downloadedText(): Promise<string> {
 }
 """,
         "download_rows": """
-/** The latest download's column names and rows (a simple CSV: no commas or line breaks inside cells). */
+/** A CSV text's records: a quoted cell may hold the delimiter, line breaks and doubled quotes; spaces before a cell are skipped. */
+function csvRecords(text: string, delimiter: string): string[][] {
+  const records: string[][] = [];
+  let record: string[] = [];
+  let cell = "";
+  let quoted = false;
+  let started = false;
+  for (let index = 0; index < text.length; index++) {
+    const char = text[index];
+    if (quoted) {
+      if (char !== '"') {
+        cell += char;
+      } else if (text[index + 1] === '"') {
+        cell += '"';
+        index++;
+      } else {
+        quoted = false;
+      }
+    } else if (char === delimiter) {
+      record.push(cell);
+      cell = "";
+      started = false;
+    } else if (char === "\\n" || char === "\\r") {
+      if (char === "\\r" && text[index + 1] === "\\n") index++;
+      records.push([...record, cell]);
+      record = [];
+      cell = "";
+      started = false;
+    } else if (!started && char === " ") {
+      continue;
+    } else if (!started && char === '"') {
+      quoted = started = true;
+    } else {
+      cell += char;
+      started = true;
+    }
+  }
+  if (started || record.length) records.push([...record, cell]);
+  return records;
+}
+
+/** The latest download's column names and data rows (a CSV, its delimiter found as the run finds it), cells trimmed. */
 async function downloadedRows(): Promise<{ names: string[]; rows: string[][] }> {
-  const lines = (await downloadedText()).split(/\\r?\\n/).filter((line) => line.trim());
-  const cells = lines.map((line) => line.split(",").map((cell) => cell.trim().replace(/^"|"$/g, "")));
-  return { names: cells[0] ?? [], rows: cells.slice(1) };
+  const text = await downloadedText();
+  const lines = text.split(/\\r\\n|\\r|\\n/);
+  const consistent = (delimiter: string): boolean => {
+    const widths = csvRecords(lines.slice(0, 20).join("\\n"), delimiter)
+      .filter((record) => record.some((cell) => cell.trim()))
+      .slice(0, lines.length > 20 ? -1 : undefined)
+      .map((record) => record.length);
+    return widths.length > 0 && widths[0] > 1 && widths.every((width) => width === widths[0]);
+  };
+  const delimiter = [",", "\\t", ";", "|"].find(consistent) ?? (downloadedFile.toLowerCase().endsWith(".tsv") ? "\\t" : ",");
+  const rows = csvRecords(text, delimiter)
+    .map((record) => record.map((cell) => cell.trim()))
+    .filter((record) => record.some((cell) => cell));
+  return { names: rows[0] ?? [], rows: rows.slice(1) };
+}
+""",
+        "download_cells": """
+/** One column's cells in the latest download's rows (with where, only the rows whose where[0] column holds where[1]), matched as the run matches them. */
+async function downloadedCells(name: string, where?: [string, string]): Promise<string[]> {
+  const { names, rows } = await downloadedRows();
+  const column = (wanted: string): number => {
+    const found = names.findIndex((named) => folded(named) === folded(wanted));
+    expect(found, `the downloaded file has no column "${wanted}" (columns: ${names.join(", ")})`).toBeGreaterThanOrEqual(0);
+    return found;
+  };
+  const index = column(name);
+  if (!where) return rows.map((row) => row[index] ?? "");
+  const by = column(where[0]);
+  return rows.filter((row) => by < row.length && folded(row[by]) === folded(where[1])).map((row) => row[index] ?? "");
+}
+""",
+        "download_value": """
+/** The value at a JSON path in the latest download, written as the run writes it to compare. */
+async function downloadedValue(path: Array<string | number>): Promise<string> {
+  const value = at(JSON.parse(await downloadedText()), path);
+  expect(value, `the downloaded file has no value at ${JSON.stringify(path)}`).not.toBeUndefined();
+  const written = (item: unknown): string =>
+    Array.isArray(item)
+      ? `[${item.map(written).join(", ")}]`
+      : item !== null && typeof item === "object"
+        ? `{${Object.entries(item).map(([key, inner]) => `${JSON.stringify(key)}: ${written(inner)}`).join(", ")}}`
+        : JSON.stringify(item);
+  return value === null ? "" : typeof value === "object" ? written(value) : String(value);
 }
 """,
         "with_query": """
@@ -535,20 +649,24 @@ class TypeScriptWriter(Writer):
             return
         self.helpers.add("download")
         compare = "toBe" if check.match == "equals" else "toContain"
+        if check.file_check in ("name", "text", "not_text", "column", "json"):
+            self.helpers.add("folded")
         if check.file_check == "name":
-            self.emit(f"expect(downloadedFile.split(/[\\\\/]/).pop()).{compare}({expected});")
+            self.emit(f'expect(folded(downloadedFile.split(/[\\\\/]/).pop() ?? "")).{compare}(folded({expected}));')
         elif check.file_check == "type":
-            prefixes = file_type_prefixes(check.expected)
-            if prefixes is None:
+            kinds = file_type_kinds(check.expected)
+            if kinds is None:
                 self.todo(step, f"check that the downloaded file is a {check.expected}")
                 return
-            self.helpers.add("download_start")
-            tests = " || ".join(f"start.startsWith({self.string(prefix.decode('latin1'))})" for prefix in prefixes)
-            self.emit(f"{{ const start = await downloadedStart(); expect({tests}).toBe(true); }}")
+            self.helpers.add("download_type")
+            if len(kinds) == 1:
+                self.emit(f"expect(await downloadedType()).toBe({self.string(kinds[0])});")
+            else:
+                self.emit(f"expect([{', '.join(self.string(kind) for kind in kinds)}]).toContain(await downloadedType());")
         elif check.file_check in ("text", "not_text"):
             self.helpers.add("download_text")
             negate = ".not" if check.file_check == "not_text" else ""
-            self.emit(f'expect((await downloadedText()).replace(/\\s+/g, " ").toLowerCase()){negate}.toContain(({expected}).toLowerCase());')
+            self.emit(f"expect(folded(await downloadedText())){negate}.toContain(folded({expected}));")
         elif check.file_check == "rows":
             found = row_comparison(check.expected)
             if found is None:
@@ -558,22 +676,21 @@ class TypeScriptWriter(Writer):
             matcher = {"==": "toBe", ">=": "toBeGreaterThanOrEqual", "<=": "toBeLessThanOrEqual", ">": "toBeGreaterThan", "<": "toBeLessThan"}[found[0]]
             self.emit(f"expect((await downloadedRows()).rows.length).{matcher}({found[1]});")
         elif check.file_check == "column":
-            self.helpers.add("download_rows")
-            column = self.string(check.subject or "")
-            picked = "rows"
+            self.helpers.add("download_cells")
+            where = ""
             if check.where:
                 key, _, value = check.where.partition("=")
-                picked = f"rows.filter((row) => row[names.indexOf({self.string(key.strip())})] === {self.string(value.strip())})"
+                where = f", [{self.string(key.strip())}, {self.string(value.strip())}]"
             self.emit(
-                f"{{ const {{ names, rows }} = await downloadedRows(); const picked = {picked}; expect(picked.length).toBeGreaterThan(0); for (const row of picked) expect(row[names.indexOf({column})]).{compare}({expected}); }}"
+                f"{{ const cells = await downloadedCells({self.string(check.subject or '')}{where}); expect(cells.length).toBeGreaterThan(0); for (const cell of cells) expect(folded(cell)).{compare}(folded({expected})); }}"
             )
         elif check.file_check == "json":
             keys = json_path_keys(check.subject or "")
             if keys is None:
                 self.todo(step, f"check {check.subject} in the downloaded JSON")
                 return
-            self.helpers.update({"download_text", "at", "text"})
-            self.emit(f"expect(text(at(JSON.parse(await downloadedText()), {json.dumps(keys)}))).{compare}({expected});")
+            self.helpers.add("download_value")
+            self.emit(f"expect(folded(await downloadedValue({json.dumps(keys)}))).{compare}(folded({expected}));")
 
     # ------------------------------------------------------------------ API, SQL and quality steps
 
