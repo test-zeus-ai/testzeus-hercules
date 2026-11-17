@@ -1,4 +1,4 @@
-import { BASE_URL_PATTERN, BUILTIN_PLACEHOLDERS, DATA_KEY_PATTERN, PLACEHOLDER, SECRET_NAME_PATTERN, VIEWPORT_PATTERN } from "./caseForm";
+import { BASE_URL_PATTERN, BUILTIN_PLACEHOLDERS, DATA_KEY_PATTERN, PLACEHOLDER, RESERVED_PLACEHOLDERS, SECRET_NAME_PATTERN, VIEWPORT_PATTERN } from "./caseForm";
 import type { FormDatum } from "./caseForm";
 import { EMPTY_BROWSER_OPTIONS, browserOptionsBody, browserOptionsToForm, browserSummary, validateBrowserOptions } from "./browserOptionsForm";
 import type { BrowserOptionsForm } from "./browserOptionsForm";
@@ -113,7 +113,7 @@ export function validateEnvironment(form: EnvForm): Record<string, string> {
   form.variables.forEach((row, offset) => {
     const key = row.key.trim();
     if (!DATA_KEY_PATTERN.test(key)) errors[`variables.${offset}.key`] = "Names start with a letter or '_' and use letters, digits or '_'.";
-    else if (BUILTIN_PLACEHOLDERS.includes(key)) errors[`variables.${offset}.key`] = `'${key}' is a built-in placeholder.`;
+    else if (RESERVED_PLACEHOLDERS.includes(key)) errors[`variables.${offset}.key`] = `'${key}' is a built-in placeholder.`;
     else if (keys.has(key)) errors[`variables.${offset}.key`] = "This name is used twice.";
     keys.add(key);
     if (row.secret && !SECRET_NAME_PATTERN.test(row.value.trim())) errors[`variables.${offset}.value`] = "A secret names an environment variable, e.g. SHOP_PASSWORD.";

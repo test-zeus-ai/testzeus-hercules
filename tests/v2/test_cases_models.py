@@ -213,10 +213,22 @@ def test_rejects_bad_test_data_keys(key: str) -> None:
         Case.model_validate(_case(test_data={key: "x"}))
 
 
-@pytest.mark.parametrize("key", ["run_id", "timestamp"])
+@pytest.mark.parametrize("key", ["run_id", "timestamp", "downloaded_file", "downloaded_file_name"])
 def test_rejects_test_data_shadowing_builtins(key: str) -> None:
-    with pytest.raises(ValidationError, match=key):
-        Case.model_validate(_case(test_data={key: "x"}))
+    with pytest.raises(ValidationError, match=f"test_data key\\(s\\) {key} are reserved for built-in placeholders"):
+        Case.model_validate(_case(test_data={**SPEC_CASE["test_data"], key: "x"}))
+
+
+def test_a_step_cannot_save_into_a_download_placeholder() -> None:
+    from testzeus_hercules.cases.models import Capture
+    from testzeus_hercules.daemon.models import Environment
+
+    with pytest.raises(ValidationError, match="built-in placeholder"):
+        Capture(name="downloaded_file", json_path="$.path")
+    with pytest.raises(ValidationError, match=r"saves \{\{downloaded_file\}\}, a built-in placeholder"):
+        Case.model_validate(_case(steps=[{"action": 'I save the response JSON "$.path" as "downloaded_file"'}]))
+    with pytest.raises(ValidationError, match="reserved for built-in placeholders"):
+        Environment(name="shop", base_url="https://shop.example", variables={"downloaded_file_name": "x"})
 
 
 def test_unknown_placeholders_are_listed() -> None:

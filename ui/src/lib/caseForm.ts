@@ -10,6 +10,7 @@ export const VIEWPORT_PATTERN = /^[1-9][0-9]{1,4}x[1-9][0-9]{1,4}$/;
 export const BASE_URL_PATTERN = /^https?:\/\/[^\s/?#]+/;
 export const BUILTIN_PLACEHOLDERS = ["run_id", "timestamp"];
 export const DOWNLOAD_PLACEHOLDERS = ["downloaded_file", "downloaded_file_name"];
+export const RESERVED_PLACEHOLDERS = [...BUILTIN_PLACEHOLDERS, ...DOWNLOAD_PLACEHOLDERS];
 
 const SAVE_VERBS = "save|saves|store|stores|remember|remembers|keep|keeps|capture|captures";
 const SAVES_AS = new RegExp(`\\b(?:${SAVE_VERBS})\\b[^\\n]*?\\bas\\s+(?:["\u201c]?\\{\\{\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*\\}\\}|["\u201c]([A-Za-z_][A-Za-z0-9_]*)["\u201d])`, "gi");
@@ -116,7 +117,7 @@ export function validateTestData(rows: FormDatum[]): FormErrors {
   rows.forEach((datum, offset) => {
     const key = datum.key.trim();
     if (!DATA_KEY_PATTERN.test(key)) errors[`testData.${offset}.key`] = "Names start with a letter or '_' and use letters, digits or '_'.";
-    else if (BUILTIN_PLACEHOLDERS.includes(key)) errors[`testData.${offset}.key`] = `'${key}' is a built-in placeholder.`;
+    else if (RESERVED_PLACEHOLDERS.includes(key)) errors[`testData.${offset}.key`] = `'${key}' is a built-in placeholder.`;
     else if (keys.has(key)) errors[`testData.${offset}.key`] = "This name is used twice.";
     keys.add(key);
     if (datum.secret && !SECRET_NAME_PATTERN.test(datum.value.trim())) {

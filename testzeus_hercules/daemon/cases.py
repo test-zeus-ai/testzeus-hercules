@@ -152,6 +152,7 @@ _MAX_FOLDERS = 1000
 _FOLDER_FORBIDDEN = re.compile(r'[\\/:*?"<>|\x00-\x1f\x7f]')
 _RESERVED_NAMES = frozenset({"con", "prn", "aux", "nul", *(f"com{n}" for n in range(1, 10)), *(f"lpt{n}" for n in range(1, 10))})
 DeleteMode = Literal["move_up", "delete_cases"]
+_SYSTEM_FILES = frozenset({".DS_Store"})
 
 
 def folder_name_error(name: str) -> str | None:
@@ -168,6 +169,10 @@ def folder_name_error(name: str) -> str | None:
     if name.split(".")[0].lower() in _RESERVED_NAMES:
         return f"{name} is a reserved name on Windows"
     return None
+
+
+def _system_file(name: str) -> bool:
+    return name in _SYSTEM_FILES or name.startswith("._")
 
 
 def _folder_parts(folder: str) -> list[str]:
@@ -477,7 +482,7 @@ def move_folder(cases_dir: Path, folder: str, parent: str) -> str:
 
 
 def _move_up(folder: str, source: Path) -> int:
-    held = [entry.name for entry in sorted(source.iterdir()) if not entry.name.startswith(".")]
+    held = [entry.name for entry in sorted(source.iterdir()) if not _system_file(entry.name)]
     target = source.parent
     clashes = [name for name in held if _sibling_named(target, name, besides=source) is not None]
     if clashes:
@@ -510,7 +515,7 @@ def delete_folder(cases_dir: Path, project_dir: Path, folder: str, mode: DeleteM
         return {"folder": folder, "mode": mode, "moved": _move_up(folder, source), "deleted": 0}
     found = [path for _, path in _cases_under(cases_dir, folder)]
     keep = set(found) | {data_file(path) for path in found if path.suffix == ".feature"}
-    others = [path for path in source.rglob("*") if path.is_file() and path not in keep and not any(part.startswith(".") for part in path.relative_to(source).parts)]
+    others = [path for path in source.rglob("*") if path.is_file() and path not in keep and not _system_file(path.name)]
     if others:
         listed = ", ".join(path.relative_to(source).as_posix() for path in others[:3])
         raise CaseError(f"{folder} also holds files that are not cases ({listed}{' and more' if len(others) > 3 else ''}); move them out first, or keep the cases")

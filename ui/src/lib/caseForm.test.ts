@@ -36,12 +36,14 @@ describe("case form validation", () => {
         { key: "password", value: "x", secret: false },
         { key: "run_id", value: "x", secret: false },
         { key: "1bad", value: "x", secret: false },
+        { key: "downloaded_file", value: "x", secret: false },
       ],
     });
     expect(errors["testData.0.value"]).toMatch(/environment variable/);
     expect(errors["testData.1.key"]).toMatch(/twice/);
     expect(errors["testData.2.key"]).toMatch(/built-in/);
     expect(errors["testData.3.key"]).toBeDefined();
+    expect(errors["testData.4.key"]).toMatch(/built-in/);
   });
 
   it("flags placeholders that no test data defines", () => {

@@ -10,6 +10,7 @@ from testzeus_hercules.cases.browser_options import BrowserOptions
 from testzeus_hercules.cases.models import (
     BASE_URL_PATTERN,
     BUILTIN_PLACEHOLDERS,
+    RESERVED_PLACEHOLDERS,
     SECRET_NAME_PATTERN,
     VIEWPORT_PATTERN,
     Browser,
@@ -432,7 +433,7 @@ class Environment(_Body):
         if self.mobile is None and self.base_url is None:
             raise ValueError("a web environment needs base_url (a native app environment sets mobile instead)")
         check_web_settings(self.mobile, self.device, self.viewport, self.browser, self.browser_options)
-        reserved = sorted(BUILTIN_PLACEHOLDERS.intersection(self.variables))
+        reserved = sorted(RESERVED_PLACEHOLDERS.intersection(self.variables))
         if reserved:
             raise ValueError(f"variable(s) {', '.join(reserved)} are reserved for built-in placeholders")
         unknown = sorted(set(placeholder_names_in(self.base_url or "")) - set(self.data()) - BUILTIN_PLACEHOLDERS)

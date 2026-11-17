@@ -453,3 +453,41 @@ def test_feature_test_data_too_large_to_read_back_is_refused_before_anything_is_
     assert refused.status_code == 422 and "256 KiB" in refused.text
     assert kept.status_code == 201
     assert sorted(path.name for path in cases_dir.iterdir()) == ["shopper-pays-by-card.data.json", "shopper-pays-by-card.feature"]
+
+
+def test_moving_up_keeps_hidden_entries_and_drops_only_system_files(config) -> None:  # type: ignore[no-untyped-def]
+    cases_dir = _cases_dir(config)
+    old = cases_dir / "Old"
+    (old / ".git").mkdir(parents=True)
+    (old / ".git" / "HEAD").write_text("ref")
+    (old / ".notes").write_text("mine")
+    (old / ".DS_Store").write_text("x")
+    (old / "._login.json").write_text("x")
+    (cases_dir / "Other" / ".notes").parent.mkdir(parents=True)
+    (cases_dir / "Other" / ".notes").write_text("theirs")
+    (cases_dir / "Other" / "Inner").mkdir()
+    (cases_dir / "Other" / "Inner" / ".notes").write_text("inner")
+    with client_for(config) as client:
+        deleted = client.delete("/api/folders/Old")
+        clash = client.delete("/api/folders/Other/Inner")
+
+    assert deleted.status_code == 200 and deleted.json()["moved"] == 2
+    assert (cases_dir / ".git" / "HEAD").read_text() == "ref" and (cases_dir / ".notes").read_text() == "mine"
+    assert not (cases_dir / ".DS_Store").exists() and not (cases_dir / "._login.json").exists()
+    assert clash.status_code == 409 and ".notes" in clash.text
+    assert (cases_dir / "Other" / "Inner" / ".notes").read_text() == "inner"
+
+
+def test_deleting_cases_refuses_hidden_files_that_are_not_cases(config) -> None:  # type: ignore[no-untyped-def]
+    cases_dir = _cases_dir(config)
+    with client_for(config) as client:
+        client.post("/api/folders", json={"name": "Old"})
+        client.post("/api/cases", json={"test_case": case_dict(), "folder": "Old"})
+        (cases_dir / "Old" / ".notes").write_text("mine")
+        (cases_dir / "Old" / ".DS_Store").write_text("x")
+        refused = client.delete("/api/folders/Old?mode=delete_cases")
+        (cases_dir / "Old" / ".notes").unlink()
+        deleted = client.delete("/api/folders/Old?mode=delete_cases")
+
+    assert refused.status_code == 422 and ".notes" in refused.text
+    assert deleted.status_code == 200 and deleted.json()["deleted"] == 1 and not (cases_dir / "Old").exists()

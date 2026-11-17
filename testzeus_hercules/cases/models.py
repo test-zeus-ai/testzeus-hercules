@@ -40,6 +40,7 @@ BASE_URL_PATTERN = r"^https?://[^\s/?#]+"
 
 BUILTIN_PLACEHOLDERS: frozenset[str] = frozenset({"run_id", "timestamp"})
 DOWNLOAD_PLACEHOLDERS: frozenset[str] = frozenset({"downloaded_file", "downloaded_file_name"})
+RESERVED_PLACEHOLDERS: frozenset[str] = BUILTIN_PLACEHOLDERS | DOWNLOAD_PLACEHOLDERS
 MAX_STEPS = 200
 
 _PLACEHOLDER = re.compile(r"\{\{(.*?)\}\}")
@@ -272,7 +273,7 @@ class Capture(_Model):
     def _one_source(self) -> Capture:
         if (self.json_path is None) == (self.header is None):
             raise ValueError("a capture takes exactly one of json_path or header")
-        if self.name in BUILTIN_PLACEHOLDERS:
+        if self.name in RESERVED_PLACEHOLDERS:
             raise ValueError(f"{self.name!r} is a built-in placeholder and cannot be saved")
         return self
 
@@ -521,7 +522,7 @@ class TestCase(_Model):
     @field_validator("test_data")
     @classmethod
     def _no_builtin_shadowing(cls, value: dict[str, TestDataValue]) -> dict[str, TestDataValue]:
-        reserved = sorted(BUILTIN_PLACEHOLDERS.intersection(value))
+        reserved = sorted(RESERVED_PLACEHOLDERS.intersection(value))
         if reserved:
             raise ValueError(f"test_data key(s) {', '.join(reserved)} are reserved for built-in placeholders")
         return value
@@ -552,7 +553,9 @@ class TestCase(_Model):
             if isinstance(payload, SqlCall) and payload.db is not None and payload.db not in self.test_data:
                 malformed.append(f"steps[{number}].sql.db {payload.db!r} is not a test_data entry; add it with the connection string (a secret reference)")
             saved |= {capture.name for capture in (payload.save if payload is not None else [])}
-            saved |= saved_names_in(step.action)
+            said = saved_names_in(step.action)
+            malformed.extend(f"steps[{number}].action saves {{{{{name}}}}}, a built-in placeholder; save it under another name" for name in sorted(said & RESERVED_PLACEHOLDERS))
+            saved |= said - RESERVED_PLACEHOLDERS
         if unknown or malformed:
             problems = malformed + (
                 [f"unknown placeholder(s) {', '.join(unknown)}; known names: {', '.join(sorted(known | saved))}; define them in test_data or as variables of the case's environment"] if unknown else []
