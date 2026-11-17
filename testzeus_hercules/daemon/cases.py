@@ -19,7 +19,7 @@ from typing import AbstractSet, Any, Literal
 
 from pydantic import ValidationError
 
-from testzeus_hercules.cases.gherkin import DATA_SUFFIX, FeatureData, GherkinError, compile_feature, data_file, load_feature, slugify
+from testzeus_hercules.cases.gherkin import DATA_SUFFIX, MAX_DATA_BYTES, FeatureData, GherkinError, compile_feature, data_file, load_feature, slugify
 from testzeus_hercules.cases.step_files import files_dir
 from testzeus_hercules.cases.models import BUILTIN_PLACEHOLDERS, EnvironmentRef, Step, TestCase, TestDataValue, placeholder_names_in
 from testzeus_hercules.daemon.models import Environment
@@ -331,9 +331,13 @@ def save_case(cases_dir: Path, *, test_case: TestCase | None, gherkin: str | Non
     if folder and not directory.is_dir():
         raise CaseError(f"there is no folder {folder}")
     cases_dir.mkdir(parents=True, exist_ok=True)
+    sidecar: str | None = None
     if gherkin is not None:
         case = compile_gherkin(gherkin, test_data=test_data)
         path, data = directory / f"{case.id}.feature", gherkin if gherkin.endswith("\n") else gherkin + "\n"
+        sidecar = FeatureData(test_data=case.test_data).model_dump_json(indent=2) + "\n" if case.test_data else None
+        if sidecar is not None and len(sidecar.encode("utf-8")) > MAX_DATA_BYTES:
+            raise CaseError(f"the test data takes more than {MAX_DATA_BYTES // 1024} KiB once saved; keep large values in files attached to the case")
     else:
         assert test_case is not None
         case = test_case
@@ -344,7 +348,7 @@ def save_case(cases_dir: Path, *, test_case: TestCase | None, gherkin: str | Non
         raise CaseError(f"a case with the id {case.id} is already in {where} ({other.name}): case ids are unique across folders and file types, so give this one another id or open that one")
     _write_new(path, data, overwrite)
     if gherkin is not None:
-        _save_feature_data(path, case.test_data)
+        _save_feature_data(path, sidecar)
     return path, case
 
 
@@ -539,13 +543,13 @@ def _remove_tree(folder: Path) -> None:
         shutil.rmtree(folder)
 
 
-def _save_feature_data(path: Path, test_data: dict[str, TestDataValue]) -> None:
+def _save_feature_data(path: Path, text: str | None) -> None:
     sidecar = data_file(path)
-    if not test_data:
+    if text is None:
         if sidecar.is_file() and not sidecar.is_symlink():
             sidecar.unlink()
         return
-    _write_new(sidecar, FeatureData(test_data=test_data).model_dump_json(indent=2) + "\n", True)
+    _write_new(sidecar, text, True)
 
 
 # --------------------------------------------------------------------------- environments

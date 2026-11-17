@@ -42,7 +42,7 @@ _MAX_SLUG = 100
 
 
 DATA_SUFFIX = ".data.json"
-_MAX_DATA_BYTES = 256 * 1024
+MAX_DATA_BYTES = 256 * 1024
 
 
 class FeatureData(BaseModel):
@@ -225,7 +225,7 @@ def read_feature_data(path: Path) -> dict[str, TestDataValue]:
     if sidecar.is_symlink() or not sidecar.is_file():
         return {}
     try:
-        if sidecar.stat().st_size > _MAX_DATA_BYTES:
+        if sidecar.stat().st_size > MAX_DATA_BYTES:
             raise GherkinError(f"{sidecar.name}: the test data file is too large")
         return FeatureData.model_validate_json(sidecar.read_bytes()).test_data
     except OSError as exc:

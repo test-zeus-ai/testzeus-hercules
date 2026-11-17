@@ -442,3 +442,14 @@ def test_folder_work_covers_every_case_and_reads_each_one_a_bounded_number_of_ti
     result = case_files.delete_folder(cases_dir, project, "Big", "delete_cases")
     assert result["deleted"] == 6 and not (cases_dir / "Big").exists()
     assert len(loads) <= 6 + 4
+
+
+def test_feature_test_data_too_large_to_read_back_is_refused_before_anything_is_written(config) -> None:  # type: ignore[no-untyped-def]
+    cases_dir = _cases_dir(config)
+    with client_for(config) as client:
+        refused = client.post("/api/cases", json={"gherkin": FEATURE, "test_data": {f"value_{index}": "x" * 4000 for index in range(70)}})
+        kept = client.post("/api/cases", json={"gherkin": FEATURE, "test_data": {"card": "4242"}})
+
+    assert refused.status_code == 422 and "256 KiB" in refused.text
+    assert kept.status_code == 201
+    assert sorted(path.name for path in cases_dir.iterdir()) == ["shopper-pays-by-card.data.json", "shopper-pays-by-card.feature"]
