@@ -163,7 +163,10 @@ def _file_path(url: str) -> Path:
     parts = urlsplit(url)
     if parts.netloc not in ("", "localhost"):
         raise InvalidURLError("cannot open a file URL on another host")
-    return Path(url2pathname(parts.path))
+    path = Path(url2pathname(parts.path))
+    if not path.is_absolute():
+        raise InvalidURLError("cannot open a file outside the project folder (or the folder of a file environment.base_url)")
+    return path
 
 
 def _confined_file_url(url: str, base_url: str | None, file_roots: Iterable[Path | str] | None) -> str:

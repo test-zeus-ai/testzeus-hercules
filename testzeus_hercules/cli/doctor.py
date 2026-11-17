@@ -205,7 +205,7 @@ def run_doctor(
             status="fail",
             exit_code=EXIT_FAILED,
         )
-        _write(report, options, out)
+        _write(report, options, out, environ)
         return report.exit_code
 
     paths = HerculesPaths.from_settings(settings)
@@ -215,7 +215,7 @@ def run_doctor(
     report = _with_decider(report, summary, decider_checks)
     report = _with_decider(report, report.decider, _mobile_checks(settings, environ, deps))
     report = _with_checks(report, [_scanner_check(environ, paths, deps)])
-    _write(report, options, out)
+    _write(report, options, out, environ)
     _send_telemetry(settings, paths, deps, report, started)
     return report.exit_code
 
@@ -595,8 +595,8 @@ def _summary(settings: Settings) -> SettingsSummary:
     )
 
 
-def _write(report: DoctorReport, options: DoctorOptions, out: TextIO) -> None:
-    out.write(report.model_dump_json(indent=2) + "\n" if options.json_output else render_text(report, Style.for_stream(out)))
+def _write(report: DoctorReport, options: DoctorOptions, out: TextIO, environ: Mapping[str, str]) -> None:
+    out.write(report.model_dump_json(indent=2) + "\n" if options.json_output else render_text(report, Style.for_stream(out, environ)))
     out.flush()
 
 

@@ -86,4 +86,8 @@ def test_a_file_base_url_allows_its_own_folder_only(tmp_path: Path) -> None:
     with pytest.raises(InvalidURLError, match="outside"):
         resolve_url("../../../../../../etc/passwd", base)
     with pytest.raises(InvalidURLError, match="outside"):
+        resolve_url("../" * 64 + "etc/passwd", base, file_roots=[Path.cwd(), site])
+    with pytest.raises(InvalidURLError, match="outside"):
+        resolve_url("file:etc/passwd", base)
+    with pytest.raises(InvalidURLError, match="outside"):
         resolve_url("file:///etc/passwd", base)

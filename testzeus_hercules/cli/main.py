@@ -291,8 +291,14 @@ def main(
 ) -> int:
     """Run the ``hercules`` command and return its exit code."""
     out = stdout if stdout is not None else sys.stdout
+    from testzeus_hercules.cli.parser import ERROR_ENV
+
     parser = build_parser()
-    args = parser.parse_args(argv)
+    token = ERROR_ENV.set(env)
+    try:
+        args = parser.parse_args(argv)
+    finally:
+        ERROR_ENV.reset(token)
     if args.no_telemetry:
         env = _without_telemetry(env)
     if args.command not in (None, "setup"):

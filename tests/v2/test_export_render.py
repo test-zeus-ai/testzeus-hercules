@@ -416,7 +416,7 @@ def test_downloads_and_file_checks_export_to_both_languages(tmp_path: Path) -> N
     ast.parse(python)
     for name in ("import csv", "import io", "import tempfile", "import json", "import zipfile", "from pathlib import Path"):
         assert name in python
-    if node() is not None:
+    if node() is not None and UI_TYPESCRIPT.is_dir():
         assert typescript_syntax_errors(typescript, tmp_path) == []
 
 

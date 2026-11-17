@@ -10,11 +10,14 @@ import argparse
 import difflib
 import re
 import sys
+from collections.abc import Mapping
+from contextvars import ContextVar
 from typing import NoReturn
 
 from testzeus_hercules.cli.style import Style
 
 _INVALID_CHOICE = re.compile(r"invalid choice: '(?P<given>[^']*)' \(choose from (?P<choices>.*)\)")
+ERROR_ENV: ContextVar[Mapping[str, str] | None] = ContextVar("hercules_parser_env", default=None)
 
 
 def did_you_mean(message: str) -> str | None:
@@ -31,7 +34,7 @@ def did_you_mean(message: str) -> str | None:
 
 class HerculesArgumentParser(argparse.ArgumentParser):
     def error(self, message: str) -> NoReturn:
-        style = Style.for_stream(sys.stderr)
+        style = Style.for_stream(sys.stderr, ERROR_ENV.get())
         self.print_usage(sys.stderr)
         hint = did_you_mean(message)
         suffix = f"\n{style.accent('hint:')} {hint}" if hint else ""
