@@ -1,4 +1,5 @@
-import { BASE_URL_PATTERN, SECRET_NAME_PATTERN, VIEWPORT_PATTERN } from "./caseForm";
+import { BASE_URL_PATTERN, BUILTIN_PLACEHOLDERS, DATA_KEY_PATTERN, PLACEHOLDER, SECRET_NAME_PATTERN, VIEWPORT_PATTERN } from "./caseForm";
+import type { FormDatum } from "./caseForm";
 import { EMPTY_BROWSER_OPTIONS, browserOptionsBody, browserOptionsToForm, browserSummary, validateBrowserOptions } from "./browserOptionsForm";
 import type { BrowserOptionsForm } from "./browserOptionsForm";
 import type { Environment, MobileApp } from "./types";
@@ -32,7 +33,7 @@ export interface EnvForm {
   platformVersion: string;
   appiumUrl: string;
   cloud: "" | "browserstack" | "saucelabs";
-  secrets: string;
+  variables: FormDatum[];
 }
 
 export const EMPTY_ENV: EnvForm = {
@@ -52,14 +53,23 @@ export const EMPTY_ENV: EnvForm = {
   platformVersion: "",
   appiumUrl: "",
   cloud: "",
-  secrets: "",
+  variables: [],
 };
 
-export function secretList(text: string): string[] {
-  return text
-    .split(/[\s,]+/)
-    .map((item) => item.trim())
-    .filter(Boolean);
+export function environmentVariables(env: Pick<Environment, "secret_names" | "variables">): FormDatum[] {
+  const rows: FormDatum[] = Object.entries(env.variables ?? {}).map(([key, value]) => (typeof value === "string" ? { key, value, secret: false } : { key, value: value.secret, secret: true }));
+  for (const name of env.secret_names) {
+    if (!rows.some((row) => row.key === name)) rows.push({ key: name, value: name, secret: true });
+  }
+  return rows;
+}
+
+export function environmentNames(env: Pick<Environment, "secret_names" | "variables"> | undefined): string[] {
+  return env ? environmentVariables(env).map((row) => row.key) : [];
+}
+
+export function secretVariables(rows: FormDatum[]): string[] {
+  return [...new Set(rows.filter((row) => row.secret && SECRET_NAME_PATTERN.test(row.value.trim())).map((row) => row.value.trim()))].sort();
 }
 
 export function envToForm(env: Environment): EnvForm {
@@ -82,7 +92,7 @@ export function envToForm(env: Environment): EnvForm {
     platformVersion: app?.platform_version ?? "",
     appiumUrl: app?.appium_url ?? "",
     cloud: app?.cloud ?? "",
-    secrets: env.secret_names.join(", "),
+    variables: environmentVariables(env),
   };
 }
 
@@ -99,8 +109,19 @@ export function validateEnvironment(form: EnvForm): Record<string, string> {
     errors.device = "Firefox has no phone or tablet mode: choose Chromium, Chrome, Edge or WebKit for a device.";
   }
   if (form.target === "app") Object.assign(errors, validateApp(form));
-  const bad = secretList(form.secrets).filter((name) => !SECRET_NAME_PATTERN.test(name));
-  if (bad.length) errors.secrets = `Not environment variable names: ${bad.join(", ")} (use UPPER_CASE).`;
+  const keys = new Set<string>();
+  form.variables.forEach((row, offset) => {
+    const key = row.key.trim();
+    if (!DATA_KEY_PATTERN.test(key)) errors[`variables.${offset}.key`] = "Names start with a letter or '_' and use letters, digits or '_'.";
+    else if (BUILTIN_PLACEHOLDERS.includes(key)) errors[`variables.${offset}.key`] = `'${key}' is a built-in placeholder.`;
+    else if (keys.has(key)) errors[`variables.${offset}.key`] = "This name is used twice.";
+    keys.add(key);
+    if (row.secret && !SECRET_NAME_PATTERN.test(row.value.trim())) errors[`variables.${offset}.value`] = "A secret names an environment variable, e.g. SHOP_PASSWORD.";
+  });
+  if (!errors.baseUrl) {
+    const missing = [...baseUrl.matchAll(PLACEHOLDER)].map((match) => match[1].trim()).filter((name) => !keys.has(name) && !BUILTIN_PLACEHOLDERS.includes(name));
+    if (missing.length) errors.baseUrl = `Add {{${missing[0]}}} below as a variable or secret.`;
+  }
   return errors;
 }
 
@@ -152,7 +173,8 @@ export function environmentBody(form: EnvForm, overwrite: boolean): Record<strin
     browser_options: web ? browserOptionsBody(form.browserOptions) : null,
     device: web ? form.device.trim() || null : null,
     mobile: web ? null : mobileApp(form),
-    secret_names: secretList(form.secrets),
+    secret_names: [],
+    variables: Object.fromEntries(form.variables.filter((row) => row.key.trim()).map((row) => [row.key.trim(), row.secret ? { secret: row.value.trim() } : row.value])),
     overwrite,
   };
 }

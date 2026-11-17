@@ -281,3 +281,56 @@ describe("StartRunDialog re-run", () => {
     expect(onStarted).not.toHaveBeenCalled();
   });
 });
+
+describe("StartRunDialog environment", () => {
+  function renderSaved() {
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === "/api/runs" && init?.method === "POST") return respond({ run_id: "r_1", status: "queued", ui_url: "/runs/r_1" }, 201);
+      if (url === "/api/cases")
+        return respond({
+          cases: [
+            { name: "a.feature", path: ".hercules/cases/a.feature", kind: "feature", valid: true, id: "a", title: "A", steps: 1, environment: "staging" },
+            { name: "b.feature", path: ".hercules/cases/b.feature", kind: "feature", valid: true, id: "b", title: "B", steps: 1, environment: null },
+          ],
+        });
+      if (url === "/api/environments") return respond({ environments: [{ name: "staging", base_url: "http://127.0.0.1:8124" }, { name: "prod", base_url: "https://shop.example" }] });
+      if (url === "/api/models") return respond(MODELS);
+      return respond({ error: "not found" }, 404);
+    });
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <StartRunDialog onClose={() => undefined} onStarted={() => undefined} />
+      </QueryClientProvider>,
+    );
+  }
+  const select = () => screen.getByLabelText("Environment") as HTMLSelectElement;
+
+  it("starts on the case's own environment, with None unavailable, and sends nothing extra", async () => {
+    renderSaved();
+    await waitFor(() => expect(select().value).toBe("staging"));
+    expect(screen.queryByText("From the case")).toBeNull();
+    expect((screen.getByRole("option", { name: "None" }) as HTMLOptionElement).disabled).toBe(true);
+    expect(screen.getByText(/The case runs in staging/)).toBeTruthy();
+    fireEvent.click(startButton());
+    await waitFor(() => expect(runPosted()).toBe(true));
+    expect(postedBody()).not.toHaveProperty("environment");
+  });
+
+  it("shows None for a case without one and sends a picked environment", async () => {
+    renderSaved();
+    await waitFor(() => expect(select().value).toBe("staging"));
+    fireEvent.change(screen.getByLabelText(/^Case/), { target: { value: ".hercules/cases/b.feature" } });
+    expect(select().value).toBe("");
+    expect((screen.getByRole("option", { name: "None" }) as HTMLOptionElement).disabled).toBe(false);
+    fireEvent.change(select(), { target: { value: "prod" } });
+    fireEvent.click(startButton());
+    await waitFor(() => expect(runPosted()).toBe(true));
+    expect(postedBody().environment).toBe("prod");
+  });
+
+  it("reads the environment from pasted Gherkin", async () => {
+    renderDialog();
+    fireEvent.change(screen.getByLabelText("Gherkin"), { target: { value: `@env:staging\n${GHERKIN}` } });
+    await waitFor(() => expect(select().value).toBe("staging"));
+  });
+});

@@ -76,7 +76,8 @@ from testzeus_hercules.cases.browser_options import BrowserOptions
 from testzeus_hercules.engine.browser_launch import VIDEO_DIRNAME, BrowserSetupError, browser_launch
 from testzeus_hercules.engine.browser_process import forget_browser, record_browser
 from testzeus_hercules.engine.control import RetryStep, RunControl, SkipStep, StepBlocked
-from testzeus_hercules.engine.data import CaseData, protect_case
+from testzeus_hercules.cases.reference_files import load_reference_context, using_reference
+from testzeus_hercules.engine.data import CaseData, MissingSecretError, protect_case
 from testzeus_hercules.engine.evidence import EvidenceStore
 from testzeus_hercules.engine.gate import threshold_for
 from testzeus_hercules.engine.failure import classify_failure, failure_summary
@@ -322,6 +323,15 @@ class RunState(TypedDict, total=False):
     amendments: tuple[Amendment, ...]
 
 
+def _resolved_base_url(template: str | None, data: CaseData) -> str | None:
+    if not template:
+        return None
+    try:
+        return data.resolve(template, captured=False)
+    except MissingSecretError:
+        return template
+
+
 class _Run:
     """One run's resources and graph nodes; the browser lives in an exit stack closed by ``run_case``."""
 
@@ -331,6 +341,7 @@ class _Run:
         case, hidden = protect_case(case)
         self.case, self.ctx, self.deps, self.stack = case, ctx, deps, stack
         self.data = CaseData.from_case(case, env=deps.env, run_id=ctx.run_id, hidden=hidden)
+        self.base_url = _resolved_base_url(case.environment.base_url, self.data)
         # Every decision request leaves with the run's secrets and any URL credential masked.
         self.decider = MaskingDecider(deps.decider, self.data.redact)
         self.evidence = EvidenceStore(ctx.paths.run_dir(ctx.run_id), ctx.run_id, redact=self.data.redact)
@@ -338,7 +349,7 @@ class _Run:
             data=self.data,
             evidence=self.evidence,
             project_dir=ctx.paths.project_dir,
-            base_url=case.environment.base_url,
+            base_url=self.base_url,
             interpreter=ServiceInterpreter(llm=deps.interpreter.model if deps.interpreter is not None else None),
             hint=case_hint(case.tags),
             events=ctx.events,
@@ -538,8 +549,8 @@ class _Run:
             return {}
         assert self.runner is not None
         page, data = self.page, self.data
-        if str(getattr(page, "url", "") or "about:blank") == "about:blank" and case.environment.base_url:
-            opened = await deps.actions.open_url(page, case.environment.base_url, base_url=case.environment.base_url, file_roots=(self.ctx.paths.project_dir,))
+        if str(getattr(page, "url", "") or "about:blank") == "about:blank" and self.base_url:
+            opened = await deps.actions.open_url(page, self.base_url, base_url=self.base_url, file_roots=(self.ctx.paths.project_dir,))
             if not opened.ok:
                 return {"setup_error": f"preconditions could not be checked: the base URL did not open ({data.redact(opened.detail)})"}
         try:
@@ -697,7 +708,7 @@ class _Run:
                 data=self.data,
                 evidence=self.evidence,
                 actions=self.deps.actions,
-                base_url=self.case.environment.base_url,
+                base_url=self.base_url,
                 file_roots=(self.ctx.paths.project_dir,),
                 threshold=threshold_for(_engine_name(self.deps.decider)),
                 threshold_by_engine=threshold_for,
@@ -1184,6 +1195,7 @@ async def run_case(case: TestCase, ctx: RunContext, deps: RunDeps, *, resume: bo
         config["configurable"] = {"thread_id": ctx.run_id}
     async with contextlib.AsyncExitStack() as stack:
         run = _Run(case, ctx, deps, stack)
+        stack.enter_context(using_reference(load_reference_context(ctx.paths.project_dir, run.case.environment.ref, run.data.redact, case_id=run.case.id)))
         graph = run.graph()
         if resume:
             if deps.checkpointer is None:

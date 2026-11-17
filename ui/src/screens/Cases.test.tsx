@@ -119,4 +119,114 @@ describe("CasesScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: /gherkin/i }));
     expect(confirm).not.toHaveBeenCalled();
   });
+
+  it("edits a feature's test data and saves it with the Gherkin", async () => {
+    const posted: Record<string, unknown>[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string, init?: RequestInit) => {
+        if (url === "/api/cases") {
+          if (init?.method === "POST") {
+            posted.push(JSON.parse(String(init.body)));
+            return respond({ name: "login.feature", path: ".hercules/cases/login.feature", id: "login" }, 201);
+          }
+          return respond(CASES);
+        }
+        if (url === "/api/cases/login.feature") return respond({ ...saved("login.feature", LOGIN), test_case: { ...saved("login.feature", LOGIN).test_case, test_data: { user: "ana" } } });
+        if (url === "/api/cases/login.feature/files") return respond({ case: "login", files: [], max_files: 20, max_bytes: 26214400, model: "local" });
+        if (url === "/api/cases/validate") return respond({ valid: true, error: null, test_case: { id: "login", title: "Login", steps: [{ action: "Open" }] } });
+        return respond({ error: "not found" }, 404);
+      }),
+    );
+    renderAt("/cases/login.feature");
+    await waitFor(() => expect(editor().value).toBe(LOGIN));
+    fireEvent.click(screen.getByRole("tab", { name: "Form" }));
+    await waitFor(() => expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe("user"));
+    expect(screen.getByRole("button", { name: "Add value" }).hasAttribute("disabled")).toBe(false);
+    await waitFor(() => expect(screen.getByText(/\.hercules\/case-files\/login\//)).toBeTruthy());
+    expect(screen.getByRole("button", { name: "Add files" }).hasAttribute("disabled")).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add value" }));
+    fireEvent.change(screen.getAllByLabelText("Name")[1], { target: { value: "password" } });
+    fireEvent.click(screen.getAllByRole("checkbox", { name: /secret/i })[1]);
+    fireEvent.change(screen.getByLabelText("Environment variable"), { target: { value: "SHOP_PASSWORD" } });
+    fireEvent.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0]).toEqual({ gherkin: LOGIN, test_data: { user: "ana", password: { secret: "SHOP_PASSWORD" } }, overwrite: true });
+  });
+
+  it("deletes the open case after asking", async () => {
+    const deleted: string[] = [];
+    const base = (globalThis.fetch as unknown as (url: string, init?: RequestInit) => Promise<Response>).bind(globalThis);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string, init?: RequestInit) => {
+        if (init?.method === "DELETE") {
+          deleted.push(url);
+          return respond({ name: "login.feature", removed: true });
+        }
+        return base(url, init);
+      }),
+    );
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const { location } = renderAt("/cases/login.feature");
+    await waitFor(() => expect(editor().value).toBe(LOGIN));
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(deleted).toEqual(["/api/cases/login.feature"]));
+    await waitFor(() => expect(location.history?.at(-1)).toBe("/cases"));
+    expect(await screen.findByText("Deleted login.feature")).toBeTruthy();
+  });
+
+  it("lists saved cases by title and step count, with the file name only as a hint", async () => {
+    renderAt("/cases");
+    const item = await screen.findByRole("link", { name: /Login/ });
+    expect(item.textContent).toBe("Login1 step");
+    expect(item.getAttribute("title")).toBe("login.feature");
+  });
+
+  it("explains @env tags and adds one for a saved environment", async () => {
+    const base = (globalThis.fetch as unknown as (url: string, init?: RequestInit) => Promise<Response>).bind(globalThis);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string, init?: RequestInit) => (url === "/api/environments" ? respond({ environments: [{ name: "shop", base_url: "http://127.0.0.1:8201", secret_names: [] }] }) : base(url, init))),
+    );
+    renderAt("/cases");
+    const help = await screen.findByRole("button", { name: "How to choose an environment" });
+    expect(help.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(help);
+    expect(screen.getByText(/tag above/)).toBeTruthy();
+    fireEvent.click(await screen.findByRole("button", { name: "@env:shop" }));
+    expect(editor().value.startsWith("@smoke @env:shop\nFeature: Sign in")).toBe(true);
+    expect(screen.getByRole("button", { name: "@env:shop" }).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("asks to quote bare placeholders on save and can add the quotes", async () => {
+    const posted: Record<string, unknown>[] = [];
+    const bare = 'Feature: Login\n  Scenario: Sign in\n    Given I open {{url}}\n';
+    const base = (globalThis.fetch as unknown as (url: string, init?: RequestInit) => Promise<Response>).bind(globalThis);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string, init?: RequestInit) => {
+        if (url === "/api/cases" && init?.method === "POST") {
+          posted.push(JSON.parse(String(init.body)));
+          return respond({ name: "login.feature", path: ".hercules/cases/login.feature", id: "login" }, 201);
+        }
+        return base(url, init);
+      }),
+    );
+    loginSource = bare;
+    renderAt("/cases/login.feature");
+    await waitFor(() => expect(editor().value).toBe(bare));
+    expect(screen.getByRole("note").textContent).toContain('line 3: {{url}} → "{{url}}"');
+
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    expect(await screen.findByRole("button", { name: "Add quotes and save" })).toBeTruthy();
+    expect(posted).toEqual([]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add quotes and save" }));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0].gherkin).toBe('Feature: Login\n  Scenario: Sign in\n    Given I open "{{url}}"\n');
+    expect(editor().value).toContain('Given I open "{{url}}"');
+  });
 });

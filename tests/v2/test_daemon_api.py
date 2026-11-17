@@ -265,7 +265,17 @@ def test_environments_crud_and_validation(config) -> None:  # type: ignore[no-un
 
     assert created.status_code == 201
     assert listing == [
-        {"name": "staging", "base_url": "https://staging.example.test", "viewport": None, "browser": None, "browser_options": None, "device": None, "mobile": None, "secret_names": ["SHOP_PASSWORD"]}
+        {
+            "name": "staging",
+            "base_url": "https://staging.example.test",
+            "viewport": None,
+            "browser": None,
+            "browser_options": None,
+            "device": None,
+            "mobile": None,
+            "secret_names": ["SHOP_PASSWORD"],
+            "variables": {},
+        }
     ]
     assert bad_name.status_code == 422 and bad_url.status_code == 422 and secret_value.status_code == 422
     assert duplicate.status_code == 409

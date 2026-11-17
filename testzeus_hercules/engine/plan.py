@@ -35,6 +35,7 @@ from pydantic import ValidationError
 
 from testzeus_hercules.cases.gherkin import VERIFY_ACTION
 from testzeus_hercules.cases.models import Step, TestCase
+from testzeus_hercules.cases.reference_files import reference_fingerprint
 from testzeus_hercules.cases.plan import ACTION_KINDS, Criterion, Plan, PlanReview, PlanStep, Risk, SourceStep
 from testzeus_hercules.engine.intent import PROMPT_VERSION, CaseReading, ItemRole, StepIntent, normalise_step_text
 
@@ -77,7 +78,8 @@ def case_hash(case: TestCase) -> str:
 
 def plan_key(digest: str, model_id: str) -> str:
     """The key of a case's plans: the case's hash, the reading prompt's version and the model that read it."""
-    return hashlib.sha256(json.dumps([digest, PROMPT_VERSION, model_id or ""]).encode("utf-8")).hexdigest()
+    reference = reference_fingerprint()
+    return hashlib.sha256(json.dumps([digest, PROMPT_VERSION, model_id or "", *([reference] if reference else [])]).encode("utf-8")).hexdigest()
 
 
 def _flat(text: str | None) -> str:

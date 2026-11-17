@@ -248,6 +248,7 @@ class Decision(BaseModel):
     latency_ms: int = Field(ge=0)
     cost_usd: float | None = Field(default=None, ge=0.0)
     cached: bool = False
+    references: list[str] = Field(default_factory=list)
 
     def answer(self, qid: str) -> Answer:
         """Return the answer to ``qid`` or raise :class:`DecisionError` when it is missing."""

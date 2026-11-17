@@ -17,6 +17,9 @@ scan findings in ``RunResult.security``.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import AbstractSet, Annotated, ClassVar, Literal, Union
 from urllib.parse import urlsplit
 
@@ -454,6 +457,35 @@ class CaseSource(_Model):
     files_changed: list[NonEmpty] = Field(default_factory=list)
 
 
+def placeholder_names_in(text: str) -> list[str]:
+    return [raw.strip() for raw in _PLACEHOLDER.findall(text) if _NAME.fullmatch(raw.strip())]
+
+
+_environment_names: Callable[[str], AbstractSet[str]] | None = None
+_EXTRA_NAMES: ContextVar[frozenset[str]] = ContextVar("hercules_extra_placeholder_names", default=frozenset())
+
+
+def set_environment_names(lookup: Callable[[str], AbstractSet[str]] | None) -> None:
+    global _environment_names
+    _environment_names = lookup
+
+
+@contextmanager
+def placeholder_names(names: AbstractSet[str]) -> Iterator[None]:
+    token = _EXTRA_NAMES.set(frozenset(names) | _EXTRA_NAMES.get())
+    try:
+        yield
+    finally:
+        _EXTRA_NAMES.reset(token)
+
+
+def outside_names(ref: str | None) -> frozenset[str]:
+    found = set(_EXTRA_NAMES.get())
+    if ref is not None and _environment_names is not None:
+        found |= set(_environment_names(ref))
+    return frozenset(found)
+
+
 class TestCase(_Model):
     """A test case: environment, data, and ordered steps. NL-compiled cases start as drafts."""
 
@@ -483,8 +515,8 @@ class TestCase(_Model):
 
     @model_validator(mode="after")
     def _known_placeholders(self) -> TestCase:
-        """Every ``{{name}}`` is test data, a built-in, or a value an earlier step saves; every ``db`` names test data."""
-        known = BUILTIN_PLACEHOLDERS | set(self.test_data)
+        """Every ``{{name}}`` is test data, an environment variable, a built-in, or a value an earlier step saves; every ``db`` names test data."""
+        known = BUILTIN_PLACEHOLDERS | set(self.test_data) | outside_names(self.environment.ref)
         unknown: list[str] = []
         malformed: list[str] = []
 
@@ -508,7 +540,9 @@ class TestCase(_Model):
                 malformed.append(f"steps[{number}].sql.db {payload.db!r} is not a test_data entry; add it with the connection string (a secret reference)")
             saved |= {capture.name for capture in (payload.save if payload is not None else [])}
         if unknown or malformed:
-            problems = malformed + ([f"unknown placeholder(s) {', '.join(unknown)}; known names: {', '.join(sorted(known | saved))}"] if unknown else [])
+            problems = malformed + (
+                [f"unknown placeholder(s) {', '.join(unknown)}; known names: {', '.join(sorted(known | saved))}; define them in test_data or as variables of the case's environment"] if unknown else []
+            )
             raise ValueError("; ".join(problems))
         return self
 

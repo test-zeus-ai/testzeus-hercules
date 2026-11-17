@@ -1,13 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent } from "react";
+import { EnvironmentDetails } from "../components/EnvironmentDetails";
+import { EnvironmentFiles } from "../components/ReferenceFiles";
+import { EnvironmentVariables } from "../components/EnvironmentVariables";
 import { Field, RequiredNote } from "../components/Field";
 import { Icon } from "../components/Icon";
-import { ApiError, api, post } from "../lib/api";
-import { EMPTY_ENV, envToForm, environmentBody, targetSummary, validateEnvironment, type EnvForm } from "../lib/environmentForm";
+import { ApiError, api, post, remove } from "../lib/api";
+import { EMPTY_ENV, envToForm, environmentBody, environmentVariables, targetSummary, validateEnvironment, type EnvForm } from "../lib/environmentForm";
 import { BROWSER_CHOICES, browserOptionsBody, type BrowserOptionsForm } from "../lib/browserOptionsForm";
 import type { Environment } from "../lib/types";
 
 export { validateEnvironment };
+
+export const deletePrompt = (name: string) => `Delete the environment ${name} and its reference files? Cases that name it will no longer find it.`;
 
 export function EnvironmentsScreen() {
   const client = useQueryClient();
@@ -15,7 +20,9 @@ export function EnvironmentsScreen() {
   const devices = useQuery({ queryKey: ["devices"], queryFn: () => api<{ devices: string[] }>("/api/devices"), staleTime: Infinity });
   const [form, setForm] = useState<EnvForm>(EMPTY_ENV);
   const [editing, setEditing] = useState<string | null>(null);
+  const [opened, setOpened] = useState(0);
   const [touched, setTouched] = useState(false);
+  const [mode, setMode] = useState<"view" | "edit">("edit");
   const errors = validateEnvironment(form);
   const save = useMutation({
     mutationFn: (overwrite: boolean) => post<Environment>("/api/environments", environmentBody(form, overwrite)),
@@ -28,6 +35,13 @@ export function EnvironmentsScreen() {
   // A save's outcome (a 409 "Replace it" in particular) belongs to the form it was made for:
   // editing the form or opening another environment drops it, so "Replace it" can never
   // overwrite with values the conflict was not about.
+  const drop = useMutation({
+    mutationFn: (name: string) => remove<{ name: string; removed: boolean }>(`/api/environments/${encodeURIComponent(name)}`),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["environments"] });
+      startNew();
+    },
+  });
   const resetSave = save.reset;
   useEffect(() => resetSave(), [form, resetSave]);
 
@@ -39,23 +53,39 @@ export function EnvironmentsScreen() {
   const shown = touched ? errors : {};
   const saveError = save.error instanceof ApiError ? save.error : null;
   const list = envs.data?.environments ?? [];
+  const viewed = mode === "view" ? list.find((env) => env.name === editing) : undefined;
+
+  function startNew() {
+    setForm(EMPTY_ENV);
+    setEditing(null);
+    setMode("edit");
+    setOpened((count) => count + 1);
+    setTouched(false);
+  }
+  const view = (env: Environment) => {
+    setEditing(env.name);
+    setMode("view");
+    drop.reset();
+  };
+  const edit = (env: Environment) => {
+    setForm(envToForm(env));
+    setEditing(env.name);
+    setMode("edit");
+    setOpened((count) => count + 1);
+    setTouched(false);
+  };
+  const confirmDelete = (name: string) => {
+    if (window.confirm(deletePrompt(name))) drop.mutate(name);
+  };
 
   return (
     <section className="page" aria-labelledby="envs-title">
       <header className="page-head">
         <div>
           <h1 id="envs-title">Environments</h1>
-          <p className="page-sub">Where cases run: a web app (on a desktop or an emulated phone) or a native app on a device, and the secrets they may use, by environment-variable name only.</p>
+          <p className="page-sub">Where cases run: a web app (on a desktop or an emulated phone) or a native app on a device, and the variables and secrets their cases use as {"{{name}}"}.</p>
         </div>
-        <button
-          type="button"
-          className="button"
-          onClick={() => {
-            setForm(EMPTY_ENV);
-            setEditing(null);
-            setTouched(false);
-          }}
-        >
+        <button type="button" className="button" onClick={startNew}>
           <Icon name="plus" size={13} /> New environment
         </button>
       </header>
@@ -71,7 +101,7 @@ export function EnvironmentsScreen() {
                     <th scope="col">Name</th>
                     <th scope="col">Target</th>
                     <th scope="col">Viewport</th>
-                    <th scope="col">Secrets</th>
+                    <th scope="col">Variables</th>
                     <th scope="col">
                       <span className="visually-hidden">Edit</span>
                     </th>
@@ -79,32 +109,37 @@ export function EnvironmentsScreen() {
                 </thead>
                 <tbody>
                   {list.map((env) => (
-                    <tr key={env.name} className={env.name === editing ? "row-selected" : undefined}>
-                      <td className="mono nowrap">{env.name}</td>
+                    <tr key={env.name} className={`row-clickable${env.name === editing ? " row-selected" : ""}`} onClick={() => view(env)}>
+                      <td className="mono nowrap">
+                        <button type="button" className="link-button mono" onClick={() => view(env)} aria-label={`View ${env.name}`}>
+                          {env.name}
+                        </button>
+                      </td>
                       <td className="mono">{targetSummary(env)}</td>
                       <td>{env.mobile ? "device" : (env.viewport ?? "–")}</td>
                       <td>
-                        {env.secret_names.length ? (
-                          env.secret_names.map((secret) => (
-                            <span key={secret} className="tag mono">
-                              <Icon name="key" size={11} /> {secret}
+                        {environmentVariables(env).length ? (
+                          environmentVariables(env).map((row) => (
+                            <span key={row.key} className="tag mono" title={row.secret ? `secret: ${row.value}` : undefined}>
+                              {row.secret ? <Icon name="key" size={11} /> : null} {row.key}
                             </span>
                           ))
                         ) : (
                           <span className="muted">none</span>
                         )}
                       </td>
-                      <td>
+                      <td className="nowrap" onClick={(event) => event.stopPropagation()}>
+                        <button type="button" className="button button-small button-ghost" onClick={() => edit(env)}>
+                          Edit
+                        </button>
                         <button
                           type="button"
-                          className="button button-small button-ghost"
-                          onClick={() => {
-                            setForm(envToForm(env));
-                            setEditing(env.name);
-                            setTouched(false);
-                          }}
+                          className="button button-small button-ghost button-danger-text"
+                          onClick={() => confirmDelete(env.name)}
+                          aria-label={`Delete ${env.name}`}
+                          disabled={drop.isPending}
                         >
-                          Edit
+                          Delete
                         </button>
                       </td>
                     </tr>
@@ -114,81 +149,90 @@ export function EnvironmentsScreen() {
             </div>
           )}
         </div>
-        <form className="panel form" onSubmit={submit} noValidate aria-labelledby="env-form-title">
-          <h2 id="env-form-title">{editing ? `Edit ${editing}` : "New environment"}</h2>
-          <RequiredNote />
-          <Field id="env-name" label="Name" error={shown.name} required>
-            <input className="mono" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="staging" />
-          </Field>
-          <Field id="env-target" label="Target">
-            <select value={form.target} onChange={(event) => setForm({ ...form, target: event.target.value as EnvForm["target"] })}>
-              <option value="web">Web app (browser)</option>
-              <option value="app">Native app (Android or iOS device)</option>
-            </select>
-          </Field>
-          <Field
-            id="env-base-url"
-            label="Base URL"
-            error={shown.baseUrl}
-            required={form.target === "web"}
-            help={form.target === "app" ? "Optional: only API steps of the case use it." : undefined}
-          >
-            <input className="mono" value={form.baseUrl} onChange={(event) => setForm({ ...form, baseUrl: event.target.value })} placeholder="http://localhost:3000" />
-          </Field>
-          {form.target === "web" ? (
-            <>
-              <Field id="env-device" label="Phone or tablet" help="Emulate a device in the browser (a Playwright device profile). Leave empty for a desktop browser.">
-                <input className="mono" list="env-device-list" value={form.device} onChange={(event) => setForm({ ...form, device: event.target.value })} placeholder="iPhone 15" />
-              </Field>
-              <datalist id="env-device-list">
-                {(devices.data?.devices ?? []).map((name) => (
-                  <option key={name} value={name} />
-                ))}
-              </datalist>
-              <div className="field-row">
-                <Field id="env-viewport" label="Viewport" error={shown.viewport} help={form.device ? "Empty: the device's own viewport." : undefined}>
-                  <input className="mono" value={form.viewport} onChange={(event) => setForm({ ...form, viewport: event.target.value })} />
+        {viewed ? (
+          <EnvironmentDetails
+            env={viewed}
+            onEdit={() => edit(viewed)}
+            onDelete={() => confirmDelete(viewed.name)}
+            deleting={drop.isPending}
+            error={drop.error ? (drop.error as Error).message : null}
+          />
+        ) : (
+          <form className="panel form" onSubmit={submit} noValidate aria-labelledby="env-form-title">
+            <h2 id="env-form-title">{editing ? `Edit ${editing}` : "New environment"}</h2>
+            <RequiredNote />
+            <Field id="env-name" label="Name" error={shown.name} required>
+              <input className="mono" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="staging" />
+            </Field>
+            <Field id="env-target" label="Target">
+              <select value={form.target} onChange={(event) => setForm({ ...form, target: event.target.value as EnvForm["target"] })}>
+                <option value="web">Web app (browser)</option>
+                <option value="app">Native app (Android or iOS device)</option>
+              </select>
+            </Field>
+            <Field
+              id="env-base-url"
+              label="Base URL"
+              error={shown.baseUrl}
+              required={form.target === "web"}
+              help={form.target === "app" ? "Optional: only API steps of the case use it." : undefined}
+            >
+              <input className="mono" value={form.baseUrl} onChange={(event) => setForm({ ...form, baseUrl: event.target.value })} placeholder="http://localhost:3000" />
+            </Field>
+            {form.target === "web" ? (
+              <>
+                <Field id="env-device" label="Phone or tablet" help="Emulate a device in the browser (a Playwright device profile). Leave empty for a desktop browser.">
+                  <input className="mono" list="env-device-list" value={form.device} onChange={(event) => setForm({ ...form, device: event.target.value })} placeholder="iPhone 15" />
                 </Field>
-                <Field id="env-browser" label="Browser">
-                  <select value={form.browser} onChange={(event) => setForm({ ...form, browser: event.target.value })}>
-                    {BROWSER_CHOICES.map((choice) => (
-                      <option key={choice.value} value={choice.value}>
-                        {choice.label}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-              </div>
-              <BrowserOptionsFields form={form} setForm={setForm} errors={shown} />
-            </>
-          ) : (
-            <AppFields form={form} setForm={setForm} errors={shown} />
-          )}
-          <Field
-            id="env-secrets"
-            label="Secret references"
-            error={shown.secrets}
-            help="Names of environment variables in the daemon's environment. Values are read at run time and never stored or shown here."
-          >
-            <input className="mono" value={form.secrets} onChange={(event) => setForm({ ...form, secrets: event.target.value })} placeholder="SHOP_USER, SHOP_PASSWORD" />
-          </Field>
-          {saveError ? (
-            <p className="callout callout-fail" role="alert">
-              {saveError.message}
-              {saveError.status === 409 ? (
-                <button type="button" className="link-button" onClick={() => save.mutate(true)}>
-                  Replace it
+                <datalist id="env-device-list">
+                  {(devices.data?.devices ?? []).map((name) => (
+                    <option key={name} value={name} />
+                  ))}
+                </datalist>
+                <div className="field-row">
+                  <Field id="env-viewport" label="Viewport" error={shown.viewport} help={form.device ? "Empty: the device's own viewport." : undefined}>
+                    <input className="mono" value={form.viewport} onChange={(event) => setForm({ ...form, viewport: event.target.value })} />
+                  </Field>
+                  <Field id="env-browser" label="Browser">
+                    <select value={form.browser} onChange={(event) => setForm({ ...form, browser: event.target.value })}>
+                      {BROWSER_CHOICES.map((choice) => (
+                        <option key={choice.value} value={choice.value}>
+                          {choice.label}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                </div>
+                <BrowserOptionsFields form={form} setForm={setForm} errors={shown} />
+              </>
+            ) : (
+              <AppFields form={form} setForm={setForm} errors={shown} />
+            )}
+            <EnvironmentVariables rows={form.variables} errors={shown} onChange={(variables) => setForm({ ...form, variables })} />
+            <EnvironmentFiles key={opened} environment={editing || null} />
+            {saveError ? (
+              <p className="callout callout-fail" role="alert">
+                {saveError.message}
+                {saveError.status === 409 ? (
+                  <button type="button" className="link-button" onClick={() => save.mutate(true)}>
+                    Replace it
+                  </button>
+                ) : null}
+              </p>
+            ) : null}
+            {save.isSuccess && !touched ? <p className="notice" role="status">Saved .hercules/envs/{form.name}.json</p> : null}
+            <footer className="form-actions">
+              <button type="submit" className="button button-primary" disabled={save.isPending}>
+                <Icon name="save" size={14} /> Save environment
+              </button>
+              {editing && list.some((env) => env.name === editing) ? (
+                <button type="button" className="button" onClick={() => setMode("view")}>
+                  Close editor
                 </button>
               ) : null}
-            </p>
-          ) : null}
-          {save.isSuccess && !touched ? <p className="notice" role="status">Saved .hercules/envs/{form.name}.json</p> : null}
-          <footer className="form-actions">
-            <button type="submit" className="button button-primary" disabled={save.isPending}>
-              <Icon name="save" size={14} /> Save environment
-            </button>
-          </footer>
-        </form>
+            </footer>
+          </form>
+        )}
       </div>
     </section>
   );

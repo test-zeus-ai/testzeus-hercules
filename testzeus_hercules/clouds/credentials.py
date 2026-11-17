@@ -11,23 +11,20 @@ to a run, never to the process environment; nothing here logs or returns a key i
 
 from __future__ import annotations
 
-import os
 import re
-import stat
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
 from testzeus_hercules.clouds.registry import CLOUD_IDS, CloudId
+from testzeus_hercules.kernel.private_env import read_private_env, write_private_env
 from testzeus_hercules.kernel.settings import DeviceCloudSettings, Settings
 
 CLOUDS_FILENAME = "clouds.env"
 SAUCE_REGION_ENV = "SAUCE_REGION"
 SAUCELABS_REGIONS = ("us-west-1", "us-east-4", "eu-central-1")
 DEFAULT_SAUCE_REGION = "us-west-1"
-_PRIVATE_FILE = 0o600
-_PRIVATE_DIR = 0o700
 _MAX_FILE_BYTES = 16_384
 _MAX_VALUE = 512
 
@@ -82,42 +79,9 @@ def cloud_settings(settings: Settings, cloud: CloudId) -> DeviceCloudSettings:
     return getattr(settings.mobile, cloud)
 
 
-def _parse(text: str) -> dict[str, str]:
-    values: dict[str, str] = {}
-    for raw in text.splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#"):
-            continue
-        if line.startswith("export "):
-            line = line[len("export ") :].strip()
-        name, sep, value = line.partition("=")
-        value = value.strip()
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
-            value = value[1:-1]
-        if sep and name.strip():
-            values[name.strip()] = value.strip()
-    return values
-
-
 def read_clouds_file(home: Path) -> tuple[dict[str, str], str | None]:
     """``(values, problem)`` from ``clouds.env``; the problem never quotes the file."""
-    path = clouds_file(home)
-    try:
-        info = path.lstat()
-    except FileNotFoundError:
-        return {}, None
-    except OSError as exc:
-        return {}, f"cannot read {path} ({type(exc).__name__})"
-    if not stat.S_ISREG(info.st_mode):
-        return {}, f"{path} is not a regular file"
-    if os.name == "posix" and info.st_mode & 0o077:
-        return {}, f"{path} is readable by other users (mode {stat.S_IMODE(info.st_mode):o}); ignored. Fix it with: chmod 600 {path}"
-    if info.st_size > _MAX_FILE_BYTES:
-        return {}, f"{path} is larger than {_MAX_FILE_BYTES} bytes"
-    try:
-        return _parse(path.read_text(encoding="utf-8")), None
-    except (OSError, UnicodeDecodeError) as exc:
-        return {}, f"cannot read {path} ({type(exc).__name__})"
+    return read_private_env(clouds_file(home), _MAX_FILE_BYTES)
 
 
 def _region(cloud: CloudId, config: DeviceCloudSettings, env: Mapping[str, str], stored: Mapping[str, str]) -> tuple[str | None, RegionSource | None]:
@@ -173,22 +137,7 @@ def _clean(value: str, what: str) -> str:
 
 
 def _write(home: Path, values: Mapping[str, str]) -> Path:
-    home.mkdir(parents=True, exist_ok=True, mode=_PRIVATE_DIR)
-    path = clouds_file(home)
-    temporary = path.with_name(path.name + ".tmp")
-    lines = ["# Device cloud credentials saved by Hercules (readable by you only). Environment variables win."]
-    lines += [f"{name}={value}" for name, value in sorted(values.items())]
-    temporary.unlink(missing_ok=True)  # never write through a file or link left behind
-    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), _PRIVATE_FILE)
-    try:
-        if hasattr(os, "fchmod"):
-            os.fchmod(descriptor, _PRIVATE_FILE)
-        os.write(descriptor, ("\n".join(lines) + "\n").encode("utf-8"))
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
-    os.replace(temporary, path)
-    return path
+    return write_private_env(clouds_file(home), values, "Device cloud credentials saved by Hercules (readable by you only). Environment variables win.")
 
 
 def _checked_region(cloud: CloudId, region: str) -> str:

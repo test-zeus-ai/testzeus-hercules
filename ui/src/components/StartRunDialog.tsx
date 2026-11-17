@@ -1,11 +1,11 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { api, post } from "../lib/api";
-import { isCaseList, isModelsReport } from "../lib/guards";
-import { BASE_URL_PATTERN, errorLine } from "../lib/caseForm";
+import { isCaseList, isModelsReport, isRunCase } from "../lib/guards";
+import { BASE_URL_PATTERN, environmentTag, errorLine } from "../lib/caseForm";
 import { targetSummary } from "../lib/environmentForm";
 import { formFromSettings, rerunOptionsBody, runOptionsBody, validateRunOptions, type RunOptions } from "../lib/runOptions";
-import type { CaseEntry, Environment, ModelsReport, RerunScope, RunView } from "../lib/types";
+import type { CaseEntry, Environment, ModelsReport, RerunScope, RunView, TestCase } from "../lib/types";
 import { Field } from "./Field";
 import { GherkinEditor } from "./GherkinEditor";
 import { Modal } from "./Modal";
@@ -25,6 +25,7 @@ export interface StartRunInitial {
   source?: Source;
   casePath?: string;
   gherkin?: string;
+  testData?: Record<string, string | { secret: string }>;
 }
 
 /** Re-run this finished run instead of starting a new case: the fields start from its options. */
@@ -42,7 +43,7 @@ export function StartRunDialog({ onClose, onStarted, initial = {}, rerun }: { on
   const [gherkin, setGherkin] = useState(initial.gherkin ?? SAMPLE);
   const [description, setDescription] = useState("");
   const [initialForm] = useState(() => formFromSettings(rerun?.run.settings));
-  const [environment, setEnvironment] = useState(initialForm.environment);
+  const [chosenEnvironment, setChosenEnvironment] = useState<string | null>(initialForm.environment || null);
   const [baseUrl, setBaseUrl] = useState(initialForm.baseUrl);
   const [mode, setMode] = useState(initialForm.mode);
   const [egress, setEgress] = useState(initialForm.egress);
@@ -52,6 +53,21 @@ export function StartRunDialog({ onClose, onStarted, initial = {}, rerun }: { on
 
   const validCases = (cases.data?.cases ?? []).filter((entry) => entry.valid);
   const chosenCase = casePath || validCases[0]?.path || "";
+  const rerunCase = useQuery({
+    queryKey: ["run-case", rerun?.run.run_id],
+    queryFn: () => api<{ test_case: TestCase }>(`/api/runs/${encodeURIComponent(rerun?.run.run_id ?? "")}/case`, { guard: isRunCase }),
+    enabled: Boolean(rerun),
+    staleTime: Infinity,
+  });
+  const caseEnvironment = rerun
+    ? (rerunCase.data?.test_case.environment?.ref ?? null)
+    : source === "saved"
+      ? (validCases.find((entry) => entry.path === chosenCase)?.environment ?? null)
+      : source === "gherkin"
+        ? environmentTag(gherkin)
+        : null;
+  const environment = chosenEnvironment ?? caseEnvironment ?? "";
+  const requestedEnvironment = environment !== caseEnvironment ? environment : rerun ? initialForm.environment : "";
   const start = useMutation({
     mutationFn: (body: Record<string, unknown>) => post<{ run_id: string }>(rerun ? `/api/runs/${encodeURIComponent(rerun.run.run_id)}/rerun` : "/api/runs", body),
     onSuccess: (created) => onStarted(created.run_id),
@@ -69,7 +85,7 @@ export function StartRunDialog({ onClose, onStarted, initial = {}, rerun }: { on
     }
     if (baseUrl.trim() && !BASE_URL_PATTERN.test(baseUrl.trim())) return setLocalError("The base URL must be an http(s) URL with a host.");
     if (rerun) {
-      start.mutate({ scope: rerun.scope, ...rerunOptionsBody({ environment, baseUrl, mode, egress, headed, options }) });
+      start.mutate({ scope: rerun.scope, ...rerunOptionsBody({ environment: requestedEnvironment, baseUrl, mode, egress, headed, options }) });
       return;
     }
     const body: Record<string, unknown> = { mode };
@@ -79,12 +95,13 @@ export function StartRunDialog({ onClose, onStarted, initial = {}, rerun }: { on
     } else if (source === "gherkin") {
       if (!gherkin.trim()) return setLocalError("Paste a Gherkin scenario.");
       body.gherkin = gherkin;
+      if (initial.testData && Object.keys(initial.testData).length) body.test_data = initial.testData;
     } else {
       if (!description.trim()) return setLocalError("Describe the steps, one per line.");
       body.description = description;
     }
     if (baseUrl.trim()) body.base_url = baseUrl.trim();
-    if (environment) body.environment = environment;
+    if (requestedEnvironment) body.environment = requestedEnvironment;
     if (egress) body.egress = egress;
     if (headed) body.headed = true;
     start.mutate({ ...body, ...runOptionsBody(options) });
@@ -118,7 +135,17 @@ export function StartRunDialog({ onClose, onStarted, initial = {}, rerun }: { on
                   ] as const
                 ).map(([id, label]) => (
                   <label key={id} className={`segment${source === id ? " segment-on" : ""}`}>
-                    <input type="radio" name="source" value={id} checked={source === id} onChange={() => setSource(id)} className="visually-hidden" />
+                    <input
+                      type="radio"
+                      name="source"
+                      value={id}
+                      checked={source === id}
+                      onChange={() => {
+                        setSource(id);
+                        setChosenEnvironment(null);
+                      }}
+                      className="visually-hidden"
+                    />
                     {label}
                   </label>
                 ))}
@@ -127,11 +154,18 @@ export function StartRunDialog({ onClose, onStarted, initial = {}, rerun }: { on
 
             {source === "saved" ? (
               <Field id="start-case" label="Case" required>
-                <select value={chosenCase} onChange={(event) => setCasePath(event.target.value)} disabled={validCases.length === 0}>
+                <select
+                  value={chosenCase}
+                  onChange={(event) => {
+                    setCasePath(event.target.value);
+                    setChosenEnvironment(null);
+                  }}
+                  disabled={validCases.length === 0}
+                >
                   {validCases.length === 0 ? <option value="">No saved cases yet</option> : null}
                   {validCases.map((entry) => (
-                    <option key={entry.path} value={entry.path}>
-                      {entry.title ?? entry.name} ({entry.name})
+                    <option key={entry.path} value={entry.path} title={entry.name}>
+                      {entry.title ?? entry.name}
                     </option>
                   ))}
                 </select>
@@ -150,9 +184,11 @@ export function StartRunDialog({ onClose, onStarted, initial = {}, rerun }: { on
         )}
 
         <div className="field-row">
-          <Field id="start-environment" label="Environment">
-            <select value={environment} onChange={(event) => setEnvironment(event.target.value)}>
-              <option value="">From the case</option>
+          <Field id="start-environment" label="Environment" help={caseEnvironment ? `The case runs in ${caseEnvironment}; pick another to run it there instead.` : undefined}>
+            <select value={environment} onChange={(event) => setChosenEnvironment(event.target.value)}>
+              <option value="" disabled={Boolean(caseEnvironment)}>
+                None
+              </option>
               {environment && envs.data && !savedEnvs.some((env) => env.name === environment) ? <option value={environment}>{environment} (not saved)</option> : null}
               {savedEnvs.map((env) => (
                 <option key={env.name} value={env.name}>
@@ -172,7 +208,8 @@ export function StartRunDialog({ onClose, onStarted, initial = {}, rerun }: { on
               <option value="auto">Auto</option>
               <option value="pure">Pure (local model only)</option>
               <option value="hybrid" disabled={hybrid ? !hybrid.key_set : false}>
-                Hybrid (JEV decides){hybrid && !hybrid.key_set ? " — key not set" : ""}
+                Hybrid (JEV decides)
+                {hybrid && !hybrid.key_set ? " — key not set" : ""}
               </option>
             </select>
           </Field>

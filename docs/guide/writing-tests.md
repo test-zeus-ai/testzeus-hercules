@@ -79,12 +79,19 @@ A saved environment is a small JSON file in `.hercules/envs/`:
   "base_url": "http://localhost:3000",
   "viewport": "1280x800",
   "browser": "chromium",
-  "secret_names": ["APP_TEST_PASSWORD"]
+  "variables": {
+    "user": "ana",
+    "password": {"secret": "APP_TEST_PASSWORD"}
+  }
 }
 ```
 
-`secret_names` only lists the variables the environment's cases expect; values are never
-stored. You can create environments in the tester UI.
+`variables` are values and secrets that every case run with the environment can use as
+`{{name}}`, in JSON cases, `.feature` files and the base URL. A case's own `test_data`
+entry with the same name wins. A secret names an environment variable; its value is never
+stored in the environment (see [Secrets](#secrets)). Older environments list
+`secret_names`, which still work: each name is a secret of the same name. You can create
+environments in the tester UI.
 
 Every way of running a case (`hercules run`, the daemon, the UI and the coding-agent
 tools) applies a saved environment the same way:
@@ -299,6 +306,11 @@ variable instead:
 - The value is read from the environment of the process that runs the case: your shell
   for `hercules run`, or the environment `hercules serve` was started in for runs through
   the daemon, the UI and coding agents.
+- Otherwise it is read from `~/.hercules/secrets.env` (readable by you only), where the
+  tester UI saves values pasted on the **Environments** screen. A value saved there is
+  used by the next run without restarting `hercules serve`; an environment variable of
+  the same name wins. The UI shows each secret as set in the environment, saved in
+  Hercules, or not set, and never shows a value again.
 - If the variable is not set, the step fails with an error that names the variable.
 - Secret values never reach the model, and they are replaced with `******` in
   observations, decision records and `run.json`.
@@ -315,10 +327,50 @@ secret too. Keep the token in a secret and build the address from it:
 ]
 ```
 
+The same works in an environment's base URL, so every case on that environment starts
+signed in: set the base URL to
+`https://acme.my.salesforce.com/secur/frontdoor.jsp?sid={{sid}}` and add `sid` to the
+environment's variables as a secret. The browser opens the address with the value; exported
+code keeps `{{sid}}`.
+
 A token written straight into a step still never reaches a model or the evidence (it is
 replaced with a `{{url_credential_N}}` placeholder for the run and masked by name; see
 [Credentials in URLs](modes-and-privacy.md#credentials-in-urls)), but the case file itself
 then holds it, and an exported test cannot know which variable to read it from.
+
+## Reference files
+
+An environment, and a single case, can hold reference files that the model reads while it
+plans and runs: requirements, field rules, sample data. A case's run reads its own files
+and its environment's.
+
+- On an environment: the **Environments** screen (**Add files**; files picked before the
+  first save are added when it is saved) or `PUT /api/environments/<name>/files/<file>`.
+  Stored in `.hercules/files/<environment>/`.
+- On a case: the **Form** tab of the **Cases** screen, or
+  `PUT /api/cases/<saved file name>/files/<file>`. Stored by case id in
+  `.hercules/case-files/<case id>/`.
+
+Uploads are the raw file (`application/octet-stream`).
+
+- Types: `.md`, `.txt`, `.pdf`, `.docx`, `.csv` and `.json` are read as text; `.png` and
+  `.jpg` are kept but not yet sent to a model. Up to 20 files of 25 MB each per environment
+  and per case, kept with their extracted text.
+- Key and credential files (`.env`, `*.pem`, private keys by content) are refused.
+- Files are never pasted whole. Each model call gets the passages that best match the step
+  it is about, within a budget: about 6,000 characters to read the case, 3,000 to judge an
+  expected outcome or to recover from a failed step, 2,000 to choose an element.
+- **Local model only.** File text goes to the model configured as Hercules' local model
+  (`llm` in the config: Ollama, LM Studio, or the endpoint you chose with `hercules setup`)
+  and never to the hosted decider (JEV through OpenRouter). In hybrid mode JEV decides
+  without the files; the local model reads them for the plan, for recovery and when it
+  answers a decision itself.
+- File text is treated as data, never instructions, and secret values are masked in it
+  before it reaches the model.
+- Each decision record in `steps/<n>/decisions.jsonl` lists the passages its model call
+  received (`"references": ["rules.md#2"]`). Changing a file makes the next run read the
+  case again instead of reusing a cached plan.
+- Exported code does not use the files: it runs without a model.
 
 ## Gherkin `.feature` files
 
@@ -360,9 +412,20 @@ Outline` and `Examples`, `Rule`, doc strings (`"""`) except after a step that en
 names the file and line. `hercules import v1` accepts all of these and writes one case
 per scenario or example row; see [Importing](importing.md).
 
-A `.feature` file has no `test_data`, so only the built-in placeholders `{{run_id}}` and
-`{{timestamp}}` work in it. Put values directly in the step, or convert the scenario to a
-JSON case.
+A `.feature` file's `{{name}}` placeholders come from its test data, its environment's
+variables and secrets (from its `@env:` tag, or the environment chosen for the run) and the
+built-ins `{{run_id}}` and `{{timestamp}}`. The test data of `sign-in.feature` is kept
+beside it in `sign-in.data.json`, so the Gherkin stays plain; edit it in the **Form** tab
+of the **Cases** screen, or write it by hand:
+
+```json
+{"test_data": {"user": "demo@example.com", "password": {"secret": "SHOP_PASSWORD"}}}
+```
+
+`hercules run sign-in.feature` reads it too. Over the API, send `test_data` next to
+`gherkin` (`POST /api/cases`, `/api/cases/validate`, `/api/runs`, `/api/plans`). TestZeus references
+`[$.environment.<env>.<key>]` and `[$.testdata.<name>.<key>]` are read as `{{key}}`, so
+features copied from TestZeus run unchanged once the environment defines `key`.
 
 ## Draft and ready cases
 

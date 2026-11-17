@@ -67,7 +67,9 @@ export function ExploreScreen() {
     <section className="page" aria-labelledby="explore-title">
       <header className="page-head">
         <div>
-          <h1 id="explore-title">Explore</h1>
+          <h1 id="explore-title">
+            Explore <span className="tag tag-beta">Beta</span>
+          </h1>
           <p className="page-sub">Time-boxed exploratory testing: explorers push on the app, and every clue is reproduced from a fresh start before it becomes a finding.</p>
         </div>
         <button type="button" className="button button-primary" onClick={() => setStarting(true)}>

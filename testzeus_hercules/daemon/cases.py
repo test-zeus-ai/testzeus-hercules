@@ -1,7 +1,7 @@
 """Cases and environments on disk for the daemon: load, compile, save and list, with every path confined.
 
 Cases live in ``<project>/.hercules/cases`` (``<id>.json`` TestCases and ``.feature``
-files), environments in ``<project>/.hercules/envs/<name>.json``.
+files, each with its test data in ``<name>.data.json``), environments in ``<project>/.hercules/envs/<name>.json``.
 """
 
 from __future__ import annotations
@@ -10,13 +10,16 @@ import json
 import os
 import re
 import secrets
+import shutil
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import AbstractSet, Any
 
 from pydantic import ValidationError
 
-from testzeus_hercules.cases.gherkin import GherkinError, compile_feature, load_feature, slugify
-from testzeus_hercules.cases.models import EnvironmentRef, Step, TestCase
+from testzeus_hercules.cases.gherkin import DATA_SUFFIX, FeatureData, GherkinError, compile_feature, data_file, load_feature, slugify
+from testzeus_hercules.cases.reference_files import files_dir
+from testzeus_hercules.cases.models import BUILTIN_PLACEHOLDERS, EnvironmentRef, Step, TestCase, TestDataValue, placeholder_names_in
 from testzeus_hercules.daemon.models import Environment
 
 CASE_SUFFIXES = (".json", ".feature")
@@ -77,9 +80,9 @@ def load_case_file(path: Path) -> TestCase:
         raise CaseError(f"cannot read {path.name} ({type(exc).__name__})") from None
 
 
-def compile_gherkin(text: str, source_name: str = "<gherkin>") -> TestCase:
+def compile_gherkin(text: str, source_name: str = "<gherkin>", test_data: dict[str, TestDataValue] | None = None) -> TestCase:
     try:
-        return compile_feature(text, source_name=source_name)
+        return compile_feature(text, source_name=source_name, test_data=test_data)
     except GherkinError as exc:
         raise CaseError(str(exc)) from None
     except ValidationError as exc:
@@ -103,6 +106,7 @@ def apply_environment(case: TestCase, envs_dir: Path, *, environment: str | None
     """Fill the case's environment from a saved environment (request name, else the case's ``ref``) and an explicit base URL."""
     name = environment or case.environment.ref
     fields: dict[str, Any] = case.environment.model_dump(exclude_none=True)
+    saved: Environment | None = None
     if name is not None:
         saved = load_environment(envs_dir, name) if _ENV_NAME.match(name) else None
         if saved is None:
@@ -127,9 +131,15 @@ def apply_environment(case: TestCase, envs_dir: Path, *, environment: str | None
     if base_url is not None:
         fields["base_url"] = base_url
     try:
-        return case.model_copy(update={"environment": EnvironmentRef.model_validate(fields)})
+        environment_ref = EnvironmentRef.model_validate(fields)
     except ValidationError as exc:
         raise CaseError(describe_validation(exc, "environment")) from None
+    shared = saved.data() if name is not None and saved is not None else {}
+    test_data = {**shared, **case.test_data}
+    unknown = sorted(set(placeholder_names_in(environment_ref.base_url or "")) - set(test_data) - BUILTIN_PLACEHOLDERS)
+    if unknown:
+        raise CaseError(f"environment.base_url uses {', '.join('{{' + item + '}}' for item in unknown)}, which no test data or environment variable defines")
+    return case.model_copy(update={"environment": environment_ref, "test_data": test_data})
 
 
 # --------------------------------------------------------------------------- saved cases
@@ -141,12 +151,16 @@ def case_file(cases_dir: Path, name: str) -> Path:
     return cases_dir / name
 
 
+def is_feature_data(path: Path) -> bool:
+    return path.name.endswith(DATA_SUFFIX) and path.with_name(path.name.removesuffix(DATA_SUFFIX) + ".feature").is_file()
+
+
 def list_cases(cases_dir: Path, project_dir: Path) -> list[dict[str, Any]]:
     found: list[dict[str, Any]] = []
     if not cases_dir.is_dir():
         return found
     for path in sorted(cases_dir.iterdir())[:_MAX_LISTED]:
-        if path.is_symlink() or not path.is_file() or path.suffix.lower() not in CASE_SUFFIXES:
+        if path.is_symlink() or not path.is_file() or path.suffix.lower() not in CASE_SUFFIXES or is_feature_data(path):
             continue
         entry: dict[str, Any] = {"name": path.name, "path": _relative(path, project_dir), "kind": path.suffix.lstrip(".")}
         try:
@@ -154,7 +168,7 @@ def list_cases(cases_dir: Path, project_dir: Path) -> list[dict[str, Any]]:
         except CaseError as exc:
             entry.update(valid=False, error=str(exc))
         else:
-            entry.update(valid=True, id=case.id, title=case.title, status=case.status, steps=len(case.steps))
+            entry.update(valid=True, id=case.id, title=case.title, status=case.status, steps=len(case.steps), environment=case.environment.ref)
         found.append(entry)
     return found
 
@@ -166,17 +180,61 @@ def read_saved_case(cases_dir: Path, name: str) -> tuple[Path, TestCase]:
     return path, load_case_file(path)
 
 
-def save_case(cases_dir: Path, *, test_case: TestCase | None, gherkin: str | None, overwrite: bool) -> tuple[Path, TestCase]:
+def save_case(cases_dir: Path, *, test_case: TestCase | None, gherkin: str | None, overwrite: bool, test_data: dict[str, TestDataValue] | None = None) -> tuple[Path, TestCase]:
     cases_dir.mkdir(parents=True, exist_ok=True)
     if gherkin is not None:
-        case = compile_gherkin(gherkin)
+        case = compile_gherkin(gherkin, test_data=test_data)
         path, data = cases_dir / f"{case.id}.feature", gherkin if gherkin.endswith("\n") else gherkin + "\n"
     else:
         assert test_case is not None
         case = test_case
         path, data = cases_dir / f"{case.id}.json", case.model_dump_json(indent=2, exclude_none=True) + "\n"
     _write_new(path, data, overwrite)
+    if gherkin is not None:
+        _save_feature_data(path, case.test_data)
     return path, case
+
+
+def delete_case(cases_dir: Path, project_dir: Path, name: str) -> Path:
+    path = case_file(cases_dir, name)
+    if path.is_symlink() or not path.is_file() or is_feature_data(path):
+        raise FileNotFoundError(name)
+    try:
+        case_id: str | None = load_case_file(path).id
+    except CaseError:
+        case_id = None
+    path.unlink()
+    sidecar = data_file(path)
+    if path.suffix == ".feature" and sidecar.is_file() and not sidecar.is_symlink():
+        sidecar.unlink()
+    if case_id and not any(entry.get("id") == case_id for entry in list_cases(cases_dir, project_dir)):
+        _remove_tree(files_dir(project_dir, case_id, "case"))
+    return path
+
+
+def delete_environment(envs_dir: Path, project_dir: Path, name: str) -> bool:
+    if not _ENV_NAME.match(name):
+        return False
+    path = envs_dir / f"{name}.json"
+    if path.is_symlink() or not path.is_file():
+        return False
+    path.unlink()
+    _remove_tree(files_dir(project_dir, name))
+    return True
+
+
+def _remove_tree(folder: Path) -> None:
+    if folder.is_dir() and not folder.is_symlink():
+        shutil.rmtree(folder)
+
+
+def _save_feature_data(path: Path, test_data: dict[str, TestDataValue]) -> None:
+    sidecar = data_file(path)
+    if not test_data:
+        if sidecar.is_file() and not sidecar.is_symlink():
+            sidecar.unlink()
+        return
+    _write_new(sidecar, FeatureData(test_data=test_data).model_dump_json(indent=2) + "\n", True)
 
 
 # --------------------------------------------------------------------------- environments
@@ -192,6 +250,15 @@ def load_environment(envs_dir: Path, name: str) -> Environment | None:
         return Environment.model_validate_json(path.read_bytes())
     except (OSError, ValidationError, ValueError):
         return None
+
+
+def environment_data(envs_dir: Path, name: str | None) -> dict[str, TestDataValue]:
+    saved = load_environment(envs_dir, name) if name else None
+    return saved.data() if saved is not None else {}
+
+
+def environment_names(envs_dir: Path) -> Callable[[str], AbstractSet[str]]:
+    return lambda name: set(environment_data(envs_dir, name))
 
 
 def list_environments(envs_dir: Path) -> list[Environment]:

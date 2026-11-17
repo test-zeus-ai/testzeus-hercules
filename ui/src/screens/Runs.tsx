@@ -1,14 +1,14 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { Bugsy } from "../components/Brand";
 import { Icon } from "../components/Icon";
 import { StartRunDialog, type RerunOf } from "../components/StartRunDialog";
 import { StatusChip } from "../components/StatusChip";
-import { api } from "../lib/api";
+import { api, remove } from "../lib/api";
 import { isRunList } from "../lib/guards";
 import { stepLabel } from "../lib/timeline";
-import { agentName, failingStep, formatCost, formatDuration, formatTime, runMode, runSeconds } from "../lib/format";
+import { agentName, deleteRunPrompt, failingStep, formatCost, formatDuration, formatTime, runMode, runSeconds } from "../lib/format";
 import { FINAL_STATUSES, type RunView } from "../lib/types";
 
 const FILTERS = [
@@ -66,6 +66,11 @@ export function RunsScreen() {
     refetchInterval: (query) => runsPollInterval(query.state.data?.runs),
   });
 
+  const drop = useMutation({
+    mutationFn: (runId: string) => remove<{ run_id: string; removed: boolean }>(`/api/runs/${encodeURIComponent(runId)}`),
+    onSuccess: () => void client.invalidateQueries({ queryKey: ["runs"] }),
+  });
+
   const all = runs.data?.runs ?? [];
   const visible = useMemo(() => {
     const needle = filters.query.trim().toLowerCase();
@@ -121,6 +126,11 @@ export function RunsScreen() {
       ) : null}
 
       {runs.isError ? <p className="callout callout-fail">Could not load runs: {(runs.error as Error).message}</p> : null}
+      {drop.error ? (
+        <p className="callout callout-fail" role="alert">
+          {(drop.error as Error).message}
+        </p>
+      ) : null}
       {runs.isPending ? <p className="muted">Loading runs…</p> : null}
 
       {runs.data && visible.length === 0 ? (
@@ -219,6 +229,18 @@ export function RunsScreen() {
                         title="Re-run only if this run did not pass"
                       >
                         Failed only
+                      </button>
+                      <button
+                        type="button"
+                        className="button button-small button-ghost button-danger-text"
+                        disabled={!final || drop.isPending}
+                        onClick={() => {
+                          if (window.confirm(deleteRunPrompt(run.run_id))) drop.mutate(run.run_id);
+                        }}
+                        aria-label={`Delete run ${run.run_id}`}
+                        title={final ? "Delete this run and its evidence" : "Cancel the run before deleting it"}
+                      >
+                        Delete
                       </button>
                     </td>
                   </tr>

@@ -73,7 +73,7 @@ def fact_findings(case: TestCase, plan: Plan, *, env: Mapping[str, str], hidden:
                     code="missing_secret",
                     step=steps[0] if steps else None,
                     message=f"test data {name!r} is the secret {value.secret}, and {value.secret} is not set in the environment",
-                    suggestion=f"set {value.secret} before the run (in the shell, CI secrets or the daemon's environment)",
+                    suggestion=f"set {value.secret} before the run (in the shell, CI secrets or the daemon's environment), or save its value on the Environments screen (kept in ~/.hercules/secrets.env)",
                 )
             )
     for name in sorted(set(hidden)):
@@ -85,7 +85,7 @@ def fact_findings(case: TestCase, plan: Plan, *, env: Mapping[str, str], hidden:
                 code="credential_in_url",
                 step=steps[0] if steps else None,
                 message=f"a credential is written in a URL in {where} (masked as {{{{{name}}}}} for this run)",
-                suggestion='move it to test_data as a secret reference ({"secret": "ENV_VAR_NAME"}) and use the {{name}} placeholder in the URL',
+                suggestion='make it a secret of the environment (or of the case\'s test_data: {"secret": "ENV_VAR_NAME"}) and write {{name}} in the URL; this works in .feature files too',
             )
         )
     known = set(BUILTIN_PLACEHOLDERS) | set(case.test_data) | set(hidden) | _saved_names(case)
@@ -99,7 +99,7 @@ def fact_findings(case: TestCase, plan: Plan, *, env: Mapping[str, str], hidden:
                     code="unresolved_placeholder",
                     step=item.step,
                     message=f"plan step {item.id} uses {', '.join('{{' + name + '}}' for name in unknown)}, which no test data, built-in or earlier step provides",
-                    suggestion="add the value to the case's test_data, or write the value in the step",
+                    suggestion="add it to the case's test_data or to its environment's variables and secrets, or write the value in the step",
                 )
             )
     findings += _unsupported(case, plan, env)

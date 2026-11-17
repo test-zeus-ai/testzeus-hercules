@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { emptyForm, errorLine, fromForm, toForm, validateCaseForm, type CaseFormValue } from "./caseForm";
+import { emptyForm, errorLine, fromForm, toForm, validateCaseForm, environmentTag, gherkinUnquoted, quoteGherkinPlaceholders, quotePlaceholders, unquotedPlaceholders, withEnvironmentTag, type CaseFormValue } from "./caseForm";
 import type { TestCase } from "./types";
 
 const valid = (): CaseFormValue => ({
@@ -84,5 +84,39 @@ describe("case form conversion", () => {
     expect(errorLine("<gherkin>:4: expected a step (Given/When/Then/And/But/*), got 'Clicks'")).toBe(4);
     expect(errorLine("steps.1.action: field required")).toBeNull();
     expect(errorLine(null)).toBeNull();
+  });
+});
+
+describe("withEnvironmentTag", () => {
+  it("adds the tag to the tag line above Feature, or above Feature itself", () => {
+    expect(withEnvironmentTag('@smoke\nFeature: Sign in\n  Scenario: x\n', "shop")).toBe('@smoke @env:shop\nFeature: Sign in\n  Scenario: x\n');
+    expect(withEnvironmentTag("# notes\nFeature: Sign in\n", "shop")).toBe("# notes\n@env:shop\nFeature: Sign in\n");
+    expect(environmentTag("@smoke @env:shop\nFeature: x")).toBe("shop");
+    expect(environmentTag("Feature: x")).toBeNull();
+  });
+
+  it("replaces an existing tag and drops repeats", () => {
+    expect(withEnvironmentTag("@env:old @smoke @env:older\nFeature: x\n", "shop")).toBe("@env:shop @smoke\nFeature: x\n");
+  });
+});
+
+describe("unquoted placeholders", () => {
+  it("finds a placeholder outside quotes, with the rest of its word", () => {
+    expect(unquotedPlaceholders("I open {{url}}")).toEqual(["{{url}}"]);
+    expect(unquotedPlaceholders('I fill "{{name}}" in "Name"')).toEqual([]);
+    expect(unquotedPlaceholders("I open https://shop.example/{{path}}/cart")).toEqual(["https://shop.example/{{path}}/cart"]);
+    expect(unquotedPlaceholders('I see "Hello, {{name}}!" and {{run_id}}')).toEqual(["{{run_id}}"]);
+  });
+
+  it("quotes them", () => {
+    expect(quotePlaceholders('I fill {{name}} in "Email"')).toBe('I fill "{{name}}" in "Email"');
+    expect(quotePlaceholders("I open {{url}} then {{next}}")).toBe('I open "{{url}}" then "{{next}}"');
+  });
+
+  it("checks Gherkin step lines only, not tags, titles or doc strings", () => {
+    const gherkin = ['@env:{{x}}', "Feature: {{title}}", "  Scenario: s", "    Given I open {{url}}", '    When I send a POST request to "/pets" with the JSON body:', '      """', '      {"name": {{pet}}}', '      """', '    Then I should see "{{name}}"'].join("\n");
+    expect(gherkinUnquoted(gherkin)).toEqual([{ line: 4, tokens: ["{{url}}"] }]);
+    expect(quoteGherkinPlaceholders(gherkin).split("\n")[3]).toBe('    Given I open "{{url}}"');
+    expect(quoteGherkinPlaceholders(gherkin).split("\n")[6]).toBe('      {"name": {{pet}}}');
   });
 });

@@ -23,9 +23,10 @@ import contextlib
 import functools
 import json
 import os
+import shutil
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, AsyncIterator, Awaitable, Callable, Literal
+from typing import AbstractSet, Any, AsyncIterator, Awaitable, Callable, Literal
 
 from pydantic import ValidationError
 from starlette.applications import Starlette
@@ -36,11 +37,14 @@ from starlette.routing import Route, WebSocketRoute
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from testzeus_hercules.act.redact import mask_url_credentials
-from testzeus_hercules.cases.models import TestCase
+from testzeus_hercules.cases.models import TestCase, placeholder_names, set_environment_names
+from testzeus_hercules.cases.reference_files import load_reference_context, using_reference
 from testzeus_hercules.cli.version import package_version
 from testzeus_hercules.clouds.runner import CloudRuns
 from testzeus_hercules.daemon import cases as case_files
 from testzeus_hercules.daemon import clouds as cloud_api
+from testzeus_hercules.daemon import files as files_api
+from testzeus_hercules.daemon import secrets as secrets_api
 from testzeus_hercules.daemon.config import DaemonConfig
 from testzeus_hercules.daemon.decisions import read_step_decisions
 from testzeus_hercules.daemon.explore import explore_routes
@@ -219,6 +223,11 @@ def _parse(model: Any, data: Any) -> Any:
         raise ApiError(422, case_files.describe_validation(exc)) from None
 
 
+def _chosen_environment_names(daemon: Daemon, data: Any) -> AbstractSet[str]:
+    name = data.get("environment") if isinstance(data, dict) else None
+    return set(case_files.environment_data(daemon.config.paths.envs_dir, name)) if isinstance(name, str) else set()
+
+
 def _query_number(request: Request, name: str, kind: type, *, default: Any, low: float, high: float) -> Any:
     raw = request.query_params.get(name)
     if raw is None:
@@ -253,7 +262,7 @@ def _case_from_request(daemon: Daemon, body: RunCreate) -> tuple[TestCase, dict[
         if body.test_case is not None:
             case, source["kind"] = body.test_case, "test_case"
         elif body.gherkin is not None:
-            case, source["kind"] = case_files.compile_gherkin(body.gherkin), "gherkin"
+            case, source["kind"] = case_files.compile_gherkin(body.gherkin, test_data=body.test_data), "gherkin"
         elif body.description is not None:
             case, source["kind"] = case_files.draft_from_description(body.description), "description"
         elif body.case_path is not None:
@@ -303,8 +312,10 @@ def _created(daemon: Daemon, record: dict[str, Any]) -> JSONResponse:
 
 
 async def create_run(request: Request, daemon: Daemon) -> Response:
-    body = _parse(RunCreate, await _body(request))
-    case, source = _case_from_request(daemon, body)
+    raw = await _body(request)
+    with placeholder_names(_chosen_environment_names(daemon, raw)):
+        body = _parse(RunCreate, raw)
+        case, source = _case_from_request(daemon, body)
     source.update(run_origin(request))
     record = daemon.runs.submit(case, options=body.run_options(), source=source, auto_approve=body.auto_approve, plan=body.plan)
     return _created(daemon, record)
@@ -396,6 +407,18 @@ async def cancel_run(request: Request, daemon: Daemon) -> Response:
     except RunConflict as exc:
         raise ApiError(409, str(exc)) from None
     return JSONResponse(daemon.view(_record(daemon, run_id)))
+
+
+async def delete_run(request: Request, daemon: Daemon) -> Response:
+    run_id = request.path_params["run_id"]
+    record = _record(daemon, run_id)
+    if record["status"] not in FINAL_STATUSES:
+        raise ApiError(409, f"run {run_id} is {record['status']}; cancel it before deleting it")
+    run_dir = daemon.config.paths.run_dir(run_id)
+    if run_dir.is_dir() and not run_dir.is_symlink():
+        await asyncio.to_thread(shutil.rmtree, run_dir)
+    removed = daemon.store.delete_run(run_id)
+    return JSONResponse({"run_id": run_id, "removed": removed})
 
 
 async def _optional_body(request: Request) -> Any:
@@ -658,7 +681,7 @@ def _plan_case(daemon: Daemon, body: PlanCreate) -> TestCase:
         if body.test_case is not None:
             case = body.test_case
         elif body.gherkin is not None:
-            case = case_files.compile_gherkin(body.gherkin)
+            case = case_files.compile_gherkin(body.gherkin, test_data=body.test_data)
         elif body.case_path is not None:
             case = case_files.load_case_file(case_files.confine(daemon.config.settings.project_dir, body.case_path))
         else:
@@ -672,8 +695,10 @@ async def create_plan(request: Request, daemon: Daemon) -> Response:
     """Make a case's plan and lint it without running it (the model reads the case; the decider audits its coverage)."""
     from testzeus_hercules.engine.plan import PlanStore, approved, plan_key
 
-    body = _parse(PlanCreate, await _body(request))
-    case = _plan_case(daemon, body)
+    raw = await _body(request)
+    with placeholder_names(_chosen_environment_names(daemon, raw)):
+        body = _parse(PlanCreate, raw)
+        case = _plan_case(daemon, body)
     options = body.model_dump(include={"mode", "egress", "decider", "strict"})
     try:
         plan = await daemon.runs.plan_job(case, options)
@@ -682,7 +707,9 @@ async def create_plan(request: Request, daemon: Daemon) -> Response:
     if body.approve:
         plan = approved(plan, by="agent")
         if plan.model:
-            PlanStore(daemon.config.paths.project_hercules_dir / "plans").save_approved(plan_key(plan.case_hash, plan.model), plan)
+            with using_reference(load_reference_context(daemon.config.settings.project_dir, case.environment.ref, case_id=case.id)):
+                key = plan_key(plan.case_hash, plan.model)
+            PlanStore(daemon.config.paths.project_hercules_dir / "plans").save_approved(key, plan)
     return JSONResponse(_plan_view(plan))
 
 
@@ -735,7 +762,7 @@ async def validate_case(request: Request, daemon: Daemon) -> Response:
     body = _parse(CaseValidate, await _body(request))
     if body.gherkin is not None:
         try:
-            case = case_files.compile_gherkin(body.gherkin)
+            case = case_files.compile_gherkin(body.gherkin, test_data=body.test_data)
         except case_files.CaseError as exc:
             return JSONResponse({"valid": False, "error": str(exc), "test_case": None})
     else:
@@ -749,13 +776,30 @@ async def validate_case(request: Request, daemon: Daemon) -> Response:
 async def save_case(request: Request, daemon: Daemon) -> Response:
     body = _parse(CaseSave, await _body(request))
     try:
-        path, case = case_files.save_case(daemon.config.paths.cases_dir, test_case=body.test_case, gherkin=body.gherkin, overwrite=body.overwrite)
+        path, case = case_files.save_case(daemon.config.paths.cases_dir, test_case=body.test_case, gherkin=body.gherkin, overwrite=body.overwrite, test_data=body.test_data)
     except case_files.CaseExists as exc:
         raise ApiError(409, str(exc)) from None
     except case_files.CaseError as exc:
         raise ApiError(422, str(exc)) from None
     relative = path.relative_to(daemon.config.settings.project_dir).as_posix()
     return JSONResponse({"name": path.name, "path": relative, "id": case.id}, status_code=201)
+
+
+async def delete_case(request: Request, daemon: Daemon) -> Response:
+    try:
+        path = case_files.delete_case(daemon.config.paths.cases_dir, daemon.config.settings.project_dir, request.path_params["name"])
+    except FileNotFoundError:
+        raise ApiError(404, "case not found") from None
+    except case_files.CaseError as exc:
+        raise ApiError(422, str(exc)) from None
+    return JSONResponse({"name": path.name, "removed": True})
+
+
+async def delete_environment(request: Request, daemon: Daemon) -> Response:
+    name = request.path_params["name"]
+    if not case_files.delete_environment(daemon.config.paths.envs_dir, daemon.config.settings.project_dir, name):
+        raise ApiError(404, "environment not found")
+    return JSONResponse({"name": name, "removed": True})
 
 
 async def list_environments(request: Request, daemon: Daemon) -> Response:
@@ -830,6 +874,7 @@ def create_app(config: DaemonConfig) -> Starlette:
     paths = config.paths
     paths.ensure_dirs()
     daemon = Daemon(config=config, store=RunStore(paths.history_db))
+    set_environment_names(case_files.environment_names(paths.envs_dir))
 
     @contextlib.asynccontextmanager
     async def lifespan(app: Starlette) -> AsyncIterator[None]:
@@ -856,6 +901,7 @@ def create_app(config: DaemonConfig) -> Starlette:
         Route("/api/runs", _endpoint(list_runs), methods=["GET"]),
         Route("/api/runs", _endpoint(create_run), methods=["POST"]),
         Route("/api/runs/{run_id}", _endpoint(get_run), methods=["GET"]),
+        Route("/api/runs/{run_id}", _endpoint(delete_run), methods=["DELETE"]),
         Route("/api/runs/{run_id}/events", _endpoint(run_events), methods=["GET"]),
         Route("/api/runs/{run_id}/events/list", _endpoint(list_events), methods=["GET"]),
         Route("/api/runs/{run_id}/cancel", _endpoint(cancel_run), methods=["POST"]),
@@ -874,6 +920,9 @@ def create_app(config: DaemonConfig) -> Starlette:
         Route("/api/cloud-runs/{cloud_run_id}", _endpoint(cloud_api.get_cloud_run), methods=["GET"]),
         Route("/api/cloud-runs/{cloud_run_id}/cancel", _endpoint(cloud_api.cancel_cloud_run), methods=["POST"]),
         *explore_routes(),
+        Route("/api/secrets", _endpoint(secrets_api.list_secrets), methods=["GET"]),
+        Route("/api/secrets/{name}", _endpoint(secrets_api.put_secret), methods=["PUT"]),
+        Route("/api/secrets/{name}", _endpoint(secrets_api.delete_secret), methods=["DELETE"]),
         Route("/api/clouds", _endpoint(cloud_api.list_clouds), methods=["GET"]),
         Route("/api/clouds/{cloud}", _endpoint(cloud_api.save_cloud), methods=["PUT"]),
         Route("/api/clouds/{cloud}", _endpoint(cloud_api.remove_cloud), methods=["DELETE"]),
@@ -887,11 +936,19 @@ def create_app(config: DaemonConfig) -> Starlette:
         Route("/api/cases", _endpoint(save_case), methods=["POST"]),
         Route("/api/cases/validate", _endpoint(validate_case), methods=["POST"]),
         Route("/api/cases/{name}", _endpoint(get_case), methods=["GET"]),
+        Route("/api/cases/{name}", _endpoint(delete_case), methods=["DELETE"]),
         Route("/api/cases/{name}/plan", _endpoint(case_plan), methods=["GET"]),
+        Route("/api/cases/{name}/files", _endpoint(files_api.list_files), methods=["GET"]),
+        Route("/api/cases/{name}/files/{filename}", _endpoint(files_api.put_file), methods=["PUT"]),
+        Route("/api/cases/{name}/files/{filename}", _endpoint(files_api.delete_file), methods=["DELETE"]),
         Route("/api/environments", _endpoint(list_environments), methods=["GET"]),
         Route("/api/devices", _endpoint(list_devices), methods=["GET"]),
         Route("/api/environments", _endpoint(save_environment), methods=["POST"]),
         Route("/api/environments/{name}", _endpoint(get_environment), methods=["GET"]),
+        Route("/api/environments/{name}", _endpoint(delete_environment), methods=["DELETE"]),
+        Route("/api/environments/{name}/files", _endpoint(files_api.list_files), methods=["GET"]),
+        Route("/api/environments/{name}/files/{filename}", _endpoint(files_api.put_file), methods=["PUT"]),
+        Route("/api/environments/{name}/files/{filename}", _endpoint(files_api.delete_file), methods=["DELETE"]),
         Route("/", _endpoint(page), methods=["GET"]),
         Route("/{path:path}", _endpoint(page), methods=["GET"]),
     ]

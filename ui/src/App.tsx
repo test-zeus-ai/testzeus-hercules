@@ -18,9 +18,9 @@ import { ModelsScreen } from "./screens/Models";
 import { RunDetailScreen } from "./screens/RunDetail";
 import { RunsScreen } from "./screens/Runs";
 
-const NAV: Array<{ href: string; label: string; icon: IconName; match: (path: string) => boolean }> = [
+const NAV: Array<{ href: string; label: string; icon: IconName; match: (path: string) => boolean; beta?: boolean }> = [
   { href: "/", label: "Runs", icon: "runs", match: (path) => path === "/" || path.startsWith("/runs") },
-  { href: "/explore", label: "Explore", icon: "compass", match: (path) => path.startsWith("/explore") },
+  { href: "/explore", label: "Explore", icon: "compass", match: (path) => path.startsWith("/explore"), beta: true },
   { href: "/cases", label: "Cases", icon: "cases", match: (path) => path.startsWith("/cases") },
   { href: "/environments", label: "Environments", icon: "envs", match: (path) => path.startsWith("/environments") },
   { href: "/models", label: "Models", icon: "models", match: (path) => path.startsWith("/models") },
@@ -85,6 +85,7 @@ export function App() {
                   <Link href={item.href} className={`nav-link${current ? " nav-current" : ""}`} aria-current={current ? "page" : undefined}>
                     <Icon name={item.icon} size={17} />
                     <span className="nav-label">{item.label}</span>
+                    {item.beta ? <span className="nav-beta">Beta</span> : null}
                     {item.href === "/" && active > 0 ? <span className="nav-badge" aria-label={`${active} active`}>{active}</span> : null}
                   </Link>
                 </li>

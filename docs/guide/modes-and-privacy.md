@@ -157,6 +157,14 @@ this machine and to listed hosts never goes through an `HTTP_PROXY` / `ALL_PROXY
 What never leaves the machine in any mode: your case files, the evidence folder, and
 the secret values in your test data (models see the `{{placeholder}}`, not the value).
 
+### Reference files
+
+Reference files of an environment or a case ([Reference files](writing-tests.md#reference-files))
+are read by the local model only. Under `hybrid` and `hybrid-text` the hosted decider never
+receives their text. When the local model is a hosted endpoint (`openai-compatible`,
+OpenRouter, ...), that endpoint receives the passages it is given, like the page text it
+already reads.
+
 ## Credentials in URLs
 
 A session id or token in an address (`/login?sid=...`, `#access_token=...`, a password in

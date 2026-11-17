@@ -221,3 +221,36 @@ describe("ordinal", () => {
     expect([1, 2, 3, 4, 11, 12, 13, 21, 22, 103].map(ordinal)).toEqual(["1st", "2nd", "3rd", "4th", "11th", "12th", "13th", "21st", "22nd", "103rd"]);
   });
 });
+
+describe("RunDetail edit case", () => {
+  function withCases(source: unknown, cases: unknown[]) {
+    const base = fetchMock.getMockImplementation() as (url: string, init?: RequestInit) => ReturnType<typeof respond>;
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === "/api/runs/r_parent/case") return respond({ source, test_case: { id: "demo-login", title: "Demo login", steps: [{ action: "Open /login" }] } });
+      if (url === "/api/cases") return respond({ cases });
+      return base(url, init);
+    });
+  }
+  const entry = (name: string) => ({ name, path: `.hercules/cases/${name}`, kind: "feature", valid: true, id: "demo-login", title: "Demo login", steps: 1 });
+
+  it("links to the saved case the run used", async () => {
+    withCases({ kind: "case_path", path: ".hercules/cases/demo-login.feature" }, [entry("demo-login.feature")]);
+    renderScreen();
+    const link = await screen.findByRole("link", { name: /edit case/i });
+    expect(link.getAttribute("href")).toBe("/cases/demo-login.feature");
+  });
+
+  it("finds the case by id when the run came from unsaved Gherkin", async () => {
+    withCases({ kind: "gherkin" }, [entry("demo-login.feature")]);
+    renderScreen();
+    expect((await screen.findByRole("link", { name: /edit case/i })).getAttribute("href")).toBe("/cases/demo-login.feature");
+  });
+
+  it("shows no edit link for a case that is not saved", async () => {
+    withCases({ kind: "test_case" }, []);
+    renderScreen();
+    await screen.findByRole("heading", { name: "Demo login" });
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url === "/api/cases")).toBe(true));
+    expect(screen.queryByRole("link", { name: /edit case/i })).toBeNull();
+  });
+});

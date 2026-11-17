@@ -283,8 +283,9 @@ queue each case through its HTTP API or the tester UI
 ### Keep feature files
 
 `hercules run` also takes a `.feature` file with a single scenario and no `Scenario
-Outline`, data tables or doc strings. Such a file has no `test_data`, so only the
-built-in placeholders `{{run_id}}` and `{{timestamp}}` work in it
+Outline`, data tables or doc strings. Its `{{name}}` placeholders come from its
+environment's variables and secrets, and `[$.environment.<env>.<key>]` and
+`[$.testdata.<name>.<key>]` references are read as `{{key}}`
 ([Gherkin files](writing-tests.md#gherkin-feature-files)). Import anything larger.
 
 ## Not yet available in v2

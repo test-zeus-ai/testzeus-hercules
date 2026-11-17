@@ -313,6 +313,7 @@ export interface CaseEntry {
   title?: string;
   status?: string;
   steps?: number;
+  environment?: string | null;
 }
 
 export interface SavedCase {
@@ -355,6 +356,14 @@ export interface Environment {
   device?: string | null;
   mobile?: MobileApp | null;
   secret_names: string[];
+  variables?: Record<string, string | { secret: string }>;
+}
+
+export type SecretSource = "env" | "file" | "none";
+
+export interface SecretStatus {
+  name: string;
+  source: SecretSource;
 }
 
 export interface OptionView {
@@ -574,3 +583,20 @@ export interface CloudRun {
 }
 
 export type CloudRunDetail = CloudRun & { log: string };
+
+export interface ReferenceFile {
+  name: string;
+  kind: "text" | "image";
+  size: number;
+  chars: number;
+  sha256: string;
+}
+
+export interface ReferenceFiles {
+  environment?: string;
+  case?: string;
+  files: ReferenceFile[];
+  max_files: number;
+  max_bytes: number;
+  model: "local";
+}

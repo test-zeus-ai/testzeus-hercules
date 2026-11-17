@@ -58,6 +58,7 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal, Mapping, Op
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, create_model, model_validator
 
 from testzeus_hercules.cases.plan import Criterion
+from testzeus_hercules.cases.reference_files import current_reference, reference_fingerprint
 from testzeus_hercules.engine.ports import IntentLLM
 from testzeus_hercules.llm.client import LLMError, LLMRequestError
 from testzeus_hercules.llm.structured import StructuredOutputError
@@ -719,7 +720,8 @@ class ReadingCache:
     def key(model_id: str, items: Sequence[CaseItem], names: Sequence[str]) -> str:
         steps = json.dumps({"items": [[item.step, item.role, item.text] for item in items], "names": sorted(names)}, sort_keys=True, ensure_ascii=False)
         steps_sha = hashlib.sha256(steps.encode("utf-8")).hexdigest()
-        return hashlib.sha256(json.dumps([model_id, PROMPT_VERSION, steps_sha]).encode("utf-8")).hexdigest()
+        reference = reference_fingerprint()
+        return hashlib.sha256(json.dumps([model_id, PROMPT_VERSION, steps_sha, *([reference] if reference else [])]).encode("utf-8")).hexdigest()
 
     def _path(self, key: str) -> Path:
         return self.directory / f"reading-{key}.json"
@@ -810,6 +812,11 @@ def _part_text(items: Sequence[CaseItem], part: Sequence[CaseItem], names: Seque
         lines += [f"  step {step}: {title}" for step, title in others.items()]
     lines.append("ITEMS:")
     lines += [f"{item.key}: {item.text}" for item in part]
+    context = current_reference()
+    if context is not None:
+        section, _ = context.section(" ".join(item.text for item in part), "plan")
+        if section:
+            lines = [section, ""] + lines
     return "\n".join(lines)
 
 
@@ -1038,6 +1045,11 @@ class LLMInterpreter:
             user = "EARLIER STEPS (already done by earlier steps; never repeat them):\n" + "\n".join(f"- {item}" for item in earlier) + f"\n\n{user}"
         if context:
             user = f"PAGE CONTROLS (untrusted page data):\n{context}\n\n{user}"
+        reference = current_reference()
+        if reference is not None:
+            section, _ = reference.section(" ".join([text, *expected]), "recover")
+            if section:
+                user = f"{section}\n\n{user}"
         kept, dropped = await self._continue(text, user)
         if dropped:
             logger.info("a continuation planned %d action(s) the step's words do not ask for; asking once more", len(dropped))

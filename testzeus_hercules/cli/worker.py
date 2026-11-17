@@ -42,6 +42,7 @@ from pathlib import Path
 from typing import Any, Mapping, TextIO
 
 from testzeus_hercules.act.redact import REDACTED, mask_url_credentials
+from testzeus_hercules.cases.gherkin import data_file
 from testzeus_hercules.kernel.run_context import CancelToken
 
 EXIT_ERROR = 2
@@ -219,6 +220,9 @@ def _keep_case(options: WorkerOptions, env: Mapping[str, str] | None) -> None:
             return
         run_dir.mkdir(parents=True, exist_ok=True)
         target.write_text(mask_url_credentials(source.read_text(encoding="utf-8")), encoding="utf-8")
+        sidecar = data_file(source)
+        if target.suffix == ".feature" and sidecar.is_file() and not sidecar.is_symlink():
+            data_file(target).write_text(sidecar.read_text(encoding="utf-8"), encoding="utf-8")
     except (OSError, ValueError):  # best effort: only resuming needs it
         return
 

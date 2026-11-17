@@ -124,6 +124,12 @@ class RunStore:
             row = self._db.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
         return _run(row) if row is not None else None
 
+    def delete_run(self, run_id: str) -> bool:
+        with self._lock:
+            self._db.execute("DELETE FROM run_events WHERE run_id = ?", (run_id,))
+            deleted = self._db.execute("DELETE FROM runs WHERE id = ?", (run_id,)).rowcount
+        return deleted > 0
+
     def list_runs(self, *, status: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
         query, params = "SELECT * FROM runs", []
         if status is not None:

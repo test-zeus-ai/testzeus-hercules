@@ -102,3 +102,5 @@ export function shortPath(path: string | null | undefined): string {
   const home = unix.match(/^(?:\/Users\/[^/]+|\/home\/[^/]+|[A-Za-z]:\/Users\/[^/]+)(\/.*)?$/);
   return home ? `~${home[1] ?? ""}` : path;
 }
+
+export const deleteRunPrompt = (runId: string) => `Delete run ${runId} with its screenshots, logs and other evidence? This cannot be undone.`;
