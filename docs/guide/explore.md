@@ -11,7 +11,7 @@ the forbidden list (see [Scope and safety](#scope-and-safety)).
 
 ## Walkthrough videos
 
-Five short videos, with a spoken walkthrough, show each part of exploratory testing, recorded against Acme Pantry, the demo
+Five short videos, with a spoken walkthrough and subtitles, show each part of exploratory testing, recorded against Acme Pantry, the demo
 shop in `bench/explore` with its seeded bugs switched on. Each video plays on this page (the MP4
 files are in `docs/assets/videos/explore`). The steps under each one do the same on your machine. Finding ids differ on every run: use the ones
 your session prints.
@@ -59,7 +59,7 @@ your session prints.
 
 ### 1. Start a session and watch it live
 
-https://github.com/user-attachments/assets/3f2bb6a3-1068-4e55-bc2f-d28aad26aa31
+https://github.com/user-attachments/assets/085fafe6-c2d6-46dc-bd87-9e5728fa3154
 
 <sub>[Download the MP4](../assets/videos/explore/01-start-and-watch-live.mp4)</sub>
 
@@ -74,7 +74,7 @@ https://github.com/user-attachments/assets/3f2bb6a3-1068-4e55-bc2f-d28aad26aa31
 
 ### 2. Review findings in one click
 
-https://github.com/user-attachments/assets/36d7aac6-99cc-4155-b5f0-5568cce1b59b
+https://github.com/user-attachments/assets/ffff66a1-6a19-4f37-b608-3d0845938487
 
 <sub>[Download the MP4](../assets/videos/explore/02-review-findings-one-click.mp4)</sub>
 
@@ -89,7 +89,7 @@ https://github.com/user-attachments/assets/36d7aac6-99cc-4155-b5f0-5568cce1b59b
 
 ### 3. Explore from the terminal
 
-https://github.com/user-attachments/assets/bb3b0e8d-0f2f-46b0-a993-63bf1f9f516b
+https://github.com/user-attachments/assets/fe0ea9e2-a1c9-44b6-8d87-8866d35ea72d
 
 <sub>[Download the MP4](../assets/videos/explore/03-explore-from-the-terminal.mp4)</sub>
 
@@ -112,7 +112,7 @@ https://github.com/user-attachments/assets/bb3b0e8d-0f2f-46b0-a993-63bf1f9f516b
 
 ### 4. Fix, reverify, keep it fixed
 
-https://github.com/user-attachments/assets/901b4ba8-bd6a-422f-962a-cac23d525ac1
+https://github.com/user-attachments/assets/8070d05d-f442-4253-b88c-c0bcb25f79c8
 
 <sub>[Download the MP4](../assets/videos/explore/04-fix-reverify-regression.mp4)</sub>
 
@@ -139,7 +139,7 @@ https://github.com/user-attachments/assets/901b4ba8-bd6a-422f-962a-cac23d525ac1
 
 ### 5. Explore from your coding agent
 
-https://github.com/user-attachments/assets/7fbde4fb-b0de-4cf7-a280-d760915e82a4
+https://github.com/user-attachments/assets/a63f7c9f-7145-49e9-94c0-b070950b48a3
 
 <sub>[Download the MP4](../assets/videos/explore/05-explore-from-your-coding-agent.mp4)</sub>
 
