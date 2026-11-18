@@ -156,15 +156,17 @@ export function EnvironmentsScreen() {
                         </span>
                       </td>
                       <td>
-                        {environmentVariables(env).length ? (
-                          environmentVariables(env).map((row) => (
-                            <span key={row.key} className="tag mono" title={row.secret ? `secret: ${row.value}` : undefined}>
-                              {row.secret ? <Icon name="key" size={11} /> : null} {row.key}
-                            </span>
-                          ))
-                        ) : (
-                          <span className="muted">none</span>
-                        )}
+                        <span className="env-vars">
+                          {environmentVariables(env).length ? (
+                            environmentVariables(env).map((row) => (
+                              <span key={row.key} className="tag mono" title={row.secret ? `secret: ${row.value}` : undefined}>
+                                {row.secret ? <Icon name="key" size={11} /> : null} {row.key}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="muted">none</span>
+                          )}
+                        </span>
                       </td>
                       <td className="nowrap" onClick={(event) => event.stopPropagation()}>
                         <button type="button" className="button button-small button-ghost" onClick={() => edit(env)}>

@@ -2734,9 +2734,25 @@ textarea {
   flex: none;
 }
 
+/* Rows are as tall as the 26px target icon and buttons: centre the first line of
+   the other cells on that band (top-aligned, so a URL expanding on hover moves nothing). */
 .env-where {
   display: block;
   max-width: 100%;
+  padding-block: calc((26px - 1lh) / 2);
+}
+
+.env-vars {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-height: 26px;
+  padding-block: 3px;
+}
+
+.env-vars .tag {
+  margin: 0;
 }
 
 .env-target {
