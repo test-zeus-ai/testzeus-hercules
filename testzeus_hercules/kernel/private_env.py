@@ -54,6 +54,11 @@ def env_text(values: Mapping[str, str], header: str) -> str:
 
 
 def write_private_env(path: Path, values: Mapping[str, str], header: str) -> Path:
+    return write_private_text(path, env_text(values, header))
+
+
+def write_private_text(path: Path, text: str) -> Path:
+    """Replace ``path`` atomically with ``text``, readable by its owner only (mode 0600, in a 0700 folder)."""
     with EDIT_LOCK:
         path.parent.mkdir(parents=True, exist_ok=True, mode=PRIVATE_DIR)
         temporary = path.with_name(f"{path.name}.{os.getpid()}.{secrets.token_hex(4)}.tmp")
@@ -62,7 +67,7 @@ def write_private_env(path: Path, values: Mapping[str, str], header: str) -> Pat
             try:
                 if hasattr(os, "fchmod"):
                     os.fchmod(descriptor, PRIVATE_FILE)
-                os.write(descriptor, env_text(values, header).encode("utf-8"))
+                os.write(descriptor, text.encode("utf-8"))
                 os.fsync(descriptor)
             finally:
                 os.close(descriptor)

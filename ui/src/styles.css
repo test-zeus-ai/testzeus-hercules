@@ -1076,6 +1076,29 @@ textarea {
   animation: pulse 1.2s ease-in-out infinite;
 }
 
+/* A block that grows and shrinks to its content (AnimatedHeight); the clip margin keeps focus rings visible. */
+.animated-height {
+  overflow: clip;
+  overflow-clip-margin: 4px;
+  /* A long ease-out: quick to start, gentle to settle. */
+  transition: height 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.animated-swap {
+  animation: animated-swap-in 380ms cubic-bezier(0.22, 1, 0.36, 1) 60ms both;
+}
+
+@keyframes animated-swap-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -2764,6 +2787,45 @@ textarea {
   color: var(--text-2);
 }
 
+/* A select showing the chosen item's name followed by its icon: both are drawn over the
+   select (which keeps every click and key), and the select's own text is hidden. */
+.select-with-icon {
+  position: relative;
+  display: block;
+}
+
+.select-with-icon.has-display > select {
+  color: transparent;
+}
+
+.select-with-icon.has-display option {
+  color: var(--text);
+}
+
+.select-display {
+  position: absolute;
+  inset: 0 32px 0 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-left: calc(var(--space-2) + 1px);
+  pointer-events: none;
+  min-width: 0;
+}
+
+.select-display-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.select-display > .env-target {
+  flex: none;
+  width: 24px;
+  height: 24px;
+}
+
 .split-side {
   min-width: 0;
   overflow: hidden;
@@ -4277,17 +4339,6 @@ textarea {
   background: color-mix(in srgb, var(--surface) 70%, transparent);
 }
 
-.cloud-replace summary {
-  cursor: pointer;
-  color: var(--text-2);
-  font-size: var(--text-sm);
-  font-weight: 500;
-}
-
-.cloud-replace[open] summary {
-  margin-bottom: var(--space-3);
-}
-
 .cloud-region {
   max-width: 16rem;
 }
@@ -4321,6 +4372,105 @@ textarea {
   margin-top: auto;
   padding-top: var(--space-3);
   border-top: 1px solid var(--line);
+}
+
+/* A cloud's saved device list: the line on its card and the dialog that lists it. */
+.cloud-devices-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--text-2);
+}
+
+.cloud-devices-summary > .icon {
+  flex: none;
+  translate: 0 2px;
+}
+
+.cloud-devices-fetched {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.cloud-devices-fetched .tag {
+  margin: 0;
+}
+
+.cloud-devices {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.cloud-devices .callout,
+.cloud-devices-head p {
+  margin: 0;
+}
+
+.cloud-devices-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.cloud-devices .segmented {
+  justify-self: start;
+}
+
+.cloud-devices-filters {
+  display: grid;
+  grid-template-columns: minmax(180px, 2fr) repeat(auto-fit, minmax(130px, 1fr));
+  gap: var(--space-2) var(--space-3);
+  align-items: end;
+}
+
+.cloud-devices-filters .field {
+  margin: 0;
+}
+
+.cloud-devices-table {
+  max-height: min(52vh, 460px);
+  overflow: auto;
+}
+
+.cloud-devices-table td {
+  vertical-align: middle;
+}
+
+.cloud-devices-table .tag {
+  margin-block: 0;
+}
+
+.cloud-device-name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.cloud-device-name .env-target {
+  flex: none;
+  width: 24px;
+  height: 24px;
+}
+
+.cloud-devices-empty {
+  margin: 0;
+  padding: var(--space-4) 0;
+  text-align: center;
+}
+
+@media (max-width: 640px) {
+  .cloud-devices-filters {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .cloud-devices-filters .field:first-child {
+    grid-column: 1 / -1;
+  }
 }
 
 .cloud-confirm {
@@ -5449,4 +5599,530 @@ a.finding-row {
   .code-surface .code-input {
     color: CanvasText;
   }
+}
+
+/* ---------------------------------------------------------------- dashboard (the home page) */
+.dash {
+  display: grid;
+  gap: var(--space-4);
+  max-width: 1240px;
+}
+
+.dash .page-head {
+  margin-bottom: 0;
+  flex-wrap: wrap;
+}
+
+.dash-dot {
+  color: var(--text-3);
+}
+
+.dash-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.dash h2 {
+  font-size: var(--text-md);
+  letter-spacing: 0;
+}
+
+.dash-label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.dash-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.dash-section-head .muted {
+  font-weight: 400;
+}
+
+/* What needs the tester: the one tinted edge on the page. */
+.dash-waiting {
+  padding: 0;
+  border-top: 3px solid var(--run);
+}
+
+.dash-waiting-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4) var(--space-2);
+}
+
+.dash-waiting-head h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.dash-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 4px;
+  background: var(--run-soft);
+  color: var(--run);
+  font-size: var(--text-xs);
+  font-weight: 700;
+}
+
+.dash-waiting-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dash-waiting-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 10px var(--space-4);
+  border-top: 1px solid var(--line);
+}
+
+.dash-kind {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 2px 7px;
+  background: var(--run-soft);
+  color: var(--run);
+}
+
+.dash-waiting-title {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.dash-waiting-detail {
+  flex: 1;
+  min-width: 200px;
+  color: var(--text-2);
+}
+
+.dash-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.dash-stats > .callout,
+.dash-stats > .muted {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.dash-stat {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+
+.dash-stat-value {
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.dash-delta {
+  font-size: var(--text-sm);
+  color: var(--text-3);
+}
+
+.dash-delta-up {
+  color: var(--pass);
+  font-weight: 500;
+}
+
+.dash-delta-down {
+  color: var(--fail);
+  font-weight: 500;
+}
+
+.dash-middle {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: var(--space-3);
+}
+
+.dash-chart {
+  display: grid;
+  gap: var(--space-3);
+  align-content: start;
+}
+
+.dash-legend {
+  display: flex;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.dash-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dash-swatch {
+  width: 10px;
+  height: 10px;
+}
+
+/* Passed, failed and other differ in lightness too, not only in hue. */
+.dash-pass {
+  background: var(--pass);
+}
+
+.dash-fail {
+  background: #f87171;
+}
+
+.dash-other {
+  background: var(--line-strong);
+}
+
+.dash-bars,
+.dash-days {
+  display: grid;
+  grid-template-columns: repeat(14, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dash-bars {
+  height: 168px;
+  align-items: end;
+  border-bottom: 1px solid var(--line);
+}
+
+.dash-bars li {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 2px;
+  height: 100%;
+}
+
+.dash-bar {
+  display: block;
+  transition: height 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.dash-bar[style*="height: 0%"] {
+  display: none;
+}
+
+.dash-bars li:hover .dash-bar {
+  filter: brightness(1.12);
+}
+
+.dash-days {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-3);
+  text-align: center;
+}
+
+.dash-now {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.dash-live {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  color: var(--text);
+}
+
+.dash-live:hover {
+  border-color: var(--line-strong);
+  text-decoration: none;
+}
+
+.dash-live-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.dash-live-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  background: var(--run);
+  animation: dash-pulse 1.6s ease-in-out infinite;
+}
+
+.dash-live-paused {
+  background: var(--text-3);
+  animation: none;
+}
+
+@keyframes dash-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.dash-live-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dash-progress {
+  display: block;
+  height: 4px;
+  background: var(--line);
+}
+
+.dash-progress span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.dash-idle {
+  margin: 0;
+}
+
+.dash-queue ul {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dash-queue li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--line);
+}
+
+.dash-queue a {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dash-more {
+  margin-top: auto;
+  font-weight: 500;
+}
+
+.dash-recent {
+  padding: 0;
+}
+
+.dash-recent .dash-section-head {
+  padding: var(--space-3) var(--space-4) var(--space-2);
+}
+
+.dash-recent .table-wrap {
+  border: 0;
+  border-radius: 0;
+}
+
+.dash-setups {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.dash-setup {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  color: var(--text);
+  transition: border-color var(--duration-fast) var(--ease);
+}
+
+.dash-setup:hover {
+  border-color: var(--line-strong);
+  text-decoration: none;
+}
+
+.dash-setup-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-2);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.dash-setup-value {
+  overflow: hidden;
+  font-size: 18px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dash-setup-detail {
+  font-size: var(--text-sm);
+  color: var(--text-3);
+}
+
+.dash-start h2 {
+  margin-bottom: var(--space-3);
+}
+
+.dash-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+
+.dash-steps li {
+  display: grid;
+  gap: 4px;
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  counter-increment: step;
+}
+
+.dash-steps li::before {
+  content: counter(step);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-3);
+}
+
+.dash-steps a,
+.dash-steps .link-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-weight: 600;
+}
+
+@media (max-width: 960px) {
+  .dash-stats,
+  .dash-setups {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dash-middle,
+  .dash-steps {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* The sidebar's page change: a frozen copy of the outgoing page, masked into blocks that fade out (lib/pageDissolve). */
+.page-dissolve {
+  position: fixed;
+  z-index: 40;
+  overflow: hidden;
+  pointer-events: none;
+  /* The copied page's own background is see-through (the grid is drawn over the body's colour). */
+  background: var(--bg);
+}
+
+/* Staggered fade-in after a tab or filter switch (Runs filters, Explore tabs): items rise in one after another,
+   20 ms apart over 240 ms each; from the 9th on they arrive with the 8th, so the whole list is in within 380 ms. */
+@keyframes stagger-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+tbody.stagger-in > tr,
+.stagger-in tbody > tr,
+.stagger-in .finding-list > li,
+.stagger-in .explore-findings > .toolbar,
+.stagger-in .explore-findings > p,
+.empty.stagger-in {
+  animation: stagger-in 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.stagger-in tbody > tr:nth-child(2),
+tbody.stagger-in > tr:nth-child(2),
+.stagger-in .finding-list > li:nth-child(2) {
+  animation-delay: 20ms;
+}
+
+.stagger-in tbody > tr:nth-child(3),
+tbody.stagger-in > tr:nth-child(3),
+.stagger-in .finding-list > li:nth-child(3) {
+  animation-delay: 40ms;
+}
+
+.stagger-in tbody > tr:nth-child(4),
+tbody.stagger-in > tr:nth-child(4),
+.stagger-in .finding-list > li:nth-child(4) {
+  animation-delay: 60ms;
+}
+
+.stagger-in tbody > tr:nth-child(5),
+tbody.stagger-in > tr:nth-child(5),
+.stagger-in .finding-list > li:nth-child(5) {
+  animation-delay: 80ms;
+}
+
+.stagger-in tbody > tr:nth-child(6),
+tbody.stagger-in > tr:nth-child(6),
+.stagger-in .finding-list > li:nth-child(6) {
+  animation-delay: 100ms;
+}
+
+.stagger-in tbody > tr:nth-child(7),
+tbody.stagger-in > tr:nth-child(7),
+.stagger-in .finding-list > li:nth-child(7) {
+  animation-delay: 120ms;
+}
+
+.stagger-in tbody > tr:nth-child(8),
+tbody.stagger-in > tr:nth-child(8),
+.stagger-in .finding-list > li:nth-child(8) {
+  animation-delay: 140ms;
+}
+
+.stagger-in tbody > tr:nth-child(n + 9),
+tbody.stagger-in > tr:nth-child(n + 9),
+.stagger-in .finding-list > li:nth-child(n + 9) {
+  animation-delay: 140ms;
 }

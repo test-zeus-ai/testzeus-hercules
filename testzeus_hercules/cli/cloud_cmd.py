@@ -2,8 +2,10 @@
 
 * ``hercules cloud list``: each cloud, whether it is connected and what it can run here;
 * ``hercules cloud connect CLOUD --username NAME [--region REGION]`` reads the access key from standard input (never
-  an argument), saves both (and the Sauce Labs region) to ``~/.hercules/clouds.env`` (mode 600) and checks them;
+  an argument), saves both (and the Sauce Labs or TestMu AI region) to ``~/.hercules/clouds.env`` (mode 600) and checks them;
 * ``hercules cloud check CLOUD`` and ``hercules cloud disconnect CLOUD``;
+* ``hercules cloud devices CLOUD [--refresh] [--json]``: the mobile devices and desktop browsers the cloud offers the
+  account, fetched once and kept until the cloud is disconnected;
 * ``hercules cloud run RUN --cloud CLOUD`` runs the run's exported test on the cloud and waits for it (exit code 0
   when it passed, 1 when it failed, 2 when it could not start);
 * ``hercules cloud bundle RUN --cloud CLOUD --out FILE.zip`` writes the same project, with the cloud's CI config.
@@ -26,6 +28,7 @@ if TYPE_CHECKING:
 
 CLOUD_CHOICES = ("browserstack", "saucelabs", "testmu")
 SAUCELABS_REGION_CHOICES = ("us-west-1", "us-east-4", "eu-central-1")
+TESTMU_REGION_CHOICES = ("us", "eu", "ap")
 _CLOUD_HELP = "browserstack, saucelabs or testmu (TestMu AI, formerly LambdaTest)"
 
 
@@ -45,7 +48,20 @@ def add_cloud_command(commands: argparse._SubParsersAction[argparse.ArgumentPars
     )
     connect.add_argument("cloud", choices=CLOUD_CHOICES, help=_CLOUD_HELP)
     connect.add_argument("--username", required=True, help="the cloud user name (from its account page, not an example)")
-    connect.add_argument("--region", choices=SAUCELABS_REGION_CHOICES, default=None, help="Sauce Labs only: the data center of the account (default us-west-1)")
+    connect.add_argument(
+        "--region",
+        choices=SAUCELABS_REGION_CHOICES + TESTMU_REGION_CHOICES,
+        default=None,
+        help="Sauce Labs: the data center of the account (us-west-1, us-east-4 or eu-central-1; default us-west-1); TestMu AI: us, eu or ap (default us)",
+    )
+    devices = actions.add_parser(
+        "devices",
+        help="the mobile devices and desktop browsers a connected cloud offers the account",
+        description="Show the mobile devices and desktop browsers a connected cloud offers the account. The list is fetched once and kept until the cloud is disconnected.",
+    )
+    devices.add_argument("cloud", choices=CLOUD_CHOICES, help=_CLOUD_HELP)
+    devices.add_argument("--refresh", action="store_true", help="fetch the list from the cloud again")
+    devices.add_argument("--json", action="store_true", help="print JSON")
     for name, text in (("check", "check that the cloud accepts the current credentials"), ("disconnect", "remove the saved credentials of a cloud")):
         actions.add_parser(name, help=text, description=text[0].upper() + text[1:] + ".").add_argument("cloud", choices=CLOUD_CHOICES, help=_CLOUD_HELP)
     for name, text in (("run", "run a passed run's exported test on a cloud and wait for it"), ("bundle", "write a passed run's test as a project for a cloud (ZIP)")):
@@ -97,6 +113,8 @@ def run_cloud_command(args: argparse.Namespace, *, env: Mapping[str, str] | None
         return _check(args.cloud, settings, environ, out)
     if action == "disconnect":
         return _disconnect(args.cloud, settings, environ, out, err)
+    if action == "devices":
+        return _devices(args.cloud, settings, environ, out, err, refresh=args.refresh, as_json=args.json)
     return _run_or_bundle(args, settings, environ, project, out, err)
 
 
@@ -194,6 +212,47 @@ def _disconnect(cloud: "CloudId", settings: "Settings", env: Mapping[str, str], 
     found = find_credentials(cloud, settings, env)
     if found.source == "env":
         out.write(f"note: {found.username_env} and {found.access_key_env} are still set in the environment\n")
+    return 0
+
+
+def _devices(cloud: "CloudId", settings: "Settings", env: Mapping[str, str], out: TextIO, err: TextIO, *, refresh: bool, as_json: bool) -> int:
+    from testzeus_hercules.cli.style import Style
+    from testzeus_hercules.clouds.credentials import find_credentials
+    from testzeus_hercules.clouds.devices import DeviceFetchError, fetch_devices, load_catalog, save_catalog
+    from testzeus_hercules.clouds.registry import cloud_info
+
+    found = find_credentials(cloud, settings, env)
+    catalog = None if refresh else load_catalog(settings.home_dir, cloud)
+    if catalog is not None and (catalog.username != found.username or catalog.region != found.region):
+        catalog = None  # fetched for other keys or another region
+    if catalog is None:
+        if not found.found:
+            err.write(f"hercules: error: {cloud_info(cloud).name} is not connected; connect it with: hercules cloud connect {cloud} --username NAME\n")
+            return 2
+        try:
+            catalog = asyncio.run(fetch_devices(cloud, found))
+        except DeviceFetchError as exc:
+            err.write(f"hercules: error: {exc}\n")
+            return 1
+        save_catalog(settings.home_dir, catalog)
+    if as_json:
+        out.write(json.dumps(catalog.to_dict(), indent=2) + "\n")
+        return 0
+    style = Style.for_stream(out, env)
+    region = f" ({catalog.region})" if catalog.region else ""
+    out.write(f"{style.bold(cloud_info(cloud).name)}{region}: {len(catalog.mobile)} mobile devices, {len(catalog.desktop)} desktop browsers, fetched {catalog.fetched_at}\n")
+    if catalog.mobile:
+        out.write(f"\n{style.bold('Mobile')}\n")
+        for device in catalog.mobile:
+            what = f"{'real' if device.real else 'virtual'} {device.kind}"
+            out.write(f"  {device.name:<36} {'iOS' if device.platform == 'ios' else 'Android'} {device.os_version:<8} {style.dim(what)}\n")
+    if catalog.desktop:
+        out.write(f"\n{style.bold('Desktop')}\n")
+        for browser in catalog.desktop:
+            where = f"{browser.os} {browser.os_version}".strip()
+            out.write(f"  {where:<22} {browser.browser:<10} {style.dim(', '.join(browser.versions[:6]) + (' …' if len(browser.versions) > 6 else ''))}\n")
+    for note in catalog.notes:
+        out.write(f"{style.warn('note:')} {note}\n")
     return 0
 
 

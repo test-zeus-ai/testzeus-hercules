@@ -5,7 +5,8 @@ import { collapseText, expandText } from "../lib/expandText";
 import { EnvironmentFiles } from "../components/StepFiles";
 import { EnvironmentVariables } from "../components/EnvironmentVariables";
 import { Field, RequiredNote } from "../components/Field";
-import { Icon, type IconName } from "../components/Icon";
+import { Icon } from "../components/Icon";
+import { TargetIcon } from "../components/TargetIcon";
 import { ApiError, api, post, remove } from "../lib/api";
 import { EMPTY_ENV, envToForm, environmentBody, environmentVariables, validateEnvironment, type EnvForm } from "../lib/environmentForm";
 import { BROWSER_CHOICES, browserOptionsBody, type BrowserOptionsForm } from "../lib/browserOptionsForm";
@@ -292,21 +293,6 @@ export function whereOf(env: Environment): string | null {
   const file = app.app?.trim();
   if (file) return /^[a-z][a-z0-9+.-]*:\/\//i.test(file) ? file : file.split(/[\\/]/).pop() || file;
   return (app.platform === "ios" ? app.bundle_id : app.package) ?? null;
-}
-
-const BROWSER_ICONS: Record<string, IconName> = { "": "chrome", chromium: "chrome", chrome: "chrome", msedge: "edge", firefox: "firefox", webkit: "compass" };
-
-function TargetIcon({ env }: { env: Environment }) {
-  const browser = env.browser ?? "";
-  const kind = env.mobile ? (env.mobile.platform === "ios" ? "ios" : "android") : "web";
-  const browserName = BROWSER_CHOICES.find((choice) => choice.value === browser)?.label ?? browser;
-  const label = kind === "ios" ? "Native app (iOS)" : kind === "android" ? "Native app (Android)" : `Web app in ${browserName}: ${env.base_url ?? ""}`;
-  const icon: IconName = kind === "ios" ? "apple" : kind === "android" ? "android" : (BROWSER_ICONS[browser] ?? "envs");
-  return (
-    <span className={`env-target env-target-${kind}`} title={label}>
-      <Icon name={icon} size={16} label={label} />
-    </span>
-  );
 }
 
 function BrowserOptionsFields({ form, setForm, errors }: { form: EnvForm; setForm: (form: EnvForm) => void; errors: Record<string, string> }) {

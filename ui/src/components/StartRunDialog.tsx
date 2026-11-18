@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, type SelectHTMLAttributes } from "react";
 import { api, post } from "../lib/api";
 import { isCaseList, isModelsReport, isRunCase } from "../lib/guards";
 import { BASE_URL_PATTERN, environmentTag, errorLine } from "../lib/caseForm";
@@ -7,10 +7,13 @@ import { targetSummary } from "../lib/environmentForm";
 import { formFromSettings, rerunOptionsBody, runOptionsBody, validateRunOptions, type RunOptions } from "../lib/runOptions";
 import { folderOptions, within } from "../lib/caseTree";
 import type { CaseListing, Environment, ModelsReport, RerunScope, RunView, TestCase } from "../lib/types";
+import { AnimatedHeight } from "./AnimatedHeight";
 import { Field } from "./Field";
 import { GherkinEditor } from "./GherkinEditor";
+import { Icon } from "./Icon";
 import { Modal } from "./Modal";
 import { OptionGroup, RunOptionsFields } from "./RunOptionsFields";
+import { TargetIcon } from "./TargetIcon";
 
 type Source = "saved" | "folder" | "gherkin" | "description";
 
@@ -41,6 +44,32 @@ interface BatchCreated {
   folder: string;
   runs: { run_id: string }[];
   skipped: { name: string; reason: string }[];
+}
+
+/**
+ * A select whose field shows the chosen environment's name followed by its target icon (a browser or a
+ * native app); "None" shows as a plain select. The name and icon are drawn over the select, whose own
+ * text is hidden, so clicks, keys and the option list stay the select's.
+ */
+function EnvironmentSelect({ selected, ...select }: { selected?: Environment } & SelectHTMLAttributes<HTMLSelectElement>) {
+  const name = selected?.name ?? (select.value ? `${String(select.value)} (not saved)` : "");
+  return (
+    <span className={`select-with-icon${name ? " has-display" : ""}`}>
+      <select {...select} />
+      {name ? (
+        <span className="select-display" aria-hidden="true">
+          <span className="select-display-text">{name}</span>
+          {selected ? (
+            <TargetIcon env={selected} />
+          ) : (
+            <span className="env-target">
+              <Icon name="envs" size={16} />
+            </span>
+          )}
+        </span>
+      ) : null}
+    </span>
+  );
 }
 
 export function StartRunDialog({ onClose, onStarted, initial = {}, rerun }: { onClose: () => void; onStarted: (runId: string, batch?: string) => void; initial?: StartRunInitial; rerun?: RerunOf }) {
@@ -140,6 +169,7 @@ export function StartRunDialog({ onClose, onStarted, initial = {}, rerun }: { on
   const hybrid = models.data?.modes.hybrid;
   const error = localError ?? (start.error as Error | null)?.message ?? (startBatch.error as Error | null)?.message ?? null;
   const savedEnvs = envs.data?.environments ?? [];
+  const selectedEnv = savedEnvs.find((env) => env.name === environment);
 
   return (
     <Modal title={rerun ? (rerun.scope === "failed_only" ? "Re-run if failed" : "Re-run") : "Start a run"} onClose={onClose} wide>
@@ -183,56 +213,58 @@ export function StartRunDialog({ onClose, onStarted, initial = {}, rerun }: { on
               </div>
             </fieldset>
 
-            {source === "saved" ? (
-              <Field id="start-case" label="Case" required>
-                <select
-                  value={chosenCase}
-                  onChange={(event) => {
-                    setCasePath(event.target.value);
-                    setChosenEnvironment(null);
-                  }}
-                  disabled={validCases.length === 0}
-                >
-                  {validCases.length === 0 ? <option value="">No saved cases yet</option> : null}
-                  {validCases.map((entry) => (
-                    <option key={entry.path} value={entry.path} title={entry.name}>
-                      {entry.title ?? entry.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            ) : source === "folder" ? (
-              <div className="field-row">
-                <Field
-                  id="start-folder"
-                  label="Folder"
-                  required
-                  help={`${folderReady} ${folderReady === 1 ? "case runs" : "cases run"}, one run each${folderSkipped ? `; ${folderSkipped} ${folderSkipped === 1 ? "draft or broken case is" : "drafts or broken cases are"} skipped` : ""}.`}
-                >
-                  <select value={folder} onChange={(event) => setFolder(event.target.value)}>
-                    <option value="">All cases</option>
-                    {folderOptions(cases.data?.folders ?? []).map((option) => (
-                      <option key={option.path} value={option.path}>
-                        {option.path}
+            <AnimatedHeight swapKey={source}>
+              {source === "saved" ? (
+                <Field id="start-case" label="Case" required>
+                  <select
+                    value={chosenCase}
+                    onChange={(event) => {
+                      setCasePath(event.target.value);
+                      setChosenEnvironment(null);
+                    }}
+                    disabled={validCases.length === 0}
+                  >
+                    {validCases.length === 0 ? <option value="">No saved cases yet</option> : null}
+                    {validCases.map((entry) => (
+                      <option key={entry.path} value={entry.path} title={entry.name}>
+                        {entry.title ?? entry.name}
                       </option>
                     ))}
                   </select>
                 </Field>
-                <label className="field field-check field-check-inline">
-                  <input type="checkbox" checked={subfolders} onChange={(event) => setSubfolders(event.target.checked)} />
-                  <span>Include subfolders</span>
-                </label>
-              </div>
-            ) : source === "gherkin" ? (
-              <div className="field">
-                <span className="field-label is-required">Scenario</span>
-                <GherkinEditor value={gherkin} onChange={setGherkin} rows={10} id="start-gherkin" errorLine={errorLine(start.error?.message)} />
-              </div>
-            ) : (
-              <Field id="start-description" label="Steps, one per line" required help="Becomes a draft: review the steps on the run page, then approve it.">
-                <textarea rows={6} value={description} onChange={(event) => setDescription(event.target.value)} placeholder={"Open /login\nSign in as the demo user\nCheck the welcome message"} />
-              </Field>
-            )}
+              ) : source === "folder" ? (
+                <div className="field-row">
+                  <Field
+                    id="start-folder"
+                    label="Folder"
+                    required
+                    help={`${folderReady} ${folderReady === 1 ? "case runs" : "cases run"}, one run each${folderSkipped ? `; ${folderSkipped} ${folderSkipped === 1 ? "draft or broken case is" : "drafts or broken cases are"} skipped` : ""}.`}
+                  >
+                    <select value={folder} onChange={(event) => setFolder(event.target.value)}>
+                      <option value="">All cases</option>
+                      {folderOptions(cases.data?.folders ?? []).map((option) => (
+                        <option key={option.path} value={option.path}>
+                          {option.path}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <label className="field field-check field-check-inline">
+                    <input type="checkbox" checked={subfolders} onChange={(event) => setSubfolders(event.target.checked)} />
+                    <span>Include subfolders</span>
+                  </label>
+                </div>
+              ) : source === "gherkin" ? (
+                <div className="field">
+                  <span className="field-label is-required">Scenario</span>
+                  <GherkinEditor value={gherkin} onChange={setGherkin} rows={10} id="start-gherkin" errorLine={errorLine(start.error?.message)} />
+                </div>
+              ) : (
+                <Field id="start-description" label="Steps, one per line" required help="Becomes a draft: review the steps on the run page, then approve it.">
+                  <textarea rows={6} value={description} onChange={(event) => setDescription(event.target.value)} placeholder={"Open /login\nSign in as the demo user\nCheck the welcome message"} />
+                </Field>
+              )}
+            </AnimatedHeight>
           </>
         )}
 
@@ -248,17 +280,17 @@ export function StartRunDialog({ onClose, onStarted, initial = {}, rerun }: { on
                   : undefined
             }
           >
-            <select value={environment} onChange={(event) => setChosenEnvironment(event.target.value)}>
+            <EnvironmentSelect selected={selectedEnv} value={environment} onChange={(event) => setChosenEnvironment(event.target.value)}>
               <option value="" disabled={Boolean(caseEnvironment)}>
                 {!rerun && source === "folder" ? "Each case's own" : "None"}
               </option>
-              {environment && envs.data && !savedEnvs.some((env) => env.name === environment) ? <option value={environment}>{environment} (not saved)</option> : null}
+              {environment && envs.data && !selectedEnv ? <option value={environment}>{environment} (not saved)</option> : null}
               {savedEnvs.map((env) => (
-                <option key={env.name} value={env.name}>
-                  {env.name} ({targetSummary(env)})
+                <option key={env.name} value={env.name} title={targetSummary(env)}>
+                  {env.name}
                 </option>
               ))}
-            </select>
+            </EnvironmentSelect>
           </Field>
           <Field id="start-base-url" label="Base URL">
             <input type="url" inputMode="url" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder="http://localhost:3000 (optional)" />

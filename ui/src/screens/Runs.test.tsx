@@ -28,12 +28,34 @@ describe("RunsScreen", () => {
     );
     render(
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <Router hook={memoryLocation({ path: "/" }).hook}>
+        <Router hook={memoryLocation({ path: "/runs" }).hook}>
           <RunsScreen />
         </Router>
       </QueryClientProvider>,
     );
     expect((await screen.findByRole("note")).textContent).toMatch(new RegExp(`newest ${RUN_LIMIT} runs`));
+  });
+
+  it("fades the rows in one after another after a filter switch, not on first load", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.resolve(new Response(JSON.stringify({ runs: [run(1), run(2, "failed"), run(3)] }), { status: 200 }))),
+    );
+    const location = memoryLocation({ path: "/runs" });
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <Router hook={location.hook} searchHook={location.searchHook}>
+          <RunsScreen />
+        </Router>
+      </QueryClientProvider>,
+    );
+    const firstRow = (await screen.findAllByText("r_1"))[0].closest("tr") as HTMLElement;
+    expect(firstRow.parentElement?.classList.contains("stagger-in")).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: /^Passed/ }));
+    await waitFor(() => expect(document.querySelector("tbody")?.classList.contains("stagger-in")).toBe(true));
+    expect(document.querySelectorAll("tbody > tr")).toHaveLength(2);
+    fireEvent.click(screen.getByRole("button", { name: /^Passed/ }));
+    expect(document.querySelector("tbody")?.classList.contains("stagger-in")).toBe(true);
   });
 
   it("asks the daemon for every run of a folder run", async () => {
@@ -49,7 +71,7 @@ describe("RunsScreen", () => {
         return Promise.resolve(new Response(JSON.stringify({ runs }), { status: 200 }));
       }),
     );
-    const location = memoryLocation({ path: "/?batch=b_1" });
+    const location = memoryLocation({ path: "/runs?batch=b_1" });
     render(
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
         <Router hook={location.hook} searchHook={location.searchHook}>
@@ -74,7 +96,7 @@ describe("RunsScreen", () => {
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
     render(
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <Router hook={memoryLocation({ path: "/" }).hook}>
+        <Router hook={memoryLocation({ path: "/runs" }).hook}>
           <RunsScreen />
         </Router>
       </QueryClientProvider>,

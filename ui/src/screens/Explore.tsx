@@ -62,6 +62,8 @@ export function ExploreScreen() {
   const [location, navigate] = useLocation();
   const tab = new URLSearchParams(search).get("tab") === "findings" ? "findings" : "sessions";
   const [starting, setStarting] = useState(false);
+  // Bumped by each tab switch: the tab's list remounts and its items fade in one after another (not on first load).
+  const [switches, setSwitches] = useState(0);
   const findings = useFindings();
   const waiting = findings.data ? toReview(findings.data.findings) : 0;
   return (
@@ -80,7 +82,11 @@ export function ExploreScreen() {
       <div className="toolbar">
         <div className="segmented" role="group" aria-label="Show">
           {(["sessions", "findings"] as const).map((item) => (
-            <button key={item} type="button" className={`segment${tab === item ? " segment-on" : ""}`} aria-pressed={tab === item} onClick={() => navigate(`${location}${item === "findings" ? "?tab=findings" : ""}`, { replace: true })}>
+            <button key={item} type="button" className={`segment${tab === item ? " segment-on" : ""}`} aria-pressed={tab === item} onClick={() => {
+                if (item === tab) return;
+                navigate(`${location}${item === "findings" ? "?tab=findings" : ""}`, { replace: true });
+                setSwitches((count) => count + 1);
+              }}>
               {item === "sessions" ? "Sessions" : "Findings"}
               {item === "findings" && waiting ? (
                 <span className="count-badge" title={`${waiting} finding(s) wait for your decision`}>
@@ -91,7 +97,9 @@ export function ExploreScreen() {
           ))}
         </div>
       </div>
-      {tab === "sessions" ? <SessionList onStart={() => setStarting(true)} /> : <FindingsLedger />}
+      <div key={switches} className={switches ? "stagger-in" : undefined}>
+        {tab === "sessions" ? <SessionList onStart={() => setStarting(true)} /> : <FindingsLedger />}
+      </div>
       {starting ? <StartExploreDialog onClose={() => setStarting(false)} onStarted={(id) => navigate(`/explore/${id}`)} /> : null}
     </section>
   );

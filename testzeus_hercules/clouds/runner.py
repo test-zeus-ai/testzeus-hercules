@@ -45,7 +45,7 @@ from testzeus_hercules.clouds.bundle import (
     mobile_bundle,
     web_bundle,
 )
-from testzeus_hercules.clouds.credentials import CloudCredentials, find_credentials, sauce_region
+from testzeus_hercules.clouds.credentials import DEFAULT_SAUCE_REGION, CloudCredentials, find_credentials, sauce_region
 from testzeus_hercules.clouds.registry import CloudId, cloud_info
 from testzeus_hercules.export.common import ExportError
 from testzeus_hercules.kernel.child_env import child_environment
@@ -226,7 +226,8 @@ class CloudRuns:
         try:
             if is_app:
                 return mobile_bundle(result, cloud, mobile, allow_failed=allow_failed)
-            return web_bundle(result, cloud, web, credentials=names, allow_failed=allow_failed, sauce_region=sauce_region(credentials), project_dir=self.project_dir)
+            region = sauce_region(credentials) if cloud == "saucelabs" else DEFAULT_SAUCE_REGION
+            return web_bundle(result, cloud, web, credentials=names, allow_failed=allow_failed, sauce_region=region, project_dir=self.project_dir)
         except (ExportError, ValueError) as exc:
             raise CloudRunError(str(exc)) from None
 

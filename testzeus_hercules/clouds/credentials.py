@@ -5,8 +5,9 @@ Each cloud's user name and access key live in the environment variables named in
 ``LT_USERNAME``/``LT_ACCESS_KEY`` by default). When the environment does not hold them, the private file
 ``clouds.env`` may: ``NAME=value`` lines, readable by its owner only (mode 0600; a file others can read is
 ignored). The tester UI saves pasted keys there. The Sauce Labs data center comes from ``SAUCE_REGION`` in the
-environment, else the one saved in ``clouds.env``, else ``mobile.saucelabs.region``, else ``us-west-1``. Values are added to a copy of the environment mapping handed
-to a run, never to the process environment; nothing here logs or returns a key in a message.
+environment, else the one saved in ``clouds.env``, else ``mobile.saucelabs.region``, else ``us-west-1``; the TestMu AI
+region (``us``, ``eu`` or ``ap``, used to list its devices) likewise from ``LT_REGION``, else ``us``. Values are added to a copy
+of the environment mapping handed to a run, never to the process environment; nothing here logs or returns a key in a message.
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-from testzeus_hercules.clouds.registry import CLOUD_IDS, CloudId
+from testzeus_hercules.clouds.registry import CLOUD_IDS, CloudId, cloud_info
 from testzeus_hercules.kernel.private_env import EDIT_LOCK, read_private_env, write_private_env
 from testzeus_hercules.kernel.settings import DeviceCloudSettings, Settings
 
@@ -25,6 +26,13 @@ CLOUDS_FILENAME = "clouds.env"
 SAUCE_REGION_ENV = "SAUCE_REGION"
 SAUCELABS_REGIONS = ("us-west-1", "us-east-4", "eu-central-1")
 DEFAULT_SAUCE_REGION = "us-west-1"
+TESTMU_REGION_ENV = "LT_REGION"
+TESTMU_REGIONS = ("us", "eu", "ap")
+DEFAULT_TESTMU_REGION = "us"
+# The clouds with a region: the variable that names it (in the environment or clouds.env), its choices and default.
+REGION_ENV: dict[CloudId, str] = {"saucelabs": SAUCE_REGION_ENV, "testmu": TESTMU_REGION_ENV}
+REGIONS: dict[CloudId, tuple[str, ...]] = {"saucelabs": SAUCELABS_REGIONS, "testmu": TESTMU_REGIONS}
+DEFAULT_REGION: dict[CloudId, str] = {"saucelabs": DEFAULT_SAUCE_REGION, "testmu": DEFAULT_TESTMU_REGION}
 _MAX_FILE_BYTES = 16_384
 _MAX_VALUE = 512
 
@@ -85,12 +93,13 @@ def read_clouds_file(home: Path) -> tuple[dict[str, str], str | None]:
 
 
 def _region(cloud: CloudId, config: DeviceCloudSettings, env: Mapping[str, str], stored: Mapping[str, str]) -> tuple[str | None, RegionSource | None]:
-    if cloud != "saucelabs":
+    name = REGION_ENV.get(cloud)
+    if name is None:
         return None, None
-    for value, source in ((env.get(SAUCE_REGION_ENV, ""), "env"), (stored.get(SAUCE_REGION_ENV, ""), "file"), (config.region or "", "config")):
+    for value, source in ((env.get(name, ""), "env"), (stored.get(name, ""), "file"), (config.region or "", "config")):
         if value.strip():
             return value.strip().lower(), source  # type: ignore[return-value]
-    return DEFAULT_SAUCE_REGION, "default"
+    return DEFAULT_REGION[cloud], "default"
 
 
 _REGION_WHERE = f"choose it on the Integrations screen, with hercules cloud connect saucelabs --region, in {SAUCE_REGION_ENV}, or in mobile.saucelabs.region"
@@ -100,6 +109,16 @@ def sauce_region(credentials: CloudCredentials) -> str:
     region = credentials.region or DEFAULT_SAUCE_REGION
     if region not in SAUCELABS_REGIONS:
         raise ValueError(f"the Sauce Labs region must be one of {', '.join(SAUCELABS_REGIONS)} ({_REGION_WHERE})")
+    return region
+
+
+def testmu_region(credentials: CloudCredentials) -> str:
+    region = credentials.region or DEFAULT_TESTMU_REGION
+    if region not in TESTMU_REGIONS:
+        raise ValueError(
+            f"the TestMu AI region must be one of {', '.join(TESTMU_REGIONS)} (choose it on the Integrations screen, with hercules cloud connect testmu --region, "
+            f"in {TESTMU_REGION_ENV}, or in mobile.testmu.region)"
+        )
     return region
 
 
@@ -141,11 +160,12 @@ def _write(home: Path, values: Mapping[str, str]) -> Path:
 
 
 def _checked_region(cloud: CloudId, region: str) -> str:
-    if cloud != "saucelabs":
-        raise CredentialError("only Sauce Labs has a region")
+    choices = REGIONS.get(cloud)
+    if choices is None:
+        raise CredentialError("only Sauce Labs and TestMu AI have a region")
     cleaned = region.strip().lower()
-    if cleaned not in SAUCELABS_REGIONS:
-        raise CredentialError(f"the Sauce Labs region must be one of {', '.join(SAUCELABS_REGIONS)}")
+    if cleaned not in choices:
+        raise CredentialError(f"the {cloud_info(cloud).name} region must be one of {', '.join(choices)}")
     return cleaned
 
 
@@ -157,27 +177,35 @@ def _saved_values(settings: Settings) -> dict[str, str]:
 
 
 def save_credentials(cloud: CloudId, settings: Settings, username: str, access_key: str, region: str | None = None) -> Path:
-    """Save the cloud's user name and access key (and Sauce Labs region) to ``clouds.env`` (mode 0600), keeping the
-    other clouds' lines."""
+    """Save the cloud's user name and access key (and Sauce Labs or TestMu AI region) to ``clouds.env`` (mode 0600), keeping the
+    other clouds' lines. The cloud's saved device list is forgotten: it belonged to the old keys."""
+    from testzeus_hercules.clouds.devices import forget_catalog
+
     config = cloud_settings(settings, cloud)
     checked = _checked_region(cloud, region) if region is not None else None
     cleaned = {config.username_env: _clean(username, "user name"), config.access_key_env: _clean(access_key, "access key")}
     if checked is not None:
-        cleaned[SAUCE_REGION_ENV] = checked
+        cleaned[REGION_ENV[cloud]] = checked
     with EDIT_LOCK:
-        return _write(settings.home_dir, {**_saved_values(settings), **cleaned})
+        path = _write(settings.home_dir, {**_saved_values(settings), **cleaned})
+        forget_catalog(settings.home_dir, cloud)
+        return path
 
 
 def save_region(cloud: CloudId, settings: Settings, region: str) -> Path:
     checked = _checked_region(cloud, region)
     with EDIT_LOCK:
-        return _write(settings.home_dir, {**_saved_values(settings), SAUCE_REGION_ENV: checked})
+        return _write(settings.home_dir, {**_saved_values(settings), REGION_ENV[cloud]: checked})
 
 
 def remove_credentials(cloud: CloudId, settings: Settings) -> bool:
-    """Remove the cloud's lines from ``clouds.env``; True when there were any. The environment is not touched."""
+    """Remove the cloud's lines from ``clouds.env`` and its saved device list; True when there were any lines. The
+    environment is not touched."""
+    from testzeus_hercules.clouds.devices import forget_catalog
+
     config = cloud_settings(settings, cloud)
     with EDIT_LOCK:
+        forget_catalog(settings.home_dir, cloud)
         values, problem = read_clouds_file(settings.home_dir)
         if problem:
             raise CredentialError(problem)

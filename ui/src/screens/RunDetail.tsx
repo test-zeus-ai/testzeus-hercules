@@ -246,7 +246,7 @@ export function RunDetailScreen({ runId }: { runId: string }) {
     return (
       <section className="page">
         <p className="crumbs">
-          <Link href="/">Runs</Link>
+          <Link href="/runs">Runs</Link>
         </p>
         <p className="callout callout-fail">Could not load run {runId}: {(run.error as Error).message}</p>
       </section>
@@ -275,7 +275,7 @@ export function RunDetailScreen({ runId }: { runId: string }) {
   return (
     <section className="page page-run" aria-labelledby="run-title">
       <p className="crumbs">
-        <Link href="/">Runs</Link> <Icon name="chevron" size={12} /> <span className="mono">{runId}</span>
+        <Link href="/runs">Runs</Link> <Icon name="chevron" size={12} /> <span className="mono">{runId}</span>
       </p>
       <header className="run-head">
         <div className="run-head-main">

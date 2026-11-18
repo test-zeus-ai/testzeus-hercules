@@ -87,6 +87,7 @@ def _errors(*codes: int) -> dict[str, Any]:
         413: "Body too large",
         415: "Wrong content type",
         422: "Invalid input",
+        502: "The cloud refused or could not be reached",
     }
     return {str(code): _json(_ref("ErrorBody"), texts[code]) for code in (401, 403, *codes)}
 
@@ -101,6 +102,16 @@ _RUN_ID = _param("run_id", "path", {"type": "string"}, "Run id such as r_2026102
 def _paths() -> dict[str, Any]:
     run_ops = {"parameters": [_RUN_ID]}
     return {
+        "/api/dashboard": {
+            "get": {
+                "summary": "The home page's numbers: runs, pass rate, median duration and model cost over the last days next to the period before, and runs per day for 14 days",
+                "parameters": [
+                    _param("days", "query", {"type": "integer", "minimum": 1, "maximum": 90, "default": 7}, "Length of the period, in days"),
+                    _param("tz", "query", {"type": "string"}, "IANA time zone for the calendar days (default UTC)"),
+                ],
+                "responses": {"200": _json({"type": "object"}), **_errors(422)},
+            },
+        },
         "/api/health": {"get": {"summary": "Daemon status, project and queue counts", "responses": {"200": _json({"type": "object"}), **_errors()}}},
         "/api/models": {
             "get": {
@@ -359,9 +370,20 @@ def _cloud_paths(run_ops: dict[str, Any]) -> dict[str, Any]:
         "/api/clouds/{cloud}/region": {
             "parameters": [cloud],
             "put": {
-                "summary": "Save the Sauce Labs region (us-west-1, us-east-4, eu-central-1) to <hercules home>/clouds.env and check the saved keys there",
+                "summary": "Save the Sauce Labs region (us-west-1, us-east-4, eu-central-1) or TestMu AI region (us, eu, ap) to <hercules home>/clouds.env and check the saved keys there",
                 "requestBody": {"required": True, "content": {"application/json": {"schema": _ref("CloudRegion")}}},
                 "responses": {"200": _json({"type": "object"}), **_errors(404, 422)},
+            },
+        },
+        "/api/clouds/{cloud}/devices": {
+            "parameters": [cloud],
+            "get": {
+                "summary": "The cloud's device list fetched last (mobile devices and desktop browsers), and whether it was fetched for other keys or another region",
+                "responses": {"200": _json({"type": "object"}), **_errors(404)},
+            },
+            "post": {
+                "summary": "Fetch the mobile devices and desktop browsers the cloud offers the account and save the list until the cloud is disconnected",
+                "responses": {"200": _json({"type": "object"}), **_errors(404, 409, 502)},
             },
         },
         "/api/environments/{name}/files": {

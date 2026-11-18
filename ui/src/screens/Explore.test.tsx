@@ -158,6 +158,27 @@ describe("ExploreScreen", () => {
     expect(within(row).getByText("Exploring")).toBeTruthy();
   });
 
+  it("fades the tab's items in one after another after a switch, not on first load", async () => {
+    vi.stubGlobal("fetch", vi.fn((url: string) => respond(url.startsWith("/api/explore/findings") ? { findings: [FINDING], precision: { precision: null, confirmed: 0, dismissed: 0, untriaged: 1, triaged: 0, interval_90: null } } : { sessions: [session()] })));
+    const memory = memoryLocation({ path: "/explore" });
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <Router hook={memory.hook} searchHook={memory.searchHook}>
+          <ExploreScreen />
+        </Router>
+      </QueryClientProvider>,
+    );
+    const first = (await screen.findByRole("link", { name: "P1 hunt" })).closest("tr") as HTMLElement;
+    expect(first.closest(".stagger-in")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /^Findings/ }));
+    const finding = await screen.findByText(FINDING.title);
+    expect(finding.closest(".stagger-in")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Sessions" }));
+    const again = (await screen.findByRole("link", { name: "P1 hunt" })).closest("tr") as HTMLElement;
+    expect(again.closest(".stagger-in")).toBeTruthy();
+    expect(again).not.toBe(first); // a fresh row, so its animation plays again
+  });
+
   it("opens a session from anywhere on its row", async () => {
     vi.stubGlobal("fetch", vi.fn(() => respond({ sessions: [session()] })));
     const memory = memoryLocation({ path: "/explore", record: true });

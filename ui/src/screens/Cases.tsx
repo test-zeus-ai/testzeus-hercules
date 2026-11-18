@@ -527,7 +527,7 @@ export function CasesScreen({ selected }: { selected?: string }) {
           onClose={() => setRunning(null)}
           onStarted={(runId, batch) => {
             setRunning(null);
-            navigate(batch ? `/?batch=${encodeURIComponent(batch)}` : `/runs/${runId}`);
+            navigate(batch ? `/runs?batch=${encodeURIComponent(batch)}` : `/runs/${runId}`);
           }}
         />
       ) : null}

@@ -24,7 +24,7 @@ describe("cloud labels", () => {
   });
 
   it("says who is connected and where the keys come from", () => {
-    expect(connectionLabel(cloud())).toBe("Connected as alice · saved in Hercules");
+    expect(connectionLabel(cloud())).toBe("Connected as alice");
     expect(connectionLabel(cloud({ source: "env" }))).toBe("Connected as alice · from environment");
     expect(connectionLabel(cloud({ connected: false, source: "none", username: null }))).toBe("Not connected");
   });

@@ -1,16 +1,18 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { Link, Route, Switch, useLocation } from "wouter";
+import { Link, Redirect, Route, Switch, useLocation, useSearch } from "wouter";
 import { BrandLockup, Wordmark } from "./components/Brand";
 import { ProPromo } from "./components/ProPromo";
 import { TESTZEUS_SITE, withUtm } from "./lib/links";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Icon, type IconName } from "./components/Icon";
 import { api, UNAUTHORIZED_EVENT } from "./lib/api";
+import { dissolvePage } from "./lib/pageDissolve";
 import { useFont } from "./lib/font";
 import { useTheme } from "./lib/theme";
 import type { Health } from "./lib/types";
 import { CasesScreen } from "./screens/Cases";
+import { DashboardScreen } from "./screens/Dashboard";
 import { EnvironmentsScreen } from "./screens/Environments";
 import { ExploreScreen } from "./screens/Explore";
 import { ExploreSessionScreen } from "./screens/ExploreSession";
@@ -21,9 +23,10 @@ import { RunDetailScreen } from "./screens/RunDetail";
 import { RunsScreen } from "./screens/Runs";
 
 const NAV: Array<{ href: string; label: string; icon: IconName; match: (path: string) => boolean; beta?: boolean }> = [
-  { href: "/", label: "Runs", icon: "runs", match: (path) => path === "/" || path.startsWith("/runs") },
-  { href: "/explore", label: "Explore", icon: "compass", match: (path) => path.startsWith("/explore"), beta: true },
+  { href: "/", label: "Dashboard", icon: "dashboard", match: (path) => path === "/" },
   { href: "/cases", label: "Cases", icon: "cases", match: (path) => path.startsWith("/cases") },
+  { href: "/runs", label: "Runs", icon: "runs", match: (path) => path.startsWith("/runs") },
+  { href: "/explore", label: "Explore", icon: "compass", match: (path) => path.startsWith("/explore"), beta: true },
   { href: "/environments", label: "Environments", icon: "envs", match: (path) => path.startsWith("/environments") },
   { href: "/models", label: "Models", icon: "models", match: (path) => path.startsWith("/models") },
   { href: "/integrations", label: "Integrations", icon: "cloud", match: (path) => path.startsWith("/integrations") },
@@ -48,6 +51,12 @@ function writeCollapsed(value: boolean): void {
   }
 }
 
+
+/** The dashboard; a link to the old runs list (`/?status=failed`, `/?batch=…`) goes to `/runs` with its filters. */
+function Home() {
+  const search = useSearch();
+  return search ? <Redirect to={`/runs?${search}`} replace /> : <DashboardScreen />;
+}
 
 function SignedOut() {
   return (
@@ -110,7 +119,7 @@ export function App() {
         <button type="button" className="sidebar-toggle" onClick={toggleSidebar} aria-expanded={!collapsed} aria-label={collapsed ? "Expand the sidebar" : "Collapse the sidebar"} title={collapsed ? "Expand" : "Collapse"}>
           <Icon name="chevron" size={14} />
         </button>
-        <Link href="/" className="brand" aria-label="Hercules, a QA engine by TestZeus: runs">
+        <Link href="/" className="brand" aria-label="Hercules, a QA engine by TestZeus: dashboard">
           <BrandLockup />
         </Link>
         <nav aria-label="Main">
@@ -119,11 +128,22 @@ export function App() {
               const current = item.match(location);
               return (
                 <li key={item.href}>
-                  <Link href={item.href} className={`nav-link${current ? " nav-current" : ""}`} aria-current={current ? "page" : undefined} title={collapsed ? item.label : undefined}>
+                  <Link
+                    href={item.href}
+                    className={`nav-link${current ? " nav-current" : ""}`}
+                    aria-current={current ? "page" : undefined}
+                    title={collapsed ? item.label : undefined}
+                    onClick={(event) => {
+                      // A plain click to another page dissolves the current one from the click (keyboard: from the tab).
+                      if (current || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                      const tab = event.currentTarget.getBoundingClientRect();
+                      dissolvePage(document.getElementById("main"), event.detail > 0 ? { x: event.clientX, y: event.clientY } : { x: tab.right, y: tab.top + tab.height / 2 });
+                    }}
+                  >
                     <Icon name={item.icon} size={17} />
                     <span className="nav-label">{item.label}</span>
                     {item.beta ? <span className="nav-beta">Beta</span> : null}
-                    {item.href === "/" && active > 0 ? <span className="nav-badge" aria-label={`${active} active`}>{active}</span> : null}
+                    {item.href === "/runs" && active > 0 ? <span className="nav-badge" aria-label={`${active} active`}>{active}</span> : null}
                   </Link>
                 </li>
               );
@@ -158,7 +178,8 @@ export function App() {
       <main id="main" className="main" tabIndex={-1}>
         <ErrorBoundary resetKey={location}>
           <Switch>
-            <Route path="/" component={RunsScreen} />
+            <Route path="/" component={Home} />
+            <Route path="/runs" component={RunsScreen} />
             <Route path="/runs/:id">{(params) => <RunDetailScreen key={params.id} runId={params.id} />}</Route>
             <Route path="/explore" component={ExploreScreen} />
             <Route path="/explore/:id">{(params) => <ExploreSessionScreen key={params.id} sessionId={params.id} />}</Route>
@@ -172,7 +193,7 @@ export function App() {
               <section className="page">
                 <h1>Not found</h1>
                 <p>
-                  <Link href="/">Back to runs</Link>
+                  <Link href="/">Back to the dashboard</Link>
                 </p>
               </section>
             </Route>

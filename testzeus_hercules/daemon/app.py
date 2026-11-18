@@ -167,6 +167,7 @@ class Daemon:
             mode=options.get("mode"),
             egress=options.get("egress"),
             settings=_settings_of(record),
+            environment=((record.get("case") or {}).get("environment") or {}).get("ref"),
             run_dir=str(run_dir),
             ui_url=self.ui_url(run_id),
             summary=result.summary_text() if result is not None else _status_line(record),
@@ -983,6 +984,22 @@ async def models(request: Request, daemon: Daemon) -> Response:
     return JSONResponse(report)
 
 
+async def dashboard(request: Request, daemon: Daemon) -> Response:
+    from testzeus_hercules.daemon import dashboard as home
+
+    days = _query_number(request, "days", int, default=7, low=1, high=90)
+    tz = home.time_zone(request.query_params.get("tz"))
+    now = datetime.now(timezone.utc)
+    since = home.earliest_needed(now, days, tz).astimezone(timezone.utc).isoformat(timespec="milliseconds")
+    runs_dir = daemon.config.paths.runs_dir
+
+    def build() -> dict[str, Any]:
+        rows = daemon.store.run_times(since)
+        return home.summarize(rows, now=now, days=days, tz=tz, cost_of=lambda run_id: home.run_cost(runs_dir, run_id))
+
+    return JSONResponse(await asyncio.to_thread(build))
+
+
 async def login_url(request: Request, daemon: Daemon) -> Response:
     code = daemon.sessions.new_code()
     return JSONResponse({"url": f"{daemon.config.public_url}/login?code={code}", "expires_in_s": 300})
@@ -1023,6 +1040,7 @@ def create_app(config: DaemonConfig) -> Starlette:
     routes = [
         Route("/api/health", _endpoint(health), methods=["GET"]),
         Route("/api/login-url", _endpoint(login_url), methods=["POST"]),
+        Route("/api/dashboard", _endpoint(dashboard), methods=["GET"]),
         Route("/api/openapi.json", _endpoint(openapi), methods=["GET"]),
         Route("/api/models", _endpoint(models), methods=["GET"]),
         Route("/api/runs", _endpoint(list_runs), methods=["GET"]),
@@ -1056,6 +1074,8 @@ def create_app(config: DaemonConfig) -> Starlette:
         Route("/api/clouds/{cloud}", _endpoint(cloud_api.remove_cloud), methods=["DELETE"]),
         Route("/api/clouds/{cloud}/check", _endpoint(cloud_api.check_cloud), methods=["POST"]),
         Route("/api/clouds/{cloud}/region", _endpoint(cloud_api.save_cloud_region), methods=["PUT"]),
+        Route("/api/clouds/{cloud}/devices", _endpoint(cloud_api.get_devices), methods=["GET"]),
+        Route("/api/clouds/{cloud}/devices", _endpoint(cloud_api.refresh_devices), methods=["POST"]),
         Route("/api/runs/{run_id}/steps/{step}/decisions", _endpoint(step_decisions), methods=["GET"]),
         Route("/api/runs/{run_id}/plan", _endpoint(run_plan), methods=["GET"]),
         Route("/api/runs/{run_id}/plan/diff", _endpoint(run_plan_diff), methods=["GET"]),

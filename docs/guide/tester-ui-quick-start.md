@@ -25,6 +25,17 @@ step links to the full description.
 
    It opens a one-time sign-in link in your browser (valid for 5 minutes; `--print` only
    prints it).
+
+   The UI opens on the **Dashboard**:
+   - runs waiting for your answer (an approval or a plan to review);
+   - the last 7 days next to the week before: runs, pass rate, median duration and model cost;
+   - runs per day over the last 14 days;
+   - what is running and queued now;
+   - the latest runs;
+   - a summary of your cases, environments, model and connected clouds, each linking to its page.
+
+   On a new project it shows the first steps instead. **Start a run** is there too. The full
+   list of runs is under **Runs**.
 3. Open **Models** and check that the local model server is reachable and which run modes
    are available. **Run doctor** checks it again. Hybrid mode needs its key variable set
    (see [Modes and privacy](modes-and-privacy.md)).
@@ -50,7 +61,7 @@ step links to the full description.
 
 ## Run it
 
-7. Select **Run** on the case (or **Start a run** on the Runs page and pick the saved
+7. Select **Run** on the case (or **Start a run** on the Dashboard or the Runs page and pick the saved
    case). In the dialog choose the environment and the mode (**Auto** uses the mode from
    your settings, else hybrid when its key is set, else pure; see
    [Modes and privacy](modes-and-privacy.md)). Tick **Show the browser window** to watch

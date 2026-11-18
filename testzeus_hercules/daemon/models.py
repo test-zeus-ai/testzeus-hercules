@@ -477,6 +477,7 @@ class RunView(BaseModel):
     mode: str | None = None
     egress: str | None = None
     settings: RunSettings | None = Field(default=None, description="The options the run was started with (a re-run inherits them)")
+    environment: str | None = Field(default=None, description="The saved environment the run uses: its case's, or the one it was started with")
     run_dir: str
     ui_url: str
     summary: str

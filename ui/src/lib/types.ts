@@ -249,6 +249,8 @@ export interface RunView {
   mode?: string | null;
   egress?: string | null;
   settings?: RunSettings | null;
+  /** The saved environment the run uses: its case's, or the one it was started with. */
+  environment?: string | null;
   run_dir: string;
   ui_url: string;
   summary: string;
@@ -477,6 +479,37 @@ export interface Health {
   egress_policy?: string;
 }
 
+/** One period of the home page's numbers (`/api/dashboard`). */
+export interface DashboardPeriod {
+  runs: number;
+  finished: number;
+  passed: number;
+  failed: number;
+  /** Passed among finished runs that were not cancelled; null when there are none. */
+  pass_rate: number | null;
+  median_duration_s: number | null;
+  /** Model cost of the finished runs whose result names one; null when none does. */
+  cost_usd: number | null;
+  costed_runs: number;
+}
+
+export interface DashboardDay {
+  date: string;
+  passed: number;
+  failed: number;
+  other: number;
+}
+
+export interface DashboardReport {
+  days: number;
+  time_zone: string;
+  generated_at: string;
+  current: DashboardPeriod;
+  previous: DashboardPeriod;
+  /** The last 14 calendar days, oldest first. */
+  daily: DashboardDay[];
+}
+
 export interface RunEvent {
   seq: number;
   kind: string;
@@ -535,8 +568,10 @@ export interface Cloud {
   username_env: string;
   access_key_env: string;
   region: string | null;
-  /** Where the region comes from: SAUCE_REGION (read-only here), the keys file, the config, or the default. */
+  /** Where the region comes from: its environment variable (read-only here), the keys file, the config, or the default. */
   region_source: "env" | "file" | "config" | "default" | null;
+  /** The environment variable that sets the region (SAUCE_REGION, LT_REGION); null for a cloud without one. */
+  region_env: string | null;
   /** The regions this cloud can be set to; empty when it has none to choose. */
   regions: string[];
   problem: string | null;
@@ -570,6 +605,40 @@ export interface CloudCheck {
 export type CloudSaved = Cloud & { check: CloudCheck; note: string | null };
 export type CloudRegionSaved = Cloud & { check: CloudCheck | null; note: string | null };
 export type CloudRemoved = Cloud & { removed: boolean; note: string | null };
+
+/** A phone or tablet a cloud offers the account (`/api/clouds/{cloud}/devices`). */
+export interface CloudMobileDevice {
+  name: string;
+  platform: "android" | "ios";
+  os_version: string;
+  kind: "phone" | "tablet";
+  /** A real device; false for an emulator or simulator. */
+  real: boolean;
+  tier: string | null;
+  /** Availability when the cloud reports it (TestMu AI: Available, Busy). */
+  status: string | null;
+}
+
+/** A desktop browser on one OS version, with the browser versions offered, newest first. */
+export interface CloudDesktopBrowser {
+  os: string;
+  os_version: string;
+  browser: string;
+  versions: string[];
+}
+
+export interface CloudDevices {
+  cloud: CloudId;
+  username: string;
+  region: string | null;
+  fetched_at: string;
+  mobile: CloudMobileDevice[];
+  desktop: CloudDesktopBrowser[];
+  /** Parts that could not be listed, and what a cloud does not list. */
+  notes: string[];
+  /** Fetched for another user name or region than the current ones. */
+  stale: boolean;
+}
 
 export type CloudRunStatus = "starting" | "running" | "passed" | "failed" | "error" | "cancelled";
 

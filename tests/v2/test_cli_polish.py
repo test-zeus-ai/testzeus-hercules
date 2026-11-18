@@ -225,7 +225,7 @@ def test_cloud_connect_saves_the_sauce_region(tmp_path: Path, monkeypatch: pytes
 
     assert seen == ["eu-central-1"]
     assert find_credentials("saucelabs", Settings.load(tmp_path, env=env), {}).region_source == "file"
-    assert refused == 2 and "only Sauce Labs has a region" in err.getvalue()
+    assert refused == 2 and "only Sauce Labs and TestMu AI have a region" in err.getvalue()
 
 
 # --- hercules init for more agents ------------------------------------------

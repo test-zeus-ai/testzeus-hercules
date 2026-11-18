@@ -61,6 +61,8 @@ export function RunsScreen() {
   const filters = useFilters();
   const [starting, setStarting] = useState(false);
   const [rerunOf, setRerunOf] = useState<RerunOf | null>(null);
+  // Bumped by each filter switch: the list remounts and its rows fade in one after another (not on first load).
+  const [switches, setSwitches] = useState(0);
   const runs = useQuery({
     queryKey: ["runs", filters.batch],
     queryFn: () => api<{ runs: RunView[] }>(`/api/runs?limit=${RUN_LIMIT}&with_result=true${filters.batch ? `&batch=${encodeURIComponent(filters.batch)}` : ""}`, { guard: isRunList }),
@@ -100,7 +102,11 @@ export function RunsScreen() {
       <div className="toolbar" role="search">
         <div className="segmented" role="group" aria-label="Filter by status">
           {FILTERS.map((item) => (
-            <button key={item.id} type="button" className={`segment${filters.status === item.id ? " segment-on" : ""}`} aria-pressed={filters.status === item.id} onClick={() => filters.setStatus(item.id)}>
+            <button key={item.id} type="button" className={`segment${filters.status === item.id ? " segment-on" : ""}`} aria-pressed={filters.status === item.id} onClick={() => {
+                if (item.id === filters.status) return;
+                filters.setStatus(item.id);
+                setSwitches((count) => count + 1);
+              }}>
               {item.label}
               <span className="segment-count">{counts[item.id] ?? 0}</span>
             </button>
@@ -147,7 +153,7 @@ export function RunsScreen() {
       {runs.isPending ? <p className="muted">Loading runs…</p> : null}
 
       {runs.data && visible.length === 0 ? (
-        <div className="empty">
+        <div key={switches} className={`empty${switches ? " stagger-in" : ""}`}>
           {all.length === 0 ? (
             <div className="empty-hero">
               <Bugsy />
@@ -184,7 +190,7 @@ export function RunsScreen() {
                 </th>
               </tr>
             </thead>
-            <tbody>
+            <tbody key={switches} className={switches ? "stagger-in" : undefined}>
               {visible.map((run) => {
                 const failed = failingStep(run);
                 const final = FINAL_STATUSES.has(run.status);
@@ -266,7 +272,7 @@ export function RunsScreen() {
             setStarting(false);
             setRerunOf(null);
             void client.invalidateQueries({ queryKey: ["runs"] });
-            navigate(batch ? `/?batch=${encodeURIComponent(batch)}` : `/runs/${runId}`);
+            navigate(batch ? `/runs?batch=${encodeURIComponent(batch)}` : `/runs/${runId}`);
           }}
         />
       ) : null}

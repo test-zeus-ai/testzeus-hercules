@@ -58,12 +58,43 @@ The region is taken from, in order: the `SAUCE_REGION` environment variable, the
 from the card or with `hercules cloud connect saucelabs --region`, `mobile.saucelabs.region` in
 the config, else `us-west-1`.
 
+### TestMu AI region
+
+TestMu AI keeps its devices in three regions, `us`, `eu` and `ap`. Pick yours under **Region** on
+the TestMu AI card; the device list (below) shows that region's devices. The region is taken from,
+in order: the `LT_REGION` environment variable, the region saved from the card or with
+`hercules cloud connect testmu --region`, `mobile.testmu.region` in the config, else `us`.
+
+### See the devices a cloud offers
+
+Once a cloud is connected, choose **Fetch devices** on its card. Hercules asks the cloud which
+devices and browsers your account can use and lists them in two tabs:
+
+- **Mobile:** phones and tablets, with their OS version and whether each is a real device or an
+  emulator or simulator. Filter by platform, phone or tablet, real or virtual, or search by name.
+- **Desktop:** each operating system with the browsers it offers and their versions.
+
+| Cloud | Mobile | Desktop |
+|---|---|---|
+| BrowserStack | Real devices (App Automate) | Browsers on Windows and macOS (Automate) |
+| Sauce Labs | Emulators and simulators (the newest OS of each), and real devices when the account has them | Browsers on Windows, macOS and Linux |
+| TestMu AI | Real devices in the chosen region; TestMu AI does not list its emulators and simulators | Browsers on Windows and macOS |
+
+The list is saved in `~/.hercules/cache/cloud-devices-<cloud>.json` (readable only by you) and
+stays until you disconnect the cloud or save other keys; **Refresh** in the list fetches it again.
+When the user name or region has changed since, the card marks the list as from older settings.
+If one part cannot be read (for example a plan without App Automate), the rest is shown with a
+note. The Environments page is not changed by it: its device field stays free text.
+
 ### From the command line
 
 ```bash
 echo "$MY_ACCESS_KEY" | hercules cloud connect browserstack --username my_user
 echo "$MY_ACCESS_KEY" | hercules cloud connect saucelabs --username my_user --region eu-central-1
+echo "$MY_ACCESS_KEY" | hercules cloud connect testmu --username my_user --region eu
 hercules cloud check browserstack
+hercules cloud devices browserstack            # the saved list, fetched the first time
+hercules cloud devices saucelabs --refresh --json
 hercules cloud list
 hercules cloud disconnect browserstack
 ```

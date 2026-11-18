@@ -148,6 +148,12 @@ class RunStore:
             rows = self._db.execute(query, params).fetchall()
         return [_run(row) for row in rows]
 
+    def run_times(self, since: str) -> list[dict[str, Any]]:
+        """Id, status and timestamps of every run created at or after ``since`` (ISO 8601, UTC), oldest first."""
+        with self._lock:
+            rows = self._db.execute("SELECT id, status, created_at, started_at, finished_at FROM runs WHERE created_at >= ? ORDER BY created_at, rowid", (since,)).fetchall()
+        return [dict(row) for row in rows]
+
     def queued(self) -> list[str]:
         with self._lock:
             rows = self._db.execute("SELECT id FROM runs WHERE status = 'queued' ORDER BY created_at, rowid").fetchall()

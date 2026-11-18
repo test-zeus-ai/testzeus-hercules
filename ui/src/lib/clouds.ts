@@ -29,9 +29,7 @@ export function cloudMonogram(name: string): string {
 export function connectionLabel(cloud: Pick<Cloud, "connected" | "source" | "username">): string {
   if (!cloud.connected) return "Not connected";
   const who = cloud.username ? `Connected as ${cloud.username}` : "Connected";
-  if (cloud.source === "env") return `${who} · from environment`;
-  if (cloud.source === "file") return `${who} · saved in Hercules`;
-  return who;
+  return cloud.source === "env" ? `${who} · from environment` : who;
 }
 
 /** Why a test of this kind cannot run on the cloud from here, or null when it can. */

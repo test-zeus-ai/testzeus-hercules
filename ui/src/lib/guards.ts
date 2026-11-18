@@ -2,7 +2,7 @@
 // read exist with the right type. A daemon of another version (or a proxy's HTML error page)
 // then fails with a clear message instead of a crash deep inside a screen.
 
-import type { CaseListing, Cloud, CloudRun, CloudsReport, ModelsReport, RunResult, RunView, SavedCase, TestCase } from "./types";
+import type { CaseListing, Cloud, CloudDevices, DashboardReport, CloudRun, CloudsReport, ModelsReport, RunResult, RunView, SavedCase, TestCase } from "./types";
 
 export type Guard<T> = (value: unknown) => value is T;
 
@@ -55,6 +55,14 @@ export function isCloud(value: unknown): value is Cloud {
 
 export function isCloudsReport(value: unknown): value is CloudsReport {
   return isObject(value) && Array.isArray(value.clouds) && value.clouds.every(isCloud) && typeof value.egress_allows === "boolean" && Array.isArray(value.browsers) && Array.isArray(value.os_names);
+}
+
+export function isDashboardReport(value: unknown): value is DashboardReport {
+  return isObject(value) && typeof value.days === "number" && isObject(value.current) && isObject(value.previous) && Array.isArray(value.daily);
+}
+
+export function isCloudDevices(value: unknown): value is CloudDevices {
+  return isObject(value) && isString(value.cloud) && isString(value.fetched_at) && Array.isArray(value.mobile) && Array.isArray(value.desktop) && Array.isArray(value.notes) && typeof value.stale === "boolean";
 }
 
 export function isCloudRun(value: unknown): value is CloudRun {

@@ -1,10 +1,12 @@
 """The daemon's cloud API: connect BrowserStack, Sauce Labs and TestMu AI, and run exported tests on them.
 
 * ``GET /api/clouds``: each cloud, whether it is connected (and from where), and what it can run here.
-* ``PUT /api/clouds/{cloud}``: save a user name and access key (and Sauce Labs region) to
-  ``<hercules home>/clouds.env`` (mode 0600) and check them. ``PUT /api/clouds/saucelabs/region`` saves only the
+* ``PUT /api/clouds/{cloud}``: save a user name and access key (and Sauce Labs or TestMu AI region) to
+  ``<hercules home>/clouds.env`` (mode 0600) and check them. ``PUT /api/clouds/{cloud}/region`` saves only the
   region and checks the current keys there. ``POST /api/clouds/{cloud}/check`` checks the current ones; ``DELETE``
   removes the saved ones. Access keys are accepted, never returned.
+* ``GET /api/clouds/{cloud}/devices``: the device list fetched last (404 before the first fetch);
+  ``POST /api/clouds/{cloud}/devices`` fetches it from the cloud again and saves it until the cloud is disconnected.
 * ``POST /api/runs/{run_id}/cloud-runs``: run a passed run's exported test on a cloud;
   ``GET /api/runs/{run_id}/cloud-runs`` lists them, ``GET /api/cloud-runs/{id}`` is one with its output,
   ``POST /api/cloud-runs/{id}/cancel`` stops it.
@@ -30,8 +32,8 @@ from testzeus_hercules.clouds.bundle import (
 )
 from testzeus_hercules.clouds.check import check_credentials
 from testzeus_hercules.clouds.credentials import (
-    SAUCE_REGION_ENV,
-    SAUCELABS_REGIONS,
+    REGION_ENV,
+    REGIONS,
     CredentialError,
     clouds_file,
     find_credentials,
@@ -40,14 +42,16 @@ from testzeus_hercules.clouds.credentials import (
     save_credentials,
     save_region,
 )
+from testzeus_hercules.clouds.devices import DeviceCatalog, DeviceFetchError, fetch_devices, load_catalog, save_catalog
 from testzeus_hercules.clouds.registry import CLOUD_IDS, CLOUDS, CloudId
 from testzeus_hercules.clouds.runner import CloudRunError, CloudRuns, requirements
 
 if TYPE_CHECKING:
     from testzeus_hercules.daemon.app import Daemon
 
-# The HTTP client the connection check uses (a seam for tests).
+# The HTTP clients the connection check and the device list use (seams for tests).
 check_client_factory: Any = None
+devices_client_factory: Any = None
 
 _DEVICE = r"^[A-Za-z0-9 ._()+-]{1,80}$"
 _REGION = r"^[a-z0-9-]{1,40}$"
@@ -103,7 +107,8 @@ def cloud_view(daemon: Daemon, cloud: CloudId) -> dict[str, Any]:
         "access_key_env": found.access_key_env,
         "region": found.region,
         "region_source": found.region_source,
-        "regions": list(SAUCELABS_REGIONS) if cloud == "saucelabs" else [],
+        "regions": list(REGIONS.get(cloud, ())),
+        "region_env": REGION_ENV.get(cloud),
         "problem": placeholder_problem(found) or found.problem,
         "web_mode": info.web_mode,
         "web_ready": requirements("web", info.web_mode),
@@ -164,7 +169,7 @@ async def save_cloud_region(request: Request, daemon: Daemon) -> Response:
     check = await _check(cloud, found, settings) if found.found else None
     note = None
     if found.region_source == "env":
-        note = f"saved, but the environment variable {SAUCE_REGION_ENV} is set to {found.region} and wins over the saved region"
+        note = f"saved, but the environment variable {REGION_ENV[cloud]} is set to {found.region} and wins over the saved region"
     return JSONResponse({**view, "check": None if check is None else {"ok": check.ok, "message": check.message}, "note": note})
 
 
@@ -186,6 +191,38 @@ async def remove_cloud(request: Request, daemon: Daemon) -> Response:
     if view["source"] == "env":
         note = f"the environment variables {view['username_env']} and {view['access_key_env']} are still set; unset them and restart the daemon to disconnect"
     return JSONResponse({**view, "removed": removed, "note": note})
+
+
+def devices_view(daemon: Daemon, catalog: DeviceCatalog) -> dict[str, Any]:
+    """The saved list, and whether it was fetched with other settings than the current ones (another user or region)."""
+    found = find_credentials(catalog.cloud, daemon.config.settings, daemon.config.env)
+    stale = found.username != catalog.username or found.region != catalog.region
+    return {**catalog.to_dict(), "stale": stale}
+
+
+async def get_devices(request: Request, daemon: Daemon) -> Response:
+    cloud = _cloud(request)
+    catalog = await asyncio.to_thread(load_catalog, daemon.config.settings.home_dir, cloud)
+    if catalog is None:
+        raise _api_error(404, f"no {CLOUDS[cloud].name} devices fetched yet")
+    return JSONResponse(devices_view(daemon, catalog))
+
+
+async def refresh_devices(request: Request, daemon: Daemon) -> Response:
+    cloud = _cloud(request)
+    settings = daemon.config.settings
+    found = find_credentials(cloud, settings, daemon.config.env)
+    if not found.found:
+        raise _api_error(409, f"{CLOUDS[cloud].name} is not connected; connect it first")
+    try:
+        if devices_client_factory is None:
+            catalog = await fetch_devices(cloud, found)
+        else:
+            catalog = await fetch_devices(cloud, found, devices_client_factory)
+    except DeviceFetchError as exc:
+        raise _api_error(502, str(exc)) from None
+    await asyncio.to_thread(save_catalog, settings.home_dir, catalog)
+    return JSONResponse(devices_view(daemon, catalog))
 
 
 async def _check(cloud: CloudId, found: Any, settings: Any) -> Any:

@@ -1,8 +1,9 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { post, put, remove } from "../lib/api";
 import { cloudMonogram, connectionLabel } from "../lib/clouds";
 import type { Cloud, CloudCheck, CloudRegionSaved, CloudRemoved, CloudSaved } from "../lib/types";
+import { CloudDevicesDialog, CloudDevicesSummary, devicesKey, useCloudDevices } from "./CloudDevices";
 import { CloudLogo } from "./CloudLogo";
 import { Field } from "./Field";
 import { Icon } from "./Icon";
@@ -109,7 +110,17 @@ function RegionPicker({ cloud, onOutcome }: { cloud: Cloud; onOutcome: (outcomes
   const fromEnv = cloud.region_source === "env";
   return (
     <div className="cloud-region">
-      <Field id={`cloud-${cloud.id}-region`} label="Region" help={fromEnv ? <>Set by the environment variable <code>SAUCE_REGION</code>, which wins over a region chosen here.</> : "The data center of your account; the keys are refused in any other."}>
+      <Field id={`cloud-${cloud.id}-region`} label="Region" help={
+          fromEnv ? (
+            <>
+              Set by the environment variable <code>{cloud.region_env}</code>, which wins over a region chosen here.
+            </>
+          ) : cloud.id === "testmu" ? (
+            "Where your devices are; the device list shows this region's."
+          ) : (
+            "The data center of your account; the keys are refused in any other."
+          )
+        }>
         <select className="mono" value={cloud.region ?? ""} onChange={(event) => save.mutate(event.target.value)} disabled={fromEnv || save.isPending}>
           {cloud.regions.map((region) => (
             <option key={region} value={region}>
@@ -122,11 +133,28 @@ function RegionPicker({ cloud, onOutcome }: { cloud: Cloud; onOutcome: (outcomes
   );
 }
 
-/** One test cloud on the Integrations screen: status, what it can run here, connect, check, disconnect. */
+/** One test cloud on the Integrations screen: status, what it can run here, connect, check, list devices, disconnect. */
 export function CloudCard({ cloud }: { cloud: Cloud }) {
   const client = useQueryClient();
   const [outcomes, setOutcomes] = useState<Outcome[]>([]);
   const [confirming, setConfirming] = useState(false);
+  const [showDevices, setShowDevices] = useState(false);
+  const devices = useCloudDevices(cloud);
+  useEffect(() => {
+    // Disconnecting forgets the saved list on the daemon; forget it here too.
+    if (!cloud.connected) {
+      client.removeQueries({ queryKey: devicesKey(cloud) });
+      setShowDevices(false);
+    }
+  }, [client, cloud]);
+  const fetchDevices = () =>
+    devices.refresh.mutate(undefined, {
+      onSuccess: () => {
+        setOutcomes([]);
+        setShowDevices(true);
+      },
+      onError: (error) => setOutcomes([{ tone: "fail", text: `Could not fetch the devices: ${(error as Error).message}` }]),
+    });
   const check = useMutation({
     mutationFn: () => post<CloudCheck>(`/api/clouds/${cloud.id}/check`),
     onSuccess: (result) => setOutcomes([{ tone: result.ok ? "ok" : "fail", text: result.message }]),
@@ -188,13 +216,19 @@ export function CloudCard({ cloud }: { cloud: Cloud }) {
           </span>
         </div>
       ) : cloud.connected ? (
-        <details className="cloud-replace">
-          <summary>Replace the saved keys</summary>
-          <ConnectForm cloud={cloud} onOutcome={setOutcomes} />
+        <details className="option-group option-details cloud-replace">
+          <summary>
+            <span className="option-group-title">Replace the saved keys</span>
+          </summary>
+          <div className="option-group-body">
+            <ConnectForm cloud={cloud} onOutcome={setOutcomes} />
+          </div>
         </details>
       ) : (
         <ConnectForm cloud={cloud} onOutcome={setOutcomes} />
       )}
+
+      {cloud.connected && devices.catalog ? <CloudDevicesSummary catalog={devices.catalog} /> : null}
 
       <div className="cloud-outcomes" role="status" aria-live="polite">
         {outcomes.map((outcome) => (
@@ -209,6 +243,15 @@ export function CloudCard({ cloud }: { cloud: Cloud }) {
           <button type="button" className="button" onClick={() => check.mutate()} disabled={check.isPending}>
             <Icon name="rerun" size={13} /> {check.isPending ? "Testing…" : "Test connection"}
           </button>
+          {devices.catalog ? (
+            <button type="button" className="button" onClick={() => setShowDevices(true)}>
+              <Icon name="phone" size={13} /> View devices
+            </button>
+          ) : (
+            <button type="button" className="button" onClick={fetchDevices} disabled={devices.refresh.isPending}>
+              <Icon name="phone" size={13} /> {devices.refresh.isPending ? "Fetching…" : "Fetch devices"}
+            </button>
+          )}
           {cloud.source === "file" ? (
             confirming ? (
               <span className="cloud-confirm" role="group" aria-label="Confirm disconnect">
@@ -221,13 +264,14 @@ export function CloudCard({ cloud }: { cloud: Cloud }) {
                 </button>
               </span>
             ) : (
-              <button type="button" className="button button-ghost" onClick={() => setConfirming(true)}>
+              <button type="button" className="button button-danger" onClick={() => setConfirming(true)}>
                 Disconnect
               </button>
             )
           ) : null}
         </footer>
       ) : null}
+      {showDevices && devices.catalog ? <CloudDevicesDialog cloud={cloud} catalog={devices.catalog} refresh={devices.refresh} onClose={() => setShowDevices(false)} /> : null}
     </article>
   );
 }

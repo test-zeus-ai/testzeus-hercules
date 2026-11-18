@@ -1,4 +1,4 @@
-import type { Cloud, CloudRun, CloudsReport } from "../lib/types";
+import type { Cloud, CloudDevices, CloudRun, CloudsReport } from "../lib/types";
 
 export function cloud(overrides: Partial<Cloud> = {}): Cloud {
   return {
@@ -11,6 +11,7 @@ export function cloud(overrides: Partial<Cloud> = {}): Cloud {
     access_key_env: "BROWSERSTACK_ACCESS_KEY",
     region: null,
     region_source: null,
+    region_env: null,
     regions: [],
     problem: null,
     web_mode: "connect",
@@ -30,13 +31,35 @@ export function cloudsReport(overrides: Partial<CloudsReport> = {}): CloudsRepor
   return {
     clouds: [
       cloud(),
-      cloud({ id: "saucelabs", name: "Sauce Labs", connected: false, source: "none", username: null, username_env: "SAUCE_USERNAME", access_key_env: "SAUCE_ACCESS_KEY", region: "us-west-1", region_source: "default", regions: ["us-west-1", "us-east-4", "eu-central-1"], web_mode: "saucectl", web_ready: "saucectl is not installed: npm install -g saucectl", ci_config: ".sauce/config.yml", ci_runner: "saucectl" }),
-      cloud({ id: "testmu", name: "TestMu AI", connected: true, source: "env", username: "bob", username_env: "LT_USERNAME", access_key_env: "LT_ACCESS_KEY", ci_config: "hyperexecute.yaml" }),
+      cloud({ id: "saucelabs", name: "Sauce Labs", connected: false, source: "none", username: null, username_env: "SAUCE_USERNAME", access_key_env: "SAUCE_ACCESS_KEY", region: "us-west-1", region_source: "default", region_env: "SAUCE_REGION", regions: ["us-west-1", "us-east-4", "eu-central-1"], web_mode: "saucectl", web_ready: "saucectl is not installed: npm install -g saucectl", ci_config: ".sauce/config.yml", ci_runner: "saucectl" }),
+      cloud({ id: "testmu", name: "TestMu AI", connected: true, source: "env", username: "bob", username_env: "LT_USERNAME", access_key_env: "LT_ACCESS_KEY", region: "us", region_source: "default", region_env: "LT_REGION", regions: ["us", "eu", "ap"], ci_config: "hyperexecute.yaml" }),
     ],
     keys_file: "~/.hercules/clouds.env",
     egress_allows: true,
     browsers: ["chrome", "edge", "chromium"],
     os_names: ["windows", "macos"],
+    ...overrides,
+  };
+}
+
+export function cloudDevices(overrides: Partial<CloudDevices> = {}): CloudDevices {
+  return {
+    cloud: "browserstack",
+    username: "alice",
+    region: null,
+    fetched_at: "2026-11-18T10:20:00+00:00",
+    mobile: [
+      { name: "Google Pixel 9", platform: "android", os_version: "15.0", kind: "phone", real: true, tier: null, status: null },
+      { name: "Samsung Galaxy Tab S9", platform: "android", os_version: "14.0", kind: "tablet", real: true, tier: null, status: null },
+      { name: "iPhone 16", platform: "ios", os_version: "18", kind: "phone", real: true, tier: "premium", status: null },
+      { name: "iPhone Simulator", platform: "ios", os_version: "17.5", kind: "phone", real: false, tier: null, status: null },
+    ],
+    desktop: [
+      { os: "Windows", os_version: "11", browser: "chrome", versions: ["131.0", "130.0"] },
+      { os: "macOS", os_version: "Sonoma", browser: "safari", versions: ["17.3"] },
+    ],
+    notes: [],
+    stale: false,
     ...overrides,
   };
 }
