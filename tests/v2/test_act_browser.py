@@ -298,7 +298,7 @@ LOOKUP = """
       const q = root.getElementById('q'), list = root.getElementById('list');
       q.addEventListener('input', () => {
         list.innerHTML = '<div role="option">Search Show more results for "' + q.value + '"</div>'
-          + '<div role="option"><span>Shahal Thayyil Testing</span><br><span>NewYork</span></div>'
+          + '<div role="option"><span>Alex Morgan Testing</span><br><span>NewYork</span></div>'
           + '<div role="option">New Account</div>';
         list.querySelectorAll('[role=option]').forEach((o) => o.addEventListener('click', () => {
           document.getElementById('chosen').textContent = o.innerText.split('\\n')[0]; list.innerHTML = '';
@@ -312,9 +312,9 @@ LOOKUP = """
 
 def test_select_on_a_lookup_picks_the_record_not_its_search_entry() -> None:
     async def body(page: Any) -> None:
-        result = await act.select(page.get_by_role("combobox", name="Parent Account"), "shahal Thayyil Testing")
+        result = await act.select(page.get_by_role("combobox", name="Parent Account"), "alex Morgan Testing")
         assert result.ok, result.detail
-        assert await page.text_content("#chosen") == "Shahal Thayyil Testing", "the record whose name starts with the value, not 'Show more results for ...'"
+        assert await page.text_content("#chosen") == "Alex Morgan Testing", "the record whose name starts with the value, not 'Show more results for ...'"
 
     run(body, LOOKUP)
 

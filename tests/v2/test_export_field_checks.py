@@ -1,4 +1,4 @@
-"""Field checks ('the "First Name" field contains "Shahal"') exported as code: the element the step that entered the field
+"""Field checks ('the "First Name" field contains "Alex"') exported as code: the element the step that entered the field
 used, read the way it holds its value (an input's value, a native drop-down's chosen option, a custom drop-down's text),
 compared with the expected text. The exported test runs against the RoboForm test form."""
 
@@ -38,7 +38,7 @@ def form_spec(*checks: AutomationCheck) -> AutomationSpec:
                 action="I fill the form",
                 status="passed",
                 actions=[
-                    AutomationAction(kind="fill", value="Shahal", target=FIRST),
+                    AutomationAction(kind="fill", value="Alex", target=FIRST),
                     AutomationAction(kind="fill", value="TestPassword@123", target=PASSWORD),
                     AutomationAction(kind="select", option="Visa (Preferred)", select_by="label", target=CARD),
                     AutomationAction(kind="select", option="Jun", select_by="label", target=MONTH),
@@ -50,7 +50,7 @@ def form_spec(*checks: AutomationCheck) -> AutomationSpec:
 
 
 CHECKS = (
-    AutomationCheck(kind="field", expected="Shahal", subject="First Name", target=FIRST, read="value"),
+    AutomationCheck(kind="field", expected="Alex", subject="First Name", target=FIRST, read="value"),
     AutomationCheck(kind="field", expected="TestPassword@123", match="equals", subject="Password", target=PASSWORD, read="value"),
     AutomationCheck(kind="field", expected="Visa (Preferred)", match="equals", subject="Credit Card Type", target=CARD, read="option"),
     AutomationCheck(kind="field", expected="Jun", subject="Date Of Birth Month", target=MONTH, read="option"),
@@ -60,14 +60,14 @@ CHECKS = (
 def test_field_checks_are_written_on_the_entered_element_the_way_it_holds_its_value() -> None:
     python = export_run(result(automation=form_spec(*CHECKS)), "playwright-py").code
     ast.parse(python)
-    assert 'expect(page.locator("input[name=\\"02frstname\\"]")).to_have_value(re.compile(re.escape("Shahal"), re.IGNORECASE))' in python
+    assert 'expect(page.locator("input[name=\\"02frstname\\"]")).to_have_value(re.compile(re.escape("Alex"), re.IGNORECASE))' in python
     assert 'expect(page.locator("input[name=\\"31password\\"]")).to_have_value("TestPassword@123")' in python
     assert 'expect(page.locator("select[name=\\"40cc__type\\"]").locator("option:checked")).to_have_text("Visa (Preferred)")' in python
     assert 'expect(page.locator("select[name=\\"66mm\\"]").locator("option:checked")).to_contain_text("Jun", ignore_case=True)' in python
     assert "\nimport re\n" in python
 
     typescript = export_run(result(automation=form_spec(*CHECKS)), "playwright-ts").code
-    assert 'await expect(page.locator("input[name=\\"02frstname\\"]")).toHaveValue(new RegExp(escapeRegExp("Shahal"), \'i\'));' in typescript
+    assert 'await expect(page.locator("input[name=\\"02frstname\\"]")).toHaveValue(new RegExp(escapeRegExp("Alex"), \'i\'));' in typescript
     assert 'await expect(page.locator("select[name=\\"66mm\\"]").locator("option:checked")).toContainText("Jun", { ignoreCase: true });' in typescript
     assert "function escapeRegExp" in typescript
 

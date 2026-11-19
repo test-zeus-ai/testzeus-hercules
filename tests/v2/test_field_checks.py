@@ -16,9 +16,9 @@ from tests.v2.engine_fixtures.browser import open_page
 FORM = """
 <html><body>
   <h1>Form Filler: Test Form</h1>
-  <label for="first">First Name</label><input id="first" value="Shahal">
-  <label for="last">Last Name</label><input id="last" value="Thayyil">
-  <label for="full">Full Name</label><input id="full" value="Shahal Thayyil">
+  <label for="first">First Name</label><input id="first" value="Alex">
+  <label for="last">Last Name</label><input id="last" value="Morgan">
+  <label for="full">Full Name</label><input id="full" value="Alex Morgan">
   <input aria-label="E-mail" value="ada@example.test">
   <label for="secret">Password</label><input id="secret" type="password" value="hunter2">
   <label for="notes">Notes</label><textarea id="notes">Ring twice</textarea>
@@ -47,7 +47,7 @@ async def check(page: Any, field: str, value: str, match: str = "contains", acti
 @pytest.mark.parametrize(
     ("text", "field", "match"),
     [
-        ('I verify the "First Name" field contains "Shahal"', "First Name", "contains"),
+        ('I verify the "First Name" field contains "Alex"', "First Name", "contains"),
         ('the "E-mail" field should contain "{{email}}"', "E-mail", "contains"),
         ('Verify "City" input is "Pune"', "City", "equals"),
         ('the "Notes" text box shows "Ring twice"', "Notes", "contains"),
@@ -68,8 +68,8 @@ def test_a_step_naming_a_field_checks_that_fields_value(text: str, field: str, m
 @pytest.mark.parametrize(
     "text",
     [
-        'I should see "Shahal"',  # no field named
-        'the "First Name" field contains "Shahal"',  # a field, but for another text (below the check asks for "Bob")
+        'I should see "Alex"',  # no field named
+        'the "First Name" field contains "Alex"',  # a field, but for another text (below the check asks for "Bob")
         'the page shows "Welcome" in the header',
     ],
 )
@@ -80,9 +80,9 @@ def test_a_step_without_a_field_for_the_text_keeps_its_text_check(text: str) -> 
 
 
 def test_the_step_reading_upgrades_the_text_check_it_gets_for_a_named_field() -> None:
-    text = 'I verify the "First Name" field contains "Shahal"'
-    _, checks, uncovered = _split((StepIntent(kind="assert_text", expected="Shahal"),), text)
-    assert [(item.kind, item.subject, item.expected) for item in checks] == [("field", "First Name", "Shahal")]
+    text = 'I verify the "First Name" field contains "Alex"'
+    _, checks, uncovered = _split((StepIntent(kind="assert_text", expected="Alex"),), text)
+    assert [(item.kind, item.subject, item.expected) for item in checks] == [("field", "First Name", "Alex")]
     assert not uncovered
 
 
@@ -91,10 +91,10 @@ def test_the_step_reading_upgrades_the_text_check_it_gets_for_a_named_field() ->
 
 def test_the_named_field_holds_the_value() -> None:
     async def body(page: Any) -> None:
-        passed = await check(page, "First Name", "shahal")
+        passed = await check(page, "First Name", "alex")
         assert passed.verdict == "passed", passed.actual
-        assert passed.actual == 'the "First Name" field holds "Shahal"'
-        assert (await check(page, "Full Name", "Shahal Thayyil", "equals")).verdict == "passed"
+        assert passed.actual == 'the "First Name" field holds "Alex"'
+        assert (await check(page, "Full Name", "Alex Morgan", "equals")).verdict == "passed"
         assert (await check(page, "E-mail", "ada@example.test")).verdict == "passed", "named by aria-label"
         assert (await check(page, "Notes", "Ring")).verdict == "passed", "a textarea"
 
@@ -104,9 +104,9 @@ def test_the_named_field_holds_the_value() -> None:
 def test_another_value_fails_and_says_what_the_field_holds() -> None:
     async def body(page: Any) -> None:
         failed = await check(page, "First Name", "Bob")
-        assert failed.verdict == "failed" and failed.actual == 'the "First Name" field holds "Shahal"'
-        assert (await check(page, "Full Name", "Shahal", "equals")).verdict == "failed", "equals is the whole value"
-        assert (await check(page, "Last Name", "Shahal")).verdict == "failed", "only the named field counts, not any field holding the text"
+        assert failed.verdict == "failed" and failed.actual == 'the "First Name" field holds "Alex"'
+        assert (await check(page, "Full Name", "Alex", "equals")).verdict == "failed", "equals is the whole value"
+        assert (await check(page, "Last Name", "Alex")).verdict == "failed", "only the named field counts, not any field holding the text"
 
     run(body)
 
@@ -115,7 +115,7 @@ def test_a_field_that_is_not_on_the_page_falls_back_to_the_page_text() -> None:
     async def body(page: Any) -> None:
         missing = await check(page, "Middle Initial", "K")
         assert missing.verdict == "failed" and missing.actual.startswith('no field named "Middle Initial" on the page; checked the page text instead: not found')
-        shown = await check(page, "Surname", "Thayyil")
+        shown = await check(page, "Surname", "Morgan")
         assert shown.verdict == "passed", "no field goes by that name, but the value is on the page (as a text check would say)"
 
     run(body)
@@ -124,10 +124,10 @@ def test_a_field_that_is_not_on_the_page_falls_back_to_the_page_text() -> None:
 def test_page_text_includes_what_visible_fields_hold_but_never_a_password() -> None:
     async def body(page: Any) -> None:
         text = await act.page_text(page)
-        assert "Shahal Thayyil" in text and "ada@example.test" in text and "Ring twice" in text
+        assert "Alex Morgan" in text and "ada@example.test" in text and "Ring twice" in text
         assert "hunter2" not in text, "a password is never page text"
         assert "Hidden away" not in text, "a field that is not shown is not"
-        seen = await run_check(Check(kind="text", expected="Shahal"), page=page, actions=act, step=7, timeout_ms=300, redact=lambda value: value)
+        seen = await run_check(Check(kind="text", expected="Alex"), page=page, actions=act, step=7, timeout_ms=300, redact=lambda value: value)
         assert seen.verdict == "passed", "I should see a value typed into a field"
 
     run(body)
@@ -143,7 +143,7 @@ def test_a_driver_that_cannot_read_fields_checks_the_screens_text_instead() -> N
         page_text = staticmethod(act.page_text)
 
     async def body(page: Any) -> None:
-        seen = await check(page, "First Name", "Shahal", actions=ScreenOnly())
+        seen = await check(page, "First Name", "Alex", actions=ScreenOnly())
         assert seen.verdict == "passed" and "cannot be read here" in seen.actual
 
     run(body)
@@ -153,9 +153,9 @@ def test_a_driver_that_cannot_read_fields_checks_the_screens_text_instead() -> N
 # Playwright finds no field by that name; the run perceives the field named by the text beside it.
 UNLINKED = """
 <html><body><form>
-  <div class="row"><div class="caption">First Name</div><div class="input"><input name="02frstname" value="Shahal"></div></div>
-  <div class="row"><div class="caption">Last Name</div><div class="input"><input name="04lastname" value="Thayyil"></div></div>
-  <div class="row"><div class="caption">Full Name</div><div class="input"><input name="05fullname" value="Shahal Thayyil"></div></div>
+  <div class="row"><div class="caption">First Name</div><div class="input"><input name="02frstname" value="Alex"></div></div>
+  <div class="row"><div class="caption">Last Name</div><div class="input"><input name="04lastname" value="Morgan"></div></div>
+  <div class="row"><div class="caption">Full Name</div><div class="input"><input name="05fullname" value="Alex Morgan"></div></div>
   <div class="row"><div class="caption">Password</div><div class="input"><input name="21password" type="password" value="TestPassword@123"></div></div>
 </form></body></html>
 """
@@ -177,11 +177,11 @@ def test_a_field_named_by_the_text_beside_it_is_found_as_the_run_perceives_it() 
             return Check(kind="field", expected=value, match=match, subject=name)
 
         options: dict[str, Any] = {"page": page, "actions": act.BrowserActions(), "step": 7, "timeout_ms": 300, "redact": lambda text: text, "snapshot": snapshot}
-        first = await run_check(field("First Name", "Shahal"), **options)
-        assert first.verdict == "passed" and first.actual == 'the "First Name" field holds "Shahal"', first.actual
-        assert (await run_check(field("Full Name", "Shahal Thayyil", "equals"), **options)).verdict == "passed"
-        wrong = await run_check(field("Last Name", "Shahal"), **options)
-        assert wrong.verdict == "failed" and wrong.actual == 'the "Last Name" field holds "Thayyil"'
+        first = await run_check(field("First Name", "Alex"), **options)
+        assert first.verdict == "passed" and first.actual == 'the "First Name" field holds "Alex"', first.actual
+        assert (await run_check(field("Full Name", "Alex Morgan", "equals"), **options)).verdict == "passed"
+        wrong = await run_check(field("Last Name", "Alex"), **options)
+        assert wrong.verdict == "failed" and wrong.actual == 'the "Last Name" field holds "Morgan"'
 
     run(body, UNLINKED)
 
@@ -254,8 +254,8 @@ def test_a_remembered_password_is_compared_and_never_shown() -> None:
 def test_a_field_no_step_entered_is_found_by_its_name_instead() -> None:
     async def body(page: Any) -> None:
         options: dict[str, Any] = {"page": page, "actions": act.BrowserActions(), "step": 7, "timeout_ms": 300, "redact": lambda text: text, "entered": _entered({})}
-        seen = await run_check(Check(kind="field", expected="Shahal", subject="First Name"), **options)
-        assert seen.verdict == "passed" and seen.actual == 'the "First Name" field holds "Shahal"'
+        seen = await run_check(Check(kind="field", expected="Alex", subject="First Name"), **options)
+        assert seen.verdict == "passed" and seen.actual == 'the "First Name" field holds "Alex"'
 
     run(body)
 
