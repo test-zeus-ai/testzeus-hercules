@@ -104,7 +104,7 @@ from testzeus_hercules.engine.step_graph import StepDeps, StepLimits, StepOutcom
 from testzeus_hercules.engine.verify import LedgerEntry
 from testzeus_hercules.kernel.run_context import CancelToken, RunCancelledError, RunContext
 from testzeus_hercules.mobile.session import MobileSession, MobileSetupError
-from testzeus_hercules.perceive.screen_guard import guard_secrets
+from testzeus_hercules.perceive.screen_guard import guard_secrets, mask_recording, recording_exposed
 
 T = TypeVar("T")
 logger = logging.getLogger(__name__)
@@ -407,6 +407,7 @@ class _Run:
         )
         self.page_log: PageLog | None = None
         self.page: Any = None
+        self.mask_failed = False  # the recording's cover layer could not be added
         self.mobile: MobileSession | None = None
         self.result: RunResult | None = None
         self.started = time.monotonic()
@@ -701,8 +702,15 @@ class _Run:
             return f"the browser could not start ({type(exc).__name__}): {_first_line(exc)}. {_install_hint(case.environment.browser)}"
         # So a supervisor can stop this browser if the worker dies (Playwright starts it in its own process group).
         await record_browser(page, run_dir)
-        # Screenshots of this browser (evidence, model images, quality captures) cover the run's secret values.
+        # Screenshots of this browser (evidence, model images, quality captures) cover the run's secret values, and a
+        # recording gets a cover layer over the fields that hold them.
         guard_secrets(page, self.data.secret_values)
+        if getattr(page, "video", None) is not None:
+            try:
+                await mask_recording(page)
+            except Exception as exc:  # no cover layer: the recording is not kept when secrets are set
+                logger.info("the recording's cover layer could not be added: %s", type(exc).__name__)
+                self.mask_failed = True
         self.page = page
         if self.page_log is None:
             self.page_log = PageLog(self.evidence.run_dir, self.data.redact)
@@ -1016,6 +1024,9 @@ class _Run:
         failure = await self._classify(status, ran, ledger, hints, unreadable=tuple(state.get("unreadable") or ()), test_data=tuple(state.get("test_data") or ()))
         if self.page_log is not None:
             self.page_log.close()
+        dropped = self._drop_exposed_recording()
+        if dropped:
+            hints.append(dropped)
         evidence = self._evidence_paths()
         duration = time.monotonic() - self.started
         cost, counters = self.deps.usage() if self.deps.usage is not None else (CostInfo(), {})
@@ -1112,6 +1123,24 @@ class _Run:
         work = classify_failure(self.decider, status=status, steps=results, hints=[self.data.redact(hint) for hint in hints], assertions=assertions, api_steps=api_steps, redact=self.data.redact)
         failure = await _cancellable(work, self.ctx.cancel)
         return failure if failure is not None else FailureInfo(category="unclassified", confidence=0.0, signals=["cancelled before it was classified"])
+
+    def _drop_exposed_recording(self) -> str | None:
+        """Delete the run's recording when a secret may show in it; returns the note saying so, or None.
+
+        The recording's cover layer hides the fields Hercules typed a secret into and secret-like fields. When a
+        screenshot check saw a secret outside it (text the page printed, a field it re-created, a modal dialog drawn
+        above the layer) or the layer could not be added while secrets were set, the recording is not kept.
+        """
+        folder = self.evidence.run_dir / VIDEO_DIRNAME
+        videos = sorted(folder.glob("*.webm")) if folder.is_dir() else []
+        if not videos or self.page is None:
+            return None
+        exposed = recording_exposed(self.page) or (self.mask_failed and bool(self.data.secret_values()))
+        if not exposed:
+            return None
+        for video in videos:
+            video.unlink(missing_ok=True)
+        return "recording not kept: a secret value showed on the page outside the fields Hercules covers (the screenshots cover it)"
 
     def _evidence_paths(self) -> EvidencePaths:
         """The run's evidence files, relative to the run directory (JUnit is written with the result)."""

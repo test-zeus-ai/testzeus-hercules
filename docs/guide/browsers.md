@@ -71,7 +71,7 @@ case's `environment`; a case's own options win over its environment's, one by on
 | `java_script_enabled`, `bypass_csp`, `offline`, `accept_downloads`, `service_workers` | As in Playwright |
 | `device_scale_factor`, `is_mobile`, `has_touch` | Screen density and touch (`is_mobile`: not in Firefox) |
 | `storage_state` | The signed-in state: a JSON file inside the project (cookies and local storage) |
-| `record_video` | Record a video into the run's evidence folder (`video/`); on unless set to `false`. The run page plays it. |
+| `record_video` | Record a video into the run's evidence folder (`video/`); on unless set to `false`. The run page plays it. Secret values are covered while it records; a run that saw one elsewhere on the page does not keep its video (see [Secrets](writing-tests.md#secrets)). |
 | `launch_extra` | Any other `BrowserType.launch` option, by its Python name |
 | `context_extra` | Any other `Browser.new_context` option, by its Python name |
 

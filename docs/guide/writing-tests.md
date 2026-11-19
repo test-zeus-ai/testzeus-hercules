@@ -319,8 +319,13 @@ variable instead:
 - Screenshots cover them too: before a step screenshot is saved or sent to a model, every
   field whose value holds a secret, every piece of page text that shows one, and every
   filled field that looks secret (a one-time code, a card number, a secret-like name) is
-  painted over, in every frame of the page and in popups. A browser video
-  (`record_video`) is recorded by the browser itself and is not covered.
+  painted over, in every frame of the page and in popups. The page under test is never
+  given a secret value to do this: Hercules reads the page and matches it itself.
+- The run's recording (`record_video`, on by default) covers them while it records: a field
+  Hercules types a secret into, and every filled field that looks secret, sit under a grey
+  block from the first frame that holds the value. If a step's screenshot check finds a
+  secret anywhere else on the page (text the app prints, a field it re-created, a modal
+  dialog), the run does not keep its recording and says so in its warnings.
 
 A login link that carries a session id or token (a "front door" URL, a magic link) is a
 secret too. Keep the token in a secret and build the address from it:

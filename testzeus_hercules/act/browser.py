@@ -515,6 +515,7 @@ async def fill(locator: Locator, value: str, *, timeout_ms: int = DEFAULT_TIMEOU
         await locator.clear(timeout=timeout_ms)
         await locator.press_sequentially(value, timeout=timeout_ms)
 
+    await _cover_for_recording(locator, value)
     started = time.monotonic()
     result = await _perform(page, f"filled {len(value)} characters", type_value)
     if not result.ok:
@@ -535,6 +536,13 @@ async def fill(locator: Locator, value: str, *, timeout_ms: int = DEFAULT_TIMEOU
     if not verify:
         return result
     return _checked(result, value, await _left(locator, before, timeout_ms), input_type)
+
+
+async def _cover_for_recording(locator: Locator, value: str) -> None:
+    """Before a secret value goes into a field, put the field under the recording's cover layer (when recording)."""
+    from testzeus_hercules.perceive.screen_guard import mask_field
+
+    await mask_field(locator, value)
 
 
 async def _suggestions_settled(page: Page, since: float) -> None:
@@ -870,6 +878,7 @@ async def select(locator: Locator, value: str, *, timeout_ms: int = DEFAULT_TIME
         listed = f"options: {labels}" if real else "the drop-down has no options"
         return ActionResult(ok=False, detail=f"select failed: option {value!r} not found ({listed})", url_after=page.url, kind="option_missing", field=_public(before))
     choice, by, option = picked
+    await _cover_for_recording(locator, value)
     result = await _perform(page, f"selected {value!r}", lambda: locator.select_option(value=choice, timeout=timeout_ms))
     if not result.ok:
         return result
@@ -986,6 +995,7 @@ async def _select_custom(page: Page, locator: Locator, value: str, timeout_ms: i
         typed = bool(await locator.evaluate(_EDITABLE_JS, timeout=timeout_ms))
         await locator.click(timeout=timeout_ms, no_wait_after=True)
         if typed:
+            await _cover_for_recording(locator, value)
             await locator.press_sequentially(value, timeout=timeout_ms)
         option = await _option_after_opening(page, value, before, timeout_ms, chosen, created)
         if option is None:
