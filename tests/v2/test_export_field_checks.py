@@ -7,11 +7,13 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+import pytest
+
 from testzeus_hercules.cases.automation import AutomationAction, AutomationCheck, AutomationSpec, AutomationStep, LocatorSpec, TargetSpec
 from testzeus_hercules.export import export_run
 from tests.v2.browser_fixtures import FIXTURE_PAGES
 from tests.v2.engine_fixtures.browser import require_chromium, serve_fixtures
-from tests.v2.export_harness import node, run_exported_python, typescript_syntax_errors
+from tests.v2.export_harness import UI_TYPESCRIPT, node, run_exported_python, typescript_syntax_errors
 from tests.v2.test_export_render import result
 
 
@@ -99,8 +101,7 @@ def test_the_exported_field_checks_pass_against_the_form_and_a_wrong_value_fails
     assert failed.returncode != 0 and "Jul" in failed.stdout, "a drop-down holding Jun fails a check for Jul"
 
 
+@pytest.mark.skipif(node() is None or not UI_TYPESCRIPT.is_dir(), reason="node and ui/node_modules/typescript are needed to parse TypeScript")
 def test_the_typescript_with_field_checks_parses(tmp_path: Path) -> None:
-    if node() is None:
-        return
     code = export_run(result(automation=form_spec(*CHECKS)), "playwright-ts").code
     assert typescript_syntax_errors(code, tmp_path) == []
