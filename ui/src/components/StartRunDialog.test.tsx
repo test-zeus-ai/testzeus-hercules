@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RunView } from "../lib/types";
 import { StartRunDialog } from "./StartRunDialog";
 
-const GHERKIN = 'Feature: Sign up\n  Scenario: New user\n    Given I open "/signup"\n';
+const CASE = ".hercules/cases/signup.feature";
 
 const MODELS = {
   provider: "local",
@@ -27,7 +27,7 @@ beforeEach(() => {
   fetchMock = vi.fn((url: string, init?: RequestInit) => {
     if (url === "/api/runs" && init?.method === "POST") return respond({ run_id: "r_1", status: "queued", ui_url: "/runs/r_1" }, 201);
     if (url === "/api/runs/r_parent/rerun" && init?.method === "POST") return respond({ run_id: "r_2", status: "queued", ui_url: "/runs/r_2" }, 201);
-    if (url === "/api/cases") return respond({ cases: [] });
+    if (url === "/api/cases") return respond({ cases: [{ name: "signup.feature", path: CASE, kind: "feature", valid: true, id: "signup", title: "Sign up", steps: 1, environment: null }] });
     if (url === "/api/environments") return respond({ environments: [{ name: "staging", base_url: "http://127.0.0.1:8124" }] });
     if (url === "/api/models") return respond(MODELS);
     return respond({ error: "not found" }, 404);
@@ -44,7 +44,7 @@ function renderDialog() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
-      <StartRunDialog onClose={() => undefined} onStarted={onStarted} initial={{ source: "gherkin", gherkin: GHERKIN }} />
+      <StartRunDialog onClose={() => undefined} onStarted={onStarted} initial={{ source: "saved", casePath: CASE }} />
     </QueryClientProvider>,
   );
   return onStarted;
@@ -64,7 +64,7 @@ describe("StartRunDialog options", () => {
     const onStarted = renderDialog();
     fireEvent.click(startButton());
     await waitFor(() => expect(onStarted).toHaveBeenCalledWith("r_1"));
-    expect(postedBody()).toEqual({ mode: "auto", gherkin: GHERKIN });
+    expect(postedBody()).toEqual({ mode: "auto", case_path: CASE });
   });
 
   it("disables fail-on until a quality check is on, and sends the checks with it", async () => {
@@ -77,7 +77,7 @@ describe("StartRunDialog options", () => {
     fireEvent.change(failOn, { target: { value: "serious" } });
     fireEvent.click(startButton());
     await waitFor(() => expect(onStarted).toHaveBeenCalled());
-    expect(postedBody()).toEqual({ mode: "auto", gherkin: GHERKIN, a11y: true, visual: true, fail_on: "serious" });
+    expect(postedBody()).toEqual({ mode: "auto", case_path: CASE, a11y: true, visual: true, fail_on: "serious" });
   });
 
   it("drops fail-on again when the checks are turned off", async () => {
@@ -89,7 +89,7 @@ describe("StartRunDialog options", () => {
     expect((screen.getByLabelText("Fail the run on") as HTMLSelectElement).disabled).toBe(true);
     fireEvent.click(startButton());
     await waitFor(() => expect(onStarted).toHaveBeenCalled());
-    expect(postedBody()).toEqual({ mode: "auto", gherkin: GHERKIN });
+    expect(postedBody()).toEqual({ mode: "auto", case_path: CASE });
   });
 
   it("sends the human-in-the-loop options", async () => {
@@ -106,7 +106,7 @@ describe("StartRunDialog options", () => {
     await waitFor(() => expect(onStarted).toHaveBeenCalled());
     expect(postedBody()).toEqual({
       mode: "auto",
-      gherkin: GHERKIN,
+      case_path: CASE,
       confirm_destructive: true,
       destructive_terms: ["delete", "archive", "wipe account"],
       ask_on_failure: true,
@@ -119,7 +119,7 @@ describe("StartRunDialog options", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "Confirm destructive clicks" }));
     fireEvent.click(startButton());
     await waitFor(() => expect(onStarted).toHaveBeenCalled());
-    expect(postedBody()).toEqual({ mode: "auto", gherkin: GHERKIN, confirm_destructive: true });
+    expect(postedBody()).toEqual({ mode: "auto", case_path: CASE, confirm_destructive: true });
   });
 
   it("blocks a destructive term that is too long", async () => {
@@ -328,10 +328,28 @@ describe("StartRunDialog environment", () => {
     expect(postedBody().environment).toBe("prod");
   });
 
-  it("reads the environment from pasted Gherkin", async () => {
+  it("offers saved cases, folders and plain language, not pasted Gherkin", () => {
     renderDialog();
-    fireEvent.change(screen.getByLabelText("Gherkin"), { target: { value: `@env:staging\n${GHERKIN}` } });
-    await waitFor(() => expect(select().value).toBe("staging"));
+    const sources = Array.from(screen.getByRole("radiogroup", { name: "Source" }).querySelectorAll("label")).map((label) => label.textContent);
+    expect(sources).toEqual(["Saved case", "Folder", "Plain language (draft)"]);
+  });
+});
+
+describe("StartRunDialog from the case editor", () => {
+  it("runs the editor's Gherkin and test data as they are, with its environment tag and no source to pick", async () => {
+    const gherkin = '@env:staging\nFeature: Sign up\n  Scenario: New user\n    Given I open "/signup"\n';
+    const onStarted = vi.fn();
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <StartRunDialog onClose={() => undefined} onStarted={onStarted} initial={{ editor: { name: "Sign up", gherkin, testData: { email: "user@example.com" } } }} />
+      </QueryClientProvider>,
+    );
+    expect(screen.queryByRole("radiogroup", { name: "Source" })).toBeNull();
+    expect(screen.getByText(/as it is in the editor, unsaved changes included/)).toBeTruthy();
+    await waitFor(() => expect((screen.getByLabelText("Environment") as HTMLSelectElement).value).toBe("staging"));
+    fireEvent.click(startButton());
+    await waitFor(() => expect(onStarted).toHaveBeenCalledWith("r_1"));
+    expect(postedBody()).toEqual({ mode: "auto", gherkin, test_data: { email: "user@example.com" } });
   });
 });
 

@@ -2,35 +2,26 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState, type FormEvent, type SelectHTMLAttributes } from "react";
 import { api, post } from "../lib/api";
 import { isCaseList, isModelsReport, isRunCase } from "../lib/guards";
-import { BASE_URL_PATTERN, environmentTag, errorLine } from "../lib/caseForm";
+import { BASE_URL_PATTERN, environmentTag } from "../lib/caseForm";
 import { targetSummary } from "../lib/environmentForm";
 import { formFromSettings, rerunOptionsBody, runOptionsBody, validateRunOptions, type RunOptions } from "../lib/runOptions";
 import { folderOptions, within } from "../lib/caseTree";
 import type { CaseListing, Environment, ModelsReport, RerunScope, RunView, TestCase } from "../lib/types";
 import { AnimatedHeight } from "./AnimatedHeight";
 import { Field } from "./Field";
-import { GherkinEditor } from "./GherkinEditor";
 import { Icon } from "./Icon";
 import { Modal } from "./Modal";
 import { OptionGroup, RunOptionsFields } from "./RunOptionsFields";
 import { TargetIcon } from "./TargetIcon";
 
-type Source = "saved" | "folder" | "gherkin" | "description";
-
-const SAMPLE = `Feature: Sign in
-  Scenario: Registered user signs in
-    Given I open "/login"
-    When I fill "user@example.com" in "Email"
-    And I click the "Sign in" button
-    Then I should see "Welcome"
-`;
+type Source = "saved" | "folder" | "description";
 
 export interface StartRunInitial {
   source?: Source;
   casePath?: string;
   folder?: string;
-  gherkin?: string;
-  testData?: Record<string, string | { secret: string }>;
+  /** A feature from the case editor, unsaved changes included: the dialog runs it as it is, with no source to pick. */
+  editor?: { name: string | null; gherkin: string; testData?: Record<string, string | { secret: string }> };
 }
 
 /** Re-run this finished run instead of starting a new case: the fields start from its options. */
@@ -80,7 +71,6 @@ export function StartRunDialog({ onClose, onStarted, initial = {}, rerun }: { on
   const [casePath, setCasePath] = useState(initial.casePath ?? "");
   const [folder, setFolder] = useState(initial.folder ?? "");
   const [subfolders, setSubfolders] = useState(true);
-  const [gherkin, setGherkin] = useState(initial.gherkin ?? SAMPLE);
   const [description, setDescription] = useState("");
   const [initialForm] = useState(() => formFromSettings(rerun?.run.settings));
   const [chosenEnvironment, setChosenEnvironment] = useState<string | null>(initialForm.environment || null);
@@ -102,12 +92,13 @@ export function StartRunDialog({ onClose, onStarted, initial = {}, rerun }: { on
     enabled: Boolean(rerun),
     staleTime: Infinity,
   });
+  const editor = rerun ? undefined : initial.editor;
   const caseEnvironment = rerun
     ? (rerunCase.data?.test_case.environment?.ref ?? null)
-    : source === "saved"
-      ? (validCases.find((entry) => entry.path === chosenCase)?.environment ?? null)
-      : source === "gherkin"
-        ? environmentTag(gherkin)
+    : editor
+      ? environmentTag(editor.gherkin)
+      : source === "saved"
+        ? (validCases.find((entry) => entry.path === chosenCase)?.environment ?? null)
         : null;
   const environment = chosenEnvironment ?? caseEnvironment ?? "";
   const requestedEnvironment = environment !== caseEnvironment ? environment : rerun ? initialForm.environment : "";
@@ -139,7 +130,7 @@ export function StartRunDialog({ onClose, onStarted, initial = {}, rerun }: { on
       return;
     }
     const body: Record<string, unknown> = { mode };
-    if (source === "folder") {
+    if (!editor && source === "folder") {
       if (!folderReady) return setLocalError(folderCases.length ? "Every case in this folder is a draft or does not load." : "This folder has no cases.");
       if (baseUrl.trim()) body.base_url = baseUrl.trim();
       if (requestedEnvironment) body.environment = requestedEnvironment;
@@ -148,13 +139,12 @@ export function StartRunDialog({ onClose, onStarted, initial = {}, rerun }: { on
       startBatch.mutate({ ...body, folder, subfolders, ...runOptionsBody(options) });
       return;
     }
-    if (source === "saved") {
-      if (!chosenCase) return setLocalError("Pick a saved case, or paste Gherkin instead.");
+    if (editor) {
+      body.gherkin = editor.gherkin;
+      if (editor.testData && Object.keys(editor.testData).length) body.test_data = editor.testData;
+    } else if (source === "saved") {
+      if (!chosenCase) return setLocalError("Pick a saved case.");
       body.case_path = chosenCase;
-    } else if (source === "gherkin") {
-      if (!gherkin.trim()) return setLocalError("Paste a Gherkin scenario.");
-      body.gherkin = gherkin;
-      if (initial.testData && Object.keys(initial.testData).length) body.test_data = initial.testData;
     } else {
       if (!description.trim()) return setLocalError("Describe the steps, one per line.");
       body.description = description;
@@ -182,6 +172,13 @@ export function StartRunDialog({ onClose, onStarted, initial = {}, rerun }: { on
               {rerun.scope === "failed_only" ? ", only if that run did not pass" : ""}. Saved case files are read again. The options below start as that run's; change any of them first.
             </p>
           </div>
+        ) : editor ? (
+          <div className="field rerun-of">
+            <span className="field-label">What to run</span>
+            <p>
+              <strong>{editor.name ?? "The new case"}</strong> as it is in the editor, unsaved changes included.
+            </p>
+          </div>
         ) : (
           <>
             <fieldset className="field">
@@ -191,7 +188,6 @@ export function StartRunDialog({ onClose, onStarted, initial = {}, rerun }: { on
                   [
                     ["saved", "Saved case"],
                     ["folder", "Folder"],
-                    ["gherkin", "Paste Gherkin"],
                     ["description", "Plain language (draft)"],
                   ] as const
                 ).map(([id, label]) => (
@@ -253,11 +249,6 @@ export function StartRunDialog({ onClose, onStarted, initial = {}, rerun }: { on
                     <input type="checkbox" checked={subfolders} onChange={(event) => setSubfolders(event.target.checked)} />
                     <span>Include subfolders</span>
                   </label>
-                </div>
-              ) : source === "gherkin" ? (
-                <div className="field">
-                  <span className="field-label is-required">Scenario</span>
-                  <GherkinEditor value={gherkin} onChange={setGherkin} rows={10} id="start-gherkin" errorLine={errorLine(start.error?.message)} />
                 </div>
               ) : (
                 <Field id="start-description" label="Steps, one per line" required help="Becomes a draft: review the steps on the run page, then approve it.">

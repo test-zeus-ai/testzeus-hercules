@@ -339,7 +339,7 @@ export function CasesScreen({ selected }: { selected?: string }) {
   const newFolder = draft.folder;
 
   const onRun = () => {
-    if (draft.kind === "feature" && (draft.dirty || !entry)) setRunning({ source: "gherkin", gherkin: draft.gherkin, testData: testDataOf(validTestData(draft.data)) });
+    if (draft.kind === "feature" && (draft.dirty || !entry)) setRunning({ editor: { name: entry?.title ?? draft.name, gherkin: draft.gherkin, testData: testDataOf(validTestData(draft.data)) } });
     else if (entry) setRunning({ source: "saved", casePath: entry.path });
   };
 
