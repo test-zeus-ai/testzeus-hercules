@@ -1,0 +1,11 @@
+{
+  "name": "pre-seeded-restful-booker",
+  "base_url": "https://restful-booker.herokuapp.com",
+  "viewport": "1280x800",
+  "browser": null,
+  "browser_options": null,
+  "device": null,
+  "mobile": null,
+  "secret_names": [],
+  "variables": {}
+}

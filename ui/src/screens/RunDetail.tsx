@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo, useState, type KeyboardEvent } from "react";
 import { Link, useLocation } from "wouter";
+import { ApiCallCard, ApiCalls } from "../components/ApiCalls";
 import { ApprovalCard, type Decision } from "../components/ApprovalCard";
 import { CloudRunsPanel } from "../components/CloudRunsPanel";
 import { DebugToolbar } from "../components/DebugToolbar";
@@ -15,6 +16,7 @@ import { SecurityPanel } from "../components/SecurityPanel";
 import { StartRunDialog } from "../components/StartRunDialog";
 import { Icon } from "../components/Icon";
 import { StatusChip } from "../components/StatusChip";
+import { httpCallCount, type HttpCalls } from "../lib/apiCalls";
 import { api, evidenceName, evidenceUrl, post, remove } from "../lib/api";
 import { agentName, decisionUsage, deleteRunPrompt, engineLabels, formatCost, formatDuration, formatMs, formatTime, runSeconds, shortPath } from "../lib/format";
 import type { DebugAction } from "../lib/control";
@@ -178,7 +180,15 @@ export function RunDetailScreen({ runId }: { runId: string }) {
   const [cloudDialog, setCloudDialog] = useState(false);
   const [newCloudRun, setNewCloudRun] = useState<string | null>(null);
   const [rerunScope, setRerunScope] = useState<RerunScope | null>(null);
-  const [tab, setTab] = useState<"run" | "plan">("run");
+  const [tab, setTabState] = useState<"run" | "plan" | "api">("run");
+  // Panels fade in only after a switch, not when the page first loads.
+  const [tabSwitched, setTabSwitched] = useState(false);
+  const setTab = useCallback((next: "run" | "plan" | "api") => {
+    setTabSwitched(true);
+    setTabState(next);
+  }, []);
+  const tabIn = tabSwitched ? " run-tab-in" : "";
+  const [apiCall, setApiCall] = useState<number | null>(null);
   const run = useQuery({
     queryKey: ["run", runId],
     queryFn: () => api<RunView>(`/api/runs/${encodeURIComponent(runId)}`, { guard: isRunView }),
@@ -245,6 +255,17 @@ export function RunDetailScreen({ runId }: { runId: string }) {
     onSuccess: () => void client.invalidateQueries({ queryKey: ["run", runId] }),
   });
   const runStatus = run.data?.status;
+  // Refetched as API steps write their http.json and later steps check or save from the response.
+  const httpCount = httpCallCount(steps);
+  const stepsDone = steps.filter((step) => step.status !== "pending" && step.status !== "running").length;
+  const httpQuery = useQuery({
+    queryKey: ["http", runId, httpCount, stepsDone, finished],
+    queryFn: () => api<HttpCalls>(`/api/runs/${encodeURIComponent(runId)}/http`),
+    enabled: httpCount > 0,
+    placeholderData: (previous) => previous,
+  });
+  const httpCalls = httpQuery.data?.calls ?? [];
+  const httpFailed = httpCalls.some((call) => !call.response || (call.response.status ?? 0) >= 400 || call.checks.some((check) => check.verdict === "failed"));
   const planQuery = useQuery({
     queryKey: ["plan", runId, runStatus],
     queryFn: () => api<PlanView>(`/api/runs/${encodeURIComponent(runId)}/plan`),
@@ -292,6 +313,9 @@ export function RunDetailScreen({ runId }: { runId: string }) {
     client.setQueryData<{ cloud_runs: CloudRun[] }>(["cloud-runs", runId], (old) => ({ cloud_runs: [started, ...(old?.cloud_runs ?? []).filter((item) => item.id !== started.id)] }));
     void client.invalidateQueries({ queryKey: ["cloud-runs", runId] });
   };
+  const stepCall = selected ? (httpCalls.find((call) => call.step === selected.index) ?? httpCalls.find((call) => call.used_by.includes(selected.index))) : undefined;
+  // The call card stands in for the step's http.json link.
+  const stepEvidence = selected ? selected.evidence.filter((ref) => !(stepCall && ref.endsWith("/http.json"))) : [];
   const approvalStep = approval?.step ? steps.find((step) => step.index === approval.step) : undefined;
   const engines = view ? engineLabels(view) : null;
 
@@ -536,10 +560,37 @@ export function RunDetailScreen({ runId }: { runId: string }) {
             </span>
           ) : null}
         </button>
+        {httpCount > 0 ? (
+          <button type="button" role="tab" id="tab-api" aria-selected={tab === "api"} aria-controls="panel-api" className={`segment${tab === "api" ? " segment-on" : ""}`} onClick={() => setTab("api")}>
+            API calls <span className={`segment-count${httpFailed ? " api-count-failed" : ""}`}>{httpCalls.length || httpCount}</span>
+          </button>
+        ) : null}
       </div>
 
+      {tab === "api" ? (
+        <section id="panel-api" className={tabIn.trim() || undefined} role="tabpanel" aria-labelledby="tab-api">
+          {httpQuery.data ? (
+            <ApiCalls
+              runId={runId}
+              calls={httpCalls}
+              more={httpQuery.data.more}
+              selected={apiCall}
+              onSelect={setApiCall}
+              onStep={(step) => {
+                setPinned(step);
+                setTab("run");
+              }}
+            />
+          ) : httpQuery.isError ? (
+            <p className="callout callout-fail">Could not load the API calls: {(httpQuery.error as Error).message}</p>
+          ) : (
+            <p className="muted">Loading the API calls…</p>
+          )}
+        </section>
+      ) : null}
+
       {tab === "plan" ? (
-        <section className="panel panel-plan" id="panel-plan" role="tabpanel" aria-labelledby="tab-plan">
+        <section className={`panel panel-plan${tabIn}`} id="panel-plan" role="tabpanel" aria-labelledby="tab-plan">
           {planQuery.data ? (
             <PlanPanel plan={planQuery.data.plan} stepStatus={Object.fromEntries(steps.map((step) => [step.index, step.status]))} />
           ) : planQuery.isError ? (
@@ -550,7 +601,7 @@ export function RunDetailScreen({ runId }: { runId: string }) {
         </section>
       ) : null}
 
-      <div className="run-grid" id="panel-run" role="tabpanel" aria-labelledby="tab-run" hidden={tab !== "run"}>
+      <div className={`run-grid${tabIn}`} id="panel-run" role="tabpanel" aria-labelledby="tab-run" hidden={tab !== "run"}>
         <div className="panel panel-timeline">
           <div className="panel-head">
             <h2>Steps</h2>
@@ -587,10 +638,20 @@ export function RunDetailScreen({ runId }: { runId: string }) {
                   <p>{selected.actual ?? <span className="muted">{selected.status === "passed" ? "As expected." : selected.status === "pending" ? "Not run yet." : selected.status === "skipped" ? "Did not run." : "–"}</span>}</p>
                 </div>
               </div>
-              <Screenshot runId={runId} step={shotStep} live={liveShot !== null} liveSeq={liveShot?.seq ?? null} />
-              {selected.evidence.length ? (
+              {stepCall && !liveShot && !shotStep?.screenshots.length ? null : <Screenshot runId={runId} step={shotStep} live={liveShot !== null} liveSeq={liveShot?.seq ?? null} />}
+              {stepCall ? (
+                <ApiCallCard
+                  call={stepCall}
+                  step={selected.index}
+                  onOpen={() => {
+                    setApiCall(stepCall.step);
+                    setTab("api");
+                  }}
+                />
+              ) : null}
+              {stepEvidence.length ? (
                 <ul className="evidence-links evidence-step">
-                  {selected.evidence.map((ref) => (
+                  {stepEvidence.map((ref) => (
                     <li key={ref}>
                       <a href={evidenceUrl(runId, ref)} target="_blank" rel="noopener">
                         <Icon name={/\.(jpe?g|png)$/.test(ref) ? "image" : "link"} size={13} /> {evidenceName(ref)}

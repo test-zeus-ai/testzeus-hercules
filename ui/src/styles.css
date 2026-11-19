@@ -6083,6 +6083,22 @@ a.finding-row {
   }
 }
 
+/* The run page's Steps / Plan / API calls tabs: the shown tab's panels rise in, 40 ms apart, within 320 ms. */
+.run-grid.run-tab-in > .panel,
+.panel-plan.run-tab-in,
+.run-tab-in > .api-calls > * {
+  animation: stagger-in 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.run-grid.run-tab-in > .panel:nth-child(2),
+.run-tab-in > .api-calls > :nth-child(2) {
+  animation-delay: 40ms;
+}
+
+.run-grid.run-tab-in > .panel:nth-child(3) {
+  animation-delay: 80ms;
+}
+
 tbody.stagger-in > tr,
 .stagger-in tbody > tr,
 .stagger-in .finding-list > li,
@@ -6156,4 +6172,456 @@ tbody.stagger-in > tr:nth-child(n + 9),
 
 .recording-meta {
   margin: 0;
+}
+
+/* ---------- API calls (run page) ---------- */
+.api-count-failed {
+  color: var(--fail);
+  font-weight: 600;
+}
+
+.api-calls {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  padding: 0;
+}
+
+.api-list {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-right: 1px solid var(--line);
+}
+
+.api-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--line);
+}
+
+.api-filter {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+
+.api-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 640px;
+  overflow-y: auto;
+}
+
+.api-row {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr) auto;
+  gap: 4px var(--space-3);
+  align-items: center;
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.api-row:hover {
+  background: var(--surface-2);
+}
+
+.api-row:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.api-row-on {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.api-row-on:hover {
+  background: var(--accent-soft);
+}
+
+.api-row-path {
+  display: grid;
+  min-width: 0;
+  font-size: var(--text-xs);
+}
+
+.api-row-path .mono {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+
+.api-row-meta {
+  grid-column: 2 / 4;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  align-items: center;
+  color: var(--text-3);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.api-bar {
+  position: relative;
+  height: 4px;
+  background: var(--surface-sunk);
+}
+
+.api-bar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--accent);
+  opacity: 0.6;
+}
+
+.api-row-failed .api-bar i {
+  background: var(--fail);
+}
+
+.api-method {
+  padding: 2px 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  text-align: center;
+  color: var(--queue);
+  background: var(--queue-soft);
+}
+
+.api-method-get {
+  color: var(--info);
+  background: var(--info-soft);
+}
+
+.api-method-post {
+  color: var(--pass);
+  background: var(--pass-soft);
+}
+
+.api-method-put,
+.api-method-patch {
+  color: var(--run);
+  background: var(--run-soft);
+}
+
+.api-method-delete {
+  color: var(--fail);
+  background: var(--fail-soft);
+}
+
+.api-status {
+  padding: 1px 6px;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.api-status-2 {
+  color: var(--pass);
+  background: var(--pass-soft);
+}
+
+.api-status-3 {
+  color: var(--queue);
+  background: var(--queue-soft);
+}
+
+.api-status-4 {
+  color: var(--fail);
+  background: var(--fail-soft);
+}
+
+.api-status-5,
+.api-status-error {
+  color: var(--err);
+  background: var(--err-soft);
+}
+
+.api-empty,
+.api-foot {
+  padding: var(--space-3);
+}
+
+.api-foot {
+  margin: auto 0 0;
+}
+
+.api-detail {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.api-detail-head {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--line);
+}
+
+.api-detail-url {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  min-width: 0;
+}
+
+.api-detail-url .api-method {
+  flex: none;
+  width: 58px;
+}
+
+.api-detail-url .mono {
+  overflow-wrap: anywhere;
+}
+
+.api-detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px var(--space-3);
+  align-items: center;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.api-actions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+
+.api-step-link {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.api-tabs {
+  display: flex;
+  padding: 0 var(--space-2);
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+}
+
+.api-tab {
+  padding: 9px 10px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--text-3);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.api-tab:hover {
+  color: var(--text);
+}
+
+.api-tab-on {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.api-tab-body {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  min-width: 0;
+}
+
+.api-section {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.api-section-head {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.api-section-head h4 {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.api-kv {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.api-kv th,
+.api-kv td {
+  padding: 4px var(--space-2);
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.api-kv th {
+  width: 34%;
+  color: var(--text-3);
+  font-weight: 400;
+}
+
+.api-body {
+  margin: 0;
+  max-height: 420px;
+  padding: var(--space-3);
+  overflow: auto;
+  border: 1px solid var(--line);
+  background: var(--surface-sunk);
+  font: var(--text-xs) / 1.6 var(--font-mono);
+  white-space: pre;
+}
+
+.api-tok-key {
+  color: var(--tok-keyword);
+}
+
+.api-tok-string {
+  color: var(--tok-output);
+}
+
+.api-tok-number {
+  color: var(--tok-data);
+}
+
+.api-tok-literal {
+  color: var(--tok-input);
+}
+
+.api-masked {
+  padding: 0 5px;
+  border: 1px dashed var(--line-strong);
+  background: var(--surface-2);
+  color: var(--text-3);
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.api-checks {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.api-check {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  align-items: start;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+}
+
+.api-check-text p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.api-check-text .mono {
+  font-size: var(--text-xs);
+}
+
+.api-verdict {
+  padding: 1px 6px;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.api-verdict-passed {
+  color: var(--pass);
+  background: var(--pass-soft);
+}
+
+.api-verdict-failed {
+  color: var(--fail);
+  background: var(--fail-soft);
+}
+
+.api-verdict-saved {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.api-card {
+  display: grid;
+  margin-top: var(--space-3);
+  border: 1px solid var(--line);
+}
+
+.api-card-failed {
+  border-color: var(--fail);
+}
+
+.api-card-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px var(--space-3);
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.api-card-row + .api-card-row {
+  border-top: 1px solid var(--line);
+}
+
+.api-card-row .api-method {
+  width: 52px;
+}
+
+.api-card-url {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.api-card-open {
+  margin-left: auto;
+  font-weight: 600;
+}
+
+@media (max-width: 900px) {
+  .api-calls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .api-list {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .api-rows {
+    max-height: 320px;
+  }
 }

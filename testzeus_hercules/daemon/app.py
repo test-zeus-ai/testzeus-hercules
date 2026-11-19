@@ -59,6 +59,7 @@ from testzeus_hercules.daemon.evidence import (
     downscale_jpeg,
     resolve_evidence,
 )
+from testzeus_hercules.daemon.http_trace import read_http_calls
 from testzeus_hercules.daemon.hub import EventHub
 from testzeus_hercules.daemon.manager import RunConflict, RunManager, read_result
 from testzeus_hercules.daemon.models import (
@@ -75,6 +76,7 @@ from testzeus_hercules.daemon.models import (
     ExportView,
     FolderCreate,
     FolderUpdate,
+    HttpCalls,
     InputRequest,
     PauseView,
     PlanCreate,
@@ -683,6 +685,14 @@ async def step_decisions(request: Request, daemon: Daemon) -> Response:
     return JSONResponse({"run_id": run_id, "step": step, "decisions": decisions})
 
 
+async def run_http(request: Request, daemon: Daemon) -> Response:
+    """The API calls the run sent (each step's ``http.json``), with the checks and saves that used each response."""
+    run_id = request.path_params["run_id"]
+    _record(daemon, run_id)
+    body = HttpCalls.model_validate(await asyncio.to_thread(read_http_calls, daemon.config.paths.runs_dir, run_id))
+    return JSONResponse(json.loads(mask_url_credentials(json.dumps(body.model_dump(mode="json")))))
+
+
 # --------------------------------------------------------------------------- plans
 
 
@@ -1077,6 +1087,7 @@ def create_app(config: DaemonConfig) -> Starlette:
         Route("/api/clouds/{cloud}/devices", _endpoint(cloud_api.get_devices), methods=["GET"]),
         Route("/api/clouds/{cloud}/devices", _endpoint(cloud_api.refresh_devices), methods=["POST"]),
         Route("/api/runs/{run_id}/steps/{step}/decisions", _endpoint(step_decisions), methods=["GET"]),
+        Route("/api/runs/{run_id}/http", _endpoint(run_http), methods=["GET"]),
         Route("/api/runs/{run_id}/plan", _endpoint(run_plan), methods=["GET"]),
         Route("/api/runs/{run_id}/plan/diff", _endpoint(run_plan_diff), methods=["GET"]),
         Route("/api/plans", _endpoint(create_plan), methods=["POST"]),

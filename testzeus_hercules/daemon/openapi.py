@@ -34,6 +34,7 @@ from testzeus_hercules.daemon.models import (
     RunSettings,
     RunView,
     StepDecisions,
+    HttpCalls,
 )
 
 _REF = "#/components/schemas/{model}"
@@ -58,6 +59,7 @@ _MODELS = (
     RunBatchCreate,
     RunBatchCreated,
     StepDecisions,
+    HttpCalls,
     ExportView,
     CloudKeys,
     CloudRegion,
@@ -253,6 +255,13 @@ def _paths() -> dict[str, Any]:
             "get": {
                 "summary": "The step's decisions: each question with every option's probability, the answer, engine, latency, cost and fallback reason",
                 "responses": {"200": _json(_ref("StepDecisions")), **_errors(404, 422)},
+            },
+        },
+        "/api/runs/{run_id}/http": {
+            **run_ops,
+            "get": {
+                "summary": "The API calls the run sent (each step's http.json): request, response, duration, and the checks and saves that used each response",
+                "responses": {"200": _json(_ref("HttpCalls")), **_errors(404)},
             },
         },
         "/api/runs/{run_id}/plan": {

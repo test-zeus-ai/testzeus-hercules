@@ -86,8 +86,11 @@ def serve(config: DaemonConfig, sock: socket.socket, *, notices: TextIO) -> None
     import uvicorn
 
     from testzeus_hercules.daemon.app import create_app
+    from testzeus_hercules.seeds import SEED_ENV, seed_examples
 
     paths = config.paths
+    paths.ensure_dirs()
+    seeded = seed_examples(paths, env=config.env)
     app = create_app(config)
     server = uvicorn.Server(uvicorn.Config(app, log_level="warning", lifespan="on", access_log=False, timeout_graceful_shutdown=max(5, int(config.cancel_grace_s) + 3)))
     info = DaemonInfo(
@@ -101,6 +104,11 @@ def serve(config: DaemonConfig, sock: socket.socket, *, notices: TextIO) -> None
         if server.started:
             write_daemon_file(paths.daemon_file, info)
             login = app.state.daemon.sessions.new_code()
+            if seeded:
+                cases = sum(name.startswith("cases/") for name in seeded)
+                envs = len(seeded) - cases
+                added = " and ".join(part for part in (f"{cases} example case{'s' * (cases != 1)}" if cases else "", f"{envs} environment{'s' * (envs != 1)}" if envs else "") if part)
+                notices.write(f"Added {added} to {paths.project_hercules_dir} (set {SEED_ENV}=0 to skip)\n")
             notices.write(f"Hercules daemon on {config.public_url} (project {config.settings.project_dir}, {config.parallel_runs} parallel run(s))\n")
             notices.write(f"Open the UI once with: {config.public_url}/login?code={login}\n")
             notices.write("(the link works once; run `hercules ui` for a new one)\n")

@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RunResult, RunView } from "../lib/types";
+import { httpCall } from "../test/apiCallFixtures";
 import { cloudRun, cloudsReport } from "../test/cloudFixtures";
 import { samplePlan, sampleView } from "../test/planFixtures";
 import { RunDetailScreen, ordinal } from "./RunDetail";
@@ -249,6 +250,71 @@ describe("RunDetail cloud runs", () => {
     renderScreen();
     await screen.findByRole("heading", { name: "Demo login" });
     expect(header().queryByRole("button", { name: /run on a cloud/i })).toBeNull();
+  });
+});
+
+describe("RunDetail API calls", () => {
+  const ref = "hercules://runs/r_parent/steps/1/http.json";
+  function withApiSteps() {
+    view = parentRun({
+      status: "passed",
+      result: {
+        ...RESULT,
+        status: "passed",
+        steps: [
+          { index: 1, action: 'I send a POST request to "/auth"', status: "passed", duration_ms: 1300, decisions: 0, evidence: [ref] },
+          { index: 2, action: "verify", expected: "the response status code should be 200", status: "passed", duration_ms: 10, decisions: 0, evidence: [ref, "hercules://runs/r_parent/steps/2/checks.json"] },
+        ],
+      },
+    });
+    const base = fetchMock.getMockImplementation() as (url: string, init?: RequestInit) => Promise<unknown>;
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === "/api/runs/r_parent/http") return respond({ run_id: "r_parent", calls: [httpCall({ used_by: [1, 2], saves: [], checks: [httpCall().checks[0]] })], more: false });
+      return base(url, init);
+    });
+  }
+
+  it("adds an API calls tab when a step sent a request, and lists the call", async () => {
+    withApiSteps();
+    renderScreen();
+    const tab = await screen.findByRole("tab", { name: /API calls/ });
+    expect(tab.textContent).toContain("1");
+    fireEvent.click(tab);
+    const row = await screen.findByRole("option");
+    expect(row.textContent).toContain("/auth");
+    fireEvent.click(screen.getByRole("tab", { name: /Checks/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Step 2" }));
+    expect(screen.getByRole("tab", { name: "Steps" }).getAttribute("aria-selected")).toBe("true");
+    expect(await screen.findByText("Uses the response of step 1")).toBeTruthy();
+  });
+
+  it("shows the step's call in brief in place of its http.json link", async () => {
+    withApiSteps();
+    renderScreen();
+    expect(await screen.findByText("Uses the response of step 1")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /http\.json/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Open in API calls/ }));
+    expect(screen.getByRole("tab", { name: /API calls/ }).getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("fades the shown tab's panels in after a switch, not on the first load", async () => {
+    withApiSteps();
+    renderScreen();
+    await screen.findByRole("tab", { name: /API calls/ });
+    expect(document.getElementById("panel-run")?.className).toBe("run-grid");
+    fireEvent.click(screen.getByRole("tab", { name: /API calls/ }));
+    expect(document.getElementById("panel-api")?.className).toBe("run-tab-in");
+    fireEvent.click(screen.getByRole("tab", { name: /Plan/ }));
+    expect(document.getElementById("panel-plan")?.className).toContain("run-tab-in");
+    fireEvent.click(screen.getByRole("tab", { name: "Steps" }));
+    expect(document.getElementById("panel-run")?.className).toBe("run-grid run-tab-in");
+  });
+
+  it("has no API calls tab for a run without requests", async () => {
+    renderScreen();
+    await screen.findByRole("heading", { name: "Demo login" });
+    expect(screen.queryByRole("tab", { name: /API calls/ })).toBeNull();
+    expect(fetchMock.mock.calls.some(([url]) => url === "/api/runs/r_parent/http")).toBe(false);
   });
 });
 

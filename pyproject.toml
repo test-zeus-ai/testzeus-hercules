@@ -101,6 +101,8 @@ testzeus_hercules = ["py.typed"]
 "testzeus_hercules.quality" = ["*.js", "vendor/axe/*"]
 # The tester UI, built by scripts/build_ui.sh (ui/ -> testzeus_hercules/ui/static) before packaging.
 "testzeus_hercules.ui" = ["static/*", "static/assets/*"]
+# Example cases and environments written into a project when the daemon starts (testzeus_hercules/seeds).
+"testzeus_hercules.seeds" = ["cases/*/*.feature", "envs/*.json"]
 
 [build-system]
 requires = ["setuptools>=84.1.0"]

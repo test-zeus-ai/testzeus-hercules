@@ -1,0 +1,13 @@
+{
+  "name": "pre-seeded-roboform",
+  "base_url": "https://www.roboform.com",
+  "viewport": "1280x800",
+  "browser": null,
+  "browser_options": null,
+  "device": null,
+  "mobile": null,
+  "secret_names": [],
+  "variables": {
+    "email": "alex.morgan@example.com"
+  }
+}

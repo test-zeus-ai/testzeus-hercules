@@ -407,6 +407,55 @@ class StepDecisions(BaseModel):
     decisions: list[DecisionView]
 
 
+class HttpMessage(BaseModel):
+    headers: list[list[str]] = Field(default_factory=list, description="Name and value pairs, credentials masked")
+    body: str | None = Field(default=None, description="The body as text (cut off at 64 KB), secret values masked")
+
+
+class HttpResponseView(HttpMessage):
+    status: int | None = None
+    reason: str = ""
+    bytes: int | None = None
+
+
+class HttpCheckView(BaseModel):
+    step: int
+    check: str
+    expected: str
+    actual: str
+    verdict: Literal["passed", "failed"]
+    text: str = Field(default="", description="The step's text")
+
+
+class HttpSaveView(BaseModel):
+    step: int
+    name: str
+    value: str
+
+
+class HttpCallView(BaseModel):
+    """One request an API step sent, with the checks and saves that used its response."""
+
+    step: int
+    action: str = ""
+    evidence: str = Field(description="The http.json evidence path, relative to the run")
+    method: str
+    url: str
+    duration_ms: int | None = None
+    error: str | None = Field(default=None, description="Why no response came back (refused, timeout)")
+    request: HttpMessage
+    response: HttpResponseView | None = None
+    checks: list[HttpCheckView] = Field(default_factory=list)
+    saves: list[HttpSaveView] = Field(default_factory=list)
+    used_by: list[int] = Field(default_factory=list, description="The steps that sent the call or used its response")
+
+
+class HttpCalls(BaseModel):
+    run_id: str
+    calls: list[HttpCallView]
+    more: bool = Field(default=False, description="More calls than the list keeps")
+
+
 class Environment(_Body):
     """A named environment: where cases run. Secrets are referenced by environment-variable name only.
 
