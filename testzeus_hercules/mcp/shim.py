@@ -15,8 +15,9 @@ _lazy.install()
 
 import os  # noqa: E402
 import re  # noqa: E402
+import sys  # noqa: E402
 from pathlib import Path  # noqa: E402
-from typing import Any, Iterable, Mapping  # noqa: E402
+from typing import Any, Iterable, Mapping, TextIO  # noqa: E402
 
 import anyio  # noqa: E402
 import httpx  # noqa: E402
@@ -131,7 +132,26 @@ async def serve_stdio(env: Mapping[str, str] | None = None, project_dir: Path | 
         await client.aclose()
 
 
-def main(env: Mapping[str, str] | None = None) -> int:
-    """Entry point of ``hercules mcp``."""
-    anyio.run(serve_stdio, dict(os.environ if env is None else env), Path.cwd())
+def running_notice(project_dir: Path) -> str:
+    """What ``hercules mcp`` says when a person starts it in a terminal (an MCP client never sees it)."""
+    return (
+        f"Hercules MCP server {_version()} is running on stdio ({len(TOOLS)} tools, project {project_dir}).\n"
+        "It waits for an MCP client such as Claude Code or Cursor, which starts it from its MCP config. Press Ctrl+C to stop.\n"
+    )
+
+
+def main(env: Mapping[str, str] | None = None, *, stdin: TextIO | None = None, stderr: TextIO | None = None) -> int:
+    """Entry point of ``hercules mcp``. Started by hand in a terminal, it says on stderr that it is running (stdout carries
+    only the protocol); started by an MCP client, whose stdin is a pipe, it prints nothing."""
+    project_dir = Path.cwd()
+    interactive = (stdin or sys.stdin).isatty()
+    err = stderr or sys.stderr
+    if interactive:
+        err.write(running_notice(project_dir))
+        err.flush()
+    try:
+        anyio.run(serve_stdio, dict(os.environ if env is None else env), project_dir)
+    except KeyboardInterrupt:
+        if interactive:
+            err.write("Hercules MCP server stopped.\n")
     return 0

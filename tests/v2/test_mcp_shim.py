@@ -569,3 +569,35 @@ def test_a_passed_run_is_exported_as_code_and_a_failed_one_is_refused(daemon) ->
     assert out["refused"].isError and "only passed runs are exported" in _text(out["refused"])
     partial = out["partial"].structuredContent
     assert partial["partial"] and partial["steps_exported"] == 1 and partial["notes"][0].startswith("PARTIAL")
+
+
+class _Stream(io.StringIO):
+    def __init__(self, tty: bool) -> None:
+        super().__init__()
+        self.tty = tty
+
+    def isatty(self) -> bool:
+        return self.tty
+
+
+def test_started_by_hand_it_says_on_stderr_that_it_is_running(monkeypatch: pytest.MonkeyPatch) -> None:
+    from testzeus_hercules.mcp import shim
+
+    def stop(*_args: object) -> None:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(shim.anyio, "run", stop)
+    err = _Stream(tty=False)
+    assert shim.main(env={}, stdin=_Stream(tty=True), stderr=err) == 0
+    said = err.getvalue()
+    assert said.startswith("Hercules MCP server ") and f"is running on stdio ({len(shim.TOOLS)} tools" in said
+    assert "Press Ctrl+C to stop." in said and said.endswith("Hercules MCP server stopped.\n")
+
+
+def test_started_by_an_mcp_client_it_prints_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
+    from testzeus_hercules.mcp import shim
+
+    monkeypatch.setattr(shim.anyio, "run", lambda *_args: None)
+    err = _Stream(tty=False)
+    assert shim.main(env={}, stdin=_Stream(tty=False), stderr=err) == 0
+    assert err.getvalue() == ""
