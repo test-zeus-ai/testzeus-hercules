@@ -107,16 +107,32 @@ class HerculesTools(ExploreToolsMixin):
 
     # ------------------------------------------------------------------ daemon helpers
 
-    async def _api(self, method: str, path: str, *, json_body: Any = None, params: dict[str, Any] | None = None, timeout_s: float | None = None) -> Any:
+    async def _api(
+        self,
+        method: str,
+        path: str,
+        *,
+        json_body: Any = None,
+        params: dict[str, Any] | None = None,
+        timeout_s: float | None = None,
+        hints: dict[str, str] | None = None,
+        prefix: str = "",
+    ) -> Any:
+        """The daemon's JSON answer; an error answer becomes a ToolError (``prefix`` + message, and the hint for its
+        ``detail.code`` from ``hints``)."""
         response = await self.client.request(method, path, json=json_body, params=params, timeout_s=timeout_s)
         if response.status_code >= 400:
+            code = None
             try:
-                message = response.json().get("error") or response.text
+                answer = response.json()
+                message = answer.get("error") or response.text
+                code = (answer.get("detail") or {}).get("code") if isinstance(answer.get("detail"), dict) else None
             except ValueError:
                 message = response.text
+            hint = f" ({hints[code]})" if hints and code in hints else ""
             if response.status_code == 404:
-                raise ToolError(f"not found: {message}")
-            raise ToolError(str(message)[:1000])
+                raise ToolError(f"{prefix}not found: {message}{hint}")
+            raise ToolError(f"{prefix}{str(message)[:1000]}{hint}")
         return response.json()
 
     async def _view(self, run_id: str, *, wait_s: float = 0.0, after_seq: int | None = None) -> dict[str, Any]:
@@ -470,6 +486,111 @@ class HerculesTools(ExploreToolsMixin):
         text = "\n".join(view["summary"].splitlines()[0] for view in views) or "No runs yet."
         return ToolOutput({"runs": [summary(view) for view in views]}, text)
 
+    async def _list_cases(self, args: dict[str, Any], progress: Progress, started: float) -> ToolOutput:
+        limit = int(args.get("limit") or 50)
+        params = {key: str(args[key]).strip() for key in ("folder", "query") if str(args.get(key) or "").strip()}
+        listing = await self._api("GET", "/api/cases", params=params or None)
+        found = listing.get("cases", [])
+        fields = ("path", "folder", "kind", "valid", "id", "title", "status", "steps", "environment", "error")
+        cases = [{key: entry.get(key) for key in fields} for entry in found[:limit]]
+        for case in cases:
+            case["folder"], case["kind"], case["valid"] = str(case["folder"] or ""), str(case["kind"] or ""), bool(case["valid"])
+        lines = []
+        for case in cases:
+            where = f"[{case['folder']}] " if case["folder"] else ""
+            if case["valid"]:
+                extra = ", ".join(
+                    part
+                    for part in (
+                        f"{case['steps']} steps" if case["steps"] is not None else "",
+                        f"env {case['environment']}" if case["environment"] else "",
+                        "draft" if case["status"] == "draft" else "",
+                    )
+                    if part
+                )
+                lines.append(f"- {where}{case['title']}: {case['path']}" + (f" ({extra})" if extra else ""))
+            else:
+                lines.append(f"- {where}{case['path']}: invalid ({case['error']})")
+        truncated = bool(listing.get("truncated"))
+        count = f"{len(found)}{'+' if truncated else ''}"
+        if not lines:
+            text = "No cases match." if params else "No saved cases yet: save .json or .feature files in .hercules/cases."
+        else:
+            notes = []
+            if len(found) > limit:
+                notes.append(f"… {len(found) - limit} more; narrow it with folder or query, or raise limit.")
+            if truncated:
+                notes.append(f"The project has more than {len(found)} matching cases; narrow it with folder or query to see the rest.")
+            text = f"{count} case(s); run one with hercules_run case_path=<path>:\n" + "\n".join(lines) + "".join(f"\n{note}" for note in notes)
+        return ToolOutput({"cases": cases, "folders": list(listing.get("folders", [])), "total": len(found), "truncated": truncated}, text)
+
+    @staticmethod
+    def _case_source(args: dict[str, Any]) -> dict[str, Any]:
+        """The one case source in ``args`` (gherkin, with its test_data, or test_case) as the daemon takes it."""
+        given = [key for key in ("gherkin", "test_case") if args.get(key) not in (None, "", {})]
+        if len(given) != 1:
+            raise ToolError(f"give exactly one of gherkin or test_case (got {', '.join(given) or 'none'})")
+        if args.get("test_data") is not None and given[0] != "gherkin":
+            raise ToolError("test_data goes with gherkin; a test_case carries its own test_data")
+        body: dict[str, Any] = {given[0]: args[given[0]]}
+        if args.get("test_data") is not None:
+            body["test_data"] = args["test_data"]
+        return body
+
+    async def _get_case(self, args: dict[str, Any], progress: Progress, started: float) -> ToolOutput:
+        name = _case_name(args.get("name"))
+        view = await self._api("GET", f"/api/cases/{_quote_case(name)}")
+        structured = {
+            "name": view["name"],
+            "path": f"{_CASES_PREFIX}{view['name']}",
+            "folder": view.get("folder") or "",
+            "kind": view["kind"],
+            "source": view.get("source"),
+            "test_case": view["test_case"],
+        }
+        case = view["test_case"]
+        head = f"{structured['path']}: {case.get('title')} ({len(case.get('steps') or [])} steps"
+        head += f", env {case['environment']['ref']})" if (case.get("environment") or {}).get("ref") else ")"
+        return ToolOutput(structured, head + "\n\n" + (view.get("source") or json.dumps(case, indent=2)))
+
+    async def _validate_case(self, args: dict[str, Any], progress: Progress, started: float) -> ToolOutput:
+        source = self._case_source(args)
+        checked = await self._api("POST", "/api/cases/validate", json_body=source)
+        case = checked.get("test_case") or {}
+        valid = bool(checked.get("valid"))
+        result: dict[str, Any] = {"valid": valid, "error": checked.get("error"), "id": None, "title": None, "steps": None, "environment": None, "file": None}
+        if valid:
+            result.update(
+                id=case.get("id"),
+                title=case.get("title"),
+                steps=len(case.get("steps") or []),
+                environment=(case.get("environment") or {}).get("ref"),
+                file=f"{case.get('id')}.{'feature' if 'gherkin' in source else 'json'}",
+            )
+            env = f", env {result['environment']}" if result["environment"] else ""
+            text = f"Valid: {result['title']} ({result['steps']} steps{env}); it would be saved as {result['file']}."
+        else:
+            text = f"Not valid: {result['error']}"
+        return ToolOutput(result, text)
+
+    async def _create_case(self, args: dict[str, Any], progress: Progress, started: float) -> ToolOutput:
+        body = {**self._case_source(args), "overwrite": False, "folder": str(args.get("folder") or "").strip().strip("/")}
+        saved = await self._api("POST", "/api/cases", json_body=body, hints=_CASE_HINTS, prefix="nothing was saved: ")
+        structured = {"name": saved["name"], "path": saved["path"], "id": saved["id"]}
+        return ToolOutput(structured, f"Created {saved['path']} ({saved.get('steps')} steps). Run it with hercules_run case_path={saved['path']}.")
+
+    async def _update_case(self, args: dict[str, Any], progress: Progress, started: float) -> ToolOutput:
+        name = _case_name(args.get("name"))
+        body = {**self._case_source(args), "replace": name}
+        saved = await self._api("POST", "/api/cases", json_body=body, hints=_CASE_HINTS, prefix=f"{name} was left as it was: ")
+        structured = {"name": saved["name"], "path": saved["path"], "id": saved["id"]}
+        return ToolOutput(structured, f"Updated {saved['path']} ({saved.get('steps')} steps).")
+
+    async def _delete_case(self, args: dict[str, Any], progress: Progress, started: float) -> ToolOutput:
+        name = _case_name(args.get("name"))
+        removed = await self._api("DELETE", f"/api/cases/{_quote_case(name)}")
+        return ToolOutput({"name": removed["name"], "removed": bool(removed.get("removed"))}, f"Deleted {_CASES_PREFIX}{removed['name']}.")
+
     async def _get_evidence(self, args: dict[str, Any], progress: Progress, started: float) -> ToolOutput:
         uri = str(args["uri"])
         parsed = _URI.match(uri)
@@ -731,3 +852,23 @@ def _visual_line(item: dict[str, Any]) -> str:
     verdict = (item.get("classification") or {}).get("label") or item.get("note") or "not classified"
     deltas = ", ".join(f"{d['property']} {d['before']} -> {d['after']}" for d in item.get("style_deltas", [])[:4])
     return f"Visual: baseline {item['baseline']} at step {item['step']}: {item.get('diff_ratio', 0):.2%} changed (gate {item.get('threshold', 0):.2%}); {verdict}{'; ' + deltas if deltas else ''}"
+
+
+_CASES_PREFIX = ".hercules/cases/"
+_CASE_HINTS = {code: "to change that case, use hercules_update_case with its path" for code in ("case_id_taken", "case_exists")}
+
+
+def _case_name(raw: Any) -> str:
+    """A case's name under .hercules/cases from what hercules_list_cases shows (the project path or the path inside the folder)."""
+    name = str(raw or "").strip().replace("\\", "/")
+    name = name.removeprefix("./").removeprefix(_CASES_PREFIX)
+    parts = name.split("/")
+    if not name or name.startswith("/") or any(part in ("", ".", "..") for part in parts) or not name.lower().endswith((".feature", ".json")):
+        raise ToolError("give the case's path as hercules_list_cases shows it, e.g. .hercules/cases/Checkout/pay.feature")
+    return name
+
+
+def _quote_case(name: str) -> str:
+    from urllib.parse import quote
+
+    return quote(name, safe="/")

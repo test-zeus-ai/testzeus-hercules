@@ -24,6 +24,8 @@ Companion flow after you change user-facing behaviour:
    For a phone-sized browser add environment.device (a Playwright profile such as "iPhone 15");
    for a native Android/iOS app use environment.mobile ({"platform": "android", "package": ...,
    "activity": ...}) instead of base_url; see docs/guide/mobile-testing.md.
+   Saved cases: hercules_list_cases, hercules_get_case, hercules_validate_case, hercules_create_case and
+   hercules_update_case (both validate first), hercules_delete_case (only when the user asks).
 2. hercules_run with test_cases (or gherkin) and base_url: returns run_id at once.
 3. hercules_run_status with run_id and wait_s (at most 50) until finished is true.
 4. hercules_run_result: status, the failing step (expected vs actual), hints, one screenshot,
@@ -347,6 +349,191 @@ TOOLS: list[dict[str, Any]] = [
         },
         "outputSchema": {"type": "object", "properties": {"runs": {"type": "array", "items": RUN_SUMMARY}}, "required": ["runs"]},
         "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
+    {
+        "name": "hercules_list_cases",
+        "title": "List cases",
+        "description": (
+            "The project's saved test cases (.hercules/cases), by folder: the path to give hercules_run or hercules_plan as case_path, the title, "
+            "steps, environment and whether the case is valid. Optionally only one folder (and its subfolders) or cases whose title, id or path "
+            "contains query."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "folder": {"type": "string", "maxLength": 300, "description": "Only this folder and its subfolders, e.g. Pre-Seeded"},
+                "query": {"type": "string", "maxLength": 200, "description": "Words the title, id or path contains (case-insensitive)"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 200, "description": "Default 50"},
+            },
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "cases": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "path": {"type": "string"},
+                            "folder": {"type": "string"},
+                            "kind": {"type": "string"},
+                            "valid": {"type": "boolean"},
+                            "id": {"type": ["string", "null"]},
+                            "title": {"type": ["string", "null"]},
+                            "status": {"type": ["string", "null"]},
+                            "steps": {"type": ["integer", "null"]},
+                            "environment": {"type": ["string", "null"]},
+                            "error": {"type": ["string", "null"]},
+                        },
+                        "required": ["path", "folder", "kind", "valid"],
+                    },
+                },
+                "folders": {"type": "array", "items": {"type": "string"}},
+                "total": {"type": "integer", "description": "Cases that match, before the limit"},
+                "truncated": {"type": "boolean", "description": "The project has more matching cases than the listing holds; narrow it with folder or query"},
+            },
+            "required": ["cases", "folders", "total", "truncated"],
+        },
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
+    {
+        "name": "hercules_get_case",
+        "title": "Read a case",
+        "description": "One saved case by its path (from hercules_list_cases): its file as written (Gherkin or JSON) and the TestCase it compiles to.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "description": "The case's path from hercules_list_cases, e.g. .hercules/cases/Checkout/pay.feature (or Checkout/pay.feature)",
+                }
+            },
+            "required": ["name"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "path": {"type": "string"},
+                "folder": {"type": "string"},
+                "kind": {"type": "string"},
+                "source": {"type": ["string", "null"]},
+                "test_case": {"type": "object"},
+            },
+            "required": ["name", "path", "folder", "kind", "test_case"],
+        },
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
+    {
+        "name": "hercules_validate_case",
+        "title": "Validate a case",
+        "description": (
+            "Check a case without saving it: the Gherkin or TestCase compiles, every {{placeholder}} is defined (test data, the environment's "
+            "variables, saved values), and the environment it names exists. Give exactly one of gherkin or test_case."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "gherkin": {"type": "string", "minLength": 1, "maxLength": 200000, "description": "Gherkin with one scenario (saved as <scenario>.feature)"},
+                "test_case": {"type": "object", "description": "A TestCase object (saved as <id>.json): id, title, environment, steps"},
+                "test_data": {"type": "object", "description": "Gherkin only: test data for its {{placeholders}} (kept beside the .feature)"},
+            },
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "valid": {"type": "boolean"},
+                "error": {"type": ["string", "null"]},
+                "id": {"type": ["string", "null"]},
+                "title": {"type": ["string", "null"]},
+                "steps": {"type": ["integer", "null"]},
+                "environment": {"type": ["string", "null"]},
+                "file": {"type": ["string", "null"], "description": "The file name it would be saved as"},
+            },
+            "required": ["valid", "error"],
+        },
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
+    {
+        "name": "hercules_create_case",
+        "title": "Create a case",
+        "description": (
+            "Save a new case in .hercules/cases (optionally in a folder that exists). It is validated first, as hercules_validate_case does, and "
+            "nothing is written when it is not valid. Refused when a case with the same id exists: change that one with hercules_update_case."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "gherkin": {"type": "string", "minLength": 1, "maxLength": 200000, "description": "Gherkin with one scenario (saved as <scenario>.feature)"},
+                "test_case": {"type": "object", "description": "A TestCase object (saved as <id>.json): id, title, environment, steps"},
+                "test_data": {"type": "object", "description": "Gherkin only: test data for its {{placeholders}} (kept beside the .feature)"},
+                "folder": {"type": "string", "maxLength": 300, "description": "An existing folder, e.g. Checkout (default: the top level)"},
+            },
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {"name": {"type": "string"}, "path": {"type": "string"}, "id": {"type": "string"}},
+            "required": ["name", "path", "id"],
+        },
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": False},
+    },
+    {
+        "name": "hercules_update_case",
+        "title": "Update a case",
+        "description": (
+            "Replace a saved case's content (by its path from hercules_list_cases), also to repair a case that does not load. The new content is "
+            "validated first and nothing is written when it is not valid. It is written to the same file: same kind (gherkin for a .feature, "
+            "test_case for a .json) and same id (the scenario name or id); to rename, create a new case and delete this one. A .feature keeps "
+            "its saved test data unless test_data is given ({} clears it)."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "description": "The case's path from hercules_list_cases, e.g. .hercules/cases/Checkout/pay.feature (or Checkout/pay.feature)",
+                },
+                "gherkin": {"type": "string", "minLength": 1, "maxLength": 200000, "description": "Gherkin with one scenario (saved as <scenario>.feature)"},
+                "test_case": {"type": "object", "description": "A TestCase object (saved as <id>.json): id, title, environment, steps"},
+                "test_data": {"type": "object", "description": "Gherkin only: test data for its {{placeholders}} (kept beside the .feature)"},
+            },
+            "required": ["name"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {"name": {"type": "string"}, "path": {"type": "string"}, "id": {"type": "string"}},
+            "required": ["name", "path", "id"],
+        },
+        "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True, "openWorldHint": False},
+    },
+    {
+        "name": "hercules_delete_case",
+        "title": "Delete a case",
+        "description": "Delete a saved case by its path (with its test data file and the files attached to it). Only when the user asked for it; runs that used it are kept.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "description": "The case's path from hercules_list_cases, e.g. .hercules/cases/Checkout/pay.feature (or Checkout/pay.feature)",
+                }
+            },
+            "required": ["name"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {"type": "object", "properties": {"name": {"type": "string"}, "removed": {"type": "boolean"}}, "required": ["name", "removed"]},
+        "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False, "openWorldHint": False},
     },
     {
         "name": "hercules_get_evidence",

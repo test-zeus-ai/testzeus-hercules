@@ -802,7 +802,7 @@ async def case_plan(request: Request, daemon: Daemon) -> Response:
 
 
 class _CasePath(Convertor[str]):
-    regex = r"[^/].*?\.(?:json|feature)"
+    regex = r"[^/].*?\.(?:[jJ][sS][oO][nN]|[fF][eE][aA][tT][uU][rR][eE])"
 
     def convert(self, value: str) -> str:
         return value
@@ -823,9 +823,18 @@ def _case_error(exc: Exception) -> ApiError:
 
 
 async def list_cases(request: Request, daemon: Daemon) -> Response:
+    """The saved cases: all, or ``folder`` (with its subfolders) and those whose title, id or path contains ``query``, both
+    applied before the listing's cap (``truncated``: there were more)."""
     paths = daemon.config.paths
     folders = case_files.list_folders(paths.cases_dir)
-    return JSONResponse({"cases": case_files.list_cases(paths.cases_dir, daemon.config.settings.project_dir, folders), "folders": folders})
+    under, query = request.query_params.get("folder", "").strip().strip("/"), request.query_params.get("query", "")
+    if len(under) > 900 or len(query) > 200:
+        raise ApiError(422, "folder or query is too long")
+    try:
+        cases, truncated = case_files.find_cases(paths.cases_dir, daemon.config.settings.project_dir, folders=folders, under=under, query=query)
+    except case_files.CaseError as exc:
+        raise ApiError(404, str(exc)) from None
+    return JSONResponse({"cases": cases, "folders": folders, "truncated": truncated})
 
 
 async def get_case(request: Request, daemon: Daemon) -> Response:
@@ -855,19 +864,36 @@ async def validate_case(request: Request, daemon: Daemon) -> Response:
             case = TestCase.model_validate(body.test_case)
         except ValidationError as exc:
             return JSONResponse({"valid": False, "error": case_files.describe_validation(exc), "test_case": None})
+    problem = case_files.environment_problem(case, daemon.config.paths.envs_dir)
+    if problem is not None:
+        return JSONResponse({"valid": False, "error": problem, "test_case": case_files.case_json(case)})
     return JSONResponse({"valid": True, "error": None, "test_case": case_files.case_json(case)})
 
 
 async def save_case(request: Request, daemon: Daemon) -> Response:
     body = _parse(CaseSave, await _body(request))
     try:
-        path, case = case_files.save_case(daemon.config.paths.cases_dir, test_case=body.test_case, gherkin=body.gherkin, overwrite=body.overwrite, test_data=body.test_data, folder=body.folder)
+        path, case = case_files.save_case(
+            daemon.config.paths.cases_dir,
+            test_case=body.test_case,
+            gherkin=body.gherkin,
+            overwrite=body.overwrite,
+            test_data=body.test_data,
+            folder=body.folder,
+            replace=body.replace,
+            envs_dir=daemon.config.paths.envs_dir,
+        )
+    except FileNotFoundError:
+        raise ApiError(404, f"case not found: {body.replace}") from None
     except case_files.CaseExists as exc:
-        raise ApiError(409, str(exc)) from None
+        raise ApiError(409, str(exc), detail={"code": exc.code, "case": exc.other} if exc.other else None) from None
+    except case_files.CaseIdTaken as exc:
+        raise ApiError(422, str(exc), detail={"code": exc.code, "case": exc.other}) from None
     except case_files.CaseError as exc:
         raise ApiError(422, str(exc)) from None
     relative = path.relative_to(daemon.config.settings.project_dir).as_posix()
-    return JSONResponse({"name": case_files.case_name(daemon.config.paths.cases_dir, path), "path": relative, "id": case.id}, status_code=201)
+    body_out = {"name": case_files.case_name(daemon.config.paths.cases_dir, path), "path": relative, "id": case.id, "title": case.title, "steps": len(case.steps)}
+    return JSONResponse(body_out, status_code=200 if body.replace else 201)
 
 
 async def delete_case(request: Request, daemon: Daemon) -> Response:

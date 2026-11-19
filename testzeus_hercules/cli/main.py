@@ -180,7 +180,14 @@ def _add_daemon_commands(commands: argparse._SubParsersAction[argparse.ArgumentP
     )
     ui.add_argument("--print", dest="print_only", action="store_true", help="only print the link; do not open a browser")
 
-    commands.add_parser("mcp", help="MCP server on stdio for coding agents (talks to the daemon, starting it if needed)", description="Serve the Hercules MCP tools on stdio.")
+    mcp = commands.add_parser("mcp", help="MCP server on stdio for coding agents (talks to the daemon, starting it if needed)", description="Serve the Hercules MCP tools on stdio.")
+    mcp.add_argument(
+        "--project",
+        type=Path,
+        default=None,
+        metavar="DIR",
+        help="project directory (default: the current directory; give it for clients that start servers elsewhere, such as Claude Desktop)",
+    )
 
     init = commands.add_parser(
         "init",
@@ -390,7 +397,7 @@ def _run_daemon_command(args: argparse.Namespace, *, env: Mapping[str, str] | No
     if args.command == "mcp":
         from testzeus_hercules.mcp.shim import main as mcp_main
 
-        return mcp_main(env=env)
+        return mcp_main(env=env, project_dir=args.project)
     if args.command == "serve":
         from testzeus_hercules.cli.serve import ServeOptions, run_serve
 
