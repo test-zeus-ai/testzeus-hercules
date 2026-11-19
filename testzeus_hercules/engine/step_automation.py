@@ -11,7 +11,7 @@ templates (see :func:`~testzeus_hercules.engine.automation.value_template`), nev
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, Literal
 
 from testzeus_hercules.act.file_contents import file_type
 from testzeus_hercules.cases.automation import AutomationAction, AutomationCheck, AutomationStep, LocatorSpec, TargetSpec
@@ -194,6 +194,9 @@ class AutomationRecorder:
                 problem = problem or _unexported_file_check(file_check, deps.downloads)
                 records.append(AutomationCheck(kind="file", file_check=file_check, match=check.match, subject=subject, where=where, faithful=problem is None, note=problem, **base))  # type: ignore[arg-type]
                 continue
+            if check.kind == "field":
+                records.append(self._field_check_record(check, base, problem))
+                continue
             kind = {"text": "text", "not_text": "not_text", "url": "url", "visible": "visible_text"}[check.kind]
             form, frames = None, []
             if check.kind in ("text", "not_text") and entry.verdict == "passed":
@@ -205,6 +208,16 @@ class AutomationRecorder:
             target = TargetSpec(frames=frames) if frames else None
             records.append(AutomationCheck(kind=kind, match=check.match, form=form, target=target, faithful=problem is None, note=problem, **base))  # type: ignore[arg-type]
         return tuple(records)
+
+    def _field_check_record(self, check: Check, base: dict[str, Any], problem: str | None) -> AutomationCheck:
+        """A check of what a field holds, on the element the step that filled or chose in it used (the export reads that
+        element); a field no step of the run entered has no recorded element, so the export cannot point at it."""
+        entered = getattr(self.deps, "entered", {}).get(" ".join((check.subject or "").split()).casefold())
+        target = getattr(entered, "target", None)
+        if target is None or target.locator is None:
+            problem = problem or f'no step of the run entered the "{check.subject}" field, so no locator was recorded for it; check its value by hand'
+        read: Literal["value", "option", "text"] = entered.read if entered is not None else "value"
+        return AutomationCheck(kind="field", match=check.match, subject=check.subject, target=target, read=read, faithful=problem is None, note=problem, **base)
 
     async def _observed(self) -> str | None:
         """Literal evidence of the page a model judged: its title and address."""

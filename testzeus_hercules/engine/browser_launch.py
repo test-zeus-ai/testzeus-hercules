@@ -119,7 +119,7 @@ def browser_launch(
         if not state.is_file():
             raise BrowserSetupError(f"browser_options.storage_state: {opts.storage_state} does not exist in the project (save it with Playwright's context.storage_state(path=...))")
         context["storage_state"] = str(state)
-    if opts.record_video and video_dir is not None:
+    if opts.record_video is not False and video_dir is not None:  # recorded unless an environment turns it off
         context["record_video_dir"] = str(video_dir)
     context.update(opts.context_extra)
     return BrowserLaunch(engine=engine, launch=launch, context=context)

@@ -54,6 +54,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import inspect
 import logging
 import os
 import re
@@ -182,6 +183,15 @@ class PlaywrightLauncher:
 
 
 ChromiumLauncher = PlaywrightLauncher  # the earlier name
+
+
+def _takes_browser_settings(launcher: Any) -> bool:
+    """True when the launcher's ``open`` accepts the browser settings (``video_dir`` by name, or any keyword)."""
+    try:
+        parameters = inspect.signature(launcher.open).parameters.values()
+    except (TypeError, ValueError):
+        return False
+    return any(item.name == "video_dir" or item.kind is inspect.Parameter.VAR_KEYWORD for item in parameters)
 
 
 class _Touch:
@@ -677,10 +687,14 @@ class _Run:
         try:
             environment = case.environment
             extra: dict[str, Any] = {"device": environment.device} if environment.device else {}
-            if environment.browser not in (None, "chromium") or environment.browser_options is not None:
+            launcher = self.deps.resolve_launcher()
+            # The browser settings go to every launcher that takes them, so a run records its video by default (an
+            # environment turns it off with record_video: false); a launcher that does not take them gets them only when
+            # the case asks for another browser or for options.
+            if _takes_browser_settings(launcher) or environment.browser not in (None, "chromium") or environment.browser_options is not None:
                 extra.update(browser=environment.browser, options=environment.browser_options, project_dir=self.ctx.paths.project_dir, video_dir=run_dir / VIDEO_DIRNAME)
             viewport = parse_viewport(environment.viewport, environment.device)
-            page = await self.stack.enter_async_context(self.deps.resolve_launcher().open(viewport=viewport, headless=self.deps.headless, **extra))
+            page = await self.stack.enter_async_context(launcher.open(viewport=viewport, headless=self.deps.headless, **extra))
         except BrowserSetupError as exc:
             return f"the browser could not be set up: {exc}"
         except Exception as exc:  # report launch problems as a run error, not a crash

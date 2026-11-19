@@ -22,6 +22,15 @@ describe("browser options form", () => {
     expect(validateBrowserOptions({ ...browserOptionsToForm(null), more: '{"firefox_user_prefs": {"a": 1}}' }, "firefox")).toEqual({});
   });
 
+  it("records a video unless the environment turns it off, and saves only turning it off", () => {
+    expect(browserOptionsToForm(null).recordVideo).toBe(true);
+    expect(browserOptionsToForm({ locale: "en-GB" }).recordVideo).toBe(true);
+    expect(browserOptionsToForm({ record_video: true }).recordVideo).toBe(true);
+    expect(browserOptionsToForm({ record_video: false }).recordVideo).toBe(false);
+    expect(browserOptionsBody({ ...browserOptionsToForm(null), recordVideo: false })).toEqual({ record_video: false });
+    expect(browserOptionsBody(browserOptionsToForm({ record_video: true }))).toBeNull();
+  });
+
   it("summarises the browser for lists", () => {
     expect(browserSummary("firefox", { locale: "de-DE" })).toBe("Firefox · 1 option");
     expect(browserSummary(null, null)).toBe("");

@@ -36,6 +36,9 @@ __all__ = [
     "ScoreQuestion",
 ]
 
+# About four bytes of request JSON per token: good enough for an estimate, never for billing.
+BYTES_PER_TOKEN = 4
+
 MAX_CHOICE_OPTIONS = 255
 MAX_SCORE_LEVELS = 10
 QUESTION_ID_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
@@ -163,6 +166,10 @@ class DecisionRequest(BaseModel):
         """UTF-8 size of the canonical JSON body with every image payload left out."""
         canonical = json.dumps(strip_image_payloads(self.to_wire()), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
         return len(canonical.encode("utf-8"))
+
+    def text_tokens_estimate(self) -> int:
+        """Rough prompt-token count of the request's text (images left out): hosted engines report no exact count."""
+        return -(-self.text_size_bytes() // BYTES_PER_TOKEN)
 
 
 # --------------------------------------------------------------------------- answers

@@ -16,7 +16,7 @@ from pathlib import Path
 
 from testzeus_hercules.kernel.paths import validate_run_id
 
-_SEGMENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+_SEGMENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._@-]{0,127}$")  # @: Playwright names recordings page@<hash>.webm
 _MAX_DEPTH = 6
 _MAX_PATH = 512
 CONTENT_TYPES = {

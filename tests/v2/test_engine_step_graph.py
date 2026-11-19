@@ -1501,3 +1501,26 @@ def test_a_file_check_before_any_download_fails(tmp_path: Path) -> None:
     outcome = h.run(Step(action="verify", expected="the downloaded file is a PDF"))
 
     assert outcome.status == "failed" and "no file was downloaded" in (outcome.actual or "")
+
+
+# --------------------------------------------------------------------------- an unknown action before a concrete one
+
+
+def test_an_unknown_action_on_the_field_the_next_action_names_is_dropped() -> None:
+    from testzeus_hercules.engine.intent import StepIntent
+    from testzeus_hercules.engine.step_graph import _split
+
+    text = 'I select "Acme" account in "Parent Account" field'
+    pick = StepIntent(kind="select", target="Parent Account", value="Acme")
+
+    actions, _, _ = _split((StepIntent(kind="unknown", target="Parent Account"), pick), text)
+    assert actions == [pick], "do 'Parent Account' adds nothing to select 'Parent Account' with 'Acme' (and fails for want of a value)"
+    actions, _, _ = _split((StepIntent(kind="unknown", target="parent  account"), pick), text)
+    assert actions == [pick], "the same field, in any case and spacing"
+
+    other = StepIntent(kind="unknown", target="Account Name")
+    assert _split((other, pick), text)[0] == [other, pick], "an unknown action on another element is kept"
+    alone = StepIntent(kind="unknown", target="Parent Account")
+    assert _split((alone,), text)[0] == [alone], "a step read only as unknown keeps it (the decider says what to do)"
+    valued = StepIntent(kind="unknown", target="Parent Account", value="Acme")
+    assert _split((valued, pick), text)[0] == [valued, pick], "an unknown action with its own value is kept"

@@ -641,8 +641,27 @@ class TypeScriptWriter(Writer):
             self.emit(f"await expect(page.getByText({expected}).first()).toBeVisible();")
         elif check.kind == "element_visible":
             self.emit(f"await expect({self.target_expr(step, check.target, 'check')}).toBeVisible();")
+        elif check.kind == "field":
+            self.field_check(step, check)
         elif check.kind == "file":
             self.file_check(step, check, expected)
+
+    def field_check(self, step: AutomationStep, check: AutomationCheck) -> None:
+        """What the field holds, on the element the step that entered it used: an input's value, a native drop-down's
+        chosen option, or the text a custom drop-down shows."""
+        if check.target is None or check.target.locator is None:
+            return  # the TODO above says why: no element was recorded for the field
+        field = self.target_expr(step, check.target, "check")
+        wanted = self.expr(check.expected)
+        exact = check.match == "equals"
+        if check.read in ("option", "text"):
+            shown = f'{field}.locator("option:checked")' if check.read == "option" else field
+            self.emit(f"await expect({shown}).toHaveText({wanted});" if exact else f"await expect({shown}).toContainText({wanted}, {{ ignoreCase: true }});")
+        elif exact:
+            self.emit(f"await expect({field}).toHaveValue({wanted});")
+        else:
+            self.helpers.add("escape")
+            self.emit(f"await expect({field}).toHaveValue(new RegExp(escapeRegExp({wanted}), 'i'));")
 
     def file_check(self, step: AutomationStep, check: AutomationCheck, expected: str) -> None:
         if not check.faithful:

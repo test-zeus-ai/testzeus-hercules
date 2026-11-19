@@ -24,7 +24,7 @@ export const EMPTY_BROWSER_OPTIONS: BrowserOptionsForm = {
   args: "",
   ignoreHttpsErrors: false,
   headed: false,
-  recordVideo: false,
+  recordVideo: true,
   more: "",
 };
 
@@ -54,7 +54,7 @@ export function browserOptionsToForm(options: Record<string, unknown> | null | u
     args: Array.isArray(source.args) ? (source.args as string[]).join(" ") : "",
     ignoreHttpsErrors: source.ignore_https_errors === true,
     headed: source.headless === false,
-    recordVideo: source.record_video === true,
+    recordVideo: source.record_video !== false, // recorded unless the environment turns it off
     more: Object.keys(rest).length ? JSON.stringify(rest, null, 2) : "",
   };
 }
@@ -109,7 +109,7 @@ export function browserOptionsBody(form: BrowserOptionsForm): Record<string, unk
   set("storage_state", form.storageState.trim());
   set("args", splitArgs(form.args));
   set("ignore_https_errors", form.ignoreHttpsErrors);
-  set("record_video", form.recordVideo);
+  if (!form.recordVideo) body.record_video = false; // on by default: only turning it off is saved
   if (form.headed) body.headless = false;
   return Object.keys(body).length ? body : null;
 }

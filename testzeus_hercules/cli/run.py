@@ -401,7 +401,8 @@ def run_usage(engines: RunEngines) -> tuple[CostInfo, dict[str, int]]:
     """The run's cost (local-model tokens, JEV dollars) and decision counters for the RunResult."""
     usage = engines.usage()
     decisions = usage.decisions
-    cost = CostInfo(tokens_in=usage.tokens_in, tokens_out=usage.tokens_out, usd=usage.cost_usd)
+    estimate = decisions.prompt_tokens_est if decisions is not None and decisions.jev_calls else None
+    cost = CostInfo(tokens_in=usage.tokens_in, tokens_out=usage.tokens_out, usd=usage.cost_usd, decision_tokens_est=estimate)
     counters = {"clef_calls" if usage.clef else "jev_calls": decisions.jev_calls, "fallbacks": decisions.fallbacks} if decisions is not None else {}
     if usage.cache_hits:
         counters["llm_cache_hits"] = usage.cache_hits
@@ -424,7 +425,8 @@ def engine_summary(engines: RunEngines, run_dir: Path) -> list[str]:
         images = f", {decisions.image_calls} with screenshots" if decisions.image_calls else ""
         failed = f", {decisions.jev_failures} failed" if decisions.jev_failures else ""
         fallback = f"; local fallback {decisions.fallbacks}" if decisions.fallbacks else ""
-        lines.append(f"{engines.decider_label} calls: {decisions.jev_calls}{images}{failed}, cost ${decisions.cost_usd:.4f}{fallback}")
+        tokens = f", ~{decisions.prompt_tokens_est:,} prompt tokens (estimated)" if decisions.jev_calls else ""
+        lines.append(f"{engines.decider_label} calls: {decisions.jev_calls}{images}{failed}{tokens}, cost ${decisions.cost_usd:.4f}{fallback}")
     if engines.llm is not None:
         calls = engines.llm.calls
         if calls:

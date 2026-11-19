@@ -85,6 +85,17 @@ def _options(**extra: Any) -> BrowserOptions:
     return BrowserOptions.model_validate({**OPTIONS, **extra})
 
 
+def test_a_run_is_recorded_unless_its_environment_turns_recording_off(tmp_path: Path) -> None:
+    video = tmp_path / "video"
+    unset = browser_launch("chromium", BrowserOptions(), env={}, headless=True, project_dir=tmp_path, video_dir=video)
+    off = browser_launch("chromium", BrowserOptions(record_video=False), env={}, headless=True, project_dir=tmp_path, video_dir=video)
+    on = browser_launch("chromium", BrowserOptions(record_video=True), env={}, headless=True, project_dir=tmp_path, video_dir=video)
+    assert unset.context["record_video_dir"] == str(video), "recorded by default"
+    assert "record_video_dir" not in off.context
+    assert on.context["record_video_dir"] == str(video)
+    assert "record_video_dir" not in browser_launch("chromium", BrowserOptions(), env={}, headless=True, project_dir=tmp_path).context, "no evidence folder: nothing recorded"
+
+
 def test_the_launch_uses_the_options_and_reads_secrets_from_the_run_environment(tmp_path: Path) -> None:
     (tmp_path / "auth").mkdir()
     (tmp_path / "auth" / "state.json").write_text("{}")

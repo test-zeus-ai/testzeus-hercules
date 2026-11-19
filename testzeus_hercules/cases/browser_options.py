@@ -195,7 +195,7 @@ class BrowserOptions(_Model):
     storage_state: Annotated[str, StringConstraints(min_length=1, max_length=500)] | None = Field(
         default=None, description="auth state: a JSON file inside the project (cookies and local storage), as saved by Playwright's storage_state()"
     )
-    record_video: bool | None = Field(default=None, description="record a video of the run into its evidence folder")
+    record_video: bool | None = Field(default=None, description="record a video of the run into its evidence folder (on unless set to false)")
     # --- any other Playwright option, by its Python name
     launch_extra: dict[str, JsonValue] = Field(default_factory=dict, description='other BrowserType.launch options, e.g. {"timeout": 60000, "ignore_default_args": ["--mute-audio"]}')
     context_extra: dict[str, JsonValue] = Field(default_factory=dict, description='other Browser.new_context options, e.g. {"screen": {"width": 1920, "height": 1080}, "strict_selectors": true}')

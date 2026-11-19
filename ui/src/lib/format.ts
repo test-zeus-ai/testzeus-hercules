@@ -1,4 +1,4 @@
-import { FINAL_STATUSES, type RunView, type StepResult } from "./types";
+import { FINAL_STATUSES, type RunResult, type RunView, type StepResult } from "./types";
 
 export function formatDuration(seconds: number | null | undefined): string {
   if (seconds === null || seconds === undefined || !Number.isFinite(seconds)) return "–";
@@ -117,3 +117,25 @@ export function shortPath(path: string | null | undefined): string {
 }
 
 export const deleteRunPrompt = (runId: string) => `Delete run ${runId} with its screenshots, logs and other evidence? This cannot be undone.`;
+
+/** "1.2k" for 1,234 and "47k" for 47,463; plain below a thousand. */
+export function compactCount(count: number): string {
+  if (count < 1000) return String(count);
+  const thousands = count / 1000;
+  return `${thousands < 10 ? thousands.toFixed(1).replace(/\.0$/, "") : Math.round(thousands)}k`;
+}
+
+/**
+ * The decision engine's line for a finished run: which engine (JEV, or Clef in pure mode), its calls and the
+ * estimated prompt tokens sent to it (it reports cost, not token counts). Null when no decision engine was asked.
+ */
+export function decisionUsage(result: Pick<RunResult, "engines" | "cost">): { engine: string; text: string; calls: string; tokens: number | null } | null {
+  const clef = result.engines.clef_calls ?? 0;
+  const calls = clef || (result.engines.jev_calls ?? 0);
+  if (!calls) return null;
+  const engine = clef ? "Clef" : "JEV";
+  const tokens = result.cost.decision_tokens_est ?? null;
+  const callText = `${calls} ${calls === 1 ? "call" : "calls"}`;
+  // Runs recorded before the estimate existed show their calls instead.
+  return { engine, text: tokens === null ? callText : `~${compactCount(tokens)} tokens`, calls: callText, tokens };
+}

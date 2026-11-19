@@ -245,7 +245,9 @@ export function DashboardScreen() {
                   <Link key={run.run_id} href={`/runs/${run.run_id}`} className="dash-live">
                     <span className="dash-live-head">
                       <span className={`dash-live-dot${run.status === "paused" ? " dash-live-paused" : ""}`} aria-hidden="true" />
-                      <span className="dash-live-title">{run.title ?? run.case_id ?? run.run_id}</span>
+                      <span className="dash-live-title" title={run.title ?? run.case_id ?? run.run_id}>
+                        {run.title ?? run.case_id ?? run.run_id}
+                      </span>
                       <span className="mono small">
                         {run.current_step ?? run.steps_done}/{run.total_steps ?? "?"}
                       </span>

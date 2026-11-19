@@ -328,6 +328,7 @@
             "url",
             "visible_text",
             "element_visible",
+            "field",
             "semantic",
             "visual",
             "file"
@@ -369,6 +370,24 @@
           "description": "Judged checks: literal evidence of the page it was judged on (title and address)",
           "title": "Observed"
         },
+        "read": {
+          "anyOf": [
+            {
+              "enum": [
+                "value",
+                "option",
+                "text"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "field: how its value is read: an input's value, a native drop-down's chosen option label, or the text a custom drop-down shows",
+          "title": "Read"
+        },
         "source": {
           "default": "deterministic",
           "enum": [
@@ -388,7 +407,7 @@
             }
           ],
           "default": null,
-          "description": "file column: the column; file json: the JSON path",
+          "description": "file column: the column; file json: the JSON path; field: the field's name in the step",
           "title": "Subject"
         },
         "target": {
@@ -401,7 +420,7 @@
             }
           ],
           "default": null,
-          "description": "element_visible: the element; text checks: the frames the text is in (when not in the top document)"
+          "description": "element_visible and field: the element; text checks: the frames the text is in (when not in the top document)"
         },
         "verdict": {
           "default": "passed",
@@ -1123,7 +1142,7 @@
             }
           ],
           "default": null,
-          "description": "record a video of the run into its evidence folder",
+          "description": "record a video of the run into its evidence folder (on unless set to false)",
           "title": "Record Video"
         },
         "reduced_motion": {
@@ -1223,6 +1242,20 @@
       "additionalProperties": false,
       "description": "Model usage for the run: local-model tokens, and the hosted decision cost in USD (None when nothing was billed).",
       "properties": {
+        "decision_tokens_est": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Estimated prompt tokens sent to JEV (or a Clef server) for decisions; they report cost, not exact counts. None when none was asked.",
+          "title": "Decision Tokens Est"
+        },
         "tokens_in": {
           "default": 0,
           "minimum": 0,
@@ -1589,7 +1622,7 @@
     },
     "EvidencePaths": {
       "additionalProperties": false,
-      "description": "Locations of run artifacts, relative to the run directory.\n\n``junit`` (JUnit XML of the steps), ``console`` (``console.jsonl``: the page's console\nmessages and errors) and ``network`` (``network.jsonl``: the page's requests and\nresponses, secrets and auth headers redacted) are written by every run that has them.\n``video`` is the run's recording when ``browser_options.record_video`` is set; ``trace``, ``report_md`` and\n``bundle`` are not produced by this version and stay null.",
+      "description": "Locations of run artifacts, relative to the run directory.\n\n``junit`` (JUnit XML of the steps), ``console`` (``console.jsonl``: the page's console\nmessages and errors) and ``network`` (``network.jsonl``: the page's requests and\nresponses, secrets and auth headers redacted) are written by every run that has them.\n``video`` is the run's recording (unless ``browser_options.record_video`` is false); ``trace``, ``report_md`` and\n``bundle`` are not produced by this version and stay null.",
       "properties": {
         "bundle": {
           "anyOf": [

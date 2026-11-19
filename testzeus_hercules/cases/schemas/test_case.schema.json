@@ -547,7 +547,7 @@
             }
           ],
           "default": null,
-          "description": "record a video of the run into its evidence folder",
+          "description": "record a video of the run into its evidence folder (on unless set to false)",
           "title": "Record Video"
         },
         "reduced_motion": {

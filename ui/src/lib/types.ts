@@ -33,7 +33,8 @@ export interface RunResult {
   hints: string[];
   evidence: Record<string, string | null>;
   engines: { llm?: string | null; decider?: string | null; egress: Egress; mode?: RunMode | null; decider_model?: string | null; jev_calls?: number; clef_calls?: number; fallbacks?: number };
-  cost: { tokens_in: number; tokens_out: number; usd?: number | null };
+  /** Local-model tokens (exact); decision_tokens_est: prompt tokens sent to JEV or Clef, estimated (they report cost only). */
+  cost: { tokens_in: number; tokens_out: number; usd?: number | null; decision_tokens_est?: number | null };
   duration_s: number;
   ui_url?: string | null;
   quality?: QualitySection | null;

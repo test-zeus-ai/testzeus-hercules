@@ -128,7 +128,9 @@ def test_hybrid_mode_decides_with_jev_and_reports_cost(tmp_path: Path) -> None:
     assert record["route"]["calls"][0]["images"] is False
     err = h.err.getvalue()
     assert "Mode: hybrid [--mode hybrid]" in err and "text only" in err
-    assert "JEV calls: 2, cost $0.0020" in err
+    estimate = sum(request.text_tokens_estimate() for request in jev.requests)
+    assert f"JEV calls: 2, ~{estimate:,} prompt tokens (estimated), cost $0.0020" in err
+    assert payload["cost"]["decision_tokens_est"] == estimate
     assert jev.closed
 
 

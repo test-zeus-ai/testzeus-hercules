@@ -635,7 +635,7 @@ class EvidencePaths(_Model):
     ``junit`` (JUnit XML of the steps), ``console`` (``console.jsonl``: the page's console
     messages and errors) and ``network`` (``network.jsonl``: the page's requests and
     responses, secrets and auth headers redacted) are written by every run that has them.
-    ``video`` is the run's recording when ``browser_options.record_video`` is set; ``trace``, ``report_md`` and
+    ``video`` is the run's recording (unless ``browser_options.record_video`` is false); ``trace``, ``report_md`` and
     ``bundle`` are not produced by this version and stay null.
     """
 
@@ -679,6 +679,10 @@ class CostInfo(_Model):
     tokens_in: Count = 0
     tokens_out: Count = 0
     usd: Annotated[float, Field(ge=0.0)] | None = None
+    decision_tokens_est: Count | None = Field(
+        default=None,
+        description="Estimated prompt tokens sent to JEV (or a Clef server) for decisions; they report cost, not exact counts. None when none was asked.",
+    )
 
 
 class QualityVisual(_Model):

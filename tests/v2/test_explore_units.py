@@ -679,6 +679,23 @@ def test_run_usage_counts_calls_to_a_hosted_model_but_not_to_a_local_one() -> No
     assert "hosted_llm_calls" not in run_usage(engines(True))[1]
 
 
+def test_run_usage_records_jevs_estimated_prompt_tokens_beside_the_local_models_exact_ones() -> None:
+    from types import SimpleNamespace
+
+    from testzeus_hercules.cli.run import run_usage
+    from testzeus_hercules.decide.backends.jev_fallback import DecisionUsage
+    from testzeus_hercules.engine.factory import RunUsage
+
+    def engines(decisions: DecisionUsage | None) -> Any:
+        return SimpleNamespace(llm=SimpleNamespace(endpoint=SimpleNamespace(is_local=True)), usage=lambda: RunUsage(decisions=decisions))
+
+    cost, counters = run_usage(engines(DecisionUsage(jev_calls=10, cost_usd=0.0045, prompt_tokens_est=47463)))
+    assert (cost.tokens_in, cost.tokens_out, cost.decision_tokens_est, cost.usd) == (0, 0, 47463, 0.0045)
+    assert counters["jev_calls"] == 10
+    assert run_usage(engines(DecisionUsage()))[0].decision_tokens_est is None  # JEV never asked
+    assert run_usage(engines(None))[0].decision_tokens_est is None  # pure mode, no decision engine
+
+
 def test_a_blocked_background_request_gets_an_empty_json_answer_so_the_page_carries_on() -> None:
     @dataclass
     class FakeRequest:

@@ -5849,10 +5849,14 @@ a.finding-row {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+  min-width: 0;
 }
 
 .dash-live {
   display: grid;
+  /* One column held to the card's width: a long run title truncates instead of widening the card. */
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
   gap: var(--space-2);
   padding: var(--space-3);
   background: var(--bg);
@@ -5869,6 +5873,15 @@ a.finding-row {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  min-width: 0;
+}
+
+.dash-live-head .mono {
+  flex: none;
+}
+
+.dash-live > .small {
+  overflow-wrap: anywhere;
 }
 
 .dash-live-dot {
@@ -6125,4 +6138,22 @@ tbody.stagger-in > tr:nth-child(8),
 tbody.stagger-in > tr:nth-child(n + 9),
 .stagger-in .finding-list > li:nth-child(n + 9) {
   animation-delay: 140ms;
+}
+
+/* The run's browser recording (Recording tab on the run page). */
+.panel-recording {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.recording {
+  display: block;
+  width: 100%;
+  max-height: 72vh;
+  background: #000;
+  border: 1px solid var(--line);
+}
+
+.recording-meta {
+  margin: 0;
 }

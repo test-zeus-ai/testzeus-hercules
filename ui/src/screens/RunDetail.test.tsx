@@ -116,6 +116,42 @@ describe("RunDetail header", () => {
     expect(head.getByText("Decider").parentElement?.textContent).toBe("Decider jev (jev-1)");
   });
 
+  it("labels the local model's exact tokens apart from JEV's calls and estimated prompt tokens", async () => {
+    view = parentRun({ result: { ...RESULT, engines: { ...RESULT.engines, jev_calls: 10 }, cost: { tokens_in: 0, tokens_out: 0, usd: 0.0045, decision_tokens_est: 47463 } } });
+    renderScreen();
+    await screen.findByRole("heading", { name: "Demo login" });
+    expect(screen.getByText("Local model tokens").parentElement?.textContent).toBe("Local model tokens0 in / 0 out");
+    const jev = screen.getByText("JEV").parentElement as HTMLElement;
+    expect(jev.textContent).toBe("JEV~47k tokens");
+    expect(jev.querySelector("dd")?.getAttribute("title")).toBe("10 calls; estimated prompt tokens (JEV reports its cost, not token counts)");
+  });
+
+  it("shows no decision engine line when none was asked", async () => {
+    renderScreen();
+    await screen.findByRole("heading", { name: "Demo login" });
+    expect(screen.getByText("Local model tokens").parentElement?.textContent).toBe("Local model tokens10 in / 5 out");
+    expect(screen.queryByText("JEV")).toBeNull();
+  });
+
+  it("shows the run's recording on the page, with a download link", async () => {
+    view = parentRun({ result: { ...RESULT, evidence: { video: "video/page@63e5ae63.webm", junit: "junit.xml" } } });
+    renderScreen();
+    const panel = (await screen.findByRole("heading", { name: "Recording" })).closest("section") as HTMLElement;
+    const video = panel.querySelector("video") as HTMLVideoElement;
+    expect(video.getAttribute("src")).toBe("/api/runs/r_parent/evidence/video/page%4063e5ae63.webm");
+    expect(video.hasAttribute("controls")).toBe(true);
+    expect(within(panel).getByRole("link", { name: /Download \(WEBM\)/ }).getAttribute("download")).toBe("page@63e5ae63.webm");
+    expect(screen.queryByRole("tab", { name: /Recording/ })).toBeNull();
+  });
+
+  it("shows no recording for a run without a video, or with one outside the run", async () => {
+    view = parentRun({ result: { ...RESULT, evidence: { video: "/etc/elsewhere.webm" } } });
+    renderScreen();
+    await screen.findByRole("heading", { name: "Demo login" });
+    expect(screen.queryByRole("heading", { name: "Recording" })).toBeNull();
+    expect(document.querySelector("video")).toBeNull();
+  });
+
   it("shows the asked-for mode and says when the decider will be known while the run is going", async () => {
     view = parentRun({ status: "running", finished: false, result: null, settings: { ...parentRun().settings!, mode: "pure" } });
     renderScreen();

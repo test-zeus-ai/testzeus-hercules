@@ -16,7 +16,7 @@ import { StartRunDialog } from "../components/StartRunDialog";
 import { Icon } from "../components/Icon";
 import { StatusChip } from "../components/StatusChip";
 import { api, evidenceName, evidenceUrl, post, remove } from "../lib/api";
-import { agentName, deleteRunPrompt, engineLabels, formatCost, formatDuration, formatMs, formatTime, runSeconds, shortPath } from "../lib/format";
+import { agentName, decisionUsage, deleteRunPrompt, engineLabels, formatCost, formatDuration, formatMs, formatTime, runSeconds, shortPath } from "../lib/format";
 import type { DebugAction } from "../lib/control";
 import { mergeResult, orderedSteps, stepLabel, type ApprovalRequest, type PlannedStep, type TimelineStep } from "../lib/timeline";
 import { FINAL_STATUSES, type ApprovalView, type CaseEntry, type CloudRun, type DecisionView, type RerunScope, type RunView, type TestCase } from "../lib/types";
@@ -151,6 +151,25 @@ function EvidenceLinks({ run }: { run: RunView }) {
   );
 }
 
+/** The run's browser recording (Playwright's video of the whole session), with a download link. */
+function RecordingPanel({ runId, videoRef }: { runId: string; videoRef: string }) {
+  const url = evidenceUrl(runId, videoRef);
+  return (
+    <section className="panel panel-recording" aria-labelledby="recording-title">
+      <h2 id="recording-title">Recording</h2>
+      <video className="recording" src={url} controls preload="metadata" playsInline>
+        Your browser cannot play this recording; <a href={url}>download it</a> instead.
+      </video>
+      <p className="recording-meta muted small">
+        The whole browser session, as recorded by the run.{" "}
+        <a href={url} download={evidenceName(videoRef)}>
+          Download ({evidenceName(videoRef).split(".").pop()?.toUpperCase()})
+        </a>
+      </p>
+    </section>
+  );
+}
+
 export function RunDetailScreen({ runId }: { runId: string }) {
   const client = useQueryClient();
   const [, navigate] = useLocation();
@@ -254,6 +273,10 @@ export function RunDetailScreen({ runId }: { runId: string }) {
   }
   const view = run.data;
   const result = view?.result;
+  const decider = result ? decisionUsage(result) : null;
+  // Only a recording inside the run's directory is served.
+  const video = result?.evidence.video;
+  const videoRef = video && (video.startsWith(`hercules://runs/${runId}/`) || !/^(\/|[a-z]+:)/i.test(video)) ? video : null;
   const liveShot = following && !finished && timeline.latestScreenshot ? timeline.latestScreenshot : null;
   const shotStep = liveShot ? (steps.find((step) => step.index === liveShot.step) ?? selected) : selected;
   const status = view ? (timeline.runStatus && !finished ? timeline.runStatus : view.status) : null;
@@ -381,13 +404,17 @@ export function RunDetailScreen({ runId }: { runId: string }) {
             <dd>{formatCost(result?.cost.usd)}</dd>
           </div>
           <div>
-            <dt>Tokens</dt>
+            <dt>Local model tokens</dt>
             <dd>{result ? `${result.cost.tokens_in.toLocaleString()} in / ${result.cost.tokens_out.toLocaleString()} out` : "–"}</dd>
           </div>
-          <div>
-            <dt>Case</dt>
-            <dd className="mono">{view.case_id ?? "–"}</dd>
-          </div>
+          {decider ? (
+            <div>
+              <dt>{decider.engine}</dt>
+              <dd title={decider.tokens === null ? undefined : `${decider.calls}; estimated prompt tokens (${decider.engine} reports its cost, not token counts)`}>
+                {decider.text}
+              </dd>
+            </div>
+          ) : null}
           {view.started_by === "agent" ? (
             <div>
               <dt>Started by</dt>
@@ -478,6 +505,8 @@ export function RunDetailScreen({ runId }: { runId: string }) {
           <LiveView runId={runId} active={open} paused={status === "paused"} fallbackRef={timeline.latestScreenshot?.ref ?? null} lastInput={timeline.control.lastInput} />
         </section>
       ) : null}
+
+      {!open && videoRef ? <RecordingPanel runId={runId} videoRef={videoRef} /> : null}
 
       {isDraft && view?.draft_steps ? (
         <div className="draft">

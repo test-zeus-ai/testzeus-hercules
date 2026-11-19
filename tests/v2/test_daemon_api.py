@@ -161,6 +161,23 @@ def test_evidence_can_be_downscaled(failed_run) -> None:  # type: ignore[no-unty
     assert client.get(f"/api/runs/{run_id}/evidence/steps/2/som.jpg?max_side=5").status_code == 422
 
 
+def test_a_recording_named_by_playwright_is_served_and_can_be_seeked(failed_run, config) -> None:  # type: ignore[no-untyped-def]
+    client, run_id = failed_run
+    video_dir = config.settings.project_dir / ".hercules" / "runs" / run_id / "video"
+    video_dir.mkdir()
+    (video_dir / "page@63e5ae63961d94690f8734bf0192136f.webm").write_bytes(b"\x1aE\xdf\xa3" + bytes(range(256)) * 4)
+    path = f"/api/runs/{run_id}/evidence/video/page@63e5ae63961d94690f8734bf0192136f.webm"
+
+    whole = client.get(path)
+    part = client.get(path, headers={"Range": "bytes=100-199"})
+
+    assert whole.status_code == 200 and whole.headers["content-type"] == "video/webm" and len(whole.content) == 1028
+    assert whole.headers["accept-ranges"] == "bytes"
+    assert part.status_code == 206 and len(part.content) == 100 and part.content == whole.content[100:200]
+    assert part.headers["content-range"] == "bytes 100-199/1028"
+    assert client.get(f"/api/runs/{run_id}/evidence/video/@page.webm").status_code == 404  # still starts with a letter or digit
+
+
 @pytest.mark.parametrize(
     "path",
     [

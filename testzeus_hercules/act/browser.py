@@ -63,15 +63,25 @@ _HOST_PORT = re.compile(r"^(?:localhost|\d{1,3}(?:\.\d{1,3}){3}|\[[0-9A-Fa-f:.]+
 _INTERRUPTED = "ERR_ABORTED"
 
 # Visible text of the document plus the visible text inside every open shadow root
-# (innerText skips shadow content), nested roots included.
+# (innerText skips shadow content), nested roots included, plus what the visible text fields hold: a typed value is on
+# screen for a tester, though innerText leaves it out (passwords, hidden and file inputs, buttons and boxes excluded).
 _TEXT_JS = """
 () => {
   if (!document.body) return '';
   const parts = [document.body.innerText || ''];
   const shown = (el) => (typeof el.checkVisibility === 'function' ? el.checkVisibility() : true);
+  const skipped = new Set(['hidden', 'password', 'checkbox', 'radio', 'file', 'submit', 'button', 'reset', 'image', 'range', 'color']);
+  const values = (root) => {
+    for (const el of root.querySelectorAll('input, textarea')) {
+      if (el.tagName === 'INPUT' && skipped.has((el.type || 'text').toLowerCase())) continue;
+      if (el.value && el.value.trim() && shown(el)) parts.push(el.value);
+    }
+  };
+  values(document);
   const visit = (root) => {
     for (const el of root.querySelectorAll('*')) {
       if (!el.shadowRoot) continue;
+      values(el.shadowRoot);
       for (const node of el.shadowRoot.childNodes) {
         if (node.nodeType === Node.TEXT_NODE) {
           if (node.textContent.trim() && shown(el)) parts.push(node.textContent);
@@ -86,12 +96,21 @@ _TEXT_JS = """
   return parts.filter((part) => part && part.trim()).join('\\n');
 }
 """
-# A visible suggestion list on the page (ARIA listbox or option, or an open datalist-backed field): typing may still load it.
+# A visible suggestion list on the page (ARIA listbox or option): typing may still load it. Open shadow roots are searched
+# too, nested ones included: a component's list (a Salesforce lookup's, for one) lives inside its shadow root.
 _SUGGESTIONS_JS = """
-() => Array.from(document.querySelectorAll('[role="listbox"], [role="option"]')).some((el) => {
-  const r = el.getBoundingClientRect();
-  return r.width > 0 && r.height > 0 && (typeof el.checkVisibility !== 'function' || el.checkVisibility({ visibilityProperty: true }));
-})
+() => {
+  const shown = (el) => {
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0 && (typeof el.checkVisibility !== 'function' || el.checkVisibility({ visibilityProperty: true }));
+  };
+  const visit = (root) => {
+    for (const el of root.querySelectorAll('[role="listbox"], [role="option"]')) if (shown(el)) return true;
+    for (const el of root.querySelectorAll('*')) if (el.shadowRoot && visit(el.shadowRoot)) return true;
+    return false;
+  };
+  return visit(document);
+}
 """
 # The text innerText gives each closed drop-down (all its options, though only the chosen one is shown).
 _CLOSED_DROP_DOWNS_JS = """
@@ -934,7 +953,7 @@ async def _option_after_opening(page: Page, value: str, before: list[Any], timeo
                 if found:
                     chosen.update(by="option_role", role=role, exact=exact)
                     created.extend(polled)
-                    return found[0]
+                    return found[0] if exact else await _closest_option(found, value)
         revealed = await _new_text_match(page, value, before, polled)
         if revealed is not None:
             chosen.update(by="text")
@@ -943,6 +962,20 @@ async def _option_after_opening(page: Page, value: str, before: list[Any], timeo
             return revealed
         await _dispose(polled)
         await asyncio.sleep(_POLL_S)
+
+
+async def _closest_option(handles: list[Any], value: str) -> Any:
+    """Of options whose names contain ``value``, the one it begins (a lookup's record "Acme Corp NewYork" before its
+    "Search: show more results for "Acme"" entry), then the shortest name; page order breaks ties."""
+    wanted = " ".join(value.split()).casefold()
+    ranked = []
+    for order, handle in enumerate(handles):
+        try:
+            name = " ".join(str(await handle.evaluate("el => el.innerText || el.textContent || ''")).split()).casefold()
+        except PlaywrightError:
+            name = ""
+        ranked.append((not name.startswith(wanted), len(name) or 10_000, order, handle))
+    return min(ranked, key=lambda item: item[:3])[3]
 
 
 async def _select_custom(page: Page, locator: Locator, value: str, timeout_ms: int, chosen: dict[str, Any]) -> None:
@@ -1332,6 +1365,34 @@ async def read_value(locator: Locator, *, timeout_ms: int = DEFAULT_TIMEOUT_MS) 
     return None if value is None else str(value)
 
 
+_FIELD_ROLES = ("textbox", "combobox", "searchbox", "spinbutton")
+_MAX_NAMED_FIELDS = 5
+
+
+async def field_values(page: Page, label: str, *, timeout_ms: int = 1_000) -> list[str] | None:
+    """What the visible fields named ``label`` hold: found by their label, then by role and accessible name (both exact),
+    then by a label containing ``label``. None when no visible field is named so."""
+    lookups: list[Locator] = [page.get_by_label(label, exact=True)]
+    lookups += [page.get_by_role(role, name=label, exact=True) for role in _FIELD_ROLES]  # type: ignore[arg-type]
+    lookups.append(page.get_by_label(label))
+    for lookup in lookups:
+        values: list[str] = []
+        try:
+            count = min(await lookup.count(), _MAX_NAMED_FIELDS)
+            for index in range(count):
+                item = lookup.nth(index)
+                if not await item.is_visible():
+                    continue
+                value = await read_value(item, timeout_ms=timeout_ms)
+                if value is not None:
+                    values.append(value)
+        except PlaywrightError:
+            continue
+        if values:
+            return values
+    return None
+
+
 async def is_visible(locator: Locator, *, timeout_ms: int = DEFAULT_TIMEOUT_MS) -> bool:
     """True once the element is visible, waiting at most ``timeout_ms``."""
     try:
@@ -1384,6 +1445,7 @@ class BrowserActions:
     page_text = staticmethod(page_text)
     closed_drop_down_texts = staticmethod(closed_drop_down_texts)
     read_value = staticmethod(read_value)
+    field_values = staticmethod(field_values)
     field_facts = staticmethod(field_facts)
     is_visible = staticmethod(is_visible)
     text_visible = staticmethod(text_visible)

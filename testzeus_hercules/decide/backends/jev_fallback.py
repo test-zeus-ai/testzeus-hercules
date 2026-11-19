@@ -53,6 +53,8 @@ class DecisionUsage:
     local_calls: int = 0
     fallbacks: int = 0
     cost_usd: float = 0.0
+    # Estimated prompt tokens sent to the hosted (or Clef) engine: it reports cost, not token counts.
+    prompt_tokens_est: int = 0
 
 
 def without_images(value: Any) -> Any:
@@ -148,7 +150,7 @@ class JevFallbackDecider:
         record: dict[str, Any] = {"engine": _engine_name(engine), "images": images}
         calls.append(record)
         if is_jev:
-            self._count(jev_calls=1, image_calls=int(images))
+            self._count(jev_calls=1, image_calls=int(images), prompt_tokens_est=request.text_tokens_estimate())
         else:
             self._count(local_calls=1)
         try:

@@ -16,14 +16,14 @@ import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Literal, Sequence
+from typing import Any, Awaitable, Callable, Literal, Sequence
 
 from pydantic import BaseModel, ConfigDict
 
 from testzeus_hercules.act.file_contents import FileReadError, file_json, file_table, file_text, file_type, type_matches
 from testzeus_hercules.engine.intent import StepIntent
 
-CheckKind = Literal["text", "not_text", "url", "visible", "visual", "semantic", "file_name", "file_type", "file_text", "file_not_text", "file_rows", "file_column", "file_json"]
+CheckKind = Literal["text", "not_text", "url", "visible", "field", "visual", "semantic", "file_name", "file_type", "file_text", "file_not_text", "file_rows", "file_column", "file_json"]
 FILE_CHECK_KINDS: frozenset[str] = frozenset({"file_name", "file_type", "file_text", "file_not_text", "file_rows", "file_column", "file_json"})
 LedgerVerdict = Literal["passed", "failed", "unverified"]
 Redactor = Callable[[str], str]
@@ -66,6 +66,8 @@ class Check:
             return "text_absent"
         if self.kind == "url":
             return f"url_{self.match}"
+        if self.kind == "field":
+            return f"field_{self.match}"
         if self.kind == "file_name":
             return f"file_name_{self.match}"
         return self.kind
@@ -112,6 +114,35 @@ _FILE_ASSERTS: dict[str, str] = {
 }
 
 
+# 'the "First Name" field contains "Ada"', '"Email" input should be "a@b.c"', 'the "City" box shows "Pune"': a check on what one
+# named field holds, which the page text never includes (a typed value is not text on the page).
+_FIELD_CHECK = re.compile(
+    r'"(?P<field>[^"]+)"\s+(?:field|input|text\s?box|box|textarea|text\s+area|drop-?\s?down|select|selector|list|picklist|combo\s?box)\s+'
+    r"(?P<verb>contains|has|holds|shows|displays|reads|equals|is|should\s+(?:contain|have|hold|show|display|read|equal|be)|has\s+the\s+value(?:\s+of)?)\s+"
+    r'"(?P<value>[^"]*)"',
+    re.IGNORECASE,
+)
+_EXACT_VERBS = ("equals", "is", "should equal", "should be")
+
+
+def field_check(text: str, check: Check) -> Check | None:
+    """A text check upgraded to a check on a named field's value when the step says the field holds the text
+    ('the "First Name" field contains "Ada"'); None when the step names no field for this text."""
+    if check.kind != "text":
+        return None
+    for found in _FIELD_CHECK.finditer(text):
+        if _norm(found.group("value")) == _norm(check.expected) and found.group("field").strip():
+            verb = " ".join(found.group("verb").lower().split())
+            match: Literal["contains", "equals"] = "equals" if verb in _EXACT_VERBS else "contains"
+            return Check(kind="field", expected=check.expected, match=match, subject=found.group("field").strip(), template=check.template)
+    return None
+
+
+def _field_holds(value: str, wanted: str, match: str) -> bool:
+    held, expected = _norm(value), _norm(wanted)
+    return held == expected if match == "equals" else expected in held
+
+
 def semantic_check(text: str) -> Check:
     """An expected outcome judged by its meaning (a model compares it with the page)."""
     return Check(kind="semantic", expected=text, reason="judged by meaning")
@@ -140,12 +171,26 @@ async def _poll(predicate: Callable[[], Any], timeout_ms: int) -> bool:
         await asyncio.sleep(_POLL_S)
 
 
-async def run_check(check: Check, *, page: Any, actions: Any, step: int, timeout_ms: int, redact: Redactor) -> LedgerEntry:
-    """Run one check against the page, waiting up to ``timeout_ms`` for it to hold."""
+async def run_check(
+    check: Check,
+    *,
+    page: Any,
+    actions: Any,
+    step: int,
+    timeout_ms: int,
+    redact: Redactor,
+    snapshot: Callable[[], Awaitable[Any]] | None = None,
+    reveal: Callable[[Any, int], Awaitable[str | None]] | None = None,
+    entered: Callable[[str], Awaitable[tuple[str, bool] | None]] | None = None,
+) -> LedgerEntry:
+    """Run one check against the page, waiting up to ``timeout_ms`` for it to hold. ``snapshot`` (a fresh perception of the
+    page) lets a field check find the field by the name the run perceives."""
     if check.kind in ("semantic", "visual"):  # judged by a model in the step graph, never by matching text
         return _entry(step, check, check.reason or "not verified", "unverified", redact)
     if check.kind == "url":
         return await _check_url(check, page=page, step=step, timeout_ms=timeout_ms, redact=redact)
+    if check.kind == "field":
+        return await _check_field(check, page=page, actions=actions, step=step, timeout_ms=timeout_ms, redact=redact, snapshot=snapshot, reveal=reveal, entered=entered)
     if check.kind == "visible":
         ok = await actions.text_visible(page, check.expected, timeout_ms=timeout_ms)
         return _entry(step, check, "visible" if ok else "no visible element shows this text", "passed" if ok else "failed", redact)
@@ -177,6 +222,89 @@ def _shown(wanted: str, text: str, drop_downs: list[tuple[str, str]]) -> bool:
         return False
     hidden = sum(_norm(options).count(wanted) for options, chosen in drop_downs if wanted not in _norm(chosen))
     return found > hidden
+
+
+async def _check_field(
+    check: Check,
+    *,
+    page: Any,
+    actions: Any,
+    step: int,
+    timeout_ms: int,
+    redact: Redactor,
+    snapshot: Callable[[], Awaitable[Any]] | None = None,
+    reveal: Callable[[Any, int], Awaitable[str | None]] | None = None,
+    entered: Callable[[str], Awaitable[tuple[str, bool] | None]] | None = None,
+) -> LedgerEntry:
+    """The field named ``check.subject`` holds ``check.expected`` (contains, or equals), waiting up to ``timeout_ms``.
+
+    The field is, first, the one an earlier step of the run filled or chose in under this name (``entered``). Else it is found as the run
+    perceives the page (``snapshot``: named from its label, or from the text beside it when no label is linked), else by
+    its linked label or accessible name."""
+    field = check.subject or ""
+    if entered is not None:
+        known = await _check_entered(check, field, entered, step=step, timeout_ms=timeout_ms, redact=redact)
+        if known is not None:
+            return known
+    labelled = getattr(actions, "field_values", None)
+    hidden = {"any": False}  # a password field: its value is compared, never shown
+
+    async def read(page: Any, name: str) -> list[str] | None:
+        if snapshot is not None:
+            from testzeus_hercules.engine.criteria import _VALUE_ROLES, _named  # criteria imports this module
+
+            view = await snapshot()
+            found = _named(view, name, _VALUE_ROLES)
+            if found:
+                values = []
+                for element in found:
+                    secret = str((getattr(element, "attrs", {}) or {}).get("type", "")).lower() == "password"
+                    hidden["any"] = hidden["any"] or secret
+                    # The snapshot masks a password's value ("***"): read what the field really holds.
+                    value = await reveal(view, element.md) if secret and reveal is not None else getattr(element, "value", "")
+                    values.append(str(value or ""))
+                return values
+        return await labelled(page, name) if callable(labelled) else None
+
+    if snapshot is None and not callable(labelled):  # a driver that cannot read fields by name (an app screen): what is shown counts
+        entry = await run_check(Check(kind="text", expected=check.expected), page=page, actions=actions, step=step, timeout_ms=timeout_ms, redact=redact)
+        return _entry(step, check, f"{entry.actual} (the field's value cannot be read here; checked the screen's text)", entry.verdict, redact)
+    seen: dict[str, list[str] | None] = {"held": None}
+
+    async def holds() -> bool:
+        seen["held"] = await read(page, field)
+        return any(_field_holds(value, check.expected, check.match) for value in seen["held"] or [])
+
+    if await _poll(holds, timeout_ms):
+        shown = "the expected value (a password: not shown)" if hidden["any"] else _shown_values(seen["held"])
+        return _entry(step, check, f'the "{field}" field holds {shown}', "passed", redact)
+    if seen["held"] is None:  # no field goes by this name (a drop-down without a label of its own): what is shown counts
+        entry = await run_check(Check(kind="text", expected=check.expected), page=page, actions=actions, step=step, timeout_ms=timeout_ms, redact=redact)
+        return _entry(step, check, f'no field named "{field}" on the page; checked the page text instead: {entry.actual}', entry.verdict, redact)
+    shown = "another value (a password: not shown)" if hidden["any"] else _shown_values(seen["held"])
+    return _entry(step, check, f'the "{field}" field holds {shown}', "failed", redact)
+
+
+async def _check_entered(check: Check, field: str, entered: Callable[[str], Awaitable[tuple[str, bool] | None]], *, step: int, timeout_ms: int, redact: Redactor) -> LedgerEntry | None:
+    """The check on the field a step of the run entered under ``field``; None when no step did (or it cannot be read)."""
+    seen: dict[str, Any] = {"read": None}
+
+    async def holds() -> bool:
+        seen["read"] = await entered(field)
+        return seen["read"] is not None and _field_holds(seen["read"][0], check.expected, check.match)
+
+    passed = await _poll(holds, timeout_ms)
+    if seen["read"] is None:
+        return None
+    held, password = seen["read"]
+    if password:
+        shown = "the expected value" if passed else "another value"
+        return _entry(step, check, f'the "{field}" field holds {shown} (a password: not shown)', "passed" if passed else "failed", redact)
+    return _entry(step, check, f'the "{field}" field holds "{_clip(held)}"', "passed" if passed else "failed", redact)
+
+
+def _shown_values(values: list[str] | None) -> str:
+    return ", ".join(f'"{_clip(value)}"' for value in values or []) or "nothing"
 
 
 async def _check_url(check: Check, *, page: Any, step: int, timeout_ms: int, redact: Redactor) -> LedgerEntry:

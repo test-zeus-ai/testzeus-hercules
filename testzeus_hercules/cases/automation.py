@@ -28,7 +28,7 @@ AUTOMATION_VERSION = 1
 
 LocatorStrategy = Literal["test_id", "role", "label", "placeholder", "text", "alt_text", "title", "css"]
 ActionKind = Literal["navigate", "click", "fill", "select", "upload", "download", "check", "uncheck", "hover", "press", "wait_text", "wait_time"]
-CheckKind = Literal["text", "not_text", "url", "visible_text", "element_visible", "semantic", "visual", "file"]
+CheckKind = Literal["text", "not_text", "url", "visible_text", "element_visible", "field", "semantic", "visual", "file"]
 # How a literal text check is written as code, chosen from what held on the live page when the check passed:
 # text (one element shows the text), text_first (several do; the first is visible), body (the body's text holds it),
 # count_zero (no element shows it), body_not (the body's text does not hold it).
@@ -140,12 +140,15 @@ class AutomationCheck(_Model):
     expected: str = Field(description="The expected text, URL or outcome as a template")
     match: Literal["contains", "equals"] = "contains"
     form: TextForm | None = None
-    target: TargetSpec | None = Field(default=None, description="element_visible: the element; text checks: the frames the text is in (when not in the top document)")
+    target: TargetSpec | None = Field(default=None, description="element_visible and field: the element; text checks: the frames the text is in (when not in the top document)")
     verdict: Literal["passed", "failed", "unverified"] = "passed"
     source: Literal["deterministic", "llm"] = "deterministic"
     observed: str | None = Field(default=None, description="Judged checks: literal evidence of the page it was judged on (title and address)")
     file_check: Literal["name", "type", "text", "not_text", "rows", "column", "json"] | None = Field(default=None, description="file: what is checked in the run's latest downloaded file")
-    subject: str | None = Field(default=None, description="file column: the column; file json: the JSON path")
+    subject: str | None = Field(default=None, description="file column: the column; file json: the JSON path; field: the field's name in the step")
+    read: Literal["value", "option", "text"] | None = Field(
+        default=None, description="field: how its value is read: an input's value, a native drop-down's chosen option label, or the text a custom drop-down shows"
+    )
     where: str | None = Field(default=None, description='file column: the row checked, as "<column> = <value>" (None: every row)')
     faithful: bool = True
     note: str | None = None

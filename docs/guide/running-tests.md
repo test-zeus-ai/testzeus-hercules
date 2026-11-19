@@ -131,7 +131,7 @@ The UI and the coding-agent tools use these URIs.
 | `failure` | For a run that did not pass (not a cancelled one): `category` (`environment`, `contract_violation`, `test_fragility`, `product_bug`, `test_data`, or `unclassified`), `confidence`, `summary` and `signals` (below) |
 | `evidence` | Evidence files relative to the run folder: `junit`, `console`, `network`. `trace`, `video`, `report_md` and `bundle` are not produced by this version and stay null. |
 | `engines` | `mode` (`pure`, `hybrid`, or `test` for the stub test double), local model `llm`, `decider`, `decider_model`, `egress`, hosted decision calls `jev_calls`, decisions asked of a local Clef server `clef_calls`, and `fallbacks` to the local model |
-| `cost` | Local model `tokens_in` and `tokens_out`, and `usd` for hosted decisions (null when nothing was billed) |
+| `cost` | Local model `tokens_in` and `tokens_out` (exact); `decision_tokens_est`, the estimated prompt tokens sent to JEV or a Clef server (they report cost, not token counts; null when none was asked); and `usd` for hosted decisions (null when nothing was billed) |
 | `duration_s` | Wall time of the run |
 | `ui_url` | Link to the run in the tester UI (daemon runs) |
 | `plan` | The run's plan in numbers: plan steps, criteria (author, inferred, passed, failed, unverified, not run), recoveries, amendments, lint errors and warnings, coverage gaps, strict, how it was reviewed, planning time. The plan itself is `plan.json`. |

@@ -109,7 +109,7 @@ from testzeus_hercules.engine.ports import PerceptionFailed, Perceiver, TargetGo
 from testzeus_hercules.engine.quality import QualityReading, QualitySession
 from testzeus_hercules.engine.service import ServiceReading, ServiceSession
 from testzeus_hercules.engine.step_automation import AutomationRecorder
-from testzeus_hercules.engine.verify import FILE_CHECK_KINDS, Check, LedgerEntry, check_from_intent, run_check, run_file_check, semantic_check, verify_visible
+from testzeus_hercules.engine.verify import FILE_CHECK_KINDS, Check, LedgerEntry, check_from_intent, field_check, run_check, run_file_check, semantic_check, verify_visible
 from testzeus_hercules.kernel.run_context import EventSink, NullEventSink, RunCancelledError
 
 logger = logging.getLogger(__name__)
@@ -121,7 +121,6 @@ _MOVES_PER_ACTION = 8
 _RECURSION_SLACK = 40
 # How long a failed step's closing screenshot may take (the page may be what hung).
 _EVIDENCE_TIMEOUT_S = 10.0
-_BYTES_PER_TOKEN = 4
 _SNAPSHOT_FILES = ("plain.jpg", "som.jpg")
 # Roles listed to the step interpreter as the page's controls.
 _CONTROL_ROLES = frozenset(
@@ -231,6 +230,20 @@ class StepDeps:
     # The fields the run's steps filled so far (the latest value per step and field): a step that submits a form
     # re-reads them, since a page may check a field's format only on submit.
     filled: tuple[FilledField, ...] = ()
+    # Every field a step filled or chose in, by the step's own name for it (the latest per name), for the run's later
+    # checks of what a field holds ('the "Date Of Birth Month" dropdown has "June" selected'); kept for the whole run.
+    entered: dict[str, EnteredField] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class EnteredField:
+    """A field a step filled or chose in: how to find it again."""
+
+    locator: Any
+    # For exporting a check of it as code: the element's recorded locators, and how its value is read there ("value": an
+    # input's; "option": a native drop-down's chosen option label; "text": what a custom drop-down shows).
+    target: Any = None
+    read: Literal["value", "option", "text"] = "value"
 
 
 @dataclass(frozen=True)
@@ -275,6 +288,9 @@ class StepState(TypedDict, total=False):
     index: int
     step: Step
     intent: StepIntent | None
+    # The action as the case reading had it, before the step was read again on the page (whose reading may name the
+    # field and value otherwise: "Date Of Birth" with "Jun" for "Date Of Birth Month" with "June").
+    case_intent: StepIntent | None
     service: ServiceReading | None
     quality: QualityReading | None
     mobile: bool
@@ -627,7 +643,7 @@ class StepRunner(AutomationRecorder):
             if check is None and part.kind == "assert_visible" and part.target:
                 check = Check(kind="visible", expected=part.target)
             if check is not None and _from_step(check, expected):
-                checks.append(check)
+                checks.append(field_check(expected, check) or check)
             elif check is not None or part.kind in ASSERT_KINDS or part.kind == "unknown":
                 uncovered = True  # a dropped check, or one the model could not state: never pass on the other checks alone
         return checks + [semantic_check(expected)] if uncovered or not checks else checks
@@ -675,6 +691,33 @@ class StepRunner(AutomationRecorder):
         settle = getattr(deps.actions, "settle_page", None) or getattr(deps.actions, "settle_navigation", None)
         if callable(settle) and deps.page is not None:
             await settle(deps.page)
+
+    async def _entered_field(self, name: str) -> tuple[str, bool] | None:
+        """For the field an earlier step of the run filled or chose in under ``name``: what it holds now (a drop-down's
+        chosen option label) and whether it is a password. None when no step entered a field by that name, or it can no
+        longer be read."""
+        entered = self.deps.entered.get(_flat_label(name))
+        if entered is None:
+            return None
+        try:
+            read = await entered.locator.evaluate(_HELD_JS, timeout=_HELD_TIMEOUT_MS)
+        except (RunCancelledError, StepInterrupt):
+            raise
+        except Exception as exc:  # the field is gone (another page): the check finds it by its name instead
+            logger.debug("entered field %r not read (%s)", name, type(exc).__name__)
+            return None
+        return str(read.get("value") or ""), bool(read.get("password"))
+
+    async def _field_value(self, snapshot: Any, md: int) -> str | None:
+        """What the field ``md`` of ``snapshot`` really holds, read in the page (a snapshot masks a password's value)."""
+        deps = self.deps
+        try:
+            return await deps.actions.read_value(await deps.perceiver.resolve(deps.page, snapshot, md))
+        except (RunCancelledError, StepInterrupt):
+            raise
+        except Exception as exc:  # gone, or not readable: the check reports the field as holding nothing it can read
+            logger.debug("field md_%s not read (%s)", md, type(exc).__name__)
+            return None
 
     async def _snapshot(self, focus_terms: tuple[str, ...] = ()) -> Any:
         """A snapshot of the settled page. When the page asked for more data while it was being read (a search's
@@ -1231,6 +1274,8 @@ class StepRunner(AutomationRecorder):
             if state["kind"] == "download":
                 update.update(self._downloaded(state, result))
             if entry:
+                self._remember_entered(state, locator, intent, result, target=recorded.get("target_spec") or state.get("target_spec"))
+            if entry:
                 update["fields"] = state.get("fields", ()) + ((locator, _element_name(state["snapshot"], md), expected_rejection),)
                 if state["kind"] == "fill" and not expected_rejection:
                     self._remember_fill(state, locator, md, intent, update.get("value") or state.get("value") or intent.value or "")
@@ -1447,6 +1492,19 @@ class StepRunner(AutomationRecorder):
         update["decisions"] = update.get("decisions", state["decisions"]) + 1
         update["evidence"] = _merge(update.get("evidence", state["evidence"]), (uri,))
         return probability >= SAME_MEANING_PASS, probability
+
+    def _remember_entered(self, state: StepState, locator: Any, intent: StepIntent, result: Any, *, target: Any = None) -> None:
+        """Keep the field this step filled or chose in for the run's later checks of what it holds, under the names the
+        step's readings gave it (the case's, and the page's when the step was read again there)."""
+        original = state.get("case_intent")
+        chosen = (getattr(result, "chosen", None) or {}) if state["kind"] == "select" else {}
+        # A native drop-down (chosen by label or value) shows its chosen option; a type-ahead box keeps its value; another
+        # custom drop-down shows the chosen text.
+        read: Literal["value", "option", "text"] = "value" if state["kind"] == "fill" or chosen.get("typed") else "option" if chosen.get("by") in ("label", "value", "label_any_case") else "text"
+        entered = EnteredField(locator=locator, target=target, read=read)
+        for name in {intent.target, original.target if original is not None else None}:
+            if name:
+                self.deps.entered[_flat_label(name)] = entered
 
     def _remember_fill(self, state: StepState, locator: Any, md: int, intent: StepIntent, value: str) -> None:
         """Keep a field this step filled for re-reading after a later submit (never a secret's)."""
@@ -1866,7 +1924,11 @@ class StepRunner(AutomationRecorder):
             elif check.kind in FILE_CHECK_KINDS:
                 entry = run_file_check(check, deps.downloads, step=index, redact=deps.data.redact)
             else:
-                entry = await run_check(check, **options)
+                # A field check finds the field as the run perceives it (named from nearby text when no label is linked).
+                if check.kind == "field":
+                    entry = await run_check(check, **options, snapshot=self._snapshot, reveal=self._field_value, entered=self._entered_field)
+                else:
+                    entry = await run_check(check, **options)
             ledger.append(entry)
             checked.append((check, entry))
         if state.get("fields") and not any(entry.verdict == "failed" for entry in ledger):
@@ -2066,6 +2128,7 @@ class StepRunner(AutomationRecorder):
         return {
             **amended,
             "intent": first,
+            "case_intent": state.get("case_intent") or failed,
             "pending": tuple(rest),
             "compound": bool(rest) or bool(done),
             "reread": True,
@@ -2162,6 +2225,14 @@ def _tool(decision: Any) -> str | None:
         return None
     answer = decision.choice("tool")
     return answer.choice if answer.confidence is None or answer.confidence > 0 else None
+
+
+# What a field holds as shown: a drop-down's chosen option label (not its value attribute), else the field's value or text.
+_HELD_JS = """el => ({
+  value: el.tagName === 'SELECT' ? Array.from(el.selectedOptions || []).map((o) => o.label || o.text).join(', ') : ('value' in el ? el.value : el.innerText),
+  password: el.tagName === 'INPUT' && (el.type || '').toLowerCase() === 'password',
+})"""
+_HELD_TIMEOUT_MS = 2_000
 
 
 def _flat_label(text: str | None) -> str:
@@ -2328,15 +2399,25 @@ def _split(parts: tuple[StepIntent, ...], text: str) -> tuple[list[StepIntent], 
             check = Check(kind="visible", expected=part.target)
         if check is not None:
             if _from_step(check, text):
-                checks.append(check)  # a model may only restate what the step expects, never what the page shows
+                checks.append(field_check(text, check) or check)  # a model may only restate what the step expects, never what the page shows
             else:
                 uncovered = True
         else:
             if part.kind in ASSERT_KINDS and not (number == 0 and part.kind == "assert_visible" and part.target):
                 uncovered = True
-            if number == 0 or part.kind != "unknown":
+            if part.kind != "unknown" or (number == 0 and not _said_by_next(part, parts[1:2])):
                 actions.append(part)
     return actions, checks, uncovered
+
+
+def _said_by_next(part: StepIntent, following: tuple[StepIntent, ...]) -> bool:
+    """True when an action of unknown kind is followed by an action that says what to do with the same element
+    (``do "Parent Account"`` before ``select "Parent Account" with "Acme"``): the unknown one adds nothing, and acting on
+    it alone would fail for want of a value."""
+    if part.kind != "unknown" or part.value is not None or not part.target or not following:
+        return False
+    after = following[0]
+    return after.kind not in ASSERT_KINDS and after.kind != "unknown" and bool(after.target) and _flat_label(after.target) == _flat_label(part.target)
 
 
 def _missing_value(intent: StepIntent) -> str | None:
@@ -2449,4 +2530,4 @@ def _elapsed_ms_since(started: float) -> int:
 
 def _tokens(built: StepQuestions) -> int:
     """Rough token count of a request's text (images excluded)."""
-    return -(-built.request.text_size_bytes() // _BYTES_PER_TOKEN)
+    return built.request.text_tokens_estimate()

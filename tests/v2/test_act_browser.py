@@ -287,6 +287,38 @@ def test_select_opens_a_custom_drop_down_and_picks_the_option() -> None:
     run(body, CUSTOM_DROPDOWNS)
 
 
+LOOKUP = """
+<html><body>
+  <lookup-field></lookup-field>
+  <p>Chosen: <span id="chosen"></span></p>
+  <script>
+    customElements.define('lookup-field', class extends HTMLElement { connectedCallback() {
+      const root = this.attachShadow({ mode: 'open' });
+      root.innerHTML = '<input id="q" role="combobox" aria-label="Parent Account"><div id="list" role="listbox" aria-label="Parent Account"></div>';
+      const q = root.getElementById('q'), list = root.getElementById('list');
+      q.addEventListener('input', () => {
+        list.innerHTML = '<div role="option">Search Show more results for "' + q.value + '"</div>'
+          + '<div role="option"><span>Shahal Thayyil Testing</span><br><span>NewYork</span></div>'
+          + '<div role="option">New Account</div>';
+        list.querySelectorAll('[role=option]').forEach((o) => o.addEventListener('click', () => {
+          document.getElementById('chosen').textContent = o.innerText.split('\\n')[0]; list.innerHTML = '';
+        }));
+      });
+    } });
+  </script>
+</body></html>
+"""
+
+
+def test_select_on_a_lookup_picks_the_record_not_its_search_entry() -> None:
+    async def body(page: Any) -> None:
+        result = await act.select(page.get_by_role("combobox", name="Parent Account"), "shahal Thayyil Testing")
+        assert result.ok, result.detail
+        assert await page.text_content("#chosen") == "Shahal Thayyil Testing", "the record whose name starts with the value, not 'Show more results for ...'"
+
+    run(body, LOOKUP)
+
+
 def test_select_on_a_custom_drop_down_reports_a_missing_option() -> None:
     async def body(page: Any) -> None:
         result = await act.select(page.locator(".picker-display"), "Contractor", timeout_ms=800)
@@ -337,6 +369,21 @@ class _SlowFormHandler(http.server.BaseHTTPRequestHandler):
                 "<html><body><input id=\"q\" oninput=\"const l = document.getElementById('list'); l.innerHTML = '<div role=option>Searching....</div>';"
                 " clearTimeout(window.t); window.t = setTimeout(() => fetch('/data').then(r => r.text()).then(t => { l.innerHTML = '<div role=option>' + t + '</div>'; }), 700)\">"
                 '<div id="list" role="listbox"></div></body></html>'
+            )
+            return
+        if self.path.startswith("/shadow-lookup"):
+            # A lookup inside a shadow root (as Salesforce's are): typing shows "Searching..." at once and asks for
+            # suggestions 700 ms after the last key; leaving the field closes the list.
+            self._send(
+                "<html><body><lookup-field></lookup-field><script>"
+                "customElements.define('lookup-field', class extends HTMLElement { connectedCallback() {"
+                " const root = this.attachShadow({ mode: 'open' });"
+                " root.innerHTML = '<label for=q>Parent Account</label><input id=q role=combobox aria-label=\"Parent Account\"><div id=list role=listbox></div>';"
+                " const q = root.getElementById('q'), list = root.getElementById('list');"
+                " q.addEventListener('input', () => { list.innerHTML = '<div role=option>Searching....</div>'; clearTimeout(window.t);"
+                "  window.t = setTimeout(() => fetch('/data').then(r => r.text()).then(t => { list.innerHTML = '<div role=option>' + t + '</div>'; }), 700); });"
+                " q.addEventListener('blur', () => { clearTimeout(window.t); list.innerHTML = ''; });"
+                "} });</script></body></html>"
             )
             return
         if self.path.startswith("/suggest"):
@@ -477,6 +524,21 @@ def test_typing_that_opens_a_suggestion_list_waits_for_its_debounced_request() -
                 assert result.ok, result.detail
                 assert await page.get_by_role("option", name="Peter Pan").count() == 1, "the suggestions arrived before the action returned"
                 assert await page.get_by_role("option", name="Searching....").count() == 0
+
+    asyncio.run(go())
+
+
+def test_a_suggestion_list_inside_a_shadow_root_is_waited_for_and_left_open() -> None:
+    async def go() -> None:
+        with _slow_server() as base:
+            async with open_page(url=f"{base}/shadow-lookup") as page:
+                act.watch_page(page)
+                field = page.get_by_role("combobox", name="Parent Account")
+                result = await act.fill(field, "Pe")
+                assert result.ok, result.detail
+                assert await page.get_by_role("option", name="Peter Pan").count() == 1, "the suggestions arrived before the action returned"
+                assert await page.evaluate(act._SUGGESTIONS_JS), "the list inside the shadow root is seen"
+                assert await field.evaluate("el => el.getRootNode().activeElement === el"), "the field was not left, so its list stays open"
 
     asyncio.run(go())
 

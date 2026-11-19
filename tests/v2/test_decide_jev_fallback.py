@@ -136,6 +136,20 @@ def test_usage_totals_cost_and_calls_per_engine() -> None:
     assert decider.engine == "jev-openrouter+local-llm"
 
 
+def test_usage_estimates_the_prompt_tokens_sent_to_jev_and_not_those_kept_local() -> None:
+    jev = ScriptedEngine("jev-openrouter", 0.9, DecisionUnavailable("down"))
+    decider = _decider(jev)
+    request = _request()
+
+    asyncio.run(decider.decide(request, purpose="target"))
+    one_call = decider.usage().prompt_tokens_est
+    asyncio.run(decider.decide(request, purpose="target"))  # JEV is down: sent anyway, then the local model answers
+
+    sent = jev.requests[0]  # what JEV was really sent (the text-only first ask)
+    assert one_call == sent.text_tokens_estimate() == -(-sent.text_size_bytes() // 4) > 0
+    assert decider.usage().prompt_tokens_est == sum(item.text_tokens_estimate() for item in jev.requests) == 2 * one_call
+
+
 def test_route_is_json_serialisable_and_names_the_model() -> None:
     decider = _decider(ScriptedEngine("jev-openrouter", 0.9, model="typesafe/jev-1.14"))
     decision = asyncio.run(decider.decide(_request(), purpose="target"))

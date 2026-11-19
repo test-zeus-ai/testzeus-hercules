@@ -411,7 +411,12 @@ class PythonWriter(Writer):
         if used & {"text", "download_value"}:
             modules.add("json")
         generated = any(action.navigated_to and not action.navigated_from and address_pattern(action.navigated_to) for step in spec.steps for action in step.actions)
-        if used & {"matches", "escape_url"} or generated or any(check.kind == "url" and check.match == "contains" for step in spec.steps for check in step.checks):
+        if (
+            used & {"matches", "escape_url"}
+            or generated
+            or any(check.kind == "url" and check.match == "contains" for step in spec.steps for check in step.checks)
+            or any(_field_value_pattern(check) for step in spec.steps for check in step.checks)
+        ):
             modules.add("re")
         if "sqlite" in used:
             modules.add("sqlite3")
@@ -676,8 +681,26 @@ class PythonWriter(Writer):
             self.emit(f"expect(page.get_by_text({expected}).first).to_be_visible()")
         elif check.kind == "element_visible":
             self.emit(f"expect({self.target_expr(step, check.target, 'check')}).to_be_visible()")
+        elif check.kind == "field":
+            self.field_check(step, check)
         elif check.kind == "file":
             self.file_check(step, check, expected)
+
+    def field_check(self, step: AutomationStep, check: AutomationCheck) -> None:
+        """What the field holds, on the element the step that entered it used: an input's value, a native drop-down's
+        chosen option, or the text a custom drop-down shows."""
+        if check.target is None or check.target.locator is None:
+            return  # the TODO above says why: no element was recorded for the field
+        field = self.target_expr(step, check.target, "check")
+        wanted = self.expr(check.expected)
+        exact = check.match == "equals"
+        if check.read in ("option", "text"):
+            shown = f'{field}.locator("option:checked")' if check.read == "option" else field
+            self.emit(f"expect({shown}).to_have_text({wanted})" if exact else f"expect({shown}).to_contain_text({wanted}, ignore_case=True)")
+        elif exact:
+            self.emit(f"expect({field}).to_have_value({wanted})")
+        else:
+            self.emit(f"expect({field}).to_have_value(re.compile(re.escape({wanted}), re.IGNORECASE))")
 
     def file_check(self, step: AutomationStep, check: AutomationCheck, expected: str) -> None:
         if not check.faithful:
@@ -888,3 +911,8 @@ class PythonWriter(Writer):
         kind = check.get("kind")
         self.note(f"The run checked the page's {'accessibility' if kind == 'a11y' else 'look against a baseline' if kind == 'visual' else 'layout'}: {json.dumps(check, ensure_ascii=False)}")
         self.todo(step, f"replace this {kind} check with your project's tools")
+
+
+def _field_value_pattern(check: AutomationCheck) -> bool:
+    """True for a field check written with a regular expression (an input's value that contains the text)."""
+    return check.kind == "field" and check.faithful and check.read in (None, "value") and check.match == "contains"
