@@ -886,7 +886,7 @@ async def save_case(request: Request, daemon: Daemon) -> Response:
     except FileNotFoundError:
         raise ApiError(404, f"case not found: {body.replace}") from None
     except case_files.CaseExists as exc:
-        raise ApiError(409, str(exc)) from None
+        raise ApiError(409, str(exc), detail={"code": exc.code, "case": exc.other} if exc.other else None) from None
     except case_files.CaseIdTaken as exc:
         raise ApiError(422, str(exc), detail={"code": exc.code, "case": exc.other}) from None
     except case_files.CaseError as exc:

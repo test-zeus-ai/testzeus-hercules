@@ -145,7 +145,6 @@ def main(env: Mapping[str, str] | None = None, *, project_dir: Path | None = Non
     only the protocol); started by an MCP client, whose stdin is a pipe, it prints nothing."""
     err = stderr or sys.stderr
     if project_dir is not None:
-        # MCP clients pass args without a shell, so "~" arrives as written.
         project_dir = Path(os.path.abspath(Path(project_dir).expanduser()))
         if not project_dir.is_dir():
             err.write(f"hercules mcp: --project {project_dir} is not a folder; give the project's full path\n")

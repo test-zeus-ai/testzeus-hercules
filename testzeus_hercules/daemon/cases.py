@@ -39,6 +39,9 @@ class CaseError(ValueError):
 class CaseExists(CaseError):
     """Saving would overwrite an existing file."""
 
+    code = "case_exists"
+    other: str | None = None
+
 
 class CaseIdTaken(CaseError):
     """Another case file already has the id (ids are unique across folders and file types)."""
@@ -353,15 +356,16 @@ def _same_id(cases_dir: Path, case_id: str, path: Path) -> Path | None:
         return not (path.exists() and os.path.samefile(other, path))
 
     folders = ["", *list_folders(cases_dir)]
+    named = {f"{case_id}{suffix}" for suffix in CASE_SUFFIXES}
     for folder in folders:
         directory = folder_dir(cases_dir, folder)
-        for suffix in CASE_SUFFIXES:
-            other = directory / f"{case_id}{suffix}"
+        for name in named:
+            other = directory / name
             if other.is_file() and not other.is_symlink() and other_than_path(other):
                 return other
     for folder in folders:
         for other in _case_paths(cases_dir, folder):
-            if other.stem.casefold() == case_id.casefold() or not other_than_path(other):
+            if other.name in named or not other_than_path(other):
                 continue
             try:
                 if load_case_file(other).id == case_id:
@@ -382,7 +386,7 @@ def environment_problem(case: TestCase, envs_dir: Path) -> str | None:
     """Why the environment the case names cannot be used, as a run would find (None when it can, or it names none)."""
     name = case.environment.ref
     if not name or case.environment.base_url is not None:
-        return None  # no environment, or the case's own base URL is used when the named one is missing (see apply_environment)
+        return None
     path = envs_dir / f"{name}.json"
     if not _ENV_NAME.match(name) or path.is_symlink() or not path.is_file():
         return f"unknown environment {name!r}: save it on the Environments screen (or POST /api/environments) first, or fix the @env tag"
@@ -422,7 +426,7 @@ def save_case(
             try:
                 test_data = read_feature_data(replacing)
             except GherkinError:
-                test_data = None  # an unreadable data file is replaced by what the new content needs
+                test_data = None
     else:
         folder = spelled_folder(cases_dir, folder)
         directory = folder_dir(cases_dir, folder)
@@ -444,7 +448,7 @@ def save_case(
         try:
             old_id: str | None = load_case_file(replacing).id
         except CaseError:
-            old_id = None  # a case that does not load (yet) can be repaired
+            old_id = None
         if old_id is not None and case.id != old_id:
             raise CaseError(f"the case id would change from {old_id!r} to {case.id!r} (the scenario name or id); keep it, or save a new case and delete this one")
         path, overwrite = replacing, True
@@ -459,7 +463,11 @@ def save_case(
             f"a case with the id {case.id} is already in {where} ({other.name}): case ids are unique across folders and file types, so give this one another id or open that one",
             other=case_name(cases_dir, other),
         )
-    _write_new(path, data, overwrite)
+    try:
+        _write_new(path, data, overwrite)
+    except CaseExists as exc:
+        exc.other = case_name(cases_dir, path)
+        raise
     if gherkin is not None:
         _save_feature_data(path, sidecar)
     return path, case

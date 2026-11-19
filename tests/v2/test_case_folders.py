@@ -561,3 +561,20 @@ def test_the_listing_filters_by_folder_and_words_before_its_cap(config, monkeypa
     assert [case["id"] for case in words["cases"]] == ["late-login"]
     assert nowhere.status_code == 404
     assert upper.status_code == 200 and upper.json()["test_case"]["id"] == "late-login", "upper-case suffixes are case names too"
+
+
+def test_an_id_is_taken_by_a_file_named_like_it_in_another_case(config) -> None:  # type: ignore[no-untyped-def]
+    """Login.json holds the id login: saving Scenario: Login elsewhere is refused, also where file names are case-sensitive."""
+    cases = _cases_dir(config)
+    (cases / "Accounts").mkdir()
+    (cases / "Accounts" / "Login.json").write_text(json.dumps(case_dict(case_id="login")), encoding="utf-8")
+    login = 'Feature: Accounts\n  Scenario: Login\n    Given I open "/login"\n'
+    with client_for(config) as client:
+        taken = client.post("/api/cases", json={"gherkin": login})
+        again = client.post("/api/cases", json={"gherkin": FEATURE})
+        same_file = client.post("/api/cases", json={"gherkin": FEATURE})
+    assert taken.status_code == 422 and taken.json()["detail"]["code"] == "case_id_taken", taken.text
+    assert taken.json()["detail"]["case"].casefold() == "accounts/login.json"
+    assert sorted(path.name for path in cases.rglob("*") if path.is_file()) == ["Login.json", "shopper-pays-by-card.feature"]
+    assert again.status_code == 201
+    assert same_file.status_code == 409 and same_file.json()["detail"] == {"code": "case_exists", "case": "shopper-pays-by-card.feature"}

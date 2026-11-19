@@ -855,7 +855,7 @@ def _visual_line(item: dict[str, Any]) -> str:
 
 
 _CASES_PREFIX = ".hercules/cases/"
-_CASE_HINTS = {"case_id_taken": "to change that case, use hercules_update_case with its path"}
+_CASE_HINTS = {code: "to change that case, use hercules_update_case with its path" for code in ("case_id_taken", "case_exists")}
 
 
 def _case_name(raw: Any) -> str:

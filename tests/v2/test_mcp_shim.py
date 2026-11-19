@@ -678,6 +678,7 @@ def test_case_tools_create_read_update_and_delete_after_validating(daemon) -> No
             got["bad_create"] = await call(session, "hercules_create_case", {"gherkin": "@env:nowhere\n" + PAY, "folder": "Checkout"})
             got["create"] = await call(session, "hercules_create_case", {"gherkin": PAY, "folder": "Checkout"})
             got["again"] = await call(session, "hercules_create_case", {"gherkin": PAY})
+            got["again_here"] = await call(session, "hercules_create_case", {"gherkin": PAY, "folder": "Checkout"})
             got["get"] = await call(session, "hercules_get_case", {"name": ".hercules/cases/Checkout/pay-by-card.feature"})
             got["get_short"] = await call(session, "hercules_get_case", {"name": "Checkout/pay-by-card.feature"})
             updated = PAY.replace('Then I should see "Paid"', 'Then I should see "Paid"\n    And I should see "Receipt"')
@@ -703,6 +704,7 @@ def test_case_tools_create_read_update_and_delete_after_validating(daemon) -> No
     assert got["bad_create"].isError and "nothing was saved" in _text(got["bad_create"])
     assert got["create"].structuredContent == {"name": "Checkout/pay-by-card.feature", "path": ".hercules/cases/Checkout/pay-by-card.feature", "id": "pay-by-card"}
     assert got["again"].isError and "hercules_update_case" in _text(got["again"])
+    assert got["again_here"].isError and "already exists" in _text(got["again_here"]) and "hercules_update_case" in _text(got["again_here"]), _text(got["again_here"])
 
     for key in ("get", "get_short"):
         view = got[key].structuredContent
