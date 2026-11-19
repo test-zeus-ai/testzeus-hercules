@@ -598,3 +598,23 @@ def test_a_feature_with_an_upper_case_suffix_keeps_its_test_data_together(config
     assert deleted.status_code == 200 and sorted(path.name for path in (cases / "Old").iterdir()) == [], "deleting the case removes its data file"
     assert moved.status_code == 200 and sorted(path.name for path in (cases / "New").iterdir()) == ["move.FEATURE", "move.data.json"], "moving the case moves its data file"
     assert folder_gone.status_code == 200 and not (cases / "Gone").exists(), "a folder of such cases deletes cleanly"
+
+
+def test_listing_a_folder_reads_it_once_however_many_data_files_it_holds(config, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
+    cases = _cases_dir(config)
+    for number in range(30):
+        (cases / f"case-{number}.feature").write_text(FEATURE.replace("Shopper pays by card", f"Case {number}"), encoding="utf-8")
+        (cases / f"case-{number}.data.json").write_text(json.dumps({"test_data": {"card": "4242"}}), encoding="utf-8")
+    (cases / "upper.FEATURE").write_text(FEATURE.replace("Shopper pays by card", "Upper"), encoding="utf-8")
+    (cases / "upper.data.json").write_text(json.dumps({"test_data": {"card": "4242"}}), encoding="utf-8")
+    reads: list[Path] = []
+    iterdir = Path.iterdir
+
+    def counted(self: Path):  # type: ignore[no-untyped-def]
+        reads.append(self)
+        return iterdir(self)
+
+    monkeypatch.setattr(Path, "iterdir", counted)
+    paths = case_files._case_paths(cases, "")
+    assert len(paths) == 31 and not any(path.name.endswith(".data.json") for path in paths)
+    assert reads == [cases], "one read of the folder, not one per data file"

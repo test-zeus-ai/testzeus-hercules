@@ -230,11 +230,19 @@ def _folder_name(cases_dir: Path, directory: Path) -> str:
 
 
 def spelled_folder(cases_dir: Path, folder: str) -> str:
+    """``folder`` spelled as on disk: each part as written when it exists, else the folder whose name matches it
+    ignoring case (also on a case-sensitive filesystem); a part that matches nothing is kept as written."""
     path = cases_dir
     for part in _folder_parts(folder):
         entry = path / part
-        if entry.is_dir() and not entry.is_symlink() and part not in os.listdir(path):
-            entry = _sibling_named(path, part) or entry
+        try:
+            names = os.listdir(path)
+        except OSError:
+            names = []
+        if part not in names:
+            sibling = _sibling_named(path, part)
+            if sibling is not None and sibling.is_dir() and not sibling.is_symlink():
+                entry = sibling
         path = entry
     return _folder_name(cases_dir, path)
 
@@ -246,10 +254,16 @@ def case_file(cases_dir: Path, name: str) -> Path:
     return folder_dir(cases_dir, spelled_folder(cases_dir, folder)) / file
 
 
-def is_feature_data(path: Path) -> bool:
+def is_feature_data(path: Path, feature_stems: AbstractSet[str] | None = None) -> bool:
+    """``path`` is the test data of a ``.feature`` file beside it (any capitalisation of the suffix). ``feature_stems``,
+    the stems of the folder's feature files, spares listing the folder."""
     if not path.name.endswith(DATA_SUFFIX):
         return False
     stem = path.name.removesuffix(DATA_SUFFIX)
+    if feature_stems is not None:
+        return stem in feature_stems
+    if path.with_name(stem + ".feature").is_file():
+        return True
     try:
         return any(entry.stem == stem and entry.suffix.lower() == ".feature" and entry.is_file() for entry in path.parent.iterdir())
     except OSError:
@@ -287,11 +301,10 @@ def _case_paths(cases_dir: Path, folder: str) -> list[Path]:
     directory = folder_dir(cases_dir, folder)
     if not directory.is_dir():
         return []
-    return [
-        path
-        for path in sorted(directory.iterdir(), key=lambda entry: entry.name.casefold())
-        if not path.is_symlink() and path.is_file() and path.suffix.lower() in CASE_SUFFIXES and not is_feature_data(path)
-    ]
+    entries = sorted(directory.iterdir(), key=lambda entry: entry.name.casefold())
+    files = [path for path in entries if not path.is_symlink() and path.is_file() and path.suffix.lower() in CASE_SUFFIXES]
+    feature_stems = {path.stem for path in files if path.suffix.lower() == ".feature"}
+    return [path for path in files if not is_feature_data(path, feature_stems)]
 
 
 def _cases_under(cases_dir: Path, folder: str, *, subfolders: bool = True) -> list[tuple[str, Path]]:
