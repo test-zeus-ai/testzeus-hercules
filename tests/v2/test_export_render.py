@@ -434,3 +434,26 @@ def test_an_upload_of_the_downloaded_file_attaches_the_tests_own_download() -> N
 
     assert ".setInputFiles([downloadedFile]);" in typescript and ".set_input_files([downloaded[-1]])" in python
     assert ".hercules/runs" not in typescript + python
+
+
+def test_a_value_saved_by_the_last_step_is_kept_although_no_step_uses_it() -> None:
+    """The run saved the token at its end; the export keeps it in ``saved``, declared before the step that writes it."""
+    automation = AutomationSpec(
+        case_id="auth-token",
+        title="Generate an authentication token",
+        browser=False,
+        steps=[
+            AutomationStep(
+                index=1,
+                action='I send a POST request to "/auth"',
+                status="passed",
+                kind="api",
+                api={"method": "POST", "path": "/auth", "body": {"username": "admin"}, "expect": {"status": 200}, "save": [{"name": "authToken", "json_path": "$.token"}]},
+            ),
+        ],
+    )
+    python = export_run(result(automation=automation), "playwright-py").code
+    ast.parse(python)
+    assert 0 < python.index("saved: dict[str, Any] = {}") < python.index('saved["authToken"] = at(body, ["token"])')
+    typescript = export_run(result(automation=automation), "playwright-ts").code
+    assert 0 < typescript.index("const saved: Record<string, unknown> = {};") < typescript.index('saved.authToken = at(body, ["token"]);')

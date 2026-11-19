@@ -181,6 +181,8 @@ class Writer:
         self.lines: list[str] = []
         self.depth = 0
         self.api_used = any(step.kind == "api" for step in spec.steps)
+        # A step saves a value (``save``), whether or not a later step uses it: the test keeps it in ``saved``.
+        self.saves = any(isinstance(payload, dict) and payload.get("save") for step in spec.steps for payload in (step.api, step.sql))
         # Which response the code last parsed as JSON (a request makes a new one).
         self.response_seq = 0
         self.body_seq = -1

@@ -503,7 +503,7 @@ class TypeScriptWriter(Writer):
         if self.api_used:
             self.emit("let response: APIResponse | undefined;")
             self.emit("let body: unknown;")
-        if any(entry.kind == "saved" for entry in self.spec.data.values()):
+        if self.saves or any(entry.kind == "saved" for entry in self.spec.data.values()):
             self.emit("const saved: Record<string, unknown> = {};")
         self.depth -= 1
 

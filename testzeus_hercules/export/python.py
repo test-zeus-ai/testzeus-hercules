@@ -523,7 +523,7 @@ class PythonWriter(Writer):
 
     @property
     def saved_used(self) -> bool:
-        return any(entry.kind == "saved" for entry in self.spec.data.values())
+        return self.saves or any(entry.kind == "saved" for entry in self.spec.data.values())
 
     def expr_builtins(self, template: str) -> str:
         """A case value: only built-ins are substituted in it (as the run did)."""
