@@ -1,6 +1,6 @@
 # Running tests
 
-> **Watch it:** [Debug a run: pause, take over, answer its questions (1:38)](videos.md#4-debug-a-run-pause-take-over-answer-its-questions); [Run tests from the terminal (1:47)](videos.md#5-run-tests-from-the-terminal).
+> **Watch it:** [Debug a run: pause, take over, answer its questions (1:51)](videos.md#4-debug-a-run-pause-take-over-answer-its-questions); [Run tests from the terminal (1:47)](videos.md#5-run-tests-from-the-terminal).
 
 There are two ways to run a case:
 

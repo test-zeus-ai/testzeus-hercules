@@ -1,6 +1,6 @@
 # Running Hercules in Docker
 
-> **Watch it:** [Run Hercules in Docker (1:45)](videos.md#14-run-hercules-in-docker).
+> **Watch it:** [Run Hercules in Docker (2:02)](videos.md#14-run-hercules-in-docker).
 
 The Hercules image holds everything a run needs: the `hercules` command, the daemon with
 the tester UI, Playwright's Chromium with its fonts, and the nuclei scanner with its

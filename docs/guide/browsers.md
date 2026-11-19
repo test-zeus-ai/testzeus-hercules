@@ -1,6 +1,6 @@
 # Browsers and browser options
 
-> **Watch it:** [Browsers and browser options (1:22)](videos.md#7-browsers-and-browser-options).
+> **Watch it:** [Browsers and browser options (1:23)](videos.md#7-browsers-and-browser-options).
 
 A web case runs in the browser its environment names, set up with Playwright's own launch
 and context options: the locale and time zone, a signed-in state, extra headers, a proxy,

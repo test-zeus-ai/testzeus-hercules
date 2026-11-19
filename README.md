@@ -281,17 +281,17 @@ picture to play the video; [Feature videos](docs/guide/videos.md) plays them in 
 <br><b>One line to install and set up.</b> <code>uvx testzeus-hercules</code> in your app's folder installs the <code>hercules</code> command, sets up the browsers you pick, connects a model (local, OpenRouter or any OpenAI-compatible endpoint) and your coding agent, asking before each change.
 </td>
 <td width="50%" valign="top">
-<a href="https://github.com/user-attachments/assets/494a6698-4687-4161-bec4-c3d0e1d7e251"><img src="docs/assets/videos/features/02-tester-ui-quick-start.jpg" width="400" alt="From an empty project to a passing test (2:02)"></a>
+<a href="https://github.com/user-attachments/assets/628c7a8a-3e8e-4e45-8e2a-20a9f5945a82"><img src="docs/assets/videos/features/02-tester-ui-quick-start.jpg" width="400" alt="From an empty project to a passing test (2:16)"></a>
 <br><b>From an empty project to a passing test.</b> Start from an empty project in the tester UI: save an environment for the app, write a case the way a tester would, run it and watch it live, then read every step, decision and screenshot it kept.
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
-<a href="https://github.com/user-attachments/assets/53ffd59c-ab6c-460c-ab4c-49971a34e1df"><img src="docs/assets/videos/features/03-review-the-plan.jpg" width="400" alt="Review the plan before the run starts (1:41)"></a>
+<a href="https://github.com/user-attachments/assets/d145708c-56ba-4422-8a3b-020de3a94128"><img src="docs/assets/videos/features/03-review-the-plan.jpg" width="400" alt="Review the plan before the run starts (1:57)"></a>
 <br><b>Review the plan before it runs.</b> Every case becomes a plan: the actions, the success criteria the page must meet after each one, risks and lint.
 </td>
 <td width="50%" valign="top">
-<a href="https://github.com/user-attachments/assets/f6df182b-0618-4ee7-9643-3c6e56b6fc37"><img src="docs/assets/videos/features/04-debug-and-take-over.jpg" width="400" alt="Debug a run: pause, take over, answer its questions (1:43)"></a>
+<a href="https://github.com/user-attachments/assets/7e7624e0-6564-493e-b92c-e8f886d10702"><img src="docs/assets/videos/features/04-debug-and-take-over.jpg" width="400" alt="Debug a run: pause, take over, answer its questions (1:51)"></a>
 <br><b>Debug a run, take over the browser.</b> Pause with Space, step with N, take over the run's own browser to do what the case forgot, fix a step that could not be done by editing its text, and approve an irreversible click before it happens.
 </td>
 </tr>
@@ -307,21 +307,21 @@ picture to play the video; [Feature videos](docs/guide/videos.md) plays them in 
 </tr>
 <tr>
 <td width="50%" valign="top">
-<a href="https://github.com/user-attachments/assets/a7e8a0a2-9a23-493e-8ad7-6c704603cce0"><img src="docs/assets/videos/features/07-browsers-and-options.jpg" width="400" alt="Browsers and browser options (1:26)"></a>
+<a href="https://github.com/user-attachments/assets/63865da2-d298-4f56-b455-d62077f61a27"><img src="docs/assets/videos/features/07-browsers-and-options.jpg" width="400" alt="Browsers and browser options (1:23)"></a>
 <br><b>Any browser, any Playwright option.</b> Save an environment that runs WebKit in German, on Berlin time, already signed in from an auth JSON and sending an extra header, then run a case on it and see every option arrive.
 </td>
 <td width="50%" valign="top">
-<a href="https://github.com/user-attachments/assets/eb225d7f-d48f-4691-9c24-f8261eb37139"><img src="docs/assets/videos/features/08-mobile-web.jpg" width="400" alt="Test your web app on a phone (1:22)"></a>
+<a href="https://github.com/user-attachments/assets/9ea17209-dcff-46c5-9414-2f48db8775b9"><img src="docs/assets/videos/features/08-mobile-web.jpg" width="400" alt="Test your web app on a phone (1:32)"></a>
 <br><b>Test your web app on a phone.</b> Give an environment a Playwright device profile such as <code>iPhone 15</code>, run any web case on it, and watch the phone-sized run live; every step keeps the phone's screenshot.
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
-<a href="https://github.com/user-attachments/assets/7126f642-0a5d-4e6d-911e-df76f8999053"><img src="docs/assets/videos/features/09-export-as-code.jpg" width="400" alt="Export a passed run as code (1:34)"></a>
+<a href="https://github.com/user-attachments/assets/9ad1b60c-ce1c-46fb-8bfb-994a23ca3448"><img src="docs/assets/videos/features/09-export-as-code.jpg" width="400" alt="Export a passed run as code (1:36)"></a>
 <br><b>Export a passed run as code.</b> Turn a passed run into a Playwright Test or pytest-playwright file with real locators and expects, then <code>hercules export --check</code> runs it once and tells you it passes, with no Hercules or model needed at test time.
 </td>
 <td width="50%" valign="top">
-<a href="https://github.com/user-attachments/assets/96afd9c5-a826-4954-8fa1-97d258e0ed26"><img src="docs/assets/videos/features/10-run-on-a-cloud.jpg" width="400" alt="Run a passed test on a cloud (1:42)"></a>
+<a href="https://github.com/user-attachments/assets/206c12eb-3813-43bb-a1fa-6e8348b436f3"><img src="docs/assets/videos/features/10-run-on-a-cloud.jpg" width="400" alt="Run a passed test on a cloud (1:53)"></a>
 <br><b>Run a passed test on a cloud.</b> Connect BrowserStack, Sauce Labs or TestMu AI and run any passed test on the cloud's browsers from its run page, or download it as a ready-made project for that cloud's CI.
 </td>
 </tr>
@@ -331,7 +331,7 @@ picture to play the video; [Feature videos](docs/guide/videos.md) plays them in 
 <br><b>Import v1 projects, specs and documents.</b> <code>hercules import</code> turns what you already have into test cases: a Hercules v1 project's Gherkin features, test data and <code>.env</code>; an OpenAPI spec, one API case per operation; and a requirements document, which your model drafts into cases marked draft for review.
 </td>
 <td width="50%" valign="top">
-<a href="https://github.com/user-attachments/assets/717953a1-3776-4f22-b544-2213330a15cd"><img src="docs/assets/videos/features/12-visual-and-accessibility.jpg" width="400" alt="Visual and accessibility checks (1:33)"></a>
+<a href="https://github.com/user-attachments/assets/b08b45ac-a464-4fd8-81ed-035ec64b6634"><img src="docs/assets/videos/features/12-visual-and-accessibility.jpg" width="400" alt="Visual and accessibility checks (1:50)"></a>
 <br><b>Visual and accessibility checks.</b> Turn on <b>Accessibility</b> and <b>Visual</b> when you start a run and every page the case reaches is audited: WCAG findings with a selector and a fix that was tried in the page, layout problems at phone width, and a baseline screenshot that the next run is compared against.
 </td>
 </tr>
@@ -341,17 +341,17 @@ picture to play the video; [Feature videos](docs/guide/videos.md) plays them in 
 <br><b>Security scans.</b> <code>hercules scan</code> checks your app for known security issues with the open-source nuclei scanner, only against the app under test and without intrusive templates unless you ask.
 </td>
 <td width="50%" valign="top">
-<a href="https://github.com/user-attachments/assets/44741366-c566-41ba-bbe4-a4ae97d7bb87"><img src="docs/assets/videos/features/14-docker.jpg" width="400" alt="Run Hercules in Docker (1:46)"></a>
+<a href="https://github.com/user-attachments/assets/75e6833f-03ea-438e-ab0f-0adf1e6ca4e2"><img src="docs/assets/videos/features/14-docker.jpg" width="400" alt="Run Hercules in Docker (2:02)"></a>
 <br><b>Run it in Docker.</b> Build the Hercules image, serve the tester UI from a container with your project mounted and the model key passed by name, then sign in and run a case: the same UI, runs and evidence as without Docker.
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
-<a href="https://github.com/user-attachments/assets/8172ad51-c451-4a79-a583-0eee266f36bb"><img src="docs/assets/videos/features/15-test-data-and-secrets.jpg" width="400" alt="Test data and secrets (2:13)"></a>
+<a href="https://github.com/user-attachments/assets/82566aaa-b4f2-4aa2-8fd8-4af149a9b69f"><img src="docs/assets/videos/features/15-test-data-and-secrets.jpg" width="400" alt="Test data and secrets (2:23)"></a>
 <br><b>Test data and secrets.</b> Keep a case's values in its test data and use them in steps as <code>{{name}}</code>; a secret names an environment variable, so its value never lands in the case, never reaches the model and is masked as <code>******</code> in the evidence.
 </td>
 <td width="50%" valign="top">
-<a href="https://github.com/user-attachments/assets/1452f658-c2b9-4f20-80ab-27c7bda9db6d"><img src="docs/assets/videos/features/16-upload-and-download-files.jpg" width="400" alt="Upload and download files (1:47)"></a>
+<a href="https://github.com/user-attachments/assets/b07f8a0a-46ce-433a-ae09-f2d33e13ee7c"><img src="docs/assets/videos/features/16-upload-and-download-files.jpg" width="400" alt="Upload and download files (1:53)"></a>
 <br><b>Upload and download files.</b> Give a case files to upload in its steps, then download a file from your app and check its name, rows and columns in code. Files go only to the app under test, never to a model.
 </td>
 </tr>

@@ -8,21 +8,21 @@ its sign-in page takes any name). Each video plays on this page; the MP4 files a
 | # | Video | Length |
 |---|---|---|
 | 1 | [One line to install and set up](#1-one-line-to-install-and-set-up) | 1:28 |
-| 2 | [From an empty project to a passing test](#2-from-an-empty-project-to-a-passing-test) | 2:02 |
-| 3 | [Review the plan before the run starts](#3-review-the-plan-before-the-run-starts) | 1:41 |
-| 4 | [Debug a run: pause, take over, answer its questions](#4-debug-a-run-pause-take-over-answer-its-questions) | 1:43 |
+| 2 | [From an empty project to a passing test](#2-from-an-empty-project-to-a-passing-test) | 2:16 |
+| 3 | [Review the plan before the run starts](#3-review-the-plan-before-the-run-starts) | 1:57 |
+| 4 | [Debug a run: pause, take over, answer its questions](#4-debug-a-run-pause-take-over-answer-its-questions) | 1:51 |
 | 5 | [Run tests from the terminal](#5-run-tests-from-the-terminal) | 1:51 |
 | 6 | [Test from your coding agent](#6-test-from-your-coding-agent) | 1:14 |
-| 7 | [Browsers and browser options](#7-browsers-and-browser-options) | 1:26 |
-| 8 | [Test your web app on a phone](#8-test-your-web-app-on-a-phone) | 1:22 |
-| 9 | [Export a passed run as code](#9-export-a-passed-run-as-code) | 1:34 |
-| 10 | [Run a passed test on a cloud](#10-run-a-passed-test-on-a-cloud) | 1:42 |
+| 7 | [Browsers and browser options](#7-browsers-and-browser-options) | 1:23 |
+| 8 | [Test your web app on a phone](#8-test-your-web-app-on-a-phone) | 1:32 |
+| 9 | [Export a passed run as code](#9-export-a-passed-run-as-code) | 1:36 |
+| 10 | [Run a passed test on a cloud](#10-run-a-passed-test-on-a-cloud) | 1:53 |
 | 11 | [Import v1 projects, OpenAPI specs and requirement documents](#11-import-v1-projects-openapi-specs-and-requirement-documents) | 1:33 |
-| 12 | [Visual and accessibility checks](#12-visual-and-accessibility-checks) | 1:33 |
+| 12 | [Visual and accessibility checks](#12-visual-and-accessibility-checks) | 1:50 |
 | 13 | [Security scans](#13-security-scans) | 1:20 |
-| 14 | [Run Hercules in Docker](#14-run-hercules-in-docker) | 1:46 |
-| 15 | [Test data and secrets](#15-test-data-and-secrets) | 2:13 |
-| 16 | [Upload and download files](#16-upload-and-download-files) | 1:47 |
+| 14 | [Run Hercules in Docker](#14-run-hercules-in-docker) | 2:02 |
+| 15 | [Test data and secrets](#15-test-data-and-secrets) | 2:23 |
+| 16 | [Upload and download files](#16-upload-and-download-files) | 1:53 |
 
 ## 1. One line to install and set up
 
@@ -44,7 +44,7 @@ https://github.com/user-attachments/assets/da0cbcb3-2102-4252-a4e6-5be9a27a6749
 
 ## 2. From an empty project to a passing test
 
-https://github.com/user-attachments/assets/494a6698-4687-4161-bec4-c3d0e1d7e251
+https://github.com/user-attachments/assets/628c7a8a-3e8e-4e45-8e2a-20a9f5945a82
 
 <sub>[Download the MP4](../assets/videos/features/02-tester-ui-quick-start.mp4)</sub>
 
@@ -53,7 +53,7 @@ Start from an empty project in the tester UI: save an environment for the app, w
 Any web app; the video uses the demo shop in `bench/explore`.
 
 1. Start the demo shop: `uv run python bench/explore/app.py --bugs none --port 8201`. Its sign-in page takes any name.
-2. In an empty project folder, start the daemon with `hercules serve`, and in a second terminal open the UI with `hercules ui`.
+2. In an empty project folder, start the daemon with `hercules serve` (it adds a few example cases and environments the first time), and in a second terminal open the UI with `hercules ui`.
 3. Open **Environments**. In **New environment**, set **Name** to `shop` and **Base URL** to `http://127.0.0.1:8201`, then click **Save environment**.
 4. Open **Cases**, click **Form**, and fill in **Case id** `add-tea`, **Title** `Add green tea to the cart` and **Environment** `shop`.
 5. Add four steps (click **Add step** for each new one):
@@ -69,7 +69,7 @@ Any web app; the video uses the demo shop in `bench/explore`.
 
 ## 3. Review the plan before the run starts
 
-https://github.com/user-attachments/assets/53ffd59c-ab6c-460c-ab4c-49971a34e1df
+https://github.com/user-attachments/assets/d145708c-56ba-4422-8a3b-020de3a94128
 
 <sub>[Download the MP4](../assets/videos/features/03-review-the-plan.mp4)</sub>
 
@@ -88,7 +88,7 @@ The video uses the demo shop, `uv run python bench/explore/app.py --bugs none --
 
 ## 4. Debug a run: pause, take over, answer its questions
 
-https://github.com/user-attachments/assets/f6df182b-0618-4ee7-9643-3c6e56b6fc37
+https://github.com/user-attachments/assets/7e7624e0-6564-493e-b92c-e8f886d10702
 
 <sub>[Download the MP4](../assets/videos/features/04-debug-and-take-over.mp4)</sub>
 
@@ -138,7 +138,7 @@ Recorded with the demo shop from `bench/explore` (`uv run python bench/explore/a
 
 ## 7. Browsers and browser options
 
-https://github.com/user-attachments/assets/a7e8a0a2-9a23-493e-8ad7-6c704603cce0
+https://github.com/user-attachments/assets/63865da2-d298-4f56-b455-d62077f61a27
 
 <sub>[Download the MP4](../assets/videos/features/07-browsers-and-options.mp4)</sub>
 
@@ -156,14 +156,14 @@ In the video, step 2 of the case opens a small local page that prints the browse
 
 ## 8. Test your web app on a phone
 
-https://github.com/user-attachments/assets/eb225d7f-d48f-4691-9c24-f8261eb37139
+https://github.com/user-attachments/assets/9ea17209-dcff-46c5-9414-2f48db8775b9
 
 <sub>[Download the MP4](../assets/videos/features/08-mobile-web.mp4)</sub>
 
 Give an environment a Playwright device profile such as `iPhone 15`, run any web case on it, and watch the phone-sized run live; every step keeps the phone's screenshot.
 
 1. Run `hercules serve`, then `hercules ui`, and open **Environments → New environment**.
-2. Name it `iphone`, keep **Web app (browser)**, set the base URL, and type `iPhone 15` under **Phone or tablet** (any Playwright device name: `Pixel 7`, `iPad Pro 11`, ...). Leave **Viewport** empty so the device's own screen size is used, then click **Save environment**.
+2. Name it `iphone`, keep **Web app (browser)**, set the base URL, and pick `iPhone 15` under **Phone or tablet** (any Playwright device: `Pixel 7`, `iPad Pro 11`, ...). Leave **Viewport** empty so the device's own screen size is used, then click **Save environment**.
 3. Open **Cases**, pick a case (nothing in it needs to be phone-specific), click **Run**, choose `iphone` under **Environment** and click **Start run**.
 4. Watch the live view: its header shows the phone's screen size (393 × 659 for an iPhone 15).
 5. When it passes, open a step and choose **Plain** to see its phone-sized screenshot.
@@ -174,7 +174,7 @@ In the video, the last step opens a small local page that prints the screen size
 
 ## 9. Export a passed run as code
 
-https://github.com/user-attachments/assets/7126f642-0a5d-4e6d-911e-df76f8999053
+https://github.com/user-attachments/assets/9ad1b60c-ce1c-46fb-8bfb-994a23ca3448
 
 <sub>[Download the MP4](../assets/videos/features/09-export-as-code.mp4)</sub>
 
@@ -196,7 +196,7 @@ See [Exporting runs as code](exporting-code.md).
 
 ## 10. Run a passed test on a cloud
 
-https://github.com/user-attachments/assets/96afd9c5-a826-4954-8fa1-97d258e0ed26
+https://github.com/user-attachments/assets/206c12eb-3813-43bb-a1fa-6e8348b436f3
 
 <sub>[Download the MP4](../assets/videos/features/10-run-on-a-cloud.mp4)</sub>
 
@@ -233,7 +233,7 @@ https://github.com/user-attachments/assets/6d1058e5-19e9-4e78-8015-56439c03d08e
 
 ## 12. Visual and accessibility checks
 
-https://github.com/user-attachments/assets/717953a1-3776-4f22-b544-2213330a15cd
+https://github.com/user-attachments/assets/b08b45ac-a464-4fd8-81ed-035ec64b6634
 
 <sub>[Download the MP4](../assets/videos/features/12-visual-and-accessibility.mp4)</sub>
 
@@ -264,7 +264,7 @@ https://github.com/user-attachments/assets/2be97d58-b856-4864-a9d4-fa3852c15778
 
 ## 14. Run Hercules in Docker
 
-https://github.com/user-attachments/assets/44741366-c566-41ba-bbe4-a4ae97d7bb87
+https://github.com/user-attachments/assets/75e6833f-03ea-438e-ab0f-0adf1e6ca4e2
 
 <sub>[Download the MP4](../assets/videos/features/14-docker.mp4)</sub>
 
@@ -284,9 +284,9 @@ Build the Hercules image, serve the tester UI from a container with your project
 3. Start the tester UI in a container, passing the key by name only:
 
    ```bash
-   docker run -d --name hercules --shm-size=1g -p 127.0.0.1:7414:7414 \
+   docker run -d --name hercules --shm-size=1g -p 127.0.0.1:7443:7443 \
      -v "$PWD:/work" -v hercules-home:/home/hercules/.hercules -e MODEL_API_KEY \
-     hercules serve --project /work --host 0.0.0.0 --port 7414 --allow-remote
+     hercules serve --project /work --host 0.0.0.0 --port 7443 --allow-remote
    ```
 
    (With the default port, `docker run ... -p 127.0.0.1:7373:7373 ... hercules` is enough.)
@@ -298,7 +298,7 @@ Recorded with the demo shop from `bench/explore` (`uv run python bench/explore/a
 
 ## 15. Test data and secrets
 
-https://github.com/user-attachments/assets/8172ad51-c451-4a79-a583-0eee266f36bb
+https://github.com/user-attachments/assets/82566aaa-b4f2-4aa2-8fd8-4af149a9b69f
 
 <sub>[Download the MP4](../assets/videos/features/15-test-data-and-secrets.mp4)</sub>
 
@@ -323,7 +323,7 @@ From the terminal: `SHOP_COUPON=PANTRY10 hercules run .hercules/cases/<case id>.
 
 ## 16. Upload and download files
 
-https://github.com/user-attachments/assets/1452f658-c2b9-4f20-80ab-27c7bda9db6d
+https://github.com/user-attachments/assets/b07f8a0a-46ce-433a-ae09-f2d33e13ee7c
 
 <sub>[Download the MP4](../assets/videos/features/16-upload-and-download-files.mp4)</sub>
 

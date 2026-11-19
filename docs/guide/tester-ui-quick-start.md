@@ -1,6 +1,6 @@
 # Quick start: the tester UI
 
-> **Watch it:** [From an empty project to a passing test (1:52)](videos.md#2-from-an-empty-project-to-a-passing-test).
+> **Watch it:** [From an empty project to a passing test (2:16)](videos.md#2-from-an-empty-project-to-a-passing-test).
 
 A few steps from an empty project to a test case that passes, all in the browser. Each
 step links to the full description.

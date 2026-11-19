@@ -1,6 +1,6 @@
 # Visual and accessibility checks
 
-> **Watch it:** [Visual and accessibility checks (1:28)](videos.md#12-visual-and-accessibility-checks).
+> **Watch it:** [Visual and accessibility checks (1:50)](videos.md#12-visual-and-accessibility-checks).
 
 Hercules can check more than whether a flow works: whether pages look right and whether
 they are accessible. These checks run on the same pages your test cases visit and report

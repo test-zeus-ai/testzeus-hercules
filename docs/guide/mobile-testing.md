@@ -1,6 +1,6 @@
 # Mobile testing
 
-> **Watch it:** [Test your web app on a phone (1:17)](videos.md#8-test-your-web-app-on-a-phone).
+> **Watch it:** [Test your web app on a phone (1:32)](videos.md#8-test-your-web-app-on-a-phone).
 
 Hercules tests mobile apps in three ways:
 

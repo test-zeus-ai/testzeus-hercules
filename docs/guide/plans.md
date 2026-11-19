@@ -1,6 +1,6 @@
 # Plans: what a run will do, checked before it starts
 
-> **Watch it:** [Review the plan before the run starts (1:35)](videos.md#3-review-the-plan-before-the-run-starts).
+> **Watch it:** [Review the plan before the run starts (1:57)](videos.md#3-review-the-plan-before-the-run-starts).
 
 Before the browser starts, Hercules turns your case into an explicit **plan**: for every
 step, the actions it will take, what the page should show once each action is done
