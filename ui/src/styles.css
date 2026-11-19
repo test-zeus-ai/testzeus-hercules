@@ -716,6 +716,8 @@ textarea:focus {
   }
 
   ::picker(select) {
+    position-try-order: normal;
+    max-block-size: 20rem;
     margin-top: 4px;
     padding: 4px;
     border: 1px solid var(--line-strong);
