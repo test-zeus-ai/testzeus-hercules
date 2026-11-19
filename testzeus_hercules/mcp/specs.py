@@ -391,8 +391,9 @@ TOOLS: list[dict[str, Any]] = [
                 },
                 "folders": {"type": "array", "items": {"type": "string"}},
                 "total": {"type": "integer", "description": "Cases that match, before the limit"},
+                "truncated": {"type": "boolean", "description": "The project has more matching cases than the listing holds; narrow it with folder or query"},
             },
-            "required": ["cases", "folders", "total"],
+            "required": ["cases", "folders", "total", "truncated"],
         },
         "annotations": {"readOnlyHint": True, "openWorldHint": False},
     },
@@ -486,9 +487,10 @@ TOOLS: list[dict[str, Any]] = [
         "name": "hercules_update_case",
         "title": "Update a case",
         "description": (
-            "Replace a saved case's content (by its path from hercules_list_cases). The new content is validated first and nothing is written when "
-            "it is not valid. It keeps the case's file: same kind (gherkin for a .feature, test_case for a .json) and same id (the scenario name "
-            "or id); to rename, create a new case and delete this one."
+            "Replace a saved case's content (by its path from hercules_list_cases), also to repair a case that does not load. The new content is "
+            "validated first and nothing is written when it is not valid. It is written to the same file: same kind (gherkin for a .feature, "
+            "test_case for a .json) and same id (the scenario name or id); to rename, create a new case and delete this one. A .feature keeps "
+            "its saved test data unless test_data is given ({} clears it)."
         ),
         "inputSchema": {
             "type": "object",

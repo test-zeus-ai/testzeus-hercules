@@ -662,6 +662,7 @@ PAY = 'Feature: Pay\n  Scenario: Pay by card\n    Given I open "/pay"\n    Then 
 def test_case_tools_create_read_update_and_delete_after_validating(daemon) -> None:  # type: ignore[no-untyped-def]
     config, _ = daemon
     (config.paths.envs_dir / "shop.json").write_text(json.dumps({"name": "shop", "base_url": "http://127.0.0.1:9", "variables": {"email": "a@b.c"}}), encoding="utf-8")
+    (config.paths.envs_dir / "broken-env.json").write_text(json.dumps({"name": "broken-env", "viewport": "huge"}), encoding="utf-8")
     (config.paths.cases_dir / "Checkout").mkdir()
     feature = config.paths.cases_dir / "Checkout" / "pay-by-card.feature"
 
@@ -671,6 +672,7 @@ def test_case_tools_create_read_update_and_delete_after_validating(daemon) -> No
             got["valid"] = await call(session, "hercules_validate_case", {"gherkin": "@env:shop\n" + PAY.replace('"Paid"', '"Paid {{email}}"')})
             got["no_steps"] = await call(session, "hercules_validate_case", {"gherkin": "Feature: Pay\n  Scenario: Nothing\n"})
             got["unknown_env"] = await call(session, "hercules_validate_case", {"gherkin": "@env:nowhere\n" + PAY})
+            got["invalid_env"] = await call(session, "hercules_validate_case", {"gherkin": "@env:broken-env\n" + PAY})
             got["unknown_value"] = await call(session, "hercules_validate_case", {"gherkin": PAY.replace('"Paid"', '"{{missing}}"')})
             got["both"] = await call(session, "hercules_validate_case", {"gherkin": PAY, "test_case": case_dict("fake-pass")})
             got["bad_create"] = await call(session, "hercules_create_case", {"gherkin": "@env:nowhere\n" + PAY, "folder": "Checkout"})
@@ -692,11 +694,9 @@ def test_case_tools_create_read_update_and_delete_after_validating(daemon) -> No
     valid = got["valid"].structuredContent
     assert valid["valid"] and valid["file"] == "pay-by-card.feature" and valid["environment"] == "shop" and valid["steps"] == 2, valid
     assert got["no_steps"].structuredContent["valid"] is False and "no steps" in got["no_steps"].structuredContent["error"]
-    assert (
-        got["unknown_env"].structuredContent["valid"] is False
-        and "unknown environment 'nowhere'" in got["unknown_env"].structuredContent["error"]
-        and "shop" in got["unknown_env"].structuredContent["error"]
-    )
+    assert got["unknown_env"].structuredContent["valid"] is False and "unknown environment 'nowhere'" in got["unknown_env"].structuredContent["error"]
+    invalid_env = got["invalid_env"].structuredContent["error"]
+    assert "broken-env" in invalid_env and "is not valid" in invalid_env and "unknown" not in invalid_env, "an environment that exists but does not load is not called unknown"
     assert got["unknown_value"].structuredContent["valid"] is False and "missing" in got["unknown_value"].structuredContent["error"]
     assert got["both"].isError and "exactly one of gherkin or test_case" in _text(got["both"])
 
@@ -717,3 +717,50 @@ def test_case_tools_create_read_update_and_delete_after_validating(daemon) -> No
     assert got["delete"].structuredContent == {"name": "Checkout/pay-by-card.feature", "removed": True}
     assert got["gone"].isError and "not found" in _text(got["gone"])
     assert not feature.exists()
+
+
+def test_update_writes_the_named_file_keeps_its_test_data_and_repairs_a_broken_case(daemon) -> None:  # type: ignore[no-untyped-def]
+    """A case whose file name is not its id is updated in place (no second file); a .feature keeps its test data when
+    test_data is not given; a case that does not load can be repaired; names with upper-case suffixes work."""
+    config, _ = daemon
+    cases = config.paths.cases_dir
+    (cases / "Checkout").mkdir()
+    named = cases / "Checkout" / "pay.feature"  # its id is pay-by-card
+    named.write_text(PAY.replace('"Paid"', '"Paid {{amount}}"'), encoding="utf-8")
+    (cases / "Checkout" / "pay.data.json").write_text(json.dumps({"test_data": {"amount": "12.50"}}), encoding="utf-8")
+    (cases / "broken.json").write_text("{not json", encoding="utf-8")
+    (cases / "Login.JSON").write_text(json.dumps(case_dict("fake-pass")), encoding="utf-8")
+
+    async def scenario() -> dict[str, Any]:
+        got: dict[str, Any] = {}
+        async with mcp_session(config.env, config.settings.project_dir) as session:
+            edited = PAY.replace('"Paid"', '"Paid {{amount}} now"')
+            got["update"] = await call(session, "hercules_update_case", {"name": "Checkout/pay.feature", "gherkin": edited})
+            got["repair"] = await call(session, "hercules_update_case", {"name": "broken.json", "test_case": {**case_dict("fake-pass"), "id": "repaired"}})
+            got["upper"] = await call(session, "hercules_get_case", {"name": ".hercules/cases/Login.JSON"})
+            got["taken"] = await call(session, "hercules_create_case", {"gherkin": PAY})
+        return got
+
+    got = asyncio.run(scenario())
+    assert got["update"].structuredContent["path"] == ".hercules/cases/Checkout/pay.feature", _text(got["update"])
+    assert sorted(path.name for path in (cases / "Checkout").iterdir()) == ["pay.data.json", "pay.feature"], "updated in place, no pay-by-card.feature beside it"
+    assert '"Paid {{amount}} now"' in named.read_text()
+    assert json.loads((cases / "Checkout" / "pay.data.json").read_text())["test_data"] == {"amount": "12.50"}, "the test data was kept"
+    assert got["repair"].structuredContent["path"] == ".hercules/cases/broken.json", _text(got["repair"])
+    assert json.loads((cases / "broken.json").read_text())["id"] == "repaired"
+    assert not got["upper"].isError and got["upper"].structuredContent["kind"] == "JSON", _text(got["upper"])
+    assert got["taken"].isError and "already in Checkout (pay.feature)" in _text(got["taken"]) and "hercules_update_case" in _text(got["taken"]), _text(got["taken"])
+
+
+def test_project_is_expanded_and_must_be_a_folder(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from testzeus_hercules.mcp import shim
+
+    seen: list[Path] = []
+    monkeypatch.setattr(shim.anyio, "run", lambda _serve, _env, project_dir: seen.append(project_dir))
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / "repo").mkdir()
+    assert shim.main(env={}, project_dir=Path("~/repo"), stdin=_Stream(tty=False), stderr=_Stream(tty=False)) == 0
+    assert seen == [tmp_path / "repo"], "~ is expanded (MCP clients pass args without a shell)"
+    err = _Stream(tty=False)
+    assert shim.main(env={}, project_dir=Path("~/no-such-repo"), stdin=_Stream(tty=False), stderr=err) == 2
+    assert "is not a folder" in err.getvalue() and str(tmp_path / "no-such-repo") in err.getvalue() and len(seen) == 1

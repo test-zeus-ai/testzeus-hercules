@@ -19,13 +19,13 @@ from typing import AbstractSet, Any, Literal
 
 from pydantic import ValidationError
 
-from testzeus_hercules.cases.gherkin import DATA_SUFFIX, MAX_DATA_BYTES, FeatureData, GherkinError, compile_feature, data_file, load_feature, slugify
+from testzeus_hercules.cases.gherkin import DATA_SUFFIX, MAX_DATA_BYTES, FeatureData, GherkinError, compile_feature, data_file, load_feature, read_feature_data, slugify
 from testzeus_hercules.cases.step_files import files_dir
 from testzeus_hercules.cases.models import BUILTIN_PLACEHOLDERS, EnvironmentRef, Step, TestCase, TestDataValue, placeholder_names_in
 from testzeus_hercules.daemon.models import Environment
 
 CASE_SUFFIXES = (".json", ".feature")
-_CASE_NAME = re.compile(r"^[a-z0-9][a-z0-9._-]{0,99}\.(json|feature)$")
+_CASE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}\.(?i:json|feature)$")
 _ENV_NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 _LIST_MARKER = re.compile(r"^\s*(?:[-*•]|\d+[.)])\s+")
 _MAX_FILE_BYTES = 2 * 1024 * 1024
@@ -38,6 +38,16 @@ class CaseError(ValueError):
 
 class CaseExists(CaseError):
     """Saving would overwrite an existing file."""
+
+
+class CaseIdTaken(CaseError):
+    """Another case file already has the id (ids are unique across folders and file types)."""
+
+    code = "case_id_taken"
+
+    def __init__(self, message: str, other: str) -> None:
+        super().__init__(message)
+        self.other = other
 
 
 def describe_validation(exc: ValidationError, prefix: str = "") -> str:
@@ -292,15 +302,37 @@ def _case_entry(project_dir: Path, folder: str, path: Path) -> dict[str, Any]:
 
 
 def list_cases(cases_dir: Path, project_dir: Path, folders: list[str] | None = None) -> list[dict[str, Any]]:
+    return find_cases(cases_dir, project_dir, folders=folders)[0]
+
+
+def _matches(entry: dict[str, Any], query: str) -> bool:
+    return not query or query in " ".join(str(entry.get(key) or "") for key in ("title", "id", "name", "path")).casefold()
+
+
+def find_cases(cases_dir: Path, project_dir: Path, *, folders: list[str] | None = None, under: str = "", query: str = "", limit: int | None = None) -> tuple[list[dict[str, Any]], bool]:
+    """The cases (all, or ``under`` one folder with its subfolders) whose title, id or path contains ``query``, at most
+    ``limit`` of them (default: the listing's cap); and whether there were more. Folder and query apply before the limit."""
+    limit = _MAX_LISTED if limit is None else limit
     found: list[dict[str, Any]] = []
     if not cases_dir.is_dir():
-        return found
-    for folder in ["", *(list_folders(cases_dir) if folders is None else folders)]:
+        return found, False
+    if under:
+        under = spelled_folder(cases_dir, under)
+        if not folder_dir(cases_dir, under).is_dir():
+            raise CaseError(f"there is no folder {under}")
+        scope = [under, *list_folders(cases_dir, under, limit=None)]
+    else:
+        scope = ["", *(list_folders(cases_dir) if folders is None else folders)]
+    wanted = query.strip().casefold()
+    for folder in scope:
         for path in _case_paths(cases_dir, folder):
-            if len(found) >= _MAX_LISTED:
-                return found
-            found.append(_case_entry(project_dir, folder, path))
-    return found
+            entry = _case_entry(project_dir, folder, path)
+            if not _matches(entry, wanted):
+                continue
+            if len(found) >= limit:
+                return found, True
+            found.append(entry)
+    return found, False
 
 
 def _case_ids(cases_dir: Path) -> set[str]:
@@ -314,12 +346,28 @@ def _case_ids(cases_dir: Path) -> set[str]:
 
 
 def _same_id(cases_dir: Path, case_id: str, path: Path) -> Path | None:
-    for folder in ["", *list_folders(cases_dir)]:
+    """Another case file with the id ``case_id``: one named after it first (quick), then any other whose content has it
+    (a file need not be named after its id, such as ``pay.feature`` holding ``Scenario: Pay by card``)."""
+
+    def other_than_path(other: Path) -> bool:
+        return not (path.exists() and os.path.samefile(other, path))
+
+    folders = ["", *list_folders(cases_dir)]
+    for folder in folders:
         directory = folder_dir(cases_dir, folder)
         for suffix in CASE_SUFFIXES:
             other = directory / f"{case_id}{suffix}"
-            if other.is_file() and not other.is_symlink() and not (path.exists() and os.path.samefile(other, path)):
+            if other.is_file() and not other.is_symlink() and other_than_path(other):
                 return other
+    for folder in folders:
+        for other in _case_paths(cases_dir, folder):
+            if other.stem.casefold() == case_id.casefold() or not other_than_path(other):
+                continue
+            try:
+                if load_case_file(other).id == case_id:
+                    return other
+            except CaseError:
+                continue
     return None
 
 
@@ -330,11 +378,56 @@ def read_saved_case(cases_dir: Path, name: str) -> tuple[Path, TestCase]:
     return path, load_case_file(path)
 
 
-def save_case(cases_dir: Path, *, test_case: TestCase | None, gherkin: str | None, overwrite: bool, test_data: dict[str, TestDataValue] | None = None, folder: str = "") -> tuple[Path, TestCase]:
-    folder = spelled_folder(cases_dir, folder)
-    directory = folder_dir(cases_dir, folder)
-    if folder and not directory.is_dir():
-        raise CaseError(f"there is no folder {folder}")
+def environment_problem(case: TestCase, envs_dir: Path) -> str | None:
+    """Why the environment the case names cannot be used, as a run would find (None when it can, or it names none)."""
+    name = case.environment.ref
+    if not name or case.environment.base_url is not None:
+        return None  # no environment, or the case's own base URL is used when the named one is missing (see apply_environment)
+    path = envs_dir / f"{name}.json"
+    if not _ENV_NAME.match(name) or path.is_symlink() or not path.is_file():
+        return f"unknown environment {name!r}: save it on the Environments screen (or POST /api/environments) first, or fix the @env tag"
+    try:
+        Environment.model_validate_json(path.read_bytes())
+    except ValidationError as exc:
+        return f"the environment {name!r} ({path.name}) is not valid: {describe_validation(exc)}"
+    except (OSError, ValueError) as exc:
+        return f"the environment {name!r} ({path.name}) cannot be read ({type(exc).__name__})"
+    return None
+
+
+def save_case(
+    cases_dir: Path,
+    *,
+    test_case: TestCase | None,
+    gherkin: str | None,
+    overwrite: bool,
+    test_data: dict[str, TestDataValue] | None = None,
+    folder: str = "",
+    replace: str | None = None,
+    envs_dir: Path | None = None,
+) -> tuple[Path, TestCase]:
+    """Save a case as ``<id>.feature`` or ``<id>.json`` in ``folder``; or, with ``replace``, write it to that saved case's
+    file (same kind and id; a ``.feature`` keeps its test data unless ``test_data`` is given). With ``envs_dir``, the
+    environment the case names must exist. Nothing is written when the case is not valid."""
+    replacing: Path | None = None
+    if replace is not None:
+        replacing = case_file(cases_dir, replace)
+        if replacing.is_symlink() or not replacing.is_file() or is_feature_data(replacing):
+            raise FileNotFoundError(replace)
+        kind = "gherkin" if replacing.suffix.lower() == ".feature" else "test_case"
+        if (gherkin if kind == "gherkin" else test_case) is None:
+            raise CaseError(f"{replace} is a {replacing.suffix} case: give its new content as {kind}")
+        directory = replacing.parent
+        if gherkin is not None and test_data is None:
+            try:
+                test_data = read_feature_data(replacing)
+            except GherkinError:
+                test_data = None  # an unreadable data file is replaced by what the new content needs
+    else:
+        folder = spelled_folder(cases_dir, folder)
+        directory = folder_dir(cases_dir, folder)
+        if folder and not directory.is_dir():
+            raise CaseError(f"there is no folder {folder}")
     cases_dir.mkdir(parents=True, exist_ok=True)
     sidecar: str | None = None
     if gherkin is not None:
@@ -347,10 +440,25 @@ def save_case(cases_dir: Path, *, test_case: TestCase | None, gherkin: str | Non
         assert test_case is not None
         case = test_case
         path, data = directory / f"{case.id}.json", case.model_dump_json(indent=2, exclude_none=True) + "\n"
+    if replacing is not None:
+        try:
+            old_id: str | None = load_case_file(replacing).id
+        except CaseError:
+            old_id = None  # a case that does not load (yet) can be repaired
+        if old_id is not None and case.id != old_id:
+            raise CaseError(f"the case id would change from {old_id!r} to {case.id!r} (the scenario name or id); keep it, or save a new case and delete this one")
+        path, overwrite = replacing, True
+    if envs_dir is not None:
+        problem = environment_problem(case, envs_dir)
+        if problem is not None:
+            raise CaseError(problem)
     other = _same_id(cases_dir, case.id, path)
     if other is not None:
         where = _folder_name(cases_dir, other.parent) or "the top level"
-        raise CaseError(f"a case with the id {case.id} is already in {where} ({other.name}): case ids are unique across folders and file types, so give this one another id or open that one")
+        raise CaseIdTaken(
+            f"a case with the id {case.id} is already in {where} ({other.name}): case ids are unique across folders and file types, so give this one another id or open that one",
+            other=case_name(cases_dir, other),
+        )
     _write_new(path, data, overwrite)
     if gherkin is not None:
         _save_feature_data(path, sidecar)

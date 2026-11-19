@@ -272,6 +272,10 @@ class CaseSave(_Body):
     test_data: dict[DataKey, TestDataValue] | None = Field(default=None, description="Test data of the Gherkin (a saved .feature keeps it in <name>.data.json)")
     overwrite: bool = False
     folder: FolderPath = Field(default="", description="The folder to save into, such as Checkout/Payments (empty: the top level); it must exist")
+    replace: Annotated[str, StringConstraints(min_length=1, max_length=900)] | None = Field(
+        default=None,
+        description="Replace this saved case's file (its name, such as Checkout/pay.feature) instead of saving <id>.<ext>: same kind and id; a .feature keeps its test data unless test_data is given",
+    )
 
     @model_validator(mode="after")
     def _one_source(self) -> CaseSave:

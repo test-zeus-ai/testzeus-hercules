@@ -46,7 +46,13 @@ def test_folders_hold_cases_and_the_listing_names_them_by_path(config) -> None: 
     assert top.status_code == 201 and top.json() == {"folder": "Checkout"}
     assert nested.json() == {"folder": "Checkout/Payments"}
     assert saved.status_code == 201
-    assert saved.json() == {"name": "Checkout/Payments/shopper-pays-by-card.feature", "path": ".hercules/cases/Checkout/Payments/shopper-pays-by-card.feature", "id": "shopper-pays-by-card"}
+    assert saved.json() == {
+        "name": "Checkout/Payments/shopper-pays-by-card.feature",
+        "path": ".hercules/cases/Checkout/Payments/shopper-pays-by-card.feature",
+        "id": "shopper-pays-by-card",
+        "title": "Shopper pays by card",
+        "steps": 3,
+    }
     assert (_cases_dir(config) / "Checkout" / "Payments" / "shopper-pays-by-card.data.json").is_file()
     assert loose.json()["name"] == "demo-login.json"
     assert listing["folders"] == ["Checkout", "Checkout/Payments"]
@@ -217,7 +223,7 @@ def test_deleting_a_folder_with_its_cases_removes_their_data_and_files(config) -
     assert uploaded.status_code == 200 and uploaded.json()["case"] == "demo-login"
     assert refused.status_code == 422 and "notes.txt" in refused.text
     assert deleted.json() == {"folder": "Old", "mode": "delete_cases", "moved": 0, "deleted": 2}
-    assert listing == {"cases": [], "folders": []}
+    assert listing == {"cases": [], "folders": [], "truncated": False}
     assert not (project / ".hercules" / "case-files" / "demo-login").exists()
     assert bad_mode.status_code == 422
 
@@ -491,3 +497,67 @@ def test_deleting_cases_refuses_hidden_files_that_are_not_cases(config) -> None:
 
     assert refused.status_code == 422 and ".notes" in refused.text
     assert deleted.status_code == 200 and deleted.json()["deleted"] == 1 and not (cases_dir / "Old").exists()
+
+
+# --------------------------------------------------------------------------- replacing a case, and the checks on saving
+
+
+def test_replace_writes_the_named_file_keeps_its_test_data_and_checks_kind_and_id(config) -> None:  # type: ignore[no-untyped-def]
+    cases = _cases_dir(config)
+    named = cases / "pay.feature"  # named apart from its id, shopper-pays-by-card
+    named.write_text(FEATURE.replace('"Paid"', '"Paid {{card}}"'), encoding="utf-8")
+    (cases / "pay.data.json").write_text(json.dumps({"test_data": {"card": "4242"}}), encoding="utf-8")
+    (cases / "broken.json").write_text("{not json", encoding="utf-8")
+    with client_for(config) as client:
+        kept = client.post("/api/cases", json={"gherkin": FEATURE.replace('"Paid"', '"Paid with {{card}}"'), "replace": "pay.feature"})
+        cleared = client.post("/api/cases", json={"gherkin": FEATURE, "test_data": {}, "replace": "pay.feature"})
+        wrong_kind = client.post("/api/cases", json={"test_case": case_dict(), "replace": "pay.feature"})
+        new_id = client.post("/api/cases", json={"gherkin": FEATURE.replace("Shopper pays by card", "Shopper pays cash"), "replace": "pay.feature"})
+        repaired = client.post("/api/cases", json={"test_case": case_dict(case_id="repaired"), "replace": "broken.json"})
+        missing = client.post("/api/cases", json={"gherkin": FEATURE, "replace": "nope.feature"})
+        duplicate = client.post("/api/cases", json={"gherkin": FEATURE})
+    assert kept.status_code == 200 and kept.json()["path"] == ".hercules/cases/pay.feature", kept.text
+    assert sorted(path.name for path in cases.iterdir() if path.is_file()) == ["broken.json", "pay.feature"]
+    assert cleared.status_code == 200 and not (cases / "pay.data.json").exists(), "test_data {} clears the kept data"
+    assert wrong_kind.status_code == 422 and "give its new content as gherkin" in wrong_kind.json()["error"]
+    assert new_id.status_code == 422 and "id would change" in new_id.json()["error"]
+    assert repaired.status_code == 200 and json.loads((cases / "broken.json").read_text())["id"] == "repaired"
+    assert missing.status_code == 404
+    assert duplicate.status_code == 422 and duplicate.json()["detail"] == {"code": "case_id_taken", "case": "pay.feature"}, "an id held by a file named otherwise is found"
+
+
+def test_saving_checks_the_environment_the_case_names(config) -> None:  # type: ignore[no-untyped-def]
+    envs = config.settings.project_dir / ".hercules" / "envs"
+    (envs / "shop.json").write_text(json.dumps({"name": "shop", "base_url": "http://127.0.0.1:9"}), encoding="utf-8")
+    (envs / "bad.json").write_text(json.dumps({"name": "bad", "viewport": "huge"}), encoding="utf-8")
+    with client_for(config) as client:
+        known = client.post("/api/cases", json={"gherkin": "@env:shop\n" + FEATURE})
+        unknown = client.post("/api/cases", json={"gherkin": "@env:nowhere\n" + FEATURE.replace("by card", "by cheque")})
+        invalid = client.post("/api/cases", json={"gherkin": "@env:bad\n" + FEATURE.replace("by card", "by voucher")})
+        own_url = client.post("/api/cases", json={"test_case": {**case_dict(case_id="own-url"), "environment": {"ref": "nowhere", "base_url": "http://127.0.0.1:9"}}})
+        checked = client.post("/api/cases/validate", json={"gherkin": "@env:nowhere\n" + FEATURE})
+    assert known.status_code == 201
+    assert unknown.status_code == 422 and "unknown environment 'nowhere'" in unknown.json()["error"]
+    assert invalid.status_code == 422 and "the environment 'bad' (bad.json) is not valid" in invalid.json()["error"]
+    assert own_url.status_code == 201, "a case with its own base URL runs without the named environment"
+    assert checked.json()["valid"] is False and "unknown environment 'nowhere'" in checked.json()["error"]
+
+
+def test_the_listing_filters_by_folder_and_words_before_its_cap(config, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
+    cases = _cases_dir(config)
+    for number in range(4):
+        (cases / f"top-{number}.json").write_text(json.dumps(case_dict(case_id=f"top-{number}")), encoding="utf-8")
+    (cases / "Late").mkdir()
+    (cases / "Late" / "Login.JSON").write_text(json.dumps(case_dict(case_id="late-login")), encoding="utf-8")
+    monkeypatch.setattr(case_files, "_MAX_LISTED", 3)
+    with client_for(config) as client:
+        capped = client.get("/api/cases").json()
+        folder = client.get("/api/cases", params={"folder": "late"}).json()
+        words = client.get("/api/cases", params={"query": "LATE-LOGIN"}).json()
+        nowhere = client.get("/api/cases", params={"folder": "Nowhere"})
+        upper = client.get("/api/cases/Late/Login.JSON")
+    assert len(capped["cases"]) == 3 and capped["truncated"] is True
+    assert [case["path"] for case in folder["cases"]] == [".hercules/cases/Late/Login.JSON"] and folder["truncated"] is False, "past the cap of the whole listing, found in its folder"
+    assert [case["id"] for case in words["cases"]] == ["late-login"]
+    assert nowhere.status_code == 404
+    assert upper.status_code == 200 and upper.json()["test_case"]["id"] == "late-login", "upper-case suffixes are case names too"
