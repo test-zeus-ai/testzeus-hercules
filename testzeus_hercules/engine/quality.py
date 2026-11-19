@@ -420,7 +420,9 @@ class QualitySession:
         from testzeus_hercules.quality.annotate import annotate
 
         try:
-            png = await page.screenshot(type="png", animations="disabled", caret="hide", scale="css")
+            from testzeus_hercules.perceive.screen_guard import capture
+
+            png = await capture(page, type="png", animations="disabled", caret="hide")
         except Exception as exc:  # evidence is best effort
             logger.info("no annotated screenshot: %s", exc)
             return None

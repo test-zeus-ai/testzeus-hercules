@@ -316,6 +316,11 @@ variable instead:
 - If the variable is not set, the step fails with an error that names the variable.
 - Secret values never reach the model, and they are replaced with `******` in
   observations, decision records and `run.json`.
+- Screenshots cover them too: before a step screenshot is saved or sent to a model, every
+  field whose value holds a secret, every piece of page text that shows one, and every
+  filled field that looks secret (a one-time code, a card number, a secret-like name) is
+  painted over, in every frame of the page and in popups. A browser video
+  (`record_video`) is recorded by the browser itself and is not covered.
 
 A login link that carries a session id or token (a "front door" URL, a magic link) is a
 secret too. Keep the token in a secret and build the address from it:

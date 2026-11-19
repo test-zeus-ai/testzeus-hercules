@@ -103,6 +103,7 @@ from testzeus_hercules.engine.step_graph import StepDeps, StepLimits, StepOutcom
 from testzeus_hercules.engine.verify import LedgerEntry
 from testzeus_hercules.kernel.run_context import CancelToken, RunCancelledError, RunContext
 from testzeus_hercules.mobile.session import MobileSession, MobileSetupError
+from testzeus_hercules.perceive.screen_guard import guard_secrets
 
 T = TypeVar("T")
 logger = logging.getLogger(__name__)
@@ -686,6 +687,8 @@ class _Run:
             return f"the browser could not start ({type(exc).__name__}): {_first_line(exc)}. {_install_hint(case.environment.browser)}"
         # So a supervisor can stop this browser if the worker dies (Playwright starts it in its own process group).
         await record_browser(page, run_dir)
+        # Screenshots of this browser (evidence, model images, quality captures) cover the run's secret values.
+        guard_secrets(page, self.data.secret_values)
         self.page = page
         if self.page_log is None:
             self.page_log = PageLog(self.evidence.run_dir, self.data.redact)

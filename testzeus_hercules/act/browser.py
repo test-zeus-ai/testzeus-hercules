@@ -1357,7 +1357,9 @@ async def scroll(page: Page, *, pixels: int) -> ActionResult:
 
 async def screenshot_jpeg(page: Page) -> bytes | None:
     try:
-        return await page.screenshot(type="jpeg", quality=70)
+        from testzeus_hercules.perceive.screen_guard import capture
+
+        return await capture(page, type="jpeg", quality=70)
     except PlaywrightError:
         return None
 

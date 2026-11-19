@@ -18,6 +18,7 @@ from PIL import Image
 
 from testzeus_hercules.perceive.model import BBox, Element, ElementPath, Snapshot
 from testzeus_hercules.perceive.painter import Mark, downscale, encode_jpeg, paint_marks
+from testzeus_hercules.perceive.screen_guard import Box, cover_secrets, paint_boxes, secret_boxes
 
 if TYPE_CHECKING:
     from playwright.async_api import Frame, Locator, Page
@@ -408,8 +409,9 @@ def _split_sections(sections: list[tuple[str, float, float]], height: int) -> tu
     return tuple(above[-MAX_SECTIONS:]), tuple(below[:MAX_SECTIONS])
 
 
-def _render(raw: bytes, marks: list[Mark], viewport: tuple[int, int]) -> tuple[bytes, Any]:
-    plain = downscale(Image.open(io.BytesIO(raw)).convert("RGB"))
+def _render(raw: bytes, marks: list[Mark], viewport: tuple[int, int], covered: Sequence[Box] = ()) -> tuple[bytes, Any]:
+    image = Image.open(io.BytesIO(raw)).convert("RGB")
+    plain = downscale(paint_boxes(image, covered) if covered else image)
     plain_jpeg = encode_jpeg(plain)
     return plain_jpeg, paint_marks(plain.copy(), marks, viewport=viewport)
 
@@ -432,7 +434,7 @@ async def take_snapshot(page: "Page", *, seq: int, focus_terms: Sequence[str] = 
         title = await page.title()
     except PerceptionError as exc:
         # The page could not be read: keep what it looked like for the evidence.
-        exc.screenshot = await _screenshot_of(shot)
+        exc.screenshot = await _covered(page, await _screenshot_of(shot))
         exc.title = await _title_of(page)
         raise
     except BaseException:
@@ -442,12 +444,14 @@ async def take_snapshot(page: "Page", *, seq: int, focus_terms: Sequence[str] = 
     if collected.retried:
         # The read waited for the page again: the first screenshot may show it before that, so the marks could drift.
         raw = await _screenshot(page)
+    # Secret values on screen are covered before the image is kept or sent (see perceive.screen_guard).
+    covered = await secret_boxes(page) or ()
     terms = tuple(t for t in focus_terms if t)
     viewport = collected.viewport
     # Only offered elements get a mark: nothing behind an open modal dialog (unless the modal holds nothing that can be read).
     offered = [e for e in collected.elements if not e.blocked] or collected.elements
     marks = [Mark(md=e.md, bbox=e.bbox, tier=e.tier, must=_is_focus(e.name, terms)) for e in offered if e.in_viewport and e.bbox is not None]
-    plain_jpeg, paint = await asyncio.to_thread(_render, raw, marks, viewport)
+    plain_jpeg, paint = await asyncio.to_thread(_render, raw, marks, viewport, covered)
     above, below = _split_sections(collected.sections, viewport[1])
     return Snapshot(
         seq=seq,
@@ -473,6 +477,17 @@ async def take_snapshot(page: "Page", *, seq: int, focus_terms: Sequence[str] = 
 
 async def _screenshot(page: "Page") -> bytes:
     return await page.screenshot(type="jpeg", quality=_SCREENSHOT_QUALITY, scale="css", caret="initial")
+
+
+async def _covered(page: "Page", shot: bytes | None) -> bytes | None:
+    """``shot`` with the secrets on screen covered (see perceive.screen_guard)."""
+    if not shot:
+        return shot
+    try:
+        boxes = await secret_boxes(page)
+    except Exception:
+        boxes = [(0.0, 0.0, float("inf"), float("inf"))]
+    return cover_secrets(shot, boxes, quality=_SCREENSHOT_QUALITY)
 
 
 async def _screenshot_of(shot: "asyncio.Future[bytes]") -> bytes | None:

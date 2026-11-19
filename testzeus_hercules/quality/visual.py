@@ -134,7 +134,9 @@ async def _mask_rects(page: "Page", specs: Sequence[ElementSpec], snapshot: Snap
 
 
 async def _screenshot(page: "Page", full_page: bool) -> bytes:
-    return await page.screenshot(type="png", full_page=full_page, animations="disabled", caret="hide", scale="css")
+    from testzeus_hercules.perceive.screen_guard import capture
+
+    return await capture(page, type="png", full_page=full_page, animations="disabled", caret="hide")
 
 
 async def _key_element(page: "Page", spec: ElementSpec, snapshot: Snapshot | None) -> KeyElement:
