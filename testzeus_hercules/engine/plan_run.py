@@ -40,7 +40,8 @@ PLAN_FILE = "plan.json"
 EDITED_PLAN_FILE = "plan.edited.json"
 # A step's outcome checks as the ledger names them, per criterion check form.
 _LEDGER_CHECKS = {
-    "text_visible": ("text_contains",),
+    # A step's 'the "Name" field contains "x"' is planned as page text and checked on the field itself (verify.field_check).
+    "text_visible": ("text_contains", "field_contains", "field_equals"),
     "text_absent": ("text_absent",),
     "url_matches": ("url_contains", "url_equals"),
     "element_state": ("visible",),

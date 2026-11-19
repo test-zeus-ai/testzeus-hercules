@@ -166,7 +166,7 @@ def _scan(args: argparse.Namespace, env: Mapping[str, str], paths: HerculesPaths
     import asyncio
 
     from testzeus_hercules.act.files import PathConfinementError
-    from testzeus_hercules.scan.install import ScannerMissing
+    from testzeus_hercules.scan.install import ScannerMissing, find_nuclei
     from testzeus_hercules.scan.runner import ScanRequest, render_summary, scan
     from testzeus_hercules.scan.scope import ScopeError
 
@@ -190,11 +190,15 @@ def _scan(args: argparse.Namespace, env: Mapping[str, str], paths: HerculesPaths
     paths.ensure_dirs()
     out_dir = paths.project_hercules_dir / "scans" / datetime.now(timezone.utc).strftime("s_%Y%m%d_%H%M%S_%f")
     hercules = paths.project_hercules_dir
-    if not args.json:
+    try:
+        binary: Path | None = find_nuclei(env, paths.cache_dir)
+    except ScannerMissing:
+        binary = None  # scan() still checks the target's scope first, then reports the missing scanner
+    if not args.json and binary is not None:
         err.write(f"scanning (tags: {', '.join(request.effective_tags())}; this can take minutes) ...\n")
         err.flush()
     try:
-        result = asyncio.run(scan(request, roots=(hercules / "specs", hercules, paths.project_dir), out_dir=out_dir, env=env, cache_dir=paths.cache_dir))
+        result = asyncio.run(scan(request, roots=(hercules / "specs", hercules, paths.project_dir), out_dir=out_dir, env=env, cache_dir=paths.cache_dir, binary=binary))
     except (ScopeError, PathConfinementError) as exc:
         err.write(f"hercules scan: refused: {exc}\n")
         return EXIT_ERROR

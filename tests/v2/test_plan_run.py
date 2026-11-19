@@ -380,3 +380,23 @@ def test_steps_read_from_a_case_without_a_plan_still_run(tmp_path: Path) -> None
     plan = _plan(h)
     assert [step["read"] for step in plan["steps"]] == ["page", "page", "page"]
     assert {finding["code"] for finding in plan["lint"]} == {"other"}
+
+
+def test_a_criterion_checked_on_the_field_itself_takes_the_field_checks_result(tmp_path: Path) -> None:
+    """The plan reads 'the "Greeting" field contains "Welcome"' as page text; the run checks the field (a field_* ledger
+    entry). The criterion takes that result instead of being reported as not run."""
+    from testzeus_hercules.engine.plan_run import PlanRun
+    from testzeus_hercules.engine.verify import LedgerEntry
+
+    h = _harness(tmp_path, actions=FakeActions(text="Welcome, alice"))
+    h.run(case(Step(action="Open /login"), Step(action='click "Sign in"'), Step(action="verify", expected='I should see "Welcome"')))
+    run = object.__new__(PlanRun)
+    run.plan = Plan.model_validate(_plan(h))
+    run.redact = lambda text: text
+    run.resolve = lambda text: text
+
+    held = LedgerEntry(step=3, check="field_contains", expected="Welcome", actual='the "Greeting" field holds "Welcome"', verdict="passed")
+    wrong = LedgerEntry(step=3, check="field_equals", expected="Welcome", actual='the "Greeting" field holds "Hello"', verdict="failed")
+
+    assert [(r.criterion, r.status, r.actual) for r in run.outcome_results(3, [held])] == [("3.1.c1", "passed", 'the "Greeting" field holds "Welcome"')]
+    assert [(r.status, r.actual) for r in run.outcome_results(3, [wrong])] == [("failed", 'the "Greeting" field holds "Hello"')]

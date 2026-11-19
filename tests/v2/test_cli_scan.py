@@ -102,6 +102,15 @@ def test_usage_problems_exit_2(project: Path, fake: FakeNuclei) -> None:
     assert fake.scans() == []
 
 
+def test_scanning_is_announced_only_when_the_scanner_is_there(project: Path, fake: FakeNuclei) -> None:
+    code, _, err = _scan(project, _env(project), "--base-url", "http://127.0.0.1:8000")
+    assert code == 2 and "brew install nuclei" in err and "scanning (tags" not in err, "no 'this can take minutes' before saying nuclei is missing"
+    code, _, err = _scan(project, _env(project), "--base-url", "http://127.0.0.1:8000", "--path", "https://elsewhere.example.com/")
+    assert code == 2 and "refused" in err and "brew install nuclei" not in err, "a target out of scope is still refused first"
+    code, _, err = _scan(project, _env(project, fake), "--base-url", "http://127.0.0.1:8000")
+    assert code == 0 and "scanning (tags: cve, exposure, misconfig; this can take minutes) ..." in err
+
+
 def test_install_downloads_the_pinned_release_into_the_cache(project: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[Path] = []
 
