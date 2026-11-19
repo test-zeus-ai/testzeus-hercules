@@ -35,6 +35,12 @@ TOOLS = {
     "hercules_approve",
     "hercules_rerun",
     "hercules_list_runs",
+    "hercules_list_cases",
+    "hercules_get_case",
+    "hercules_validate_case",
+    "hercules_create_case",
+    "hercules_update_case",
+    "hercules_delete_case",
     "hercules_get_evidence",
     "hercules_check_env",
     "hercules_quality_report",
@@ -601,3 +607,113 @@ def test_started_by_an_mcp_client_it_prints_nothing(monkeypatch: pytest.MonkeyPa
     err = _Stream(tty=False)
     assert shim.main(env={}, stdin=_Stream(tty=False), stderr=err) == 0
     assert err.getvalue() == ""
+
+
+def test_project_names_the_project_wherever_the_client_starts_the_server(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Claude Desktop starts MCP servers in / and ignores a cwd: --project names the project instead."""
+    from testzeus_hercules.cli.main import main as cli_main
+    from testzeus_hercules.mcp import shim
+
+    seen: list[Path] = []
+    monkeypatch.setattr(shim.anyio, "run", lambda _serve, _env, project_dir: seen.append(project_dir))
+    monkeypatch.setattr(shim.sys, "stdin", _Stream(tty=False))
+    monkeypatch.chdir("/")
+    project = tmp_path / "app"
+    project.mkdir()
+    assert cli_main(["mcp", "--project", str(project)], env={"HERCULES_TELEMETRY": "0", "HERCULES_HOME": str(tmp_path / "home")}) == 0
+    assert cli_main(["mcp"], env={"HERCULES_TELEMETRY": "0", "HERCULES_HOME": str(tmp_path / "home")}) == 0
+    assert seen == [project, Path("/")]
+
+
+def test_list_cases_gives_each_case_path_to_run_filtered_by_folder_and_words(daemon) -> None:  # type: ignore[no-untyped-def]
+    config, _ = daemon
+    cases = config.paths.cases_dir
+    (cases / "Checkout").mkdir()
+    (cases / "Checkout" / "pay-by-card.feature").write_text('Feature: Pay\n  Scenario: Pay by card\n    Given I open "/pay"\n    Then I should see "Paid"\n', encoding="utf-8")
+    (cases / "sign-in.json").write_text(json.dumps(case_dict("fake-pass")), encoding="utf-8")
+    (cases / "broken.json").write_text("{not json", encoding="utf-8")
+
+    async def scenario() -> tuple[Any, Any, Any]:
+        async with mcp_session(config.env, config.settings.project_dir) as session:
+            return (
+                await call(session, "hercules_list_cases", {}),
+                await call(session, "hercules_list_cases", {"folder": "checkout"}),
+                await call(session, "hercules_list_cases", {"query": "PAY", "limit": 1}),
+            )
+
+    every, folder, words = asyncio.run(scenario())
+    assert not every.isError, _text(every)
+    listed = {case["path"]: case for case in every.structuredContent["cases"]}
+    assert set(listed) == {".hercules/cases/Checkout/pay-by-card.feature", ".hercules/cases/sign-in.json", ".hercules/cases/broken.json"}
+    assert (
+        listed[".hercules/cases/Checkout/pay-by-card.feature"] | {"title": "Pay by card", "folder": "Checkout", "kind": "feature", "valid": True, "steps": 2}
+        == listed[".hercules/cases/Checkout/pay-by-card.feature"]
+    )
+    assert listed[".hercules/cases/broken.json"]["valid"] is False and listed[".hercules/cases/broken.json"]["error"]
+    assert every.structuredContent["folders"] == ["Checkout"] and every.structuredContent["total"] == 3
+    assert "run one with hercules_run case_path=<path>" in _text(every) and "- [Checkout] Pay by card: .hercules/cases/Checkout/pay-by-card.feature (2 steps)" in _text(every)
+    assert [case["path"] for case in folder.structuredContent["cases"]] == [".hercules/cases/Checkout/pay-by-card.feature"]
+    assert words.structuredContent["total"] == 1 and len(words.structuredContent["cases"]) == 1
+
+
+PAY = 'Feature: Pay\n  Scenario: Pay by card\n    Given I open "/pay"\n    Then I should see "Paid"\n'
+
+
+def test_case_tools_create_read_update_and_delete_after_validating(daemon) -> None:  # type: ignore[no-untyped-def]
+    config, _ = daemon
+    (config.paths.envs_dir / "shop.json").write_text(json.dumps({"name": "shop", "base_url": "http://127.0.0.1:9", "variables": {"email": "a@b.c"}}), encoding="utf-8")
+    (config.paths.cases_dir / "Checkout").mkdir()
+    feature = config.paths.cases_dir / "Checkout" / "pay-by-card.feature"
+
+    async def scenario() -> dict[str, Any]:
+        got: dict[str, Any] = {}
+        async with mcp_session(config.env, config.settings.project_dir) as session:
+            got["valid"] = await call(session, "hercules_validate_case", {"gherkin": "@env:shop\n" + PAY.replace('"Paid"', '"Paid {{email}}"')})
+            got["no_steps"] = await call(session, "hercules_validate_case", {"gherkin": "Feature: Pay\n  Scenario: Nothing\n"})
+            got["unknown_env"] = await call(session, "hercules_validate_case", {"gherkin": "@env:nowhere\n" + PAY})
+            got["unknown_value"] = await call(session, "hercules_validate_case", {"gherkin": PAY.replace('"Paid"', '"{{missing}}"')})
+            got["both"] = await call(session, "hercules_validate_case", {"gherkin": PAY, "test_case": case_dict("fake-pass")})
+            got["bad_create"] = await call(session, "hercules_create_case", {"gherkin": "@env:nowhere\n" + PAY, "folder": "Checkout"})
+            got["create"] = await call(session, "hercules_create_case", {"gherkin": PAY, "folder": "Checkout"})
+            got["again"] = await call(session, "hercules_create_case", {"gherkin": PAY})
+            got["get"] = await call(session, "hercules_get_case", {"name": ".hercules/cases/Checkout/pay-by-card.feature"})
+            got["get_short"] = await call(session, "hercules_get_case", {"name": "Checkout/pay-by-card.feature"})
+            updated = PAY.replace('Then I should see "Paid"', 'Then I should see "Paid"\n    And I should see "Receipt"')
+            got["bad_update"] = await call(session, "hercules_update_case", {"name": "Checkout/pay-by-card.feature", "gherkin": PAY.replace('"Paid"', '"{{missing}}"')})
+            got["renamed"] = await call(session, "hercules_update_case", {"name": "Checkout/pay-by-card.feature", "gherkin": PAY.replace("Pay by card", "Pay by cash")})
+            got["kind"] = await call(session, "hercules_update_case", {"name": "Checkout/pay-by-card.feature", "test_case": case_dict("fake-pass")})
+            got["update"] = await call(session, "hercules_update_case", {"name": "Checkout/pay-by-card.feature", "gherkin": updated})
+            got["outside"] = await call(session, "hercules_get_case", {"name": "../../secrets.json"})
+            got["delete"] = await call(session, "hercules_delete_case", {"name": ".hercules/cases/Checkout/pay-by-card.feature"})
+            got["gone"] = await call(session, "hercules_get_case", {"name": "Checkout/pay-by-card.feature"})
+        return got
+
+    got = asyncio.run(scenario())
+    valid = got["valid"].structuredContent
+    assert valid["valid"] and valid["file"] == "pay-by-card.feature" and valid["environment"] == "shop" and valid["steps"] == 2, valid
+    assert got["no_steps"].structuredContent["valid"] is False and "no steps" in got["no_steps"].structuredContent["error"]
+    assert (
+        got["unknown_env"].structuredContent["valid"] is False
+        and "unknown environment 'nowhere'" in got["unknown_env"].structuredContent["error"]
+        and "shop" in got["unknown_env"].structuredContent["error"]
+    )
+    assert got["unknown_value"].structuredContent["valid"] is False and "missing" in got["unknown_value"].structuredContent["error"]
+    assert got["both"].isError and "exactly one of gherkin or test_case" in _text(got["both"])
+
+    assert got["bad_create"].isError and "nothing was saved" in _text(got["bad_create"])
+    assert got["create"].structuredContent == {"name": "Checkout/pay-by-card.feature", "path": ".hercules/cases/Checkout/pay-by-card.feature", "id": "pay-by-card"}
+    assert got["again"].isError and "hercules_update_case" in _text(got["again"])
+
+    for key in ("get", "get_short"):
+        view = got[key].structuredContent
+        assert view["path"] == ".hercules/cases/Checkout/pay-by-card.feature" and view["kind"] == "feature" and view["source"] == PAY and view["test_case"]["id"] == "pay-by-card"
+
+    assert got["bad_update"].isError and "left as it was" in _text(got["bad_update"])
+    assert got["renamed"].isError and "id would change" in _text(got["renamed"])
+    assert got["kind"].isError and "give its new content as gherkin" in _text(got["kind"])
+    assert not got["update"].isError, _text(got["update"])
+    assert got["outside"].isError and "hercules_list_cases" in _text(got["outside"])
+
+    assert got["delete"].structuredContent == {"name": "Checkout/pay-by-card.feature", "removed": True}
+    assert got["gone"].isError and "not found" in _text(got["gone"])
+    assert not feature.exists()

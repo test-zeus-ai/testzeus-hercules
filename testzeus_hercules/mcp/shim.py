@@ -140,10 +140,10 @@ def running_notice(project_dir: Path) -> str:
     )
 
 
-def main(env: Mapping[str, str] | None = None, *, stdin: TextIO | None = None, stderr: TextIO | None = None) -> int:
+def main(env: Mapping[str, str] | None = None, *, project_dir: Path | None = None, stdin: TextIO | None = None, stderr: TextIO | None = None) -> int:
     """Entry point of ``hercules mcp``. Started by hand in a terminal, it says on stderr that it is running (stdout carries
     only the protocol); started by an MCP client, whose stdin is a pipe, it prints nothing."""
-    project_dir = Path.cwd()
+    project_dir = Path(os.path.abspath(project_dir)) if project_dir is not None else Path.cwd()
     interactive = (stdin or sys.stdin).isatty()
     err = stderr or sys.stderr
     if interactive:

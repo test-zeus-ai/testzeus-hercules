@@ -470,6 +470,145 @@ class HerculesTools(ExploreToolsMixin):
         text = "\n".join(view["summary"].splitlines()[0] for view in views) or "No runs yet."
         return ToolOutput({"runs": [summary(view) for view in views]}, text)
 
+    async def _list_cases(self, args: dict[str, Any], progress: Progress, started: float) -> ToolOutput:
+        listing = await self._api("GET", "/api/cases")
+        folder = str(args.get("folder") or "").strip().strip("/")
+        query = str(args.get("query") or "").strip().casefold()
+        limit = int(args.get("limit") or 50)
+
+        def wanted(entry: dict[str, Any]) -> bool:
+            here = str(entry.get("folder") or "")
+            if folder and here.casefold() != folder.casefold() and not here.casefold().startswith(folder.casefold() + "/"):
+                return False
+            words = " ".join(str(entry.get(key) or "") for key in ("title", "id", "path")).casefold()
+            return not query or query in words
+
+        found = [entry for entry in listing.get("cases", []) if wanted(entry)]
+        fields = ("path", "folder", "kind", "valid", "id", "title", "status", "steps", "environment", "error")
+        cases = [{key: entry.get(key) for key in fields} for entry in found[:limit]]
+        for case in cases:
+            case["folder"], case["kind"], case["valid"] = str(case["folder"] or ""), str(case["kind"] or ""), bool(case["valid"])
+        lines = []
+        for case in cases:
+            where = f"[{case['folder']}] " if case["folder"] else ""
+            if case["valid"]:
+                extra = ", ".join(
+                    part
+                    for part in (
+                        f"{case['steps']} steps" if case["steps"] is not None else "",
+                        f"env {case['environment']}" if case["environment"] else "",
+                        "draft" if case["status"] == "draft" else "",
+                    )
+                    if part
+                )
+                lines.append(f"- {where}{case['title']}: {case['path']}" + (f" ({extra})" if extra else ""))
+            else:
+                lines.append(f"- {where}{case['path']}: invalid ({case['error']})")
+        if not lines:
+            text = "No cases match." if listing.get("cases") else "No saved cases yet: save .json or .feature files in .hercules/cases."
+        else:
+            more = f"\n… {len(found) - limit} more; narrow it with folder or query, or raise limit." if len(found) > limit else ""
+            text = f"{len(found)} case(s); run one with hercules_run case_path=<path>:\n" + "\n".join(lines) + more
+        return ToolOutput({"cases": cases, "folders": list(listing.get("folders", [])), "total": len(found)}, text)
+
+    async def _case_validation(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Check the gherkin or test_case in ``args`` (compiled by the daemon, placeholders included) and that its environment exists."""
+        given = [key for key in ("gherkin", "test_case") if args.get(key) not in (None, "", {})]
+        if len(given) != 1:
+            raise ToolError(f"give exactly one of gherkin or test_case (got {', '.join(given) or 'none'})")
+        if args.get("test_data") is not None and given[0] != "gherkin":
+            raise ToolError("test_data goes with gherkin; a test_case carries its own test_data")
+        body: dict[str, Any] = {given[0]: args[given[0]]}
+        if args.get("test_data") is not None:
+            body["test_data"] = args["test_data"]
+        checked = await self._api("POST", "/api/cases/validate", json_body=body)
+        case = checked.get("test_case") or {}
+        result: dict[str, Any] = {"valid": bool(checked.get("valid")), "error": checked.get("error"), "id": None, "title": None, "steps": None, "environment": None, "file": None}
+        if not result["valid"]:
+            return result
+        environment = (case.get("environment") or {}).get("ref")
+        result.update(id=case.get("id"), title=case.get("title"), steps=len(case.get("steps") or []), environment=environment)
+        result["file"] = f"{case.get('id')}.{'feature' if given[0] == 'gherkin' else 'json'}"
+        if environment:
+            names = sorted(env["name"] for env in (await self._api("GET", "/api/environments")).get("environments", []))
+            if environment not in names:
+                result.update(valid=False, error=f"unknown environment {environment!r}: the saved ones are {', '.join(names) or 'none'} (save it first, or fix the @env tag)")
+        return result
+
+    @staticmethod
+    def _case_body(args: dict[str, Any]) -> dict[str, Any]:
+        body: dict[str, Any] = {key: args[key] for key in ("gherkin", "test_case") if args.get(key) not in (None, "", {})}
+        if args.get("test_data") is not None:
+            body["test_data"] = args["test_data"]
+        return body
+
+    async def _get_case(self, args: dict[str, Any], progress: Progress, started: float) -> ToolOutput:
+        name = _case_name(args.get("name"))
+        view = await self._api("GET", f"/api/cases/{_quote_case(name)}")
+        structured = {
+            "name": view["name"],
+            "path": f"{_CASES_PREFIX}{view['name']}",
+            "folder": view.get("folder") or "",
+            "kind": view["kind"],
+            "source": view.get("source"),
+            "test_case": view["test_case"],
+        }
+        case = view["test_case"]
+        head = f"{structured['path']}: {case.get('title')} ({len(case.get('steps') or [])} steps"
+        head += f", env {case['environment']['ref']})" if (case.get("environment") or {}).get("ref") else ")"
+        return ToolOutput(structured, head + "\n\n" + (view.get("source") or json.dumps(case, indent=2)))
+
+    async def _validate_case(self, args: dict[str, Any], progress: Progress, started: float) -> ToolOutput:
+        result = await self._case_validation(args)
+        if result["valid"]:
+            env = f", env {result['environment']}" if result["environment"] else ""
+            text = f"Valid: {result['title']} ({result['steps']} steps{env}); it would be saved as {result['file']}."
+        else:
+            text = f"Not valid: {result['error']}"
+        return ToolOutput(result, text)
+
+    async def _create_case(self, args: dict[str, Any], progress: Progress, started: float) -> ToolOutput:
+        checked = await self._case_validation(args)
+        if not checked["valid"]:
+            raise ToolError(f"the case is not valid, nothing was saved: {checked['error']}")
+        body = {**self._case_body(args), "overwrite": False, "folder": str(args.get("folder") or "").strip().strip("/")}
+        response = await self.client.request("POST", "/api/cases", json=body)
+        if response.status_code >= 400:
+            try:
+                message = str(response.json().get("error") or response.text)
+            except ValueError:
+                message = response.text
+            # The same id is taken: in this folder (409) or in another one (422 "already in ...").
+            taken = response.status_code == 409 or "already" in message
+            raise ToolError(message[:1000] + (" (to change that case, use hercules_update_case with its path)" if taken else ""))
+        saved = response.json()
+        structured = {"name": saved["name"], "path": saved["path"], "id": saved["id"]}
+        return ToolOutput(structured, f"Created {saved['path']} ({checked['steps']} steps). Run it with hercules_run case_path={saved['path']}.")
+
+    async def _update_case(self, args: dict[str, Any], progress: Progress, started: float) -> ToolOutput:
+        name = _case_name(args.get("name"))
+        current = await self._api("GET", f"/api/cases/{_quote_case(name)}")
+        kind = "gherkin" if current["kind"] == "feature" else "test_case"
+        if args.get(kind) in (None, "", {}):
+            raise ToolError(f"{name} is a .{current['kind']} case: give its new content as {kind}")
+        checked = await self._case_validation(args)
+        if not checked["valid"]:
+            raise ToolError(f"the new content is not valid, {name} was left as it was: {checked['error']}")
+        if checked["id"] != current["test_case"].get("id"):
+            raise ToolError(
+                f"the case id would change from {current['test_case'].get('id')!r} to {checked['id']!r} (the scenario name or id names the file); "
+                "keep it, or create a new case with hercules_create_case and delete this one"
+            )
+        body = {**self._case_body(args), "overwrite": True, "folder": current.get("folder") or ""}
+        saved = await self._api("POST", "/api/cases", json_body=body)
+        structured = {"name": saved["name"], "path": saved["path"], "id": saved["id"]}
+        return ToolOutput(structured, f"Updated {saved['path']} ({checked['steps']} steps).")
+
+    async def _delete_case(self, args: dict[str, Any], progress: Progress, started: float) -> ToolOutput:
+        name = _case_name(args.get("name"))
+        removed = await self._api("DELETE", f"/api/cases/{_quote_case(name)}")
+        return ToolOutput({"name": removed["name"], "removed": bool(removed.get("removed"))}, f"Deleted {_CASES_PREFIX}{removed['name']}.")
+
     async def _get_evidence(self, args: dict[str, Any], progress: Progress, started: float) -> ToolOutput:
         uri = str(args["uri"])
         parsed = _URI.match(uri)
@@ -731,3 +870,22 @@ def _visual_line(item: dict[str, Any]) -> str:
     verdict = (item.get("classification") or {}).get("label") or item.get("note") or "not classified"
     deltas = ", ".join(f"{d['property']} {d['before']} -> {d['after']}" for d in item.get("style_deltas", [])[:4])
     return f"Visual: baseline {item['baseline']} at step {item['step']}: {item.get('diff_ratio', 0):.2%} changed (gate {item.get('threshold', 0):.2%}); {verdict}{'; ' + deltas if deltas else ''}"
+
+
+_CASES_PREFIX = ".hercules/cases/"
+
+
+def _case_name(raw: Any) -> str:
+    """A case's name under .hercules/cases from what hercules_list_cases shows (the project path or the path inside the folder)."""
+    name = str(raw or "").strip().replace("\\", "/")
+    name = name.removeprefix("./").removeprefix(_CASES_PREFIX)
+    parts = name.split("/")
+    if not name or name.startswith("/") or any(part in ("", ".", "..") for part in parts) or not name.endswith((".feature", ".json")):
+        raise ToolError("give the case's path as hercules_list_cases shows it, e.g. .hercules/cases/Checkout/pay.feature")
+    return name
+
+
+def _quote_case(name: str) -> str:
+    from urllib.parse import quote
+
+    return quote(name, safe="/")
