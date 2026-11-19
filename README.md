@@ -271,7 +271,7 @@ converts v1 projects and drafts cases from requirement documents.
 
 ## See every feature in action
 
-Fourteen short videos, one per feature, with a spoken walkthrough and subtitles, recorded against the demo shop in `bench/explore`. Click a
+Sixteen short videos, one per feature, with a spoken walkthrough and subtitles, recorded against the demo shop in `bench/explore`. Click a
 picture to play the video; [Feature videos](docs/guide/videos.md) plays them in the page, with the steps to do the same on your machine.
 
 <table>
@@ -343,6 +343,16 @@ picture to play the video; [Feature videos](docs/guide/videos.md) plays them in 
 <td width="50%" valign="top">
 <a href="https://github.com/user-attachments/assets/44741366-c566-41ba-bbe4-a4ae97d7bb87"><img src="docs/assets/videos/features/14-docker.jpg" width="400" alt="Run Hercules in Docker (1:46)"></a>
 <br><b>Run it in Docker.</b> Build the Hercules image, serve the tester UI from a container with your project mounted and the model key passed by name, then sign in and run a case: the same UI, runs and evidence as without Docker.
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<a href="https://github.com/user-attachments/assets/8172ad51-c451-4a79-a583-0eee266f36bb"><img src="docs/assets/videos/features/15-test-data-and-secrets.jpg" width="400" alt="Test data and secrets (2:13)"></a>
+<br><b>Test data and secrets.</b> Keep a case's values in its test data and use them in steps as <code>{{name}}</code>; a secret names an environment variable, so its value never lands in the case, never reaches the model and is masked as <code>******</code> in the evidence.
+</td>
+<td width="50%" valign="top">
+<a href="https://github.com/user-attachments/assets/1452f658-c2b9-4f20-80ab-27c7bda9db6d"><img src="docs/assets/videos/features/16-upload-and-download-files.jpg" width="400" alt="Upload and download files (1:47)"></a>
+<br><b>Upload and download files.</b> Give a case files to upload in its steps, then download a file from your app and check its name, rows and columns in code. Files go only to the app under test, never to a model.
 </td>
 </tr>
 </table>

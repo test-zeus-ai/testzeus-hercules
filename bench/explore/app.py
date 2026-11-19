@@ -16,8 +16,12 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import csv
+import email.parser
+import email.policy
 import html
 import http.server
+import io
 import itertools
 import json
 import secrets
@@ -49,6 +53,7 @@ class Account:
     badge: int = 0  # what the header shows; equals the cart's item count unless B4 is on
     orders: list[dict[str, object]] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    returns: list[dict[str, object]] = field(default_factory=list)
     token: str = ""  # the order form's one-time token (double submit protection)
 
 
@@ -68,7 +73,7 @@ def page(title: str, body: str, account: Account | None = None, *, script: str =
         nav = (
             '<nav><a href="/home">Home</a> · <a href="/shop">Shop</a> · '
             f'<a href="/cart" id="cart-link">Cart (<span id="badge">{account.badge}</span>)</a> · '
-            '<a href="/orders">Orders</a> · <a href="/notes">Notes</a> · <a href="/profile">Profile</a> · '
+            '<a href="/orders">Orders</a> · <a href="/returns">Returns</a> · <a href="/notes">Notes</a> · <a href="/profile">Profile</a> · '
             '<form method="get" action="/search" style="display:inline"><label>Search <input name="q"></label> '
             "<button>Go</button></form></nav>"
         )
@@ -117,9 +122,27 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
 
     def _form(self) -> dict[str, str]:
+        """The posted form. A multipart form's files land in ``self.files`` as {field: (file name, size in bytes)}."""
         length = int(self.headers.get("Content-Length") or 0)
-        raw = self.rfile.read(length).decode("utf-8") if length else ""
-        return {key: values[-1] for key, values in urllib.parse.parse_qs(raw, keep_blank_values=True).items()}
+        raw = self.rfile.read(length) if length else b""
+        self.files: dict[str, tuple[str, int]] = {}
+        content_type = self.headers.get("Content-Type") or ""
+        if content_type.startswith("multipart/form-data"):
+            message = email.parser.BytesParser(policy=email.policy.HTTP).parsebytes(b"Content-Type: " + content_type.encode() + b"\r\n\r\n" + raw)
+            form: dict[str, str] = {}
+            for part in message.iter_parts():
+                name = part.get_param("name", header="content-disposition")
+                if not name:
+                    continue
+                data = part.get_payload(decode=True) or b""
+                if part.get_filename() is not None:
+                    if part.get_filename():
+                        self.files[name] = (Path(part.get_filename()).name, len(data))
+                else:
+                    form[name] = data.decode("utf-8", "replace")
+            return form
+        text = raw.decode("utf-8")
+        return {key: values[-1] for key, values in urllib.parse.parse_qs(text, keep_blank_values=True).items()}
 
     def _error(self, account: Account | None) -> None:
         self._send(500, page("Something went wrong", "<p>Internal server error.</p>", account))
@@ -137,7 +160,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return
         query = {key: values[-1] for key, values in urllib.parse.parse_qs(url.query, keep_blank_values=True).items()}
         with self.app.lock:
-            route = getattr(self, "get_" + url.path.strip("/").replace("-", "_"), None)
+            route = getattr(self, "get_" + url.path.strip("/").replace("-", "_").replace(".", "_"), None)
             if route is None:
                 self._send(404, page("Not found", "<p>No such page.</p>", account))
                 return
@@ -289,7 +312,48 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def get_orders(self, account: Account, query: dict[str, str]) -> None:
         rows = "".join(f"<li>Order #{order['id']}: ${order['total']}</li>" for order in account.orders) or "<li>No orders yet.</li>"
-        self._send(200, page("Orders", f"<p>Orders placed: <span id='orders'>{len(account.orders)}</span></p><ul>{rows}</ul>", account))
+        download = '<p><a href="/receipts.csv">Download receipts (CSV)</a></p>'
+        self._send(200, page("Orders", f"<p>Orders placed: <span id='orders'>{len(account.orders)}</span></p><ul>{rows}</ul>{download}", account))
+
+    def get_receipts_csv(self, account: Account, query: dict[str, str]) -> None:
+        out = io.StringIO()
+        writer = csv.writer(out, lineterminator="\n")
+        writer.writerow(["Order ID", "Items", "Total", "Status"])
+        for order in account.orders:
+            items = "; ".join(f"{PRODUCTS[item][0]} x{qty}" for item, qty in order["items"].items())  # type: ignore[union-attr]
+            writer.writerow([order["id"], items, f"${order['total']}", "Paid"])
+        self._send(200, out.getvalue(), content_type="text/csv; charset=utf-8", headers={"Content-Disposition": 'attachment; filename="receipts.csv"'})
+
+    # returns: a form with a photo upload
+    def get_returns(self, account: Account, query: dict[str, str]) -> None:
+        notice = f'<p role="alert">{html.escape(query["error"])}</p>' if query.get("error") else ""
+        if query.get("sent"):
+            notice = '<p role="status">Return requested.</p>'
+        rows = (
+            "".join(f"<li>Return #{ret['id']} for order #{html.escape(str(ret['order']))}: {html.escape(str(ret['photo']))} ({ret['size']} bytes)</li>" for ret in account.returns)
+            or "<li>No returns yet.</li>"
+        )
+        body = (
+            f"{notice}"
+            '<form method="post" action="/returns" enctype="multipart/form-data">'
+            '<p><label>Order number <input name="order"></label></p>'
+            '<p><label>Photo of the item <input type="file" name="photo" accept="image/*"></label></p>'
+            "<button>Request return</button></form>"
+            f'<ul id="return-list">{rows}</ul>'
+        )
+        self._send(200, page("Returns", body, account))
+
+    def post_returns(self, account: Account, form: dict[str, str]) -> None:
+        order = form.get("order", "").strip().lstrip("#")
+        photo = self.files.get("photo")
+        if not order.isdigit():
+            self._redirect("/returns?error=" + urllib.parse.quote("Enter the order number."))
+            return
+        if photo is None:
+            self._redirect("/returns?error=" + urllib.parse.quote("Add a photo of the item."))
+            return
+        account.returns.append({"id": len(account.returns) + 1, "order": int(order), "photo": photo[0], "size": photo[1]})
+        self._redirect("/returns?sent=1")
 
     # notes
     def get_notes(self, account: Account, query: dict[str, str]) -> None:

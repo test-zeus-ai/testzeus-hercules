@@ -33,7 +33,7 @@ change. Or let your coding agent do it: copy the prompt in
 |---|---|
 | [Set up with your coding agent](agent-setup.md) | The prompt to paste into your coding agent, and what `uvx testzeus-hercules` does |
 | [Quick start: the tester UI](tester-ui-quick-start.md) | From an empty project to a passing test case in the browser: environment, case, run, debug, finish |
-| [Feature videos](videos.md) | Fourteen short videos, one per feature: install, the tester UI, plans, debugging, the terminal, coding agents, browsers, phones, export, clouds, import, quality checks, security scans and Docker |
+| [Feature videos](videos.md) | Sixteen short videos, one per feature: install, the tester UI, plans, debugging, the terminal, coding agents, browsers, phones, export, clouds, import, quality checks, security scans, Docker, test data and secrets, and file upload and download |
 | [Getting started](getting-started.md) | Install, hardware tiers, model servers and other endpoints, `hercules setup`, `hercules doctor`, your first run |
 | [Browsers and browser options](browsers.md) | Chromium, Chrome, Edge, Firefox and WebKit; locale, time zone, signed-in auth JSON, headers, proxy and every other Playwright option, locally, in exported code and on clouds |
 | [Writing tests](writing-tests.md) | The TestCase format, steps and expected outcomes, test data, secrets, Gherkin, drafts |

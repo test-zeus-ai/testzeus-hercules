@@ -21,6 +21,8 @@ its sign-in page takes any name). Each video plays on this page; the MP4 files a
 | 12 | [Visual and accessibility checks](#12-visual-and-accessibility-checks) | 1:33 |
 | 13 | [Security scans](#13-security-scans) | 1:20 |
 | 14 | [Run Hercules in Docker](#14-run-hercules-in-docker) | 1:46 |
+| 15 | [Test data and secrets](#15-test-data-and-secrets) | 2:13 |
+| 16 | [Upload and download files](#16-upload-and-download-files) | 1:47 |
 
 ## 1. One line to install and set up
 
@@ -291,5 +293,65 @@ Build the Hercules image, serve the tester UI from a container with your project
 4. `docker logs hercules` prints a one-time sign-in link. Open it in your browser (`docker exec hercules hercules ui --print` gives a new one).
 5. Open **Cases**, pick a case and click **Run**, then **Start run**. A case that tests an app on your machine reaches it as `host.docker.internal` (for example `http://host.docker.internal:8201`).
 6. Runs and evidence are written to `.hercules/runs/` in your project folder. In CI: `docker run --rm -v "$PWD:/work" -e MODEL_API_KEY hercules run .hercules/cases/add-to-cart.json` exits with Hercules' own code.
+
+Recorded with the demo shop from `bench/explore` (`uv run python bench/explore/app.py --bugs none --port 8201`) and a hosted OpenAI-compatible model.
+
+## 15. Test data and secrets
+
+https://github.com/user-attachments/assets/8172ad51-c451-4a79-a583-0eee266f36bb
+
+<sub>[Download the MP4](../assets/videos/features/15-test-data-and-secrets.mp4)</sub>
+
+Keep a case's values in its test data and use them in steps as `{{name}}`; keep sensitive ones out of the case altogether as secrets, which name an environment variable. The run fills the values in when each step runs; the model sees the names, and secret values are masked as `******` in the evidence.
+
+1. In the tester UI, open **Cases** and start a **Form** case on an environment for the shop (base URL `http://127.0.0.1:8201`).
+2. Under **Test data**, click **Add value** for each of: `shopper` = `ana`; `email` = `ana+{{run_id}}@example.test` (the built-in `{{run_id}}` makes it unique per run); `coupon` with **Secret** ticked and the variable name `SHOP_COUPON`.
+3. Write the steps, typing `{{` to pick a name:
+
+   | Action | Expected outcome |
+   |---|---|
+   | `Open "/login", fill "{{shopper}}" in "Name" and click "Sign in"` | `I should see "Welcome, {{shopper}}"` |
+   | `Open "/profile", fill "{{email}}" in "Email" and click "Save profile"` | `I should see "Profile saved."` |
+   | `Open "/shop" and click "Add Green tea to cart"` | |
+   | `Open "/cart", fill "{{coupon}}" in "Coupon" and click "Apply coupon"` | `I should see "Coupon applied."` |
+
+4. **Save**. The **TestCase JSON** tab shows `"coupon": {"secret": "SHOP_COUPON"}`: the case holds the name only.
+5. Give the secret its value once: **Environments** → your environment → paste `PANTRY10` (the demo shop's coupon code) for `SHOP_COUPON` and save it. The UI then shows where it is set and never shows the value again. An environment variable of the same name wins: `export SHOP_COUPON=PANTRY10` before `hercules serve`.
+6. **Run** → **Start run**. The run passes; its steps still read `{{shopper}}`, `{{email}}` and `{{coupon}}`, and step 4's `observation.txt` shows the coupon field as `******`.
+
+From the terminal: `SHOP_COUPON=PANTRY10 hercules run .hercules/cases/<case id>.json`. See [Test data and placeholders](writing-tests.md#test-data-and-placeholders) and [Secrets](writing-tests.md#secrets).
+
+## 16. Upload and download files
+
+https://github.com/user-attachments/assets/1452f658-c2b9-4f20-80ab-27c7bda9db6d
+
+<sub>[Download the MP4](../assets/videos/features/16-upload-and-download-files.mp4)</sub>
+
+Give a case a file, upload it in a step, then download a file from the app and check it in code: its name, its CSV rows and a column's values. Files go only to the app under test, never to a model.
+
+1. In the tester UI, open **Cases** and make a **Form** case on the shop environment that places an order:
+
+   | Action | Expected outcome |
+   |---|---|
+   | `Open "/login", fill "ana" in "Name" and click "Sign in"` | |
+   | `Open "/shop" and click "Add Green tea to cart"` | |
+   | `Open "/cart" and click "Place order"` | `I should see "Order #1: $4"` |
+
+2. Under **Files for upload steps**, click **Add files** and pick an image, for example `item-photo.png`. It is kept in `.hercules/case-files/<case id>/`.
+3. Add the steps that return the item with the photo, then download the receipts and check them:
+
+   | Action | Expected outcome |
+   |---|---|
+   | `Open "/returns" and fill "1" in "Order number"` | |
+   | `I upload "item-photo.png" to "Photo of the item"` | |
+   | `Click "Request return"` | `I should see "Return requested."` |
+   | `Open "/orders"` | |
+   | `I click "Download receipts (CSV)" to download the report` | `the downloaded file is named "receipts.csv"` |
+   | `verify` | `the downloaded CSV has 1 rows` |
+   | `verify` | `column "Status" is "Paid" in every row` |
+
+4. **Save**, then **Run** → **Start run**. The run passes; `receipts.csv` is kept with its step in `steps/<n>/downloads/` and listed on the run page.
+
+The shop numbers orders from 1 for as long as it runs: restart it before running the case again, or change the expected order number. See [Files for upload steps](writing-tests.md#files-for-upload-steps) and [Downloading and checking files](writing-tests.md#downloading-and-checking-files).
 
 Recorded with the demo shop from `bench/explore` (`uv run python bench/explore/app.py --bugs none --port 8201`) and a hosted OpenAI-compatible model.
