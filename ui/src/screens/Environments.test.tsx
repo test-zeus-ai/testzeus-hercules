@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { EnvironmentsScreen, whereOf } from "./Environments";
+import { deviceChoices, EnvironmentsScreen, whereOf } from "./Environments";
 
 const fetchMock = vi.fn();
 
@@ -323,5 +323,38 @@ describe("whereOf", () => {
     expect(whereOf({ name: "c", secret_names: [], mobile: { platform: "android", package: "com.siliconthread.marketplace" } })).toBe("com.siliconthread.marketplace");
     expect(whereOf({ name: "d", secret_names: [], mobile: { platform: "ios", bundle_id: "com.example.shop" } })).toBe("com.example.shop");
     expect(whereOf({ name: "e", secret_names: [] })).toBeNull();
+  });
+});
+
+describe("Phone or tablet", () => {
+  it("is a select of the known devices that saves the one picked", async () => {
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === "/api/devices") return respond({ devices: ["Pixel 7", "iPhone 15"] });
+      if (url === "/api/environments" && init?.method === "POST") return respond({ name: "phone" }, 201);
+      if (url === "/api/environments") return respond({ environments: [] });
+      return respond({ error: "not found" }, 404);
+    });
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <EnvironmentsScreen />
+      </QueryClientProvider>,
+    );
+    const device = (await screen.findByLabelText("Phone or tablet")) as HTMLSelectElement;
+    expect(device.tagName).toBe("SELECT");
+    await screen.findByRole("option", { name: "iPhone 15" });
+    expect([...device.options].map((option) => option.text)).toEqual(["None (desktop browser)", "Pixel 7", "iPhone 15"]);
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "phone" } });
+    fireEvent.change(screen.getByLabelText("Base URL"), { target: { value: "http://localhost:3000" } });
+    fireEvent.change(device, { target: { value: "iPhone 15" } });
+    fireEvent.click(screen.getByRole("button", { name: /save environment/i }));
+    await waitFor(() => expect(fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "POST")).toBe(true));
+    const post = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "POST");
+    expect(JSON.parse(String((post?.[1] as RequestInit).body))).toMatchObject({ name: "phone", device: "iPhone 15" });
+  });
+
+  it("keeps an environment's own device that is not in the list", () => {
+    expect(deviceChoices(["Pixel 7"], "")).toEqual(["Pixel 7"]);
+    expect(deviceChoices(["Pixel 7"], "Pixel 7")).toEqual(["Pixel 7"]);
+    expect(deviceChoices(["Pixel 7"], "Old Phone")).toEqual(["Old Phone", "Pixel 7"]);
   });
 });

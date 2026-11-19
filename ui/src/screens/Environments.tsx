@@ -225,14 +225,16 @@ export function EnvironmentsScreen() {
               </Field>
               {form.target === "web" ? (
                 <>
-                  <Field id="env-device" label="Phone or tablet" help="Emulate a device in the browser (a Playwright device profile). Leave empty for a desktop browser.">
-                    <input className="mono" list="env-device-list" value={form.device} onChange={(event) => setForm({ ...form, device: event.target.value })} placeholder="iPhone 15" />
+                  <Field id="env-device" label="Phone or tablet" help="Emulate a device in the browser (a Playwright device profile).">
+                    <select value={form.device} onChange={(event) => setForm({ ...form, device: event.target.value })}>
+                      <option value="">None (desktop browser)</option>
+                      {deviceChoices(devices.data?.devices ?? [], form.device).map((name) => (
+                        <option key={name} value={name}>
+                          {name}
+                        </option>
+                      ))}
+                    </select>
                   </Field>
-                  <datalist id="env-device-list">
-                    {(devices.data?.devices ?? []).map((name) => (
-                      <option key={name} value={name} />
-                    ))}
-                  </datalist>
                   <div className="field-row">
                     <Field id="env-viewport" label="Viewport" error={shown.viewport} help={form.device ? "Empty: the device's own viewport." : undefined}>
                       <input className="mono" value={form.viewport} onChange={(event) => setForm({ ...form, viewport: event.target.value })} />
@@ -285,6 +287,11 @@ export function EnvironmentsScreen() {
       </div>
     </section>
   );
+}
+
+/** The device names to offer: the known ones, plus the environment's own device when it is not among them. */
+export function deviceChoices(known: string[], current: string): string[] {
+  return current && !known.includes(current) ? [current, ...known] : known;
 }
 
 export function whereOf(env: Environment): string | null {
