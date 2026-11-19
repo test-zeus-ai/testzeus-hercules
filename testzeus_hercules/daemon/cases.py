@@ -247,7 +247,13 @@ def case_file(cases_dir: Path, name: str) -> Path:
 
 
 def is_feature_data(path: Path) -> bool:
-    return path.name.endswith(DATA_SUFFIX) and path.with_name(path.name.removesuffix(DATA_SUFFIX) + ".feature").is_file()
+    if not path.name.endswith(DATA_SUFFIX):
+        return False
+    stem = path.name.removesuffix(DATA_SUFFIX)
+    try:
+        return any(entry.stem == stem and entry.suffix.lower() == ".feature" and entry.is_file() for entry in path.parent.iterdir())
+    except OSError:
+        return False
 
 
 def list_folders(cases_dir: Path, under: str = "", *, limit: int | None = _MAX_FOLDERS) -> list[str]:
@@ -484,7 +490,7 @@ def _remove_case(path: Path) -> str | None:
         case_id = None
     path.unlink()
     sidecar = data_file(path)
-    if path.suffix == ".feature" and sidecar.is_file() and not sidecar.is_symlink():
+    if path.suffix.lower() == ".feature" and sidecar.is_file() and not sidecar.is_symlink():
         sidecar.unlink()
     return case_id
 
@@ -527,7 +533,7 @@ def move_cases(cases_dir: Path, names: list[str], folder: str) -> list[str]:
     for source, destination in moves.items():
         os.replace(source, destination)
         sidecar = data_file(source)
-        if source.suffix == ".feature" and sidecar.is_file() and not sidecar.is_symlink():
+        if source.suffix.lower() == ".feature" and sidecar.is_file() and not sidecar.is_symlink():
             os.replace(sidecar, data_file(destination))
         moved.append(case_name(cases_dir, destination))
     return moved
@@ -630,7 +636,7 @@ def delete_folder(cases_dir: Path, project_dir: Path, folder: str, mode: DeleteM
     if mode == "move_up":
         return {"folder": folder, "mode": mode, "moved": _move_up(folder, source), "deleted": 0}
     found = [path for _, path in _cases_under(cases_dir, folder)]
-    keep = set(found) | {data_file(path) for path in found if path.suffix == ".feature"}
+    keep = set(found) | {data_file(path) for path in found if path.suffix.lower() == ".feature"}
     others = [path for path in source.rglob("*") if path.is_file() and path not in keep and not _system_file(path.name)]
     if others:
         listed = ", ".join(path.relative_to(source).as_posix() for path in others[:3])

@@ -578,3 +578,23 @@ def test_an_id_is_taken_by_a_file_named_like_it_in_another_case(config) -> None:
     assert sorted(path.name for path in cases.rglob("*") if path.is_file()) == ["Login.json", "shopper-pays-by-card.feature"]
     assert again.status_code == 201
     assert same_file.status_code == 409 and same_file.json()["detail"] == {"code": "case_exists", "case": "shopper-pays-by-card.feature"}
+
+
+def test_a_feature_with_an_upper_case_suffix_keeps_its_test_data_together(config) -> None:  # type: ignore[no-untyped-def]
+    cases = _cases_dir(config)
+    for folder in ("Old", "New", "Gone"):
+        (cases / folder).mkdir()
+    for folder, stem in (("Old", "pay"), ("Old", "move"), ("Gone", "lost")):
+        (cases / folder / f"{stem}.FEATURE").write_text(FEATURE.replace("Shopper pays by card", f"Case {stem}").replace('"Paid"', '"Paid {{card}}"'), encoding="utf-8")
+        (cases / folder / f"{stem}.data.json").write_text(json.dumps({"test_data": {"card": "4242"}}), encoding="utf-8")
+    with client_for(config) as client:
+        listed = [case["name"] for case in client.get("/api/cases").json()["cases"]]
+        one = client.get("/api/cases/Old/pay.FEATURE")
+        deleted = client.delete("/api/cases/Old/pay.FEATURE")
+        moved = client.post("/api/cases/move", json={"names": ["Old/move.FEATURE"], "folder": "New"})
+        folder_gone = client.request("DELETE", "/api/folders/Gone", params={"mode": "delete_cases"})
+    assert sorted(listed) == ["Gone/lost.FEATURE", "Old/move.FEATURE", "Old/pay.FEATURE"], "a data file is never listed as a case"
+    assert one.status_code == 200 and one.json()["test_case"]["test_data"] == {"card": "4242"}
+    assert deleted.status_code == 200 and sorted(path.name for path in (cases / "Old").iterdir()) == [], "deleting the case removes its data file"
+    assert moved.status_code == 200 and sorted(path.name for path in (cases / "New").iterdir()) == ["move.FEATURE", "move.data.json"], "moving the case moves its data file"
+    assert folder_gone.status_code == 200 and not (cases / "Gone").exists(), "a folder of such cases deletes cleanly"
