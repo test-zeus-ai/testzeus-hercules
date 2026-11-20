@@ -359,6 +359,9 @@ def find_cases(
         if not folder_dir(cases_dir, under).is_dir():
             raise CaseError(f"there is no folder {under}")
         scope = [under, *list_folders(cases_dir, under, limit=None)]
+    elif environment is not None:
+        # Which cases run in an environment decides whether it may be deleted: every folder, not the listing's cap.
+        scope = ["", *list_folders(cases_dir, limit=None)]
     else:
         scope = ["", *(list_folders(cases_dir) if folders is None else folders)]
     wanted = query.strip().casefold()

@@ -609,7 +609,7 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "hercules_list_folders",
         "title": "List folders",
-        "description": "The folders that hold the project's saved cases (.hercules/cases), with how many cases each holds (subfolders included) and how many of them hercules_run_folder would run (they load, are not drafts, and any environment they name exists).",
+        "description": "The folders that hold the project's saved cases (.hercules/cases), with how many cases each holds (subfolders included) and how many of them hercules_run_folder would run, as the daemon decides it (a dry run: drafts, cases that do not load and cases whose environment cannot be applied are skipped).",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
         "outputSchema": {
             "type": "object",

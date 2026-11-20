@@ -618,3 +618,59 @@ def test_listing_a_folder_reads_it_once_however_many_data_files_it_holds(config,
     paths = case_files._case_paths(cases, "")
     assert len(paths) == 31 and not any(path.name.endswith(".data.json") for path in paths)
     assert reads == [cases], "one read of the folder, not one per data file"
+
+
+def test_a_folder_run_summary_counts_each_cases_latest_attempt(config) -> None:  # type: ignore[no-untyped-def]
+    with client_for(config) as client:
+        client.post("/api/folders", json={"name": "Checkout"})
+        client.post("/api/cases", json={"test_case": case_dict("fake-pass", case_id="pays"), "folder": "Checkout"})
+        client.post("/api/cases", json={"test_case": case_dict("fake-fail", case_id="breaks"), "folder": "Checkout"})
+        body = client.post("/api/runs/batch", json={"folder": "Checkout"}).json()
+        for run in body["runs"]:
+            wait_for(client, run["run_id"])
+        failed = next(run["run_id"] for run in body["runs"] if run["case_id"] == "breaks")
+        first = client.get(f"/api/runs/batches/{body['batch']}").json()
+        # The failed run is rerun twice from the same run: the case still counts once, as its newest attempt.
+        for _ in range(2):
+            rerun = client.post(f"/api/runs/{failed}/rerun", json={"scope": "whole"}).json()["run_id"]
+            wait_for(client, rerun)
+        again = client.get(f"/api/runs/batches/{body['batch']}").json()
+        members = client.get("/api/runs", params={"batch": body["batch"]}).json()["runs"]
+        missing = client.get("/api/runs/batches/b_nope")
+    assert first | {"total": 2, "open": 0, "counts": {"passed": 1, "failed": 1}, "folder": "Checkout"} == first and first["finished_at"]
+    assert len(members) == 4, "the reruns joined the folder run"
+    assert again["total"] == 2 and again["counts"] == {"passed": 1, "failed": 1}, again
+    assert missing.status_code == 404
+
+
+def test_a_dry_folder_run_lists_what_it_would_run_and_starts_nothing(config) -> None:  # type: ignore[no-untyped-def]
+    with client_for(config) as client:
+        client.post("/api/folders", json={"name": "Checkout"})
+        client.post("/api/cases", json={"test_case": case_dict(case_id="ready-one"), "folder": "Checkout"})
+        client.post("/api/cases", json={"test_case": case_dict(case_id="drafted", status="draft"), "folder": "Checkout"})
+        own_url = {**case_dict(case_id="own-url"), "environment": {"ref": "gone", "base_url": "http://127.0.0.1:9"}}
+        (_cases_dir(config) / "Checkout" / "own-url.json").write_text(json.dumps(own_url))
+        no_url = {**case_dict(case_id="no-url"), "environment": {"ref": "gone"}}
+        (_cases_dir(config) / "Checkout" / "no-url.json").write_text(json.dumps(no_url))
+        planned = client.post("/api/runs/batch", json={"folder": "Checkout", "dry_run": True})
+        empty = client.post("/api/folders", json={"name": "Empty"}) and client.post("/api/runs/batch", json={"folder": "Empty", "dry_run": True})
+        runs = client.get("/api/runs").json()["runs"]
+    body = planned.json()
+    assert planned.status_code == 200 and body["runs"] == [] and body["batch"] == ""
+    assert sorted(body["would_run"]) == ["Checkout/own-url.json", "Checkout/ready-one.json"], "a missing environment with the case's own base_url still runs"
+    assert {skip["name"] for skip in body["skipped"]} == {"Checkout/drafted.json", "Checkout/no-url.json"}
+    assert empty.status_code == 200 and empty.json()["would_run"] == []
+    assert runs == []
+
+
+def test_cases_in_every_folder_count_for_an_environment(config) -> None:  # type: ignore[no-untyped-def]
+    cases_dir = _cases_dir(config)
+    for index in range(case_files._MAX_FOLDERS):
+        (cases_dir / f"f{index:04d}").mkdir()
+    (cases_dir / "zz").mkdir()  # past the folder listing's cap
+    (cases_dir / "zz" / "pay.feature").write_text('@env:shop\nFeature: Pay\n  Scenario: Pay\n    Given I open "/pay"\n', encoding="utf-8")
+    with client_for(config) as client:
+        listed = client.get("/api/cases").json()
+        found = client.get("/api/cases", params={"environment": "shop"}).json()["cases"]
+    assert "zz" not in listed["folders"], "the plain listing stays capped"
+    assert [case["name"] for case in found] == ["zz/pay.feature"]

@@ -614,17 +614,20 @@ class HerculesTools(ExploreToolsMixin):
 
     # ------------------------------------------------------------------ folders of cases
 
-    async def _environment_names(self) -> set[str]:
-        return {env["name"] for env in (await self._api("GET", "/api/environments"))["environments"]}
+    async def _folder_plan(self, folder: str) -> tuple[set[str], dict[str, str]]:
+        """What hercules_run_folder would do with ``folder`` (and its subfolders), as the daemon decides it (a dry run):
+        the cases it would run, and the reason for each it would skip."""
+        planned = await self._api("POST", "/api/runs/batch", json_body={"folder": folder, "subfolders": True, "dry_run": True})
+        return set(planned.get("would_run", [])), {item["name"]: item["reason"] for item in planned.get("skipped", [])}
 
     async def _list_folders(self, args: dict[str, Any], progress: Progress, started: float) -> ToolOutput:
         listing = await self._api("GET", "/api/cases")
-        envs = await self._environment_names()
+        would_run, _ = await self._folder_plan("")
         cases = listing.get("cases", [])
         folders = []
         for folder in listing.get("folders", []):
             held = [case for case in cases if _inside(case.get("folder") or "", folder)]
-            folders.append({"folder": folder, "cases": len(held), "ready": sum(_ready(case, envs) for case in held)})
+            folders.append({"folder": folder, "cases": len(held), "ready": sum(1 for name in would_run if _inside(name.rpartition("/")[0], folder))})
         top = sum(1 for case in cases if not case.get("folder"))
         truncated = bool(listing.get("truncated"))
         structured = {"folders": folders, "top_level_cases": top, "truncated": truncated}
@@ -643,16 +646,18 @@ class HerculesTools(ExploreToolsMixin):
         folder = next((name for name in listing.get("folders", []) if name.casefold() == asked.casefold()), asked)
         subfolders = [name for name in listing.get("folders", []) if name.rpartition("/")[0] == folder]
         fields = ("path", "folder", "valid", "title", "status", "steps")
-        envs = await self._environment_names()
+        would_run, skips = await self._folder_plan(folder)
         found = listing.get("cases", [])
         cases = [{key: entry.get(key) for key in fields} | {"folder": entry.get("folder") or "", "valid": bool(entry.get("valid"))} for entry in found]
-        ready = sum(_ready(entry, envs) for entry in found)
+        ready = len(would_run)
         truncated = bool(listing.get("truncated"))
         lines = [f"Folder {folder}: {len(cases)} case(s), {ready} ready to run with hercules_run_folder."]
         if subfolders:
             lines.append("Subfolders: " + ", ".join(subfolders))
         for case, entry in zip(cases, found):
-            lines.append(f"- {case['title'] or case['path']}: {case['path']} ({_readiness(entry, envs)})")
+            name = entry.get("name") or ""
+            state = "ready" if name in would_run else f"skipped: {_clip(skips.get(name, 'not run by a folder run'), 120)}"
+            lines.append(f"- {case['title'] or case['path']}: {case['path']} ({state})")
         if truncated:
             lines.append("The folder has more cases than the listing holds.")
         return ToolOutput({"folder": folder, "subfolders": subfolders, "cases": cases, "ready": ready, "truncated": truncated}, "\n".join(lines))
@@ -757,19 +762,27 @@ class HerculesTools(ExploreToolsMixin):
         if not changes:
             raise ToolError(f"give at least one field to change ({', '.join(_ENV_KEYS)}); null clears one")
         prefix = f"{name} was left as it was: "
-        # The save names the version it read (If-Match): an edit made meanwhile (in the UI) is read again, not overwritten.
-        for attempt in range(2):
-            current, headers = await self._exchange("GET", f"/api/environments/{name}")
-            merged = {key: value for key, value in {**current, **changes}.items() if value is not None}
-            version = {"If-Match": headers["etag"]} if headers.get("etag") else None
-            try:
-                saved = await self._api("POST", "/api/environments", json_body={**merged, "name": name, "overwrite": True}, prefix=prefix, headers=version)
-            except ToolError as exc:
-                if exc.code == "environment_changed" and attempt == 0:
-                    continue
+        try:
+            saved = await self._merge_environment(name, changes, prefix)
+        except ToolError as exc:
+            if exc.code != "environment_changed":
                 raise
-            return await self._env_output(saved, f"Updated environment {name} ({', '.join(changes)})")
-        raise ToolError(f"{prefix}it kept changing while it was being updated; try again")
+            try:  # a tester's edit landed between the read and the save: apply the change onto theirs
+                saved = await self._merge_environment(name, changes, prefix)
+            except ToolError as again:
+                if again.code == "environment_changed":
+                    raise ToolError(f"{prefix}it kept changing while it was being updated; try again", again.code) from None
+                raise
+        return await self._env_output(saved, f"Updated environment {name} ({', '.join(changes)})")
+
+    async def _merge_environment(self, name: str, changes: dict[str, Any], prefix: str) -> dict[str, Any]:
+        """Read the environment, apply ``changes`` and save it as the version read (If-Match): an edit made meanwhile is a
+        ToolError with code environment_changed, not overwritten."""
+        current, headers = await self._exchange("GET", f"/api/environments/{name}")
+        merged = {key: value for key, value in {**current, **changes}.items() if value is not None}
+        version = {"If-Match": headers["etag"]} if headers.get("etag") else None
+        saved: dict[str, Any] = await self._api("POST", "/api/environments", json_body={**merged, "name": name, "overwrite": True}, prefix=prefix, headers=version)
+        return saved
 
     async def _delete_environment(self, args: dict[str, Any], progress: Progress, started: float) -> ToolOutput:
         name = _env_name(args.get("name"))
@@ -1105,20 +1118,8 @@ def _inside(case_folder: str, folder: str) -> bool:
     return case_folder == folder or case_folder.startswith(folder + "/")
 
 
-def _readiness(case: dict[str, Any], environments: set[str]) -> str:
-    """Whether a folder run (without an environment of its own) would run this case, as the daemon decides: "ready", or
-    why not."""
-    if not case.get("valid"):
-        return "does not load"
-    if case.get("status") == "draft":
-        return "draft"
-    if case.get("environment") and case["environment"] not in environments:
-        return f"unknown environment {case['environment']}"
-    return "ready"
-
-
-def _ready(case: dict[str, Any], environments: set[str]) -> bool:
-    return _readiness(case, environments) == "ready"
+def _clip(text: str, limit: int) -> str:
+    return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
 def _used_by_text(used_by: list[str], more: bool) -> str:

@@ -335,6 +335,7 @@ class RunBatchCreate(RunSettings):
 
     folder: FolderPath = Field(description="The folder, such as Checkout (empty: every saved case)")
     subfolders: bool = True
+    dry_run: bool = Field(default=False, description="Start nothing: list the cases it would run (would_run) and those it would skip")
 
 
 class CaseCheck(BaseModel):
@@ -563,6 +564,18 @@ class RunBatchCreated(BaseModel):
     folder: str
     runs: list[RunCreated]
     skipped: list[BatchSkip]
+    would_run: list[str] = Field(default_factory=list, description="With dry_run: the cases it would run (none was started)")
+
+
+class BatchSummary(BaseModel):
+    """A folder run counted by each case's latest attempt: a rerun inside it replaces the run it reran."""
+
+    batch: str
+    folder: str | None = None
+    total: int
+    open: int = Field(description="Latest attempts not finished yet")
+    counts: dict[str, int] = Field(description="Latest attempts by status")
+    finished_at: str | None = Field(default=None, description="When its last latest attempt ended, once none is open")
 
 
 class ErrorBody(BaseModel):

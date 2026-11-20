@@ -758,6 +758,13 @@ def test_folder_tools_create_list_read_rename_move_run_and_delete(daemon) -> Non
             got["get"] = await call(session, "hercules_get_folder", {"folder": "checkout"})
             got["missing"] = await call(session, "hercules_get_folder", {"folder": "Nowhere"})
             got["outside"] = await call(session, "hercules_get_folder", {"folder": "../.."})
+            # A case naming a missing environment with its own base_url still runs (the daemon's rule), so it is ready.
+            (cases / "Other").mkdir()
+            own_url = case_dict("fake-pass", case_id="own-url")
+            (cases / "Other" / "own-url.json").write_text(json.dumps({**own_url, "environment": {"ref": "gone", "base_url": "http://127.0.0.1:9"}}), encoding="utf-8")
+            got["own_url"] = await call(session, "hercules_get_folder", {"folder": "Other"})
+            (cases / "Other" / "own-url.json").unlink()
+            (cases / "Other").rmdir()
             (cases / "Checkout-archive").mkdir()
             got["lookalike"] = await call(session, "hercules_get_folder", {"folder": ".hercules/cases-archive"})
             got["prefixed"] = await call(session, "hercules_get_folder", {"folder": ".hercules/cases/Checkout-archive"})
@@ -795,9 +802,11 @@ def test_folder_tools_create_list_read_rename_move_run_and_delete(daemon) -> Non
         ".hercules/cases/Checkout/Cards/visa.json",
         ".hercules/cases/Checkout/Cards/amex.json",
     }
-    assert "(draft)" in _text(got["get"]) and "(does not load)" in _text(got["get"]) and "(unknown environment gone)" in _text(got["get"])
+    text = _text(got["get"])
+    assert "(skipped: a draft" in text and "(skipped: does not load" in text and "(skipped: unknown environment 'gone'" in text, text
     assert got["missing"].isError and "not found" in _text(got["missing"])
     assert got["outside"].isError and "hercules_list_folders" in _text(got["outside"])
+    assert got["own_url"].structuredContent["ready"] == 1 and "(ready)" in _text(got["own_url"]), _text(got["own_url"])
     assert got["lookalike"].isError and ".hercules/cases-archive" in _text(got["lookalike"]), "a folder name that only starts like .hercules/cases is kept whole"
     assert got["prefixed"].structuredContent["folder"] == "Checkout-archive"
 

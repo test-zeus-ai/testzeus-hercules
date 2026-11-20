@@ -70,6 +70,7 @@ from testzeus_hercules.daemon.models import (
     ApprovalRequest,
     ApprovalView,
     BatchSkip,
+    BatchSummary,
     CaseSave,
     CasesMove,
     CaseValidate,
@@ -361,9 +362,10 @@ async def create_batch(request: Request, daemon: Daemon) -> Response:
             raise ApiError(404, "folder not found") from None
         except case_files.CaseError as exc:
             raise ApiError(422, str(exc)) from None
-        batch, origin = new_batch_id(), run_origin(request)
+        batch, origin = ("" if body.dry_run else new_batch_id()), run_origin(request)
         runs: list[RunCreated] = []
         skipped: list[BatchSkip] = []
+        would_run: list[str] = []
         for entry in entries:
             if not entry["valid"]:
                 skipped.append(BatchSkip(name=entry["name"], reason=f"does not load: {entry.get('error')}"))
@@ -377,13 +379,56 @@ async def create_batch(request: Request, daemon: Daemon) -> Response:
             except case_files.CaseError as exc:
                 skipped.append(BatchSkip(name=entry["name"], reason=str(exc)))
                 continue
+            if body.dry_run:
+                would_run.append(entry["name"])
+                continue
             source = {"environment": body.environment, "base_url": body.base_url, "kind": "case_path", "path": entry["path"], "batch": batch, "folder": folder, **origin}
             record = daemon.runs.submit(case, options=body.run_options(), source=source)
             runs.append(RunCreated(run_id=record["id"], status=record["status"], case_id=record.get("case_id"), ui_url=daemon.ui_url(record["id"])))
-    if not entries:
+    if not entries and not body.dry_run:
         raise ApiError(422, f"{folder or 'the top level'} has no saved cases")
-    created = RunBatchCreated(batch=batch, folder=folder, runs=runs, skipped=skipped)
+    created = RunBatchCreated(batch=batch, folder=folder, runs=runs, skipped=skipped, would_run=would_run)
     return JSONResponse(created.model_dump(mode="json"), status_code=201 if runs else 200)
+
+
+def latest_attempts(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Each case's latest attempt among a folder run's runs (oldest first): runs are grouped by the run they (re)ran from
+    within the folder run, and the newest of each group is kept, so a run rerun twice counts once."""
+    by_id = {record["id"]: record for record in records}
+
+    def root(record: dict[str, Any]) -> str:
+        seen = {record["id"]}
+        while record.get("parent_run_id") in by_id and record["parent_run_id"] not in seen:
+            record = by_id[record["parent_run_id"]]
+            seen.add(record["id"])
+        return str(record["id"])
+
+    latest: dict[str, dict[str, Any]] = {}
+    for record in records:  # oldest first: a later run of the same case replaces an earlier one
+        latest[root(record)] = record
+    return list(latest.values())
+
+
+async def batch_summary(request: Request, daemon: Daemon) -> Response:
+    batch = request.path_params["batch"]
+    records = daemon.store.batch_runs(batch)
+    if not records:
+        raise ApiError(404, "folder run not found")
+    latest = latest_attempts(records)
+    counts: dict[str, int] = {}
+    for record in latest:
+        counts[record["status"]] = counts.get(record["status"], 0) + 1
+    still_open = sum(1 for record in latest if record["status"] not in FINAL_STATUSES)
+    ends = [str(record["finished_at"]) for record in latest if record.get("finished_at")]
+    summary = BatchSummary(
+        batch=batch,
+        folder=next((str(r["folder"]) for r in records if r.get("folder")), None),
+        total=len(latest),
+        open=still_open,
+        counts=counts,
+        finished_at=max(ends) if ends and not still_open else None,
+    )
+    return JSONResponse(summary.model_dump(mode="json"))
 
 
 async def list_runs(request: Request, daemon: Daemon) -> Response:
@@ -1107,6 +1152,7 @@ def create_app(config: DaemonConfig) -> Starlette:
         Route("/api/runs", _endpoint(list_runs), methods=["GET"]),
         Route("/api/runs", _endpoint(create_run), methods=["POST"]),
         Route("/api/runs/batch", _endpoint(create_batch), methods=["POST"]),
+        Route("/api/runs/batches/{batch}", _endpoint(batch_summary), methods=["GET"]),
         Route("/api/runs/{run_id}", _endpoint(get_run), methods=["GET"]),
         Route("/api/runs/{run_id}", _endpoint(delete_run), methods=["DELETE"]),
         Route("/api/runs/{run_id}/events", _endpoint(run_events), methods=["GET"]),

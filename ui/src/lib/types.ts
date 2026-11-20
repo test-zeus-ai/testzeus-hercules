@@ -7,6 +7,18 @@ export type Egress = "local" | "hybrid-text" | "hybrid";
 
 export const FINAL_STATUSES: ReadonlySet<string> = new Set(["passed", "failed", "error", "cancelled"]);
 
+/** GET /api/runs/batches/{batch}: a folder run counted by each case's latest attempt. */
+export interface BatchSummary {
+  batch: string;
+  folder?: string | null;
+  total: number;
+  /** Latest attempts not finished yet. */
+  open: number;
+  counts: Partial<Record<RunStatus, number>>;
+  /** When its last latest attempt ended, once none is open. */
+  finished_at?: string | null;
+}
+
 export interface StepResult {
   index: number;
   action: string;

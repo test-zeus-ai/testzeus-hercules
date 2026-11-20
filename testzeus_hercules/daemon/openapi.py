@@ -26,6 +26,7 @@ from testzeus_hercules.daemon.models import (
     PlanCreate,
     PlanView,
     RerunRequest,
+    BatchSummary,
     RunBatchCreate,
     RunBatchCreated,
     RunCreate,
@@ -56,6 +57,7 @@ _MODELS = (
     CasesMove,
     FolderCreate,
     FolderUpdate,
+    BatchSummary,
     RunBatchCreate,
     RunBatchCreated,
     StepDecisions,
@@ -86,6 +88,7 @@ def _errors(*codes: int) -> dict[str, Any]:
         403: "Forbidden Host or Origin",
         404: "Not found",
         409: "Conflicts with the run's state",
+        412: "Changed since it was read (If-Match)",
         413: "Body too large",
         415: "Wrong content type",
         422: "Invalid input",
@@ -147,9 +150,16 @@ def _paths() -> dict[str, Any]:
         },
         "/api/runs/batch": {
             "post": {
-                "summary": "Run a folder: queue one run per ready case of the folder (and its subfolders), sharing a batch; drafts and cases that do not load are skipped",
+                "summary": "Run a folder: queue one run per ready case of the folder (and its subfolders), sharing a batch; drafts and cases that do not load are skipped. dry_run starts nothing and lists what it would run",
                 "requestBody": {"required": True, "content": {"application/json": {"schema": _ref("RunBatchCreate")}}},
                 "responses": {"201": _json(_ref("RunBatchCreated"), "Queued"), "200": _json(_ref("RunBatchCreated"), "Nothing to run: every case was skipped"), **_errors(400, 404, 422)},
+            },
+        },
+        "/api/runs/batches/{batch}": {
+            "parameters": [_param("batch", "path", {"type": "string"}, "The batch id from POST /api/runs/batch")],
+            "get": {
+                "summary": "A folder run counted by each case's latest attempt (a rerun inside it replaces the run it reran): totals by status, and how many are still open",
+                "responses": {"200": _json(_ref("BatchSummary")), **_errors(404)},
             },
         },
         "/api/runs/{run_id}": {
@@ -287,7 +297,15 @@ def _paths() -> dict[str, Any]:
             "get": {"summary": "The latest plan made for a saved case, and whether it is current", "responses": {"200": _json(_ref("PlanView")), **_errors(404, 422)}},
         },
         "/api/cases": {
-            "get": {"summary": "Cases in .hercules/cases and its folders with validation status, and every folder", "responses": {"200": _json({"type": "object"}), **_errors()}},
+            "get": {
+                "summary": "Cases in .hercules/cases and its folders with validation status, and every folder",
+                "parameters": [
+                    _param("folder", "query", {"type": "string"}, "Only this folder and its subfolders"),
+                    _param("query", "query", {"type": "string"}, "Words the title, id or path contains"),
+                    _param("environment", "query", {"type": "string"}, "Only cases that run in this environment (a case that does not load: its file names it), across every folder"),
+                ],
+                "responses": {"200": _json({"type": "object"}), **_errors(404, 422)},
+            },
             "post": {
                 "summary": "Save a TestCase (<id>.json) or import Gherkin (<scenario>.feature)",
                 "requestBody": {"required": True, "content": {"application/json": {"schema": _ref("CaseSave")}}},
@@ -336,14 +354,15 @@ def _paths() -> dict[str, Any]:
         "/api/environments": {
             "get": {"summary": "Saved environments", "responses": {"200": _json({"type": "object"}), **_errors()}},
             "post": {
-                "summary": "Save an environment (base URL, viewport, browser, device profile or native app, secret names)",
+                "summary": "Save an environment (base URL, viewport, browser, device profile or native app, secret names); with If-Match, only over the version read (412 if it changed)",
+                "parameters": [_param("If-Match", "header", {"type": "string"}, "The ETag of the version read: the save is refused (412) if the environment changed since")],
                 "requestBody": {"required": True, "content": {"application/json": {"schema": _ref("EnvironmentSave")}}},
-                "responses": {"201": _json(_ref("Environment")), **_errors(400, 409, 422)},
+                "responses": {"201": _json(_ref("Environment")), **_errors(400, 409, 412, 422)},
             },
         },
         "/api/environments/{name}": {
             "parameters": [_param("name", "path", {"type": "string"}, "Environment name")],
-            "get": {"summary": "One environment", "responses": {"200": _json(_ref("Environment")), **_errors(404)}},
+            "get": {"summary": "One environment; its ETag header is the version a save with If-Match replaces", "responses": {"200": _json(_ref("Environment")), **_errors(404)}},
             "delete": {"summary": "Delete an environment and its files for upload steps (cases that name it no longer load it)", "responses": {"200": _json({"type": "object"}), **_errors(404)}},
         },
         "/api/devices": {

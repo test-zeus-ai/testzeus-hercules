@@ -286,8 +286,8 @@ resolve the notes, and run it.
 | `hercules_create_case` | `gherkin` or `test_case`; `test_data`, `folder` | Validates, then saves a new case; refused when the id is taken |
 | `hercules_update_case` | `name`; `gherkin` (a `.feature`) or `test_case` (a `.json`); `test_data` | Validates, then replaces the case's content; the kind and id stay the same (to rename, create and delete) |
 | `hercules_delete_case` | `name` | Deletes a case with its test data and attached files; agents call it only when the user asks |
-| `hercules_list_folders` | none | The folders of saved cases, with how many cases each holds (subfolders included) and how many a folder run would run (they load, are not drafts, and their environment exists) |
-| `hercules_get_folder` | `folder` | One folder: its subfolders and its cases, each marked ready, draft or does not load |
+| `hercules_list_folders` | none | The folders of saved cases, with how many cases each holds (subfolders included) and how many a folder run would run, as the daemon decides it (a dry run) |
+| `hercules_get_folder` | `folder` | One folder: its subfolders and its cases, each marked ready or with the reason a folder run would skip it |
 | `hercules_create_folder` | `name`, `parent` | Makes a folder for cases (inside `parent`, which must exist; default the top level) |
 | `hercules_update_folder` | `folder`; `name` or `parent` | Renames a folder, or moves it with its cases into `parent` (empty: the top level) |
 | `hercules_delete_folder` | `folder`, `mode` (`move_up`, the default, or `delete_cases`) | Deletes a folder, moving its cases up a level or deleting them too; agents call it only when the user asks |

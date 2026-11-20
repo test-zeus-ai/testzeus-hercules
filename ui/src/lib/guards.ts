@@ -2,7 +2,7 @@
 // read exist with the right type. A daemon of another version (or a proxy's HTML error page)
 // then fails with a clear message instead of a crash deep inside a screen.
 
-import type { CaseListing, Cloud, CloudDevices, DashboardReport, CloudRun, CloudsReport, ModelsReport, RunResult, RunView, SavedCase, TestCase } from "./types";
+import type { BatchSummary, CaseListing, Cloud, CloudDevices, DashboardReport, CloudRun, CloudsReport, ModelsReport, RunResult, RunView, SavedCase, TestCase } from "./types";
 
 export type Guard<T> = (value: unknown) => value is T;
 
@@ -18,6 +18,10 @@ export function isRunResult(value: unknown): value is RunResult {
 
 export function isRunView(value: unknown): value is RunView {
   return isObject(value) && isString(value.run_id) && isString(value.status) && optional(value.result, isRunResult);
+}
+
+export function isBatchSummary(value: unknown): value is BatchSummary {
+  return isObject(value) && isString(value.batch) && typeof value.total === "number" && typeof value.open === "number" && isObject(value.counts);
 }
 
 export function isRunList(value: unknown): value is { runs: RunView[] } {

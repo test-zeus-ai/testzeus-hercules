@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { api, ApiError } from "../lib/api";
 import { FINISHED, isSessionList, type SessionView } from "../lib/explore";
-import { isRunList, isRunView } from "../lib/guards";
+import { isBatchSummary, isRunList, isRunView } from "../lib/guards";
 import { away, clearTitleBadge, deliver, type Delivery } from "../lib/notify/deliver";
 import { exploreEvents, followUps, newRunTracker, newSessionTracker, runEvents, wanted, type NotifyEvent, type RunPoll, type RunTracker, type SessionTracker } from "../lib/notify/events";
 import { useNotifyPrefs } from "../lib/notify/prefs";
@@ -16,9 +16,6 @@ export const ACTIVE_POLL_MS = 1500;
 export const IDLE_POLL_MS = 10_000;
 export const EXPLORE_ACTIVE_POLL_MS = 5000;
 export const EXPLORE_IDLE_POLL_MS = 15_000;
-/** The daemon's cap on one runs listing: a folder run this large is checked for runs still open beyond it. */
-const BATCH_LIMIT = 200;
-const OPEN_STATUSES = ["queued", "running", "paused", "needs_approval", "needs_plan_approval"];
 
 // What the notifier had accounted for, kept per tab: after a reload (or the browser waking a tab it put to sleep),
 // what ended meanwhile is still announced.
@@ -44,18 +41,13 @@ function writeMark(key: string, value: number): void {
 
 const runsPath = (query: string) => `/api/runs?${query}`;
 
-async function openBeyondTheList(batch: string): Promise<boolean> {
-  const found = await Promise.all(OPEN_STATUSES.map((status) => api(runsPath(`batch=${encodeURIComponent(batch)}&status=${status}&limit=1`), { guard: isRunList })));
-  return found.some((listing) => listing.runs.length > 0);
-}
-
-/** The newest runs, plus what they do not settle (followUps): runs that dropped out of the list, and whole folder runs. */
+/** The newest runs, plus what they do not settle (followUps): runs that dropped out of the list, and folder run summaries. */
 async function pollRuns(tracker: RunTracker): Promise<RunPoll> {
   const { runs } = await api(runsPath(`limit=${NOTIFY_RUN_LIMIT}`), { guard: isRunList });
   const asked = followUps(tracker, runs, Date.now());
   const merged = new Map(runs.map((run) => [run.run_id, run]));
   const gone: string[] = [];
-  const complete: string[] = [];
+  const summaries: RunPoll["summaries"] = {};
   const lookUp = async (runId: string) => {
     try {
       merged.set(runId, await api(`/api/runs/${encodeURIComponent(runId)}`, { guard: isRunView }));
@@ -63,18 +55,16 @@ async function pollRuns(tracker: RunTracker): Promise<RunPoll> {
       if (error instanceof ApiError && error.status === 404) gone.push(runId);
     }
   };
-  const fetchWhole = async (batch: string) => {
+  const summarise = async (batch: string) => {
     tracker.checked.set(batch, Date.now());
     try {
-      const { runs: members } = await api(runsPath(`batch=${encodeURIComponent(batch)}&limit=${BATCH_LIMIT}`), { guard: isRunList });
-      for (const run of members) merged.set(run.run_id, run);
-      if (members.length < BATCH_LIMIT || !(await openBeyondTheList(batch))) complete.push(batch);
+      summaries[batch] = await api(`/api/runs/batches/${encodeURIComponent(batch)}`, { guard: isBatchSummary });
     } catch {
       // checked again on a later poll
     }
   };
-  await Promise.all([...asked.runIds.map(lookUp), ...asked.batches.map(fetchWhole)]);
-  return { runs: [...merged.values()], gone, complete };
+  await Promise.all([...asked.runIds.map(lookUp), ...asked.batches.map(summarise)]);
+  return { runs: [...merged.values()], gone, summaries };
 }
 
 // The notifier plays its own chime (once per event, and not when a system notification already made a sound).
@@ -119,17 +109,28 @@ export function Notifications() {
     for (const key of runTracker.current?.approvals.values() ?? []) toast.dismiss(key);
     runTracker.current = newRunTracker();
   }, [watchRuns]);
+  const announce = (events: NotifyEvent[]) => {
+    for (const event of events) if (wanted(event, live.current.prefs)) deliver(event, live.current);
+  };
+  // Approvals switched off close their toasts; switched back on, the runs still waiting show again, without a sound.
+  const approvalsWere = useRef(prefs.approvals);
   useEffect(() => {
-    if (prefs.approvals) return;
-    for (const key of runTracker.current?.approvals.values() ?? []) toast.dismiss(key);
+    const tracker = runTracker.current;
+    if (!prefs.approvals) {
+      for (const key of tracker?.approvals.values() ?? []) toast.dismiss(key);
+    } else if (!approvalsWere.current && tracker) {
+      tracker.approvals = new Map();
+      tracker.requiet = true;
+      // The next poll may bring the same data (no new render), so go over the latest one now.
+      if (runs.data && watchRuns) announce(runEvents(tracker, runs.data));
+    }
+    approvalsWere.current = prefs.approvals;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only a change of the switch matters
   }, [prefs.approvals]);
   useEffect(() => {
     if (!prefs.explore) sessionTracker.current = newSessionTracker();
   }, [prefs.explore]);
 
-  const announce = (events: NotifyEvent[]) => {
-    for (const event of events) if (wanted(event, live.current.prefs)) deliver(event, live.current);
-  };
   useEffect(() => {
     if (!runs.data || !watchRuns || !runTracker.current) return;
     announce(runEvents(runTracker.current, runs.data));

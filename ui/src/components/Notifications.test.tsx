@@ -54,8 +54,15 @@ beforeEach(() => {
       const all = stored ?? runs;
       const query = new URLSearchParams(url.split("?")[1] ?? "");
       const one = /^\/api\/runs\/([^?/]+)$/.exec(url);
+      const batch = /^\/api\/runs\/batches\/([^?/]+)$/.exec(url);
       let body: unknown = {};
-      if (one) {
+      if (batch) {
+        const members = all.filter((item) => item.batch === decodeURIComponent(batch[1]));
+        const counts: Record<string, number> = {};
+        for (const item of members) counts[item.status] = (counts[item.status] ?? 0) + 1;
+        const open = members.filter((item) => !["passed", "failed", "error", "cancelled"].includes(item.status)).length;
+        body = { batch: decodeURIComponent(batch[1]), folder: members.find((item) => item.folder)?.folder ?? null, total: members.length, open, counts, finished_at: open ? null : "2026-11-20T10:01:42Z" };
+      } else if (one) {
         body = all.find((item) => item.run_id === decodeURIComponent(one[1]));
         if (!body) return Promise.resolve({ ok: false, status: 404, text: () => Promise.resolve(JSON.stringify({ error: "run not found" })) });
       } else if (url.startsWith("/api/runs") && query.get("batch")) {
@@ -275,6 +282,24 @@ describe("Notifications", () => {
     expect(toast.warning).toHaveBeenCalledWith("Case a needs your approval", expect.objectContaining({ id: "approval:a:needs_approval:q1" }));
     act(() => writePrefs({ runs: "off", approvals: false }));
     await waitFor(() => expect(toast.dismiss).toHaveBeenCalledWith("approval:a:needs_approval:q1"));
+  });
+
+  it("shows a run still waiting again, without a sound, when approvals are switched back on", async () => {
+    prefs({ sound: true });
+    runs = [run("a", "running")];
+    const { client, poll } = mount();
+    await firstPoll(client);
+    runs = [run("a", "needs_approval", { approval: { id: "q1", step: 2 } })];
+    await poll();
+    expect(toast.warning).toHaveBeenCalledTimes(1);
+    expect(chime).toHaveBeenCalledTimes(1);
+
+    act(() => writePrefs({ approvals: false }));
+    await waitFor(() => expect(toast.dismiss).toHaveBeenCalledWith("approval:a:needs_approval:q1"));
+    act(() => writePrefs({ approvals: true }));
+    await poll();
+    expect(toast.warning).toHaveBeenCalledTimes(2);
+    expect(chime).toHaveBeenCalledTimes(1); // shown again, not announced again
   });
 
   it("offers desktop notifications once, on the first toast", async () => {
