@@ -28,10 +28,25 @@ export interface SessionTracker {
 export interface RunTracker extends SessionTracker {
   /** run_id → the key of the approval it waits on */
   approvals: Map<string, string>;
+  /** Runs outside a folder run seen unfinished: looked up by id when they drop out of the polled list. */
+  open: Set<string>;
+  /** Folder runs seen but not announced yet. */
+  pending: Set<string>;
+  /** batch → when all of its runs were last fetched (ms) */
+  checked: Map<string, number>;
+}
+
+/** One poll: the newest runs, with the runs and folder runs the tracker asked for (see followUps). */
+export interface RunPoll {
+  runs: RunView[];
+  /** Runs looked up by id that the daemon no longer has. */
+  gone?: string[];
+  /** Folder runs whose every run is in `runs`, with none still open beyond the listing's cap. */
+  complete?: string[];
 }
 
 export const newSessionTracker = (since: number | null = null): SessionTracker => ({ seeded: false, seen: new Set(), since, latest: since ?? 0 });
-export const newRunTracker = (since: number | null = null): RunTracker => ({ ...newSessionTracker(since), approvals: new Map() });
+export const newRunTracker = (since: number | null = null): RunTracker => ({ ...newSessionTracker(since), approvals: new Map(), open: new Set(), pending: new Set(), checked: new Map() });
 
 function endedAt(at: string | null | undefined): number {
   const time = at ? Date.parse(at) : Number.NaN;
@@ -54,13 +69,56 @@ export function approvalKey(run: RunView): string {
   return `approval:${run.run_id}:${run.status}:${asked?.id ?? asked?.asked_at ?? asked?.step ?? "draft"}`;
 }
 
-export function runEvents(tracker: RunTracker, runs: readonly RunView[]): NotifyEvent[] {
+/** How often a folder run whose visible runs have all ended is fetched whole, to see whether it really has. */
+export const BATCH_RECHECK_MS = 10_000;
+const MAX_LOOKUPS = 25;
+const MAX_BATCH_CHECKS = 5;
+
+// An Explore session's child runs are announced once, as the session.
+const ownRuns = (runs: readonly RunView[]) => runs.filter((run) => !run.explore_session);
+
+function byBatch(runs: readonly RunView[]): Map<string, RunView[]> {
+  const batches = new Map<string, RunView[]>();
+  for (const run of runs) if (run.batch) batches.set(run.batch, [...(batches.get(run.batch) ?? []), run]);
+  return batches;
+}
+
+/** A folder run's runs, each case's latest attempt only: a rerun inside the folder run replaces the run it reran. */
+export function latestAttempts(members: readonly RunView[]): RunView[] {
+  const rerun = new Set(members.map((run) => run.parent_run_id).filter(Boolean));
+  return members.filter((run) => !rerun.has(run.run_id));
+}
+
+/**
+ * What the newest runs do not settle: runs the tracker follows that dropped out of the list (looked up by id), and
+ * folder runs whose visible runs have all ended (fetched whole: a large or older folder run has runs outside the list).
+ */
+export function followUps(tracker: RunTracker, runs: readonly RunView[], now: number): { runIds: string[]; batches: string[] } {
+  const own = ownRuns(runs);
+  const present = new Set(own.map((run) => run.run_id));
+  const runIds = [...new Set([...tracker.approvals.keys(), ...tracker.open])].filter((id) => !present.has(id)).slice(0, MAX_LOOKUPS);
+  const visible = byBatch(own);
+  const batches: string[] = [];
+  for (const batch of new Set([...visible.keys(), ...tracker.pending])) {
+    if (tracker.seen.has(`batch:${batch}`)) continue;
+    if ((visible.get(batch) ?? []).some((run) => !FINAL_STATUSES.has(run.status))) continue; // still running where we can see it
+    const last = tracker.checked.get(batch);
+    if (last !== undefined && now - last < BATCH_RECHECK_MS) continue;
+    batches.push(batch);
+  }
+  return { runIds, batches: batches.slice(0, MAX_BATCH_CHECKS) };
+}
+
+export function runEvents(tracker: RunTracker, { runs, gone = [], complete = [] }: RunPoll): NotifyEvent[] {
   const events: NotifyEvent[] = [];
-  // An Explore session's child runs are announced once, as the session.
-  const own = runs.filter((run) => !run.explore_session);
+  const own = ownRuns(runs);
+  const present = new Set(own.map((run) => run.run_id));
+  const lost = new Set(gone);
 
   const waiting = new Map<string, string>();
   for (const run of own) if (WAITING.has(run.status)) waiting.set(run.run_id, approvalKey(run));
+  // A run missing from this poll still waits on what it waited on, unless the daemon no longer has it.
+  for (const [runId, key] of tracker.approvals) if (!present.has(runId) && !lost.has(runId)) waiting.set(runId, key);
   for (const [runId, key] of tracker.approvals) if (waiting.get(runId) !== key) events.push({ kind: "approval-cleared", key });
   for (const run of own) {
     const key = waiting.get(run.run_id);
@@ -68,19 +126,23 @@ export function runEvents(tracker: RunTracker, runs: readonly RunView[]): Notify
   }
   tracker.approvals = waiting;
 
+  for (const runId of lost) tracker.open.delete(runId);
   const announceRun = (run: RunView) => {
-    if (!FINAL_STATUSES.has(run.status)) return;
+    if (!FINAL_STATUSES.has(run.status)) {
+      tracker.open.add(run.run_id);
+      return;
+    }
+    tracker.open.delete(run.run_id);
     const key = `run:${run.run_id}`;
     if (tracker.seen.has(key)) return;
     tracker.seen.add(key);
     if (isNews(tracker, run.finished_at)) events.push({ kind: "run", key, run });
   };
-  const batches = new Map<string, RunView[]>();
-  for (const run of own) {
-    if (run.batch) batches.set(run.batch, [...(batches.get(run.batch) ?? []), run]);
-    else announceRun(run);
-  }
-  // A folder run is one notification, once its last run ends.
+  for (const run of own) if (!run.batch) announceRun(run);
+
+  // A folder run is one notification, once its last run ends: known only when all of its runs were fetched.
+  const fetched = new Set(complete);
+  const batches = byBatch(own);
   for (const [batch, members] of batches) {
     const key = `batch:${batch}`;
     // A rerun keeps its folder run's batch; once the folder run was announced, the rerun is news on its own.
@@ -88,11 +150,23 @@ export function runEvents(tracker: RunTracker, runs: readonly RunView[]): Notify
       members.forEach(announceRun);
       continue;
     }
-    if (!members.every((run) => FINAL_STATUSES.has(run.status))) continue;
+    const latest = latestAttempts(members);
+    if (!fetched.has(batch) || !latest.every((run) => FINAL_STATUSES.has(run.status))) {
+      tracker.pending.add(batch);
+      continue;
+    }
     tracker.seen.add(key);
+    tracker.pending.delete(batch);
+    tracker.checked.delete(batch);
     for (const run of members) tracker.seen.add(`run:${run.run_id}`);
-    const last = members.map((run) => run.finished_at).reduce<string | null | undefined>((a, b) => (endedAt(b) > endedAt(a) ? b : a), null);
-    if (isNews(tracker, last)) events.push({ kind: "batch", key, batch, runs: members });
+    const last = latest.map((run) => run.finished_at).reduce<string | null | undefined>((a, b) => (endedAt(b) > endedAt(a) ? b : a), null);
+    if (isNews(tracker, last)) events.push({ kind: "batch", key, batch, runs: latest });
+  }
+  // A folder run fetched whole that has no runs left (they were deleted) is not waited on any more.
+  for (const batch of fetched) {
+    if (batches.has(batch)) continue;
+    tracker.pending.delete(batch);
+    tracker.checked.delete(batch);
   }
   tracker.seeded = true;
   return events;

@@ -286,7 +286,7 @@ resolve the notes, and run it.
 | `hercules_create_case` | `gherkin` or `test_case`; `test_data`, `folder` | Validates, then saves a new case; refused when the id is taken |
 | `hercules_update_case` | `name`; `gherkin` (a `.feature`) or `test_case` (a `.json`); `test_data` | Validates, then replaces the case's content; the kind and id stay the same (to rename, create and delete) |
 | `hercules_delete_case` | `name` | Deletes a case with its test data and attached files; agents call it only when the user asks |
-| `hercules_list_folders` | none | The folders of saved cases, with how many cases each holds (subfolders included) and how many are ready to run |
+| `hercules_list_folders` | none | The folders of saved cases, with how many cases each holds (subfolders included) and how many a folder run would run (they load, are not drafts, and their environment exists) |
 | `hercules_get_folder` | `folder` | One folder: its subfolders and its cases, each marked ready, draft or does not load |
 | `hercules_create_folder` | `name`, `parent` | Makes a folder for cases (inside `parent`, which must exist; default the top level) |
 | `hercules_update_folder` | `folder`; `name` or `parent` | Renames a folder, or moves it with its cases into `parent` (empty: the top level) |
@@ -295,8 +295,8 @@ resolve the notes, and run it.
 | `hercules_list_environments` | none | The saved environments: where each runs (base URL, browser, device or native app) and the names of its variables and secrets |
 | `hercules_get_environment` | `name` | One environment in full (secrets by name only) and the saved cases that name it |
 | `hercules_create_environment` | `name`; `base_url` (web) or `mobile` (native app); `browser`, `viewport`, `device`, `browser_options`, `variables`, `secret_names` | Validates, then saves a new environment; refused when the name is taken |
-| `hercules_update_environment` | `name` and the fields to change (`null` clears one) | Validates, then saves the environment with those fields replaced and the rest kept |
-| `hercules_delete_environment` | `name` | Deletes an environment and its attached files, and lists the cases that still name it; agents call it only when the user asks |
+| `hercules_update_environment` | `name` and the fields to change (`null` clears one) | Validates, then saves the environment with those fields replaced and the rest kept; an edit made meanwhile (in the UI) is read again, not overwritten |
+| `hercules_delete_environment` | `name`, `force` | Deletes an environment and its attached files; refused while saved cases run in it (it names them) unless `force`, which agents pass only when the user confirms |
 | `hercules_get_evidence` | `uri`, `max_side` (64 to 2048, default 1024) | Read one evidence file: text (observation, decisions, `run.json`) or an image (downscaled) |
 | `hercules_check_env` | none | Whether the daemon runs (it is started if needed), which project it serves, the model server settings, and which modes are available. Never returns key values. |
 | `hercules_explore` | `base_url`, `environment` or `start_case`; `mission`, `prompt`, `time_s`, `workers`, `reproducers`, `max_cost_usd`, `target_findings`, `severity_floor`, `levers`, `changed_paths`, `deny_paths`, `allow_hosts`, `forbid`, `personas`, `teardown_case`, `i_own_this_environment`, `dry_run` | Start an [exploration session](explore.md) and return its id at once. The swarm size is the user's; a size over the machine's guard rail is refused with the numbers. A host that does not look like a test environment is refused unless `i_own_this_environment` (only when the user said the host is theirs) |

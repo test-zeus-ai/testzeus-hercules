@@ -331,9 +331,25 @@ def _matches(entry: dict[str, Any], query: str) -> bool:
     return not query or query in " ".join(str(entry.get(key) or "") for key in ("title", "id", "name", "path")).casefold()
 
 
-def find_cases(cases_dir: Path, project_dir: Path, *, folders: list[str] | None = None, under: str = "", query: str = "", limit: int | None = None) -> tuple[list[dict[str, Any]], bool]:
-    """The cases (all, or ``under`` one folder with its subfolders) whose title, id or path contains ``query``, at most
-    ``limit`` of them (default: the listing's cap); and whether there were more. Folder and query apply before the limit."""
+def _names_environment(entry: dict[str, Any], path: Path, name: str) -> bool:
+    """Whether a case runs in environment ``name``: its environment, or for a case that does not load, its file naming it
+    (an ``@env:`` tag or an environment ``ref``)."""
+    if entry["valid"]:
+        return entry.get("environment") == name
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return False
+    quoted = re.escape(name)
+    return re.search(rf"@env:{quoted}(?![\w-])|\"ref\"\s*:\s*\"{quoted}\"", text) is not None
+
+
+def find_cases(
+    cases_dir: Path, project_dir: Path, *, folders: list[str] | None = None, under: str = "", query: str = "", environment: str | None = None, limit: int | None = None
+) -> tuple[list[dict[str, Any]], bool]:
+    """The cases (all, or ``under`` one folder with its subfolders) whose title, id or path contains ``query`` and that
+    run in ``environment`` (see _names_environment), at most ``limit`` of them (default: the listing's cap); and whether
+    there were more. Folder, query and environment apply before the limit."""
     limit = _MAX_LISTED if limit is None else limit
     found: list[dict[str, Any]] = []
     if not cases_dir.is_dir():
@@ -349,7 +365,7 @@ def find_cases(cases_dir: Path, project_dir: Path, *, folders: list[str] | None 
     for folder in scope:
         for path in _case_paths(cases_dir, folder):
             entry = _case_entry(project_dir, folder, path)
-            if not _matches(entry, wanted):
+            if not _matches(entry, wanted) or (environment is not None and not _names_environment(entry, path, environment)):
                 continue
             if len(found) >= limit:
                 return found, True

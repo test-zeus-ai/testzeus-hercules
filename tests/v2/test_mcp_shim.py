@@ -748,6 +748,9 @@ def test_folder_tools_create_list_read_rename_move_run_and_delete(daemon) -> Non
             got["again"] = await call(session, "hercules_create_folder", {"name": "Checkout"})
             got["no_parent"] = await call(session, "hercules_create_folder", {"name": "X", "parent": "Nowhere"})
             save("Checkout", "pay", "fake-pass")
+            save("Checkout", "elsewhere", "fake-pass")
+            elsewhere = json.loads((cases / "Checkout" / "elsewhere.json").read_text())
+            (cases / "Checkout" / "elsewhere.json").write_text(json.dumps({**elsewhere, "environment": {"ref": "gone"}}), encoding="utf-8")
             save("Checkout/Cards", "visa", "fake-fail")
             save("Checkout/Cards", "amex", status="draft")
             (cases / "Checkout" / "broken.json").write_text("{not json", encoding="utf-8")
@@ -755,6 +758,10 @@ def test_folder_tools_create_list_read_rename_move_run_and_delete(daemon) -> Non
             got["get"] = await call(session, "hercules_get_folder", {"folder": "checkout"})
             got["missing"] = await call(session, "hercules_get_folder", {"folder": "Nowhere"})
             got["outside"] = await call(session, "hercules_get_folder", {"folder": "../.."})
+            (cases / "Checkout-archive").mkdir()
+            got["lookalike"] = await call(session, "hercules_get_folder", {"folder": ".hercules/cases-archive"})
+            got["prefixed"] = await call(session, "hercules_get_folder", {"folder": ".hercules/cases/Checkout-archive"})
+            (cases / "Checkout-archive").rmdir()
             got["run"] = await call(session, "hercules_run_folder", {"folder": "Checkout", "wait_s": 30})
             batch = got["run"].structuredContent["batch"]
             got["runs"] = await call(session, "hercules_list_runs", {"batch": batch})
@@ -778,23 +785,26 @@ def test_folder_tools_create_list_read_rename_move_run_and_delete(daemon) -> Non
     assert got["again"].isError and "no folder was made" in _text(got["again"]) and "already has a folder" in _text(got["again"])
     assert got["no_parent"].isError and "not found" in _text(got["no_parent"])
 
-    assert got["list"].structuredContent["folders"] == [{"folder": "Checkout", "cases": 4, "ready": 2}, {"folder": "Checkout/Cards", "cases": 2, "ready": 1}]
+    assert got["list"].structuredContent["folders"] == [{"folder": "Checkout", "cases": 5, "ready": 2}, {"folder": "Checkout/Cards", "cases": 2, "ready": 1}]
     folder = got["get"].structuredContent
     assert folder["folder"] == "Checkout" and folder["subfolders"] == ["Checkout/Cards"] and folder["ready"] == 2
     assert {case["path"] for case in folder["cases"]} == {
         ".hercules/cases/Checkout/pay.json",
+        ".hercules/cases/Checkout/elsewhere.json",
         ".hercules/cases/Checkout/broken.json",
         ".hercules/cases/Checkout/Cards/visa.json",
         ".hercules/cases/Checkout/Cards/amex.json",
     }
-    assert "(draft)" in _text(got["get"]) and "(does not load)" in _text(got["get"])
+    assert "(draft)" in _text(got["get"]) and "(does not load)" in _text(got["get"]) and "(unknown environment gone)" in _text(got["get"])
     assert got["missing"].isError and "not found" in _text(got["missing"])
     assert got["outside"].isError and "hercules_list_folders" in _text(got["outside"])
+    assert got["lookalike"].isError and ".hercules/cases-archive" in _text(got["lookalike"]), "a folder name that only starts like .hercules/cases is kept whole"
+    assert got["prefixed"].structuredContent["folder"] == "Checkout-archive"
 
     run = got["run"].structuredContent
     assert run["folder"] == "Checkout" and run["batch"].startswith("b_") and run["all_finished"] is True, run
     assert sorted(item["status"] for item in run["runs"]) == ["failed", "passed"]
-    assert {item["name"] for item in run["skipped"]} == {"Checkout/broken.json", "Checkout/Cards/amex.json"}
+    assert {item["name"] for item in run["skipped"]} == {"Checkout/broken.json", "Checkout/elsewhere.json", "Checkout/Cards/amex.json"}
     assert f"hercules_list_runs batch={run['batch']}" in _text(got["run"]) and "Skipped Checkout/Cards/amex.json: a draft" in _text(got["run"])
     assert {item["run_id"] for item in got["runs"].structuredContent["runs"]} == {item["run_id"] for item in run["runs"]}
     only_here = got["only_here"].structuredContent
@@ -804,11 +814,11 @@ def test_folder_tools_create_list_read_rename_move_run_and_delete(daemon) -> Non
     assert got["both"].isError and "exactly one of name" in _text(got["both"])
     assert got["rename"].structuredContent == {"folder": "Checkout/Wallets", "was": "Checkout/Cards"}
     assert got["move"].structuredContent == {"folder": "Wallets", "was": "Checkout/Wallets"}
-    assert got["moved_tree"] == ["Checkout/broken.json", "Checkout/pay.json", "Wallets/amex.json", "Wallets/visa.json"]
+    assert got["moved_tree"] == ["Checkout/broken.json", "Checkout/elsewhere.json", "Checkout/pay.json", "Wallets/amex.json", "Wallets/visa.json"]
     assert got["delete_up"].structuredContent == {"folder": "Wallets", "mode": "move_up", "moved": 2, "deleted": 0}
     assert {"visa.json", "amex.json"} <= {path.name for path in cases.iterdir()} and not (cases / "Wallets").exists()
     assert got["delete_all"].isError and "not cases" in _text(got["delete_all"]) and got["kept"]
-    assert got["delete_all_again"].structuredContent == {"folder": "Checkout", "mode": "delete_cases", "moved": 0, "deleted": 2}
+    assert got["delete_all_again"].structuredContent == {"folder": "Checkout", "mode": "delete_cases", "moved": 0, "deleted": 3}
     assert not (cases / "Checkout").exists()
 
 
@@ -816,6 +826,8 @@ def test_environment_tools_create_list_read_update_and_delete(daemon) -> None:  
     config, _ = daemon
     envs = config.paths.envs_dir
     (config.paths.cases_dir / "pay.feature").write_text("@env:shop\n" + PAY, encoding="utf-8")
+    (config.paths.cases_dir / "broken.feature").write_text("@env:shop\nFeature: Broken\n", encoding="utf-8")
+    (config.paths.cases_dir / "other.feature").write_text("@env:shop-old\n" + PAY.replace("Pay by card", "Other"), encoding="utf-8")
 
     async def scenario() -> dict[str, Any]:
         got: dict[str, Any] = {}
@@ -836,7 +848,8 @@ def test_environment_tools_create_list_read_update_and_delete(daemon) -> None:  
             got["bad_update"] = await call(session, "hercules_update_environment", {"name": "shop", "variables": {}})
             got["update"] = await call(session, "hercules_update_environment", {"name": "shop", "device": "iPhone 15", "secret_names": None})
             got["missing"] = await call(session, "hercules_update_environment", {"name": "nowhere", "device": "iPhone 15"})
-            got["delete"] = await call(session, "hercules_delete_environment", {"name": "shop"})
+            got["refused"] = await call(session, "hercules_delete_environment", {"name": "shop"})
+            got["delete"] = await call(session, "hercules_delete_environment", {"name": "shop", "force": True})
             got["gone"] = await call(session, "hercules_get_environment", {"name": "shop"})
         return got
 
@@ -845,7 +858,8 @@ def test_environment_tools_create_list_read_update_and_delete(daemon) -> None:  
     assert got["no_url"].isError and "nothing was saved" in _text(got["no_url"]) and "base_url" in _text(got["no_url"])
     created = got["create"].structuredContent
     assert not got["create"].isError, _text(got["create"])
-    assert created["environment"]["variables"] == {"tenant": "acme", "password": {"secret": "SHOP_PASSWORD"}} and created["used_by"] == [".hercules/cases/pay.feature"]
+    assert created["environment"]["variables"] == {"tenant": "acme", "password": {"secret": "SHOP_PASSWORD"}}
+    assert sorted(created["used_by"]) == [".hercules/cases/broken.feature (does not load)", ".hercules/cases/pay.feature"], "a case that does not load but names it counts; shop-old does not"
     assert got["again"].isError and "already exists" in _text(got["again"]) and "hercules_update_environment" in _text(got["again"])
     assert not got["app"].isError, _text(got["app"])
     assert got["bad_name"].isError and "does not match" in _text(got["bad_name"])
@@ -853,7 +867,7 @@ def test_environment_tools_create_list_read_update_and_delete(daemon) -> None:  
     listed = {item["name"]: item for item in got["list"].structuredContent["environments"]}
     assert listed["shop"] | {"kind": "web", "base_url": "http://127.0.0.1:9/{{tenant}}", "variables": ["password", "tenant"], "secret_names": ["SHOP_TOKEN"]} == listed["shop"]
     assert listed["phone"]["kind"] == "app" and listed["phone"]["platform"] == "android"
-    assert got["get"].structuredContent["environment"]["secret_names"] == ["SHOP_TOKEN"] and "Used by 1 case(s): .hercules/cases/pay.feature" in _text(got["get"])
+    assert got["get"].structuredContent["environment"]["secret_names"] == ["SHOP_TOKEN"] and "Used by 2 case(s)" in _text(got["get"])
 
     assert got["nothing"].isError and "at least one field" in _text(got["nothing"])
     assert got["bad_update"].isError and "shop was left as it was" in _text(got["bad_update"]) and "tenant" in _text(got["bad_update"])
@@ -861,7 +875,8 @@ def test_environment_tools_create_list_read_update_and_delete(daemon) -> None:  
     assert updated["device"] == "iPhone 15" and updated["secret_names"] == [] and updated["variables"]["tenant"] == "acme", updated
     assert got["missing"].isError and "not found" in _text(got["missing"])
 
-    assert got["delete"].structuredContent == {"name": "shop", "removed": True, "used_by": [".hercules/cases/pay.feature"]}
+    assert got["refused"].isError and "nothing was deleted" in _text(got["refused"]) and "pay.feature" in _text(got["refused"]) and "force" in _text(got["refused"])
+    assert got["delete"].structuredContent["removed"] is True and len(got["delete"].structuredContent["used_by"]) == 2
     assert "will not validate until it exists again" in _text(got["delete"])
     assert got["gone"].isError and "not found" in _text(got["gone"])
     assert not (envs / "shop.json").exists() and (envs / "phone.json").is_file()

@@ -134,6 +134,13 @@ class ReverifyJob:
         }
 
 
+def _ended(view: dict[str, Any]) -> dict[str, Any]:
+    """A session an earlier daemon ran has ended, whatever its last saved view says."""
+    if view.get("status") in ("finished", "failed", "stopped"):
+        return view
+    return {**view, "status": "stopped", "message": "the daemon stopped while this session ran"}
+
+
 class ExploreManager:
     def __init__(self, daemon: Daemon) -> None:
         self.daemon = daemon
@@ -249,7 +256,7 @@ class ExploreManager:
                 if path.parent.name in self.sessions:
                     continue
                 with contextlib.suppress(OSError, ValueError):
-                    found.append(json.loads(path.read_text(encoding="utf-8")))
+                    found.append(_ended(json.loads(path.read_text(encoding="utf-8"))))
         return found
 
     # ------------------------------------------------------------------ reverify
@@ -523,9 +530,12 @@ async def preflight(request: Request, daemon: Daemon) -> Response:
 
 
 async def list_sessions(request: Request, daemon: Daemon) -> Response:
+    """This daemon's sessions, newest first, then those earlier daemons left on disk (not with ``live=true``)."""
     manager = _manager(daemon)
-    live = [json.loads(entry.session.snapshot().model_dump_json()) for entry in manager.sessions.values()]
-    return JSONResponse({"sessions": sorted(live, key=lambda item: item["started_at"], reverse=True) + manager.past()})
+    live = sorted((json.loads(entry.session.snapshot().model_dump_json()) for entry in manager.sessions.values()), key=lambda item: item["started_at"], reverse=True)
+    if request.query_params.get("live", "").lower() in ("1", "true", "yes"):
+        return JSONResponse({"sessions": live})
+    return JSONResponse({"sessions": live + await asyncio.to_thread(manager.past)})
 
 
 async def get_session(request: Request, daemon: Daemon) -> Response:
@@ -536,9 +546,7 @@ async def get_session(request: Request, daemon: Daemon) -> Response:
         # A session an earlier daemon ran: its last saved view, read-only (no events, no steering).
         path = _manager(daemon).explore_dir / session_id / "session.json"
         if path.is_file():
-            view = json.loads(await asyncio.to_thread(path.read_text, encoding="utf-8"))
-            if view.get("status") not in ("finished", "failed", "stopped"):
-                view = {**view, "status": "stopped", "message": "the daemon stopped while this session ran"}
+            view = _ended(json.loads(await asyncio.to_thread(path.read_text, encoding="utf-8")))
             return JSONResponse({**view, "events": [], "last_seq": 0, "read_only": True})
     entry = _entry(daemon, session_id)
     wait_s = _query_number(request, "wait_s", float, default=0.0, low=0, high=MAX_WAIT_S)

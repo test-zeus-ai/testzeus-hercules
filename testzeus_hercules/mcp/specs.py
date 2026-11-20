@@ -175,7 +175,11 @@ _ENV_FIELDS: dict[str, Any] = {
 }
 _ENV_OUTPUT = {
     "type": "object",
-    "properties": {"environment": {"type": "object"}, "used_by": {"type": "array", "items": {"type": "string"}, "description": "Saved cases that name this environment"}},
+    "properties": {
+        "environment": {"type": "object"},
+        "used_by": {"type": "array", "items": {"type": "string"}, "description": "Saved cases that run in this environment (one that does not load: its file names it)"},
+        "used_by_truncated": {"type": "boolean", "description": "More cases name it than the listing holds"},
+    },
     "required": ["environment", "used_by"],
 }
 
@@ -605,7 +609,7 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "hercules_list_folders",
         "title": "List folders",
-        "description": "The folders that hold the project's saved cases (.hercules/cases), with how many cases each holds (subfolders included) and how many of them are ready to run with hercules_run_folder (not drafts, and they load).",
+        "description": "The folders that hold the project's saved cases (.hercules/cases), with how many cases each holds (subfolders included) and how many of them hercules_run_folder would run (they load, are not drafts, and any environment they name exists).",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
         "outputSchema": {
             "type": "object",
@@ -799,8 +803,17 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "hercules_delete_environment",
         "title": "Delete an environment",
-        "description": "Delete a saved environment with the files attached to it. Only when the user asked for it. Cases that name it stop validating until it exists again; runs that used it are kept.",
-        "inputSchema": {"type": "object", "properties": {"name": _ENV_NAME}, "required": ["name"], "additionalProperties": False},
+        "description": (
+            "Delete a saved environment with the files attached to it. Only when the user asked for it. Refused while saved cases run in it, "
+            "naming them, unless force is true (only when the user confirms: those cases stop validating until it exists again). Runs that "
+            "used it are kept."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"name": _ENV_NAME, "force": {"type": "boolean", "description": "Delete it although saved cases run in it (only when the user confirms)"}},
+            "required": ["name"],
+            "additionalProperties": False,
+        },
         "outputSchema": {
             "type": "object",
             "properties": {"name": {"type": "string"}, "removed": {"type": "boolean"}, "used_by": {"type": "array", "items": {"type": "string"}}},

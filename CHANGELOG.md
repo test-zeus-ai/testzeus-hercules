@@ -24,9 +24,11 @@ See [Migrating from v1](docs/guide/migrating-from-v1.md).
   per run), a React tester UI with live screencast, pause, step, skip, retry, approvals,
   edit and take over, checkpoints and resume after a crash.
 - **Environment tools for coding agents**: the MCP server gains `hercules_list_environments`,
-  `hercules_get_environment`, `hercules_create_environment`, `hercules_update_environment` and
-  `hercules_delete_environment`. Secret values never go through them: an environment names its
-  secrets, and their values stay in the tester UI or the shell.
+  `hercules_get_environment`, `hercules_create_environment`, `hercules_update_environment` (an
+  edit made meanwhile in the UI is read again, not overwritten) and
+  `hercules_delete_environment` (refused while saved cases run in it, unless the user
+  confirms). Secret values never go through them: an environment names its secrets, and their
+  values stay in the tester UI or the shell.
 - **Folder tools for coding agents**: the MCP server gains `hercules_list_folders`,
   `hercules_get_folder`, `hercules_create_folder`, `hercules_update_folder` (rename or move),
   `hercules_delete_folder` and `hercules_run_folder` (every ready case of a folder as one

@@ -116,7 +116,11 @@ def test_a_session_from_an_earlier_daemon_is_served_read_only(config) -> None:  
     (folder / "session.json").write_text(json.dumps(view), encoding="utf-8")
     with client_for(config) as client:
         got = client.get(f"/api/explore/{folder.name}").json()
+        listed = client.get("/api/explore").json()["sessions"]
+        live = client.get("/api/explore", params={"live": "true"}).json()["sessions"]
     assert got["read_only"] and got["status"] == "stopped" and "daemon stopped" in got["message"] and got["events"] == []
+    assert [(item["id"], item["status"]) for item in listed] == [(folder.name, "stopped")], "the list says it ended too, so nothing polls it forever"
+    assert live == [], "live=true leaves out what earlier daemons ran"
 
 
 def test_findings_triage_and_issue_text(config) -> None:  # type: ignore[no-untyped-def]

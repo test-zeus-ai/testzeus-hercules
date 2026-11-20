@@ -109,21 +109,33 @@ class DaemonClient:
 
     # ------------------------------------------------------------------ requests
 
-    async def request(self, method: str, path: str, *, json: Any = None, params: Mapping[str, Any] | None = None, timeout_s: float | None = None, start: bool | None = None) -> httpx.Response:
+    async def request(
+        self,
+        method: str,
+        path: str,
+        *,
+        json: Any = None,
+        params: Mapping[str, Any] | None = None,
+        timeout_s: float | None = None,
+        start: bool | None = None,
+        headers: Mapping[str, str] | None = None,
+    ) -> httpx.Response:
         info = await self.ensure(start=start)
         try:
-            response = await self._send(info, method, path, json=json, params=params, timeout_s=timeout_s)
+            response = await self._send(info, method, path, json=json, params=params, timeout_s=timeout_s, headers=headers)
         except httpx.TransportError:
             response = None
         if response is None or response.status_code == 401:
             self.info = None
             info = await self.ensure(start=start, refresh=True)
-            response = await self._send(info, method, path, json=json, params=params, timeout_s=timeout_s)
+            response = await self._send(info, method, path, json=json, params=params, timeout_s=timeout_s, headers=headers)
         return response
 
-    async def _send(self, info: DaemonInfo, method: str, path: str, *, json: Any, params: Mapping[str, Any] | None, timeout_s: float | None) -> httpx.Response:
-        headers = {**_auth(info), **({AGENT_HEADER: self.agent} if self.agent else {})}
-        return await self._http.request(method, f"{info.url}{path}", json=json, params=params, headers=headers, timeout=timeout_s or REQUEST_TIMEOUT_S)
+    async def _send(
+        self, info: DaemonInfo, method: str, path: str, *, json: Any, params: Mapping[str, Any] | None, timeout_s: float | None, headers: Mapping[str, str] | None = None
+    ) -> httpx.Response:
+        sent = {**(headers or {}), **_auth(info), **({AGENT_HEADER: self.agent} if self.agent else {})}
+        return await self._http.request(method, f"{info.url}{path}", json=json, params=params, headers=sent, timeout=timeout_s or REQUEST_TIMEOUT_S)
 
 
 def _same_dir(first: Path, second: Path) -> bool:

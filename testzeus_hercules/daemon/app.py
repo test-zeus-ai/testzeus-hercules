@@ -22,9 +22,11 @@ import asyncio
 import contextlib
 import functools
 import getpass
+import hashlib
 import json
 import os
 import platform
+import re
 import secrets
 import shutil
 from dataclasses import dataclass, field
@@ -63,6 +65,7 @@ from testzeus_hercules.daemon.http_trace import read_http_calls
 from testzeus_hercules.daemon.hub import EventHub
 from testzeus_hercules.daemon.manager import RunConflict, RunManager, read_result
 from testzeus_hercules.daemon.models import (
+    ENV_NAME_PATTERN,
     SETTING_NAMES,
     ApprovalRequest,
     ApprovalView,
@@ -830,15 +833,19 @@ def _case_error(exc: Exception) -> ApiError:
 
 
 async def list_cases(request: Request, daemon: Daemon) -> Response:
-    """The saved cases: all, or ``folder`` (with its subfolders) and those whose title, id or path contains ``query``, both
-    applied before the listing's cap (``truncated``: there were more)."""
+    """The saved cases: all, or ``folder`` (with its subfolders), those whose title, id or path contains ``query``, and those
+    that run in ``environment`` (a case that does not load: its file names it), applied before the listing's cap
+    (``truncated``: there were more)."""
     paths = daemon.config.paths
     folders = case_files.list_folders(paths.cases_dir)
     under, query = request.query_params.get("folder", "").strip().strip("/"), request.query_params.get("query", "")
+    environment = request.query_params.get("environment") or None
     if len(under) > 900 or len(query) > 200:
         raise ApiError(422, "folder or query is too long")
+    if environment is not None and not re.fullmatch(ENV_NAME_PATTERN, environment):
+        raise ApiError(422, "environment is not an environment name")
     try:
-        cases, truncated = case_files.find_cases(paths.cases_dir, daemon.config.settings.project_dir, folders=folders, under=under, query=query)
+        cases, truncated = case_files.find_cases(paths.cases_dir, daemon.config.settings.project_dir, folders=folders, under=under, query=query, environment=environment)
     except case_files.CaseError as exc:
         raise ApiError(404, str(exc)) from None
     return JSONResponse({"cases": cases, "folders": folders, "truncated": truncated})
@@ -973,16 +980,27 @@ async def list_devices(request: Request, daemon: Daemon) -> Response:
     return JSONResponse({"devices": list(device_names())})
 
 
+def environment_version(env: Environment) -> str:
+    """The environment's ETag: a save with ``If-Match`` replaces only the version it was read at."""
+    canonical = json.dumps(env.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
+    return '"' + hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:20] + '"'
+
+
 async def get_environment(request: Request, daemon: Daemon) -> Response:
     env = case_files.load_environment(daemon.config.paths.envs_dir, request.path_params["name"])
     if env is None:
         raise ApiError(404, "environment not found")
-    return JSONResponse(env.model_dump(mode="json"))
+    return JSONResponse(env.model_dump(mode="json"), headers={"ETag": environment_version(env)})
 
 
 async def save_environment(request: Request, daemon: Daemon) -> Response:
     body = _parse(EnvironmentSave, await _body(request))
     env = Environment.model_validate(body.model_dump(exclude={"overwrite"}))
+    expected = request.headers.get("if-match")
+    if expected is not None:
+        current = case_files.load_environment(daemon.config.paths.envs_dir, env.name)
+        if current is None or environment_version(current) != expected.strip():
+            raise ApiError(412, f"environment {env.name} changed since it was read; read it again", detail={"code": "environment_changed"})
     try:
         case_files.save_environment(daemon.config.paths.envs_dir, env, overwrite=body.overwrite)
     except case_files.CaseExists as exc:

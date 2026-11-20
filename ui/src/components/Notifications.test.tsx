@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Router } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
 import type { SessionView } from "../lib/explore";
-import { NOTIFY_KEY, resetPrefsCache, type NotifyPrefs } from "../lib/notify/prefs";
+import { NOTIFY_KEY, resetPrefsCache, writePrefs, type NotifyPrefs } from "../lib/notify/prefs";
 import type { RunView } from "../lib/types";
 import { run, session } from "../test/notifyFixtures";
 import { Notifications } from "./Notifications";
@@ -14,6 +14,8 @@ const chime = vi.hoisted(() => vi.fn());
 vi.mock("@yusufceng1z/ding", async (original) => ({ ...(await original<typeof import("@yusufceng1z/ding")>()), chime }));
 
 let runs: RunView[] = [];
+/** Every run the daemon has, when it differs from the newest `runs` the list shows. */
+let stored: RunView[] | null = null;
 let sessions: SessionView[] = [];
 const desktop = vi.fn();
 let saved: Map<string, string>;
@@ -35,6 +37,7 @@ function prefs(patch: Partial<NotifyPrefs>): void {
 
 beforeEach(() => {
   runs = [];
+  stored = null;
   sessions = [];
   desktop.mockReset();
   chime.mockReset();
@@ -48,7 +51,20 @@ beforeEach(() => {
   vi.stubGlobal(
     "fetch",
     vi.fn((url: string) => {
-      const body = url.startsWith("/api/runs") ? { runs } : url.startsWith("/api/explore") ? { sessions } : {};
+      const all = stored ?? runs;
+      const query = new URLSearchParams(url.split("?")[1] ?? "");
+      const one = /^\/api\/runs\/([^?/]+)$/.exec(url);
+      let body: unknown = {};
+      if (one) {
+        body = all.find((item) => item.run_id === decodeURIComponent(one[1]));
+        if (!body) return Promise.resolve({ ok: false, status: 404, text: () => Promise.resolve(JSON.stringify({ error: "run not found" })) });
+      } else if (url.startsWith("/api/runs") && query.get("batch")) {
+        body = { runs: all.filter((item) => item.batch === query.get("batch") && (!query.get("status") || item.status === query.get("status"))) };
+      } else if (url.startsWith("/api/runs")) {
+        body = { runs };
+      } else if (url.startsWith("/api/explore")) {
+        body = { sessions };
+      }
       return Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve(JSON.stringify(body)) });
     }),
   );
@@ -212,7 +228,8 @@ describe("Notifications", () => {
     sessions = [session("s", "exploring")];
     const { client, poll } = mount();
     await firstPoll(client);
-    await waitFor(() => expect(client.getQueryState(["explore"])?.dataUpdateCount).toBeGreaterThan(0));
+    await waitFor(() => expect(client.getQueryState(["explore", { notify: true }])?.dataUpdateCount).toBeGreaterThan(0));
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => url === "/api/explore?live=true")).toBe(true);
 
     runs = [run("child", "passed", { explore_session: "s" })];
     sessions = [session("s", "finished", [{ severity: "P2" }])];
@@ -220,6 +237,44 @@ describe("Notifications", () => {
 
     expect(toast.success).toHaveBeenCalledTimes(1);
     expect(toast.success).toHaveBeenCalledWith("P1 hunt session finished: 1 finding", expect.objectContaining({ action: expect.objectContaining({ label: "Review findings" }) }));
+  });
+
+  it("announces a run that dropped out of the newest runs before it ended", async () => {
+    runs = [run("a", "running")];
+    const { client, poll } = mount();
+    await firstPoll(client);
+    stored = [run("a", "failed")];
+    runs = []; // a hundred newer runs pushed it out
+    await poll();
+    expect(toast.error).toHaveBeenCalledWith("Case a failed", expect.objectContaining({ id: "run:a" }));
+  });
+
+  it("waits for a folder run's runs outside the newest runs before announcing it", async () => {
+    runs = [run("new", "running", { batch: "b_1" })];
+    stored = [...runs, run("old", "queued", { batch: "b_1" })];
+    const { client, poll } = mount();
+    await firstPoll(client);
+    runs = [run("new", "passed", { batch: "b_1" })];
+    stored = [...runs, run("old", "running", { batch: "b_1" })];
+    await poll();
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
+
+    stored = [...runs, run("old", "failed", { batch: "b_1" })];
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + 60_000); // past the folder run's recheck interval
+    await poll();
+    expect(toast.error).toHaveBeenCalledWith("Folder run: 1 passed · 1 failed", expect.objectContaining({ id: "batch:b_1" }));
+  });
+
+  it("closes approval toasts when nothing watches runs any more", async () => {
+    runs = [run("a", "running")];
+    const { client, poll } = mount();
+    await firstPoll(client);
+    runs = [run("a", "needs_approval", { approval: { id: "q1", step: 2 } })];
+    await poll();
+    expect(toast.warning).toHaveBeenCalledWith("Case a needs your approval", expect.objectContaining({ id: "approval:a:needs_approval:q1" }));
+    act(() => writePrefs({ runs: "off", approvals: false }));
+    await waitFor(() => expect(toast.dismiss).toHaveBeenCalledWith("approval:a:needs_approval:q1"));
   });
 
   it("offers desktop notifications once, on the first toast", async () => {

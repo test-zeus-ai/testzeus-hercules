@@ -1,81 +1,122 @@
 import { describe, expect, it } from "vitest";
 import { run, session } from "../../test/notifyFixtures";
 import type { RunView } from "../types";
-import { exploreEvents, message, newRunTracker, newSessionTracker, runEvents, wanted, type NotifyEvent } from "./events";
+import { BATCH_RECHECK_MS, exploreEvents, followUps, latestAttempts, message, newRunTracker, newSessionTracker, runEvents, wanted, type NotifyEvent, type RunTracker } from "./events";
 import { DEFAULT_PREFS } from "./prefs";
 
 const kinds = (events: NotifyEvent[]) => events.map((event) => `${event.kind}:${event.key}`);
+/** One poll of `runs`; `complete` names the folder runs fetched whole this time. */
+const step = (tracker: RunTracker, runs: RunView[], complete: string[] = [], gone: string[] = []) => runEvents(tracker, { runs, complete, gone });
 
 describe("runEvents", () => {
   it("records what is there on the first poll and announces each run that ends afterwards, once", () => {
     const tracker = newRunTracker();
-    expect(runEvents(tracker, [run("old", "passed"), run("a", "running")])).toEqual([]);
-    expect(kinds(runEvents(tracker, [run("old", "passed"), run("a", "failed")]))).toEqual(["run:run:a"]);
-    expect(runEvents(tracker, [run("old", "passed"), run("a", "failed")])).toEqual([]);
+    expect(step(tracker, [run("old", "passed"), run("a", "running")])).toEqual([]);
+    expect(kinds(step(tracker, [run("old", "passed"), run("a", "failed")]))).toEqual(["run:run:a"]);
+    expect(step(tracker, [run("old", "passed"), run("a", "failed")])).toEqual([]);
   });
 
   it("announces a run that started and ended between two polls", () => {
     const tracker = newRunTracker();
-    runEvents(tracker, [run("a", "passed")]);
-    expect(kinds(runEvents(tracker, [run("quick", "passed"), run("a", "passed")]))).toEqual(["run:run:quick"]);
+    step(tracker, [run("a", "passed")]);
+    expect(kinds(step(tracker, [run("quick", "passed"), run("a", "passed")]))).toEqual(["run:run:quick"]);
   });
 
   it("leaves an Explore session's child runs to the session", () => {
     const tracker = newRunTracker();
-    runEvents(tracker, [run("child", "running", { explore_session: "s1" })]);
-    expect(runEvents(tracker, [run("child", "passed", { explore_session: "s1" }), run("asks", "needs_approval", { explore_session: "s1" })])).toEqual([]);
+    step(tracker, [run("child", "running", { explore_session: "s1" })]);
+    expect(step(tracker, [run("child", "passed", { explore_session: "s1" }), run("asks", "needs_approval", { explore_session: "s1" })])).toEqual([]);
   });
 
   it("announces a folder run once, when its last run ends", () => {
     const tracker = newRunTracker();
-    runEvents(tracker, [run("a", "running", { batch: "b_1" }), run("b", "queued", { batch: "b_1" })]);
-    expect(runEvents(tracker, [run("a", "passed", { batch: "b_1" }), run("b", "running", { batch: "b_1" })])).toEqual([]);
-    const events = runEvents(tracker, [run("a", "passed", { batch: "b_1", folder: "Checkout" }), run("b", "failed", { batch: "b_1" })]);
+    step(tracker, [run("a", "running", { batch: "b_1" }), run("b", "queued", { batch: "b_1" })]);
+    expect(step(tracker, [run("a", "passed", { batch: "b_1" }), run("b", "running", { batch: "b_1" })])).toEqual([]);
+    const events = step(tracker, [run("a", "passed", { batch: "b_1", folder: "Checkout" }), run("b", "failed", { batch: "b_1" })], ["b_1"]);
     expect(kinds(events)).toEqual(["batch:batch:b_1"]);
     expect(message(events[0] as Exclude<NotifyEvent, { kind: "approval-cleared" }>)).toMatchObject({ type: "error", title: "Checkout: 1 passed · 1 failed", href: "/runs?batch=b_1" });
   });
 
   it("announces a rerun on its own once its folder run was announced", () => {
     const tracker = newRunTracker();
-    runEvents(tracker, [run("a", "passed", { batch: "b_1" }), run("b", "passed", { batch: "b_1" })]);
-    expect(runEvents(tracker, [run("again", "running", { batch: "b_1" }), run("a", "passed", { batch: "b_1" }), run("b", "passed", { batch: "b_1" })])).toEqual([]);
-    expect(kinds(runEvents(tracker, [run("again", "passed", { batch: "b_1" }), run("a", "passed", { batch: "b_1" }), run("b", "passed", { batch: "b_1" })]))).toEqual(["run:run:again"]);
+    step(tracker, [run("a", "passed", { batch: "b_1" }), run("b", "passed", { batch: "b_1" })], ["b_1"]);
+    expect(step(tracker, [run("again", "running", { batch: "b_1" }), run("a", "passed", { batch: "b_1" }), run("b", "passed", { batch: "b_1" })])).toEqual([]);
+    expect(kinds(step(tracker, [run("again", "passed", { batch: "b_1" }), run("a", "passed", { batch: "b_1" }), run("b", "passed", { batch: "b_1" })]))).toEqual(["run:run:again"]);
   });
 
   it("on the first poll after a reload, announces what ended since the page last looked", () => {
     const since = Date.parse("2026-11-20T10:01:00Z");
     const tracker = newRunTracker(since);
-    const events = runEvents(tracker, [
+    const events = step(tracker, [
       run("before", "passed", { finished_at: "2026-11-20T10:00:30Z" }),
       run("meanwhile", "failed", { finished_at: "2026-11-20T10:05:00+00:00" }),
       run("f1", "passed", { batch: "b_1", finished_at: "2026-11-20T10:00:10Z" }),
       run("f2", "passed", { batch: "b_1", finished_at: "2026-11-20T10:03:00Z" }),
       run("still", "running"),
-    ]);
+    ], ["b_1"]);
     expect(kinds(events)).toEqual(["run:run:meanwhile", "batch:batch:b_1"]);
     expect(tracker.latest).toBe(Date.parse("2026-11-20T10:05:00Z"));
-    expect(kinds(runEvents(newRunTracker(), [run("meanwhile", "failed")]))).toEqual([]);
+    expect(kinds(step(newRunTracker(), [run("meanwhile", "failed")]))).toEqual([]);
+  });
+
+  it("announces a folder run only once all of its runs were fetched and have ended", () => {
+    const tracker = newRunTracker();
+    step(tracker, [run("a", "running", { batch: "b_1" })]);
+    // The newest runs show only "a", ended; the folder run's other runs are outside the list.
+    const visible = [run("a", "passed", { batch: "b_1" })];
+    expect(followUps(tracker, visible, 0).batches).toEqual(["b_1"]);
+    expect(step(tracker, visible)).toEqual([]);
+    tracker.checked.set("b_1", 0); // the component fetched it whole
+    expect(step(tracker, [...visible, run("old", "running", { batch: "b_1" })], ["b_1"])).toEqual([]);
+    expect(tracker.pending.has("b_1")).toBe(true);
+    expect(followUps(tracker, visible, 1).batches).toEqual([]); // fetched a moment ago
+    expect(followUps(tracker, visible, BATCH_RECHECK_MS + 1).batches).toEqual(["b_1"]);
+    const events = step(tracker, [...visible, run("old", "passed", { batch: "b_1" })], ["b_1"]);
+    expect(kinds(events)).toEqual(["batch:batch:b_1"]);
+    expect(tracker.pending.size).toBe(0);
+  });
+
+  it("counts each case's latest attempt in a folder run that a rerun joined before it ended", () => {
+    const tracker = newRunTracker();
+    step(tracker, [run("a", "running", { batch: "b_1" })]);
+    const members = [run("a", "passed", { batch: "b_1" }), run("b", "failed", { batch: "b_1" }), run("b2", "passed", { batch: "b_1", parent_run_id: "b" })];
+    expect(latestAttempts(members).map((item) => item.run_id)).toEqual(["a", "b2"]);
+    const [event] = step(tracker, members, ["b_1"]);
+    expect(message(event as Exclude<NotifyEvent, { kind: "approval-cleared" }>)).toMatchObject({ type: "success", title: "Folder run: 2 passed", body: "2 runs finished" });
+  });
+
+  it("looks up a followed run that dropped out of the list, and keeps its approval meanwhile", () => {
+    const tracker = newRunTracker();
+    step(tracker, [run("a", "running")]);
+    const asks = run("w", "needs_approval", { approval: { id: "q1", step: 2 } });
+    step(tracker, [asks, run("a", "running")]);
+    expect(followUps(tracker, [], 0).runIds.sort()).toEqual(["a", "w"]);
+    // Neither is in this poll and neither was looked up: nothing is cleared or announced.
+    expect(step(tracker, [])).toEqual([]);
+    expect(kinds(step(tracker, [run("a", "passed")]))).toEqual(["run:run:a"]);
+    expect(step(tracker, [], [], ["w"]).map((event) => event.kind)).toEqual(["approval-cleared"]);
+    expect(followUps(tracker, [], 0).runIds).toEqual([]);
   });
 
   it("announces each approval a run waits on and clears it when the run moves on", () => {
     const tracker = newRunTracker();
-    const waiting = (id: string, step: number) => run("a", "needs_approval", { approval: { id, step, action: "Delete the account", asked_at: "2026-11-20T10:00:00Z", timeout_s: 300 } });
-    const startup = runEvents(tracker, [waiting("q1", 4)]);
+    const waiting = (id: string, at: number) => run("a", "needs_approval", { approval: { id, step: at, action: "Delete the account", asked_at: "2026-11-20T10:00:00Z", timeout_s: 300 } });
+    const startup = step(tracker, [waiting("q1", 4)]);
     expect(startup).toMatchObject([{ kind: "approval", quiet: true }]);
-    expect(runEvents(tracker, [waiting("q1", 4)])).toEqual([]);
-    const next = runEvents(tracker, [waiting("q2", 5)]);
+    expect(step(tracker, [waiting("q1", 4)])).toEqual([]);
+    const next = step(tracker, [waiting("q2", 5)]);
     expect(next.map((event) => event.kind)).toEqual(["approval-cleared", "approval"]);
     expect(next[1]).toMatchObject({ quiet: false });
     expect(message(next[1] as Exclude<NotifyEvent, { kind: "approval-cleared" }>)).toMatchObject({ type: "warning", sticky: true, title: "Case a needs your approval", href: "/runs/a" });
     expect((message(next[1] as Exclude<NotifyEvent, { kind: "approval-cleared" }>)).body).toMatch(/^Step 5: Delete the account · answer by /);
-    const done = runEvents(tracker, [run("a", "passed")]);
+    const done = step(tracker, [run("a", "passed")]);
     expect(done.map((event) => event.kind)).toEqual(["approval-cleared", "run"]);
   });
 
   it("asks for a plan review", () => {
     const tracker = newRunTracker();
-    runEvents(tracker, []);
-    const [event] = runEvents(tracker, [run("p", "needs_plan_approval", { started_by: "agent", agent: "claude-code" })]);
+    step(tracker, []);
+    const [event] = step(tracker, [run("p", "needs_plan_approval", { started_by: "agent", agent: "claude-code" })]);
     expect(message(event as Exclude<NotifyEvent, { kind: "approval-cleared" }>)).toMatchObject({ title: "Review the plan for Case p", body: "The run waits for your go-ahead · started by Claude Code" });
   });
 });
