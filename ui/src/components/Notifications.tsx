@@ -93,10 +93,11 @@ export function Notifications() {
     refetchInterval: (query) => (query.state.data?.runs.some((run) => !FINAL_STATUSES.has(run.status)) ? ACTIVE_POLL_MS : IDLE_POLL_MS),
     refetchIntervalInBackground: true,
   });
-  // Only this daemon's sessions: one an earlier daemon ran has ended and never changes.
+  // After the first poll, only this daemon's sessions: one an earlier daemon ran has ended and never changes. The first
+  // poll takes them all, so a session that ended on an earlier daemon after the page last looked (since) is still news.
   const sessions = useQuery({
     queryKey: ["explore", { notify: true }],
-    queryFn: () => api<{ sessions: SessionView[] }>("/api/explore?live=true", { guard: isSessionList }),
+    queryFn: () => api<{ sessions: SessionView[] }>(sessionTracker.current?.seeded ? "/api/explore?live=true" : "/api/explore", { guard: isSessionList }),
     enabled: prefs.explore,
     refetchInterval: (query) => (query.state.data?.sessions.some((item) => !FINISHED.has(item.status)) ? EXPLORE_ACTIVE_POLL_MS : EXPLORE_IDLE_POLL_MS),
     refetchIntervalInBackground: true,

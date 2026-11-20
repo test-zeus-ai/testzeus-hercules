@@ -236,12 +236,13 @@ describe("Notifications", () => {
     const { client, poll } = mount();
     await firstPoll(client);
     await waitFor(() => expect(client.getQueryState(["explore", { notify: true }])?.dataUpdateCount).toBeGreaterThan(0));
-    expect(vi.mocked(fetch).mock.calls.some(([url]) => url === "/api/explore?live=true")).toBe(true);
+    expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url).startsWith("/api/explore")).map(([url]) => url)).toEqual(["/api/explore"]);
 
     runs = [run("child", "passed", { explore_session: "s" })];
     sessions = [session("s", "finished", [{ severity: "P2" }])];
     await poll();
 
+    expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url).startsWith("/api/explore")).at(-1)?.[0]).toBe("/api/explore?live=true");
     expect(toast.success).toHaveBeenCalledTimes(1);
     expect(toast.success).toHaveBeenCalledWith("P1 hunt session finished: 1 finding", expect.objectContaining({ action: expect.objectContaining({ label: "Review findings" }) }));
   });
