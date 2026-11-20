@@ -617,7 +617,12 @@ class HerculesTools(ExploreToolsMixin):
     async def _folder_plan(self, folder: str) -> tuple[set[str], dict[str, str]]:
         """What hercules_run_folder would do with ``folder`` (and its subfolders), as the daemon decides it (a dry run):
         the cases it would run, and the reason for each it would skip."""
-        planned = await self._api("POST", "/api/runs/batch", json_body={"folder": folder, "subfolders": True, "dry_run": True})
+        try:
+            planned = await self._api("POST", "/api/runs/batch", json_body={"folder": folder, "subfolders": True, "dry_run": True})
+        except ToolError as exc:
+            if "dry_run" in str(exc):  # a daemon from before dry_run refuses the field (and starts nothing)
+                raise ToolError("the Hercules daemon is older than these tools: restart it (hercules serve, or hercules ui) so it runs the same version") from None
+            raise
         return set(planned.get("would_run", [])), {item["name"]: item["reason"] for item in planned.get("skipped", [])}
 
     async def _list_folders(self, args: dict[str, Any], progress: Progress, started: float) -> ToolOutput:

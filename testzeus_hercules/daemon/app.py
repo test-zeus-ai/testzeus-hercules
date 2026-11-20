@@ -350,62 +350,63 @@ def new_batch_id() -> str:
     return f"b_{datetime.now(timezone.utc):%Y%m%d_%H%M%S}_{secrets.token_hex(3)}"
 
 
+def _plan_batch(daemon: Daemon, body: RunBatchCreate) -> tuple[str, int, list[tuple[dict[str, Any], TestCase]], list[BatchSkip]]:
+    """A folder run's cases: the folder as spelled on disk, how many cases it holds, those to run (each loaded with its
+    environment applied) and those skipped with why. It reads every case file: callers run it off the event loop."""
+    paths, project = daemon.config.paths, daemon.config.settings.project_dir
+    try:
+        folder = case_files.spelled_folder(paths.cases_dir, body.folder)
+        entries = case_files.cases_in_folder(paths.cases_dir, project, folder, subfolders=body.subfolders)
+    except FileNotFoundError:
+        raise ApiError(404, "folder not found") from None
+    except case_files.CaseError as exc:
+        raise ApiError(422, str(exc)) from None
+    ready: list[tuple[dict[str, Any], TestCase]] = []
+    skipped: list[BatchSkip] = []
+    for entry in entries:
+        if not entry["valid"]:
+            skipped.append(BatchSkip(name=entry["name"], reason=f"does not load: {entry.get('error')}"))
+            continue
+        if entry.get("status") == "draft":
+            skipped.append(BatchSkip(name=entry["name"], reason="a draft: review its steps and mark it ready to run it with the folder"))
+            continue
+        try:
+            case = case_files.load_case_file(project / entry["path"])
+            case = case_files.apply_environment(case, paths.envs_dir, environment=body.environment, base_url=body.base_url)
+        except case_files.CaseError as exc:
+            skipped.append(BatchSkip(name=entry["name"], reason=str(exc)))
+            continue
+        ready.append((entry, case))
+    return folder, len(entries), ready, skipped
+
+
 async def create_batch(request: Request, daemon: Daemon) -> Response:
     raw = await _body(request)
-    paths, project = daemon.config.paths, daemon.config.settings.project_dir
     with placeholder_names(_chosen_environment_names(daemon, raw)):
         body = _parse(RunBatchCreate, raw)
-        try:
-            folder = case_files.spelled_folder(paths.cases_dir, body.folder)
-            entries = case_files.cases_in_folder(paths.cases_dir, project, folder, subfolders=body.subfolders)
-        except FileNotFoundError:
-            raise ApiError(404, "folder not found") from None
-        except case_files.CaseError as exc:
-            raise ApiError(422, str(exc)) from None
-        batch, origin = ("" if body.dry_run else new_batch_id()), run_origin(request)
-        runs: list[RunCreated] = []
-        skipped: list[BatchSkip] = []
-        would_run: list[str] = []
-        for entry in entries:
-            if not entry["valid"]:
-                skipped.append(BatchSkip(name=entry["name"], reason=f"does not load: {entry.get('error')}"))
-                continue
-            if entry.get("status") == "draft":
-                skipped.append(BatchSkip(name=entry["name"], reason="a draft: review its steps and mark it ready to run it with the folder"))
-                continue
-            try:
-                case = case_files.load_case_file(project / entry["path"])
-                case = case_files.apply_environment(case, paths.envs_dir, environment=body.environment, base_url=body.base_url)
-            except case_files.CaseError as exc:
-                skipped.append(BatchSkip(name=entry["name"], reason=str(exc)))
-                continue
-            if body.dry_run:
-                would_run.append(entry["name"])
-                continue
-            source = {"environment": body.environment, "base_url": body.base_url, "kind": "case_path", "path": entry["path"], "batch": batch, "folder": folder, **origin}
-            record = daemon.runs.submit(case, options=body.run_options(), source=source)
-            runs.append(RunCreated(run_id=record["id"], status=record["status"], case_id=record.get("case_id"), ui_url=daemon.ui_url(record["id"])))
-    if not entries and not body.dry_run:
+        # The placeholder names travel with the context into the thread.
+        folder, held, ready, skipped = await asyncio.to_thread(_plan_batch, daemon, body)
+    if not held and not body.dry_run:
         raise ApiError(422, f"{folder or 'the top level'} has no saved cases")
-    created = RunBatchCreated(batch=batch, folder=folder, runs=runs, skipped=skipped, would_run=would_run)
+    if body.dry_run:
+        planned = RunBatchCreated(batch="", folder=folder, runs=[], skipped=skipped, would_run=[entry["name"] for entry, _ in ready])
+        return JSONResponse(planned.model_dump(mode="json"))
+    batch, origin = new_batch_id(), run_origin(request)
+    runs: list[RunCreated] = []
+    for entry, case in ready:
+        source = {"environment": body.environment, "base_url": body.base_url, "kind": "case_path", "path": entry["path"], "batch": batch, "folder": folder, **origin}
+        record = daemon.runs.submit(case, options=body.run_options(), source=source)
+        runs.append(RunCreated(run_id=record["id"], status=record["status"], case_id=record.get("case_id"), ui_url=daemon.ui_url(record["id"])))
+    created = RunBatchCreated(batch=batch, folder=folder, runs=runs, skipped=skipped)
     return JSONResponse(created.model_dump(mode="json"), status_code=201 if runs else 200)
 
 
 def latest_attempts(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Each case's latest attempt among a folder run's runs (oldest first): runs are grouped by the run they (re)ran from
-    within the folder run, and the newest of each group is kept, so a run rerun twice counts once."""
-    by_id = {record["id"]: record for record in records}
-
-    def root(record: dict[str, Any]) -> str:
-        seen = {record["id"]}
-        while record.get("parent_run_id") in by_id and record["parent_run_id"] not in seen:
-            record = by_id[record["parent_run_id"]]
-            seen.add(record["id"])
-        return str(record["id"])
-
+    """Each case's latest attempt among a folder run's runs (oldest first): runs are grouped by their case file (a rerun
+    keeps it), and the newest of each group is kept, so a run rerun twice, or rerun from a run since deleted, counts once."""
     latest: dict[str, dict[str, Any]] = {}
     for record in records:  # oldest first: a later run of the same case replaces an earlier one
-        latest[root(record)] = record
+        latest[str(record.get("path") or record["id"])] = record
     return list(latest.values())
 
 
@@ -890,7 +891,8 @@ async def list_cases(request: Request, daemon: Daemon) -> Response:
     if environment is not None and not re.fullmatch(ENV_NAME_PATTERN, environment):
         raise ApiError(422, "environment is not an environment name")
     try:
-        cases, truncated = case_files.find_cases(paths.cases_dir, daemon.config.settings.project_dir, folders=folders, under=under, query=query, environment=environment)
+        # It reads every case file it lists: off the event loop, so live views and polls keep being answered.
+        cases, truncated = await asyncio.to_thread(case_files.find_cases, paths.cases_dir, daemon.config.settings.project_dir, folders=folders, under=under, query=query, environment=environment)
     except case_files.CaseError as exc:
         raise ApiError(404, str(exc)) from None
     return JSONResponse({"cases": cases, "folders": folders, "truncated": truncated})

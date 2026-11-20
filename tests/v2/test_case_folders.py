@@ -674,3 +674,16 @@ def test_cases_in_every_folder_count_for_an_environment(config) -> None:  # type
         found = client.get("/api/cases", params={"environment": "shop"}).json()["cases"]
     assert "zz" not in listed["folders"], "the plain listing stays capped"
     assert [case["name"] for case in found] == ["zz/pay.feature"]
+
+
+def test_latest_attempts_group_by_case_even_when_a_run_in_between_was_deleted() -> None:
+    from testzeus_hercules.daemon.app import latest_attempts
+
+    def record(run_id: str, status: str, parent: str | None, path: str) -> dict[str, object]:
+        return {"id": run_id, "status": status, "parent_run_id": parent, "path": path}
+
+    # A failed, B (deleted) reran it, C reran B: one case, its newest attempt C.
+    chain = [record("A", "failed", None, "cases/pay.json"), record("C", "passed", "B", "cases/pay.json")]
+    # X deleted; S1 and S2 both reran it.
+    twice = [record("S1", "failed", "X", "cases/cart.json"), record("S2", "passed", "X", "cases/cart.json")]
+    assert [item["id"] for item in latest_attempts(chain + twice + [record("D", "passed", None, "cases/other.json")])] == ["C", "S2", "D"]

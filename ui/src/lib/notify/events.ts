@@ -45,6 +45,8 @@ export interface RunPoll {
   runs: RunView[];
   /** Runs looked up by id that the daemon no longer has. */
   gone?: string[];
+  /** Folder runs whose summary the daemon no longer has (their runs were deleted). */
+  goneBatches?: string[];
   /** Summaries of the folder runs fetched this time. */
   summaries?: Record<string, BatchSummary>;
 }
@@ -112,7 +114,7 @@ export function followUps(tracker: RunTracker, runs: readonly RunView[], now: nu
   return { runIds, batches: tracker.seeded ? batches.slice(0, MAX_BATCH_CHECKS) : batches };
 }
 
-export function runEvents(tracker: RunTracker, { runs, gone = [], summaries = {} }: RunPoll): NotifyEvent[] {
+export function runEvents(tracker: RunTracker, { runs, gone = [], goneBatches = [], summaries = {} }: RunPoll): NotifyEvent[] {
   const events: NotifyEvent[] = [];
   const own = ownRuns(runs);
   const present = new Set(own.map((run) => run.run_id));
@@ -144,6 +146,8 @@ export function runEvents(tracker: RunTracker, { runs, gone = [], summaries = {}
   };
   for (const run of own) if (!run.batch) announceRun(run);
 
+  // A folder run whose runs were all deleted is not waited on any more.
+  for (const batch of goneBatches) markSeen(tracker, `batch:${batch}`, batch, []);
   // A folder run is one notification, once its daemon summary says none of its cases is still open.
   const visible = byBatch(own);
   for (const batch of new Set([...visible.keys(), ...Object.keys(summaries)])) {

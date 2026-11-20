@@ -91,6 +91,16 @@ describe("runEvents", () => {
     expect(tracker.pending.size).toBe(0);
   });
 
+  it("stops waiting for a folder run whose runs were deleted", () => {
+    const tracker = newRunTracker();
+    step(tracker, [run("a", "running", { batch: "b_1" })]);
+    expect(step(tracker, [])).toEqual([]);
+    expect(followUps(tracker, [], 0).batches).toEqual(["b_1"]);
+    runEvents(tracker, { runs: [], goneBatches: ["b_1"] });
+    expect(tracker.pending.size).toBe(0);
+    expect(followUps(tracker, [], BATCH_RECHECK_MS * 10).batches).toEqual([]);
+  });
+
   it("records the folder runs that had ended when the page opened, and never announces them later", () => {
     const tracker = newRunTracker();
     const old = Array.from({ length: 8 }, (_, index) => run(`r${index}`, "failed", { batch: `b_${index}` }));

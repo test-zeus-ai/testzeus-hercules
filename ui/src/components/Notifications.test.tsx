@@ -303,6 +303,21 @@ describe("Notifications", () => {
     expect(chime).toHaveBeenCalledTimes(1); // shown again, not announced again
   });
 
+  it("does not replay old runs when approvals come back on after nothing watched runs", async () => {
+    runs = [run("a", "running")];
+    const { client, poll } = mount();
+    await firstPoll(client);
+    runs = [run("a", "needs_approval", { approval: { id: "q1", step: 2 } })];
+    await poll();
+    act(() => writePrefs({ runs: "off", approvals: false }));
+    await waitFor(() => expect(toast.dismiss).toHaveBeenCalledWith("approval:a:needs_approval:q1"));
+    runs = [run("a", "passed")]; // answered meanwhile: the cached poll is out of date
+    act(() => writePrefs({ approvals: true }));
+    expect(toast.warning).toHaveBeenCalledTimes(1);
+    await poll();
+    expect(toast.warning).toHaveBeenCalledTimes(1);
+  });
+
   it("offers desktop notifications once, on the first toast", async () => {
     FakeNotification.permission = "default";
     try {

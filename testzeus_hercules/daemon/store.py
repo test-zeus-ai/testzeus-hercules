@@ -149,10 +149,11 @@ class RunStore:
         return [_run(row) for row in rows]
 
     def batch_runs(self, batch: str) -> list[dict[str, Any]]:
-        """Id, status, parent and timestamps of every run of a folder run (no cap), oldest first."""
+        """Id, status, parent, timestamps, folder and case file of every run of a folder run (no cap), oldest first."""
         with self._lock:
             rows = self._db.execute(
-                "SELECT id, status, parent_run_id, created_at, finished_at, json_extract(source_json, '$.folder') AS folder FROM runs "
+                "SELECT id, status, parent_run_id, created_at, finished_at, json_extract(source_json, '$.folder') AS folder, "
+                "json_extract(source_json, '$.path') AS path FROM runs "
                 "WHERE json_extract(source_json, '$.batch') = ? ORDER BY created_at, rowid",
                 (batch,),
             ).fetchall()

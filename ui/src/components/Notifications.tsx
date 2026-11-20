@@ -47,6 +47,7 @@ async function pollRuns(tracker: RunTracker): Promise<RunPoll> {
   const asked = followUps(tracker, runs, Date.now());
   const merged = new Map(runs.map((run) => [run.run_id, run]));
   const gone: string[] = [];
+  const goneBatches: string[] = [];
   const summaries: RunPoll["summaries"] = {};
   const lookUp = async (runId: string) => {
     try {
@@ -59,12 +60,12 @@ async function pollRuns(tracker: RunTracker): Promise<RunPoll> {
     tracker.checked.set(batch, Date.now());
     try {
       summaries[batch] = await api(`/api/runs/batches/${encodeURIComponent(batch)}`, { guard: isBatchSummary });
-    } catch {
-      // checked again on a later poll
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) goneBatches.push(batch); // else: checked again on a later poll
     }
   };
   await Promise.all([...asked.runIds.map(lookUp), ...asked.batches.map(summarise)]);
-  return { runs: [...merged.values()], gone, summaries };
+  return { runs: [...merged.values()], gone, goneBatches, summaries };
 }
 
 // The notifier plays its own chime (once per event, and not when a system notification already made a sound).
@@ -122,8 +123,9 @@ export function Notifications() {
     } else if (!approvalsWere.current && tracker) {
       tracker.approvals = new Map();
       tracker.requiet = true;
-      // The next poll may bring the same data (no new render), so go over the latest one now.
-      if (runs.data && watchRuns) announce(runEvents(tracker, runs.data));
+      // The next poll may bring the same data (no new render), so go over the latest one now; unless nothing watched runs
+      // meanwhile (the tracker started over), when that data is old and the next poll brings them anyway.
+      if (runs.data && watchRuns && tracker.seeded) announce(runEvents(tracker, runs.data));
     }
     approvalsWere.current = prefs.approvals;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only a change of the switch matters

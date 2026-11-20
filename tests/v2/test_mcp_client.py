@@ -61,3 +61,18 @@ def test_an_environment_update_reads_again_when_the_ui_changed_it_meanwhile(tmp_
     with daemon_thread(config):
         env = asyncio.run(scenario())
     assert env["viewport"] == "1280x720" and env["device"] == "iPhone 15", env
+
+
+def test_folder_tools_ask_for_a_restart_when_the_daemon_is_older_than_dry_run() -> None:
+    import httpx
+
+    from testzeus_hercules.mcp.tools import HerculesTools, ToolError
+
+    class OldDaemon:
+        async def request(self, method: str, path: str, **kwargs: object) -> httpx.Response:
+            if path == "/api/runs/batch":
+                return httpx.Response(422, json={"error": "dry_run: Extra inputs are not permitted"})
+            return httpx.Response(200, json={"cases": [], "folders": [], "truncated": False})
+
+    with pytest.raises(ToolError, match="older than these tools: restart it"):
+        asyncio.run(HerculesTools(OldDaemon()).call("hercules_list_folders", {}))  # type: ignore[arg-type]
