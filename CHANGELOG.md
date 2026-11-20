@@ -23,6 +23,14 @@ See [Migrating from v1](docs/guide/migrating-from-v1.md).
 - **Daemon and UI**: `hercules serve` (loopback, token, SQLite queue, one worker process
   per run), a React tester UI with live screencast, pause, step, skip, retry, approvals,
   edit and take over, checkpoints and resume after a crash.
+- **Environment tools for coding agents**: the MCP server gains `hercules_list_environments`,
+  `hercules_get_environment`, `hercules_create_environment`, `hercules_update_environment` and
+  `hercules_delete_environment`. Secret values never go through them: an environment names its
+  secrets, and their values stay in the tester UI or the shell.
+- **Folder tools for coding agents**: the MCP server gains `hercules_list_folders`,
+  `hercules_get_folder`, `hercules_create_folder`, `hercules_update_folder` (rename or move),
+  `hercules_delete_folder` and `hercules_run_folder` (every ready case of a folder as one
+  batch, like the UI's folder run); `hercules_list_runs` takes `batch` to follow it.
 - **Notifications in the UI**: a toast when a run ends (one per folder run), when a run waits
   for an approval (it stays until the run moves on) and when an Explore session ends;
   while the page is in the background, a desktop notification and a count in the tab title.

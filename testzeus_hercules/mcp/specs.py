@@ -26,6 +26,15 @@ Companion flow after you change user-facing behaviour:
    "activity": ...}) instead of base_url; see docs/guide/mobile-testing.md.
    Saved cases: hercules_list_cases, hercules_get_case, hercules_validate_case, hercules_create_case and
    hercules_update_case (both validate first), hercules_delete_case (only when the user asks).
+   Folders of cases: hercules_list_folders, hercules_get_folder, hercules_create_folder, hercules_update_folder
+   (rename or move), hercules_delete_folder (only when the user asks), and hercules_run_folder to run every
+   ready case in a folder as one batch (follow it with hercules_list_runs batch=<batch>).
+   Environments (where cases run: base URL, browser, device or native app, and {{variables}}):
+   hercules_list_environments, hercules_get_environment, hercules_create_environment,
+   hercules_update_environment, hercules_delete_environment (only when the user asks). A case names one
+   with environment.ref (Gherkin: @env:<name>); hercules_run and hercules_run_folder take environment.
+   Secret values never go through these tools: an environment lists secret_names, and the user saves
+   the values in the tester UI or sets them as environment variables.
 2. hercules_run with test_cases (or gherkin) and base_url: returns run_id at once.
 3. hercules_run_status with run_id and wait_s (at most 50) until finished is true.
 4. hercules_run_result: status, the failing step (expected vs actual), hints, one screenshot,
@@ -80,7 +89,7 @@ RUN_SUMMARY: dict[str, Any] = {
     },
     "required": ["run_id", "status", "finished"],
 }
-_RUNS_OUTPUT = {
+_RUNS_OUTPUT: dict[str, Any] = {
     "type": "object",
     "properties": {"runs": {"type": "array", "items": RUN_SUMMARY}, "all_finished": {"type": "boolean"}},
     "required": ["runs", "all_finished"],
@@ -114,6 +123,60 @@ _RUN_OPTIONS = {
         "description": "ask: the run waits in needs_plan_approval until its plan is approved (hercules_approve); auto runs the plan as made (default: ask for drafts, else auto)",
     },
     "strict": {"type": "boolean", "description": "Strict plan mode: plan lint errors stop the run before the browser starts, and inferred criteria still unmet after recovery fail their step"},
+}
+
+_FOLDER = {
+    "type": "string",
+    "minLength": 1,
+    "maxLength": 1000,
+    "description": "A folder as hercules_list_folders shows it, e.g. Checkout/Payments (or .hercules/cases/Checkout/Payments)",
+}
+_FOLDER_CASE = {
+    "type": "object",
+    "properties": {
+        "path": {"type": "string"},
+        "folder": {"type": "string"},
+        "valid": {"type": "boolean"},
+        "title": {"type": ["string", "null"]},
+        "status": {"type": ["string", "null"]},
+        "steps": {"type": ["integer", "null"]},
+    },
+    "required": ["path", "folder", "valid"],
+}
+
+_ENV_NAME = {
+    "type": "string",
+    "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
+    "description": "The environment's name: lowercase letters, digits, - and _ (saved as .hercules/envs/<name>.json)",
+}
+_SECRET_NAME = {"type": "string", "pattern": "^[A-Z_][A-Z0-9_]*$"}
+# Null clears a field in hercules_update_environment.
+_ENV_FIELDS: dict[str, Any] = {
+    "base_url": {"type": ["string", "null"], "maxLength": 2000, "description": "Where the app under test is, e.g. http://127.0.0.1:3000; it may use {{variables}}. A web environment needs it"},
+    "browser": {"enum": ["chromium", "chrome", "msedge", "firefox", "webkit", None], "description": "Default chromium"},
+    "viewport": {"type": ["string", "null"], "pattern": "^[1-9][0-9]{1,4}x[1-9][0-9]{1,4}$", "description": "Browser window size, e.g. 1280x720"},
+    "device": {"type": ["string", "null"], "maxLength": 100, "description": "Phone or tablet emulation: a Playwright device profile, e.g. iPhone 15"},
+    "browser_options": {"type": ["object", "null"], "description": "Playwright launch and context options (locale, timezone_id, color_scheme, headers, ...)"},
+    "mobile": {
+        "type": ["object", "null"],
+        "description": "A native app instead of a website: platform (android or ios), and app (a file in the project) or package and activity (Android) or bundle_id (iOS); device, udid, platform_version, appium_url or cloud. See docs/guide/mobile-testing.md",
+    },
+    "variables": {
+        "type": ["object", "null"],
+        "additionalProperties": {"anyOf": [{"type": "string"}, {"type": "object", "properties": {"secret": _SECRET_NAME}, "required": ["secret"], "additionalProperties": False}]},
+        "description": 'Values every case run here can use as {{name}} (a case\'s own test data wins); {"secret": "NAME"} reads the secret NAME at run time',
+    },
+    "secret_names": {
+        "type": ["array", "null"],
+        "items": _SECRET_NAME,
+        "maxItems": 50,
+        "description": "Secrets cases can use as {{NAME}}, by name only: the user saves their values in the tester UI or sets them as environment variables",
+    },
+}
+_ENV_OUTPUT = {
+    "type": "object",
+    "properties": {"environment": {"type": "object"}, "used_by": {"type": "array", "items": {"type": "string"}, "description": "Saved cases that name this environment"}},
+    "required": ["environment", "used_by"],
 }
 
 TOOLS: list[dict[str, Any]] = [
@@ -341,10 +404,14 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "hercules_list_runs",
         "title": "List runs",
-        "description": "Recent runs, newest first, optionally only those with one status.",
+        "description": "Recent runs, newest first, optionally only those with one status or of one folder run (batch).",
         "inputSchema": {
             "type": "object",
-            "properties": {"status": {"type": "string", "enum": RUN_STATUSES}, "limit": {"type": "integer", "minimum": 1, "maximum": 50, "description": "Default 10"}},
+            "properties": {
+                "status": {"type": "string", "enum": RUN_STATUSES},
+                "batch": {"type": "string", "pattern": "^[A-Za-z0-9_.-]{1,128}$", "description": "Only the runs of this folder run (the batch from hercules_run_folder)"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 50, "description": "Default 10"},
+            },
             "additionalProperties": False,
         },
         "outputSchema": {"type": "object", "properties": {"runs": {"type": "array", "items": RUN_SUMMARY}}, "required": ["runs"]},
@@ -533,6 +600,212 @@ TOOLS: list[dict[str, Any]] = [
             "additionalProperties": False,
         },
         "outputSchema": {"type": "object", "properties": {"name": {"type": "string"}, "removed": {"type": "boolean"}}, "required": ["name", "removed"]},
+        "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False, "openWorldHint": False},
+    },
+    {
+        "name": "hercules_list_folders",
+        "title": "List folders",
+        "description": "The folders that hold the project's saved cases (.hercules/cases), with how many cases each holds (subfolders included) and how many of them are ready to run with hercules_run_folder (not drafts, and they load).",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "folders": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {"folder": {"type": "string"}, "cases": {"type": "integer"}, "ready": {"type": "integer"}},
+                        "required": ["folder", "cases", "ready"],
+                    },
+                },
+                "top_level_cases": {"type": "integer", "description": "Cases outside every folder"},
+                "truncated": {"type": "boolean", "description": "The project has more cases than were counted"},
+            },
+            "required": ["folders", "top_level_cases", "truncated"],
+        },
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
+    {
+        "name": "hercules_get_folder",
+        "title": "Read a folder",
+        "description": "One folder: its subfolders and its cases (subfolders included), each with the path to give hercules_get_case or hercules_run, and which of them hercules_run_folder would run.",
+        "inputSchema": {"type": "object", "properties": {"folder": _FOLDER}, "required": ["folder"], "additionalProperties": False},
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "folder": {"type": "string"},
+                "subfolders": {"type": "array", "items": {"type": "string"}},
+                "cases": {"type": "array", "items": _FOLDER_CASE},
+                "ready": {"type": "integer"},
+                "truncated": {"type": "boolean"},
+            },
+            "required": ["folder", "subfolders", "cases", "ready", "truncated"],
+        },
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
+    {
+        "name": "hercules_create_folder",
+        "title": "Create a folder",
+        "description": "Make a folder for cases in .hercules/cases, at the top level or inside parent (which must exist). Save cases into it with hercules_create_case folder=<folder>.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "minLength": 1, "maxLength": 200, "description": "The new folder's name, e.g. Payments (no slashes)"},
+                "parent": {"type": "string", "maxLength": 1000, "description": "The folder to make it in, e.g. Checkout (default: the top level)"},
+            },
+            "required": ["name"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {"type": "object", "properties": {"folder": {"type": "string"}}, "required": ["folder"]},
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": False},
+    },
+    {
+        "name": "hercules_update_folder",
+        "title": "Rename or move a folder",
+        "description": "Rename a folder (name) or move it, with its cases and subfolders, into another folder (parent; empty: the top level). Give exactly one. The cases' paths change with it; runs that used them are kept.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "folder": _FOLDER,
+                "name": {"type": "string", "minLength": 1, "maxLength": 200, "description": "Its new name (no slashes)"},
+                "parent": {"type": "string", "maxLength": 1000, "description": "The folder to move it into (empty: the top level)"},
+            },
+            "required": ["folder"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {"type": "object", "properties": {"folder": {"type": "string"}, "was": {"type": "string"}}, "required": ["folder", "was"]},
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": False},
+    },
+    {
+        "name": "hercules_delete_folder",
+        "title": "Delete a folder",
+        "description": (
+            "Delete a folder. Only when the user asked for it. mode move_up (the default) keeps its cases and subfolders, moving them into the "
+            "folder above; delete_cases deletes its cases too (refused while it holds files that are not cases). Runs that used them are kept."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "folder": _FOLDER,
+                "mode": {"type": "string", "enum": ["move_up", "delete_cases"], "description": "Default move_up: keep the cases"},
+            },
+            "required": ["folder"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {"folder": {"type": "string"}, "mode": {"type": "string"}, "moved": {"type": "integer"}, "deleted": {"type": "integer"}},
+            "required": ["folder", "mode", "moved", "deleted"],
+        },
+        "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False, "openWorldHint": False},
+    },
+    {
+        "name": "hercules_run_folder",
+        "title": "Run a folder",
+        "description": (
+            "Queue a run of every ready case in a folder (subfolders too, unless subfolders is false) as one batch, like the tester UI's folder "
+            "run, and return the batch and its run_ids at once. Drafts and cases that do not load are skipped and listed. environment and "
+            "base_url, when given, apply to every case. Follow it with hercules_list_runs batch=<batch> or hercules_run_status per run; "
+            "optional wait_s (at most 50)."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "folder": {**_FOLDER, "minLength": 0, "description": "The folder, e.g. Checkout (empty: every saved case)"},
+                "subfolders": {"type": "boolean", "description": "Run the cases of its subfolders too (default true)"},
+                **_RUN_OPTIONS,
+                "wait_s": {**_WAIT, "description": "Wait up to this many seconds for the runs to finish (default 0)"},
+            },
+            "required": ["folder"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                **_RUNS_OUTPUT["properties"],
+                "batch": {"type": "string"},
+                "folder": {"type": "string"},
+                "skipped": {
+                    "type": "array",
+                    "items": {"type": "object", "properties": {"name": {"type": "string"}, "reason": {"type": "string"}}, "required": ["name", "reason"]},
+                },
+            },
+            "required": ["runs", "all_finished", "batch", "folder", "skipped"],
+        },
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": False},
+    },
+    {
+        "name": "hercules_list_environments",
+        "title": "List environments",
+        "description": "The project's saved environments (.hercules/envs): where each runs (base URL, browser, device or native app) and the names of its variables and secrets. One whose file does not load is not listed.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "environments": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "kind": {"type": "string", "enum": ["web", "app"]},
+                            "base_url": {"type": ["string", "null"]},
+                            "browser": {"type": ["string", "null"]},
+                            "device": {"type": ["string", "null"]},
+                            "platform": {"type": ["string", "null"]},
+                            "variables": {"type": "array", "items": {"type": "string"}},
+                            "secret_names": {"type": "array", "items": {"type": "string"}},
+                        },
+                        "required": ["name", "kind", "variables", "secret_names"],
+                    },
+                }
+            },
+            "required": ["environments"],
+        },
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
+    {
+        "name": "hercules_get_environment",
+        "title": "Read an environment",
+        "description": "One saved environment in full (secrets by name only) and the saved cases that name it.",
+        "inputSchema": {"type": "object", "properties": {"name": _ENV_NAME}, "required": ["name"], "additionalProperties": False},
+        "outputSchema": _ENV_OUTPUT,
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
+    {
+        "name": "hercules_create_environment",
+        "title": "Create an environment",
+        "description": (
+            "Save a new environment in .hercules/envs. A web environment needs base_url; a native app environment sets mobile instead. It is "
+            "validated first and nothing is written when it is not valid. Refused when the name is taken: change that one with "
+            "hercules_update_environment."
+        ),
+        "inputSchema": {"type": "object", "properties": {"name": _ENV_NAME, **_ENV_FIELDS}, "required": ["name"], "additionalProperties": False},
+        "outputSchema": _ENV_OUTPUT,
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": False},
+    },
+    {
+        "name": "hercules_update_environment",
+        "title": "Update an environment",
+        "description": (
+            "Change a saved environment: each field given replaces that field (variables and secret_names as a whole), null clears it, and "
+            "fields left out are kept. The result is validated first and nothing is written when it is not valid. The name stays: to rename, "
+            "create a new environment and delete this one."
+        ),
+        "inputSchema": {"type": "object", "properties": {"name": _ENV_NAME, **_ENV_FIELDS}, "required": ["name"], "additionalProperties": False},
+        "outputSchema": _ENV_OUTPUT,
+        "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True, "openWorldHint": False},
+    },
+    {
+        "name": "hercules_delete_environment",
+        "title": "Delete an environment",
+        "description": "Delete a saved environment with the files attached to it. Only when the user asked for it. Cases that name it stop validating until it exists again; runs that used it are kept.",
+        "inputSchema": {"type": "object", "properties": {"name": _ENV_NAME}, "required": ["name"], "additionalProperties": False},
+        "outputSchema": {
+            "type": "object",
+            "properties": {"name": {"type": "string"}, "removed": {"type": "boolean"}, "used_by": {"type": "array", "items": {"type": "string"}}},
+            "required": ["name", "removed", "used_by"],
+        },
         "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False, "openWorldHint": False},
     },
     {
