@@ -170,6 +170,7 @@ def test_the_daemon_marks_runs_started_by_an_agent(tmp_path: Path) -> None:
     assert (ui_view["started_by"], ui_view["agent"]) == ("daemon", None)
     assert (agent_view["started_by"], agent_view["agent"]) == ("agent", "claude-code")
     assert (rerun_view["started_by"], rerun_view["agent"]) == ("agent", "codex")
+    assert ui_view["explore_session"] is None and agent_view["explore_session"] is None
 
 
 def test_workers_get_the_origin_and_telemetry_reports_it(tmp_path: Path) -> None:

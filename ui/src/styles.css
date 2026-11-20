@@ -6627,3 +6627,19 @@ tbody.stagger-in > tr:nth-child(n + 9),
     max-height: 320px;
   }
 }
+
+/* Toasts (the ding library, components/Notifications.tsx): its look mapped onto the theme tokens, so they follow
+   the chosen theme rather than the device's. */
+.tst-viewport {
+  color-scheme: inherit;
+  --tst-bg: var(--surface);
+  --tst-fg: var(--text);
+  --tst-ring: var(--line-strong);
+  --tst-shadow: 0 0 0 1px var(--tst-ring), var(--shadow-pop);
+  --tst-success: var(--pass);
+  --tst-error: var(--fail);
+  --tst-warning: var(--run);
+  --tst-info: var(--info);
+  --tst-radius: var(--radius-l);
+  font-family: var(--font-sans);
+}

@@ -525,6 +525,7 @@ class RunView(BaseModel):
     agent: str | None = Field(default=None, description="With started_by agent: claude-code, codex, cursor, copilot, gemini or other")
     batch: str | None = Field(default=None, description="The batch of a folder run (POST /api/runs/batch) this run belongs to")
     folder: str | None = Field(default=None, description="With batch: the folder that was run")
+    explore_session: str | None = Field(default=None, description="The Explore session that started this run as one of its children")
     worker_pid: int | None = None
     last_seq: int = 0
     mode: str | None = None

@@ -164,6 +164,7 @@ class Daemon:
             agent=(record.get("source") or {}).get("agent") if _started_by(record) == "agent" else None,
             batch=(record.get("source") or {}).get("batch"),
             folder=(record.get("source") or {}).get("folder"),
+            explore_session=_explore_session(record),
             worker_pid=record.get("worker_pid"),
             last_seq=self.store.last_seq(run_id),
             mode=options.get("mode"),
@@ -296,6 +297,12 @@ def _started_by(record: dict[str, Any]) -> Literal["daemon", "agent"] | None:
     if origin == "agent":
         return "agent"
     return "daemon" if origin == "daemon" else None
+
+
+def _explore_session(record: dict[str, Any]) -> str | None:
+    """The Explore session a child run belongs to (DaemonChildRunner tags its source), else None."""
+    source = record.get("source") or {}
+    return str(source["session"]) if source.get("kind") == "explore" and source.get("session") else None
 
 
 def run_origin(request: Request) -> dict[str, Any]:

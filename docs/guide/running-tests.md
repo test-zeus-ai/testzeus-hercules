@@ -258,6 +258,32 @@ The UI has four sections:
 - **Models**: the model server settings, the egress policy, and whether the hybrid-mode
   key variable is set. Key values are never shown.
 
+### Notifications
+
+Wherever you are in the UI, it tells you when:
+
+- **a run ends**: passed, failed, errored or cancelled (a folder run is one notification, when
+  its last run ends; a rerun of one of its runs gets its own). Runs a coding agent starts
+  through `hercules mcp` count too;
+- **a run waits for you**: a step or a plan to approve. The notification stays until the run
+  moves on, whether you answer it in the UI, from the terminal or it times out;
+- **an Explore session ends**, with its findings count and how many are P0 or P1.
+
+Failures, approvals and sessions with P0 or P1 findings stay until you close them; the rest
+close after 10 seconds, unless they arrive while you are in another tab or app, so they are
+still there when you come back. While the page is in the background, the tab title shows a
+count (or *Approval needed*), and with desktop notifications allowed, your system shows them
+too; click one to open the run. Desktop notifications need the UI opened at `127.0.0.1` or
+`localhost`. Keep the tab open: if it reloads (or the browser puts it to sleep and wakes it),
+it still tells you what ended meanwhile, but a tab opened afresh starts quiet. In a tab left
+in the background for a while, the browser slows the page down, so a notification can come
+up to a minute late.
+
+Choose what notifies, turn on a chime, and allow desktop notifications on the **Settings**
+page; **Send a test notification** shows what they look like. The choices are kept in the
+browser. Runs started with `hercules run` run outside the daemon, so the UI does not see
+them.
+
 ## Debugging a run in the UI
 
 Open a run from the Runs list. While it runs, the run page shows:

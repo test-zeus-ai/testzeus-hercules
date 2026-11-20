@@ -23,6 +23,10 @@ See [Migrating from v1](docs/guide/migrating-from-v1.md).
 - **Daemon and UI**: `hercules serve` (loopback, token, SQLite queue, one worker process
   per run), a React tester UI with live screencast, pause, step, skip, retry, approvals,
   edit and take over, checkpoints and resume after a crash.
+- **Notifications in the UI**: a toast when a run ends (one per folder run), when a run waits
+  for an approval (it stays until the run moves on) and when an Explore session ends;
+  while the page is in the background, a desktop notification and a count in the tab title.
+  Chosen on the Settings page; runs started with `hercules run` do not go through the UI.
 - **Case folders**: cases in folders under `.hercules/cases/` (up to 8 deep), shown as a
   tree on the Cases screen with make, rename, move and delete, and **Run folder**, which
   queues one run per case as a batch.

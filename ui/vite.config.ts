@@ -10,7 +10,8 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { buildCss } from "@yusufceng1z/ding";
+import { defineConfig, type Plugin } from "vite";
 
 interface DaemonInfo {
   host: string;
@@ -32,11 +33,30 @@ function readDaemon(): DaemonInfo | null {
   }
 }
 
+// The toast library writes its stylesheet into a <style> tag at runtime, which the daemon's CSP (style-src 'self')
+// refuses. Its CSS is served as a module instead, bundled into the hashed stylesheet, and ding-react gets the
+// library through src/lib/notify/dingStyles.ts, which skips the injection.
+function dingCss(): Plugin {
+  const id = "virtual:ding.css";
+  const resolved = `\0${id}`;
+  const withoutInjection = fileURLToPath(new URL("./src/lib/notify/dingStyles.ts", import.meta.url));
+  return {
+    name: "hercules-ding-css",
+    enforce: "pre",
+    resolveId(source, importer) {
+      if (source === id) return resolved;
+      if (source === "@yusufceng1z/ding" && importer?.includes("/@yusufceng1z/ding-react/")) return withoutInjection;
+      return undefined;
+    },
+    load: (source) => (source === resolved ? buildCss() : undefined),
+  };
+}
+
 const daemon = readDaemon();
 const target = process.env.HERCULES_DAEMON_URL || `http://127.0.0.1:${daemon?.port ?? 7373}`;
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), dingCss()],
   base: "/",
   build: {
     outDir: fileURLToPath(new URL("../testzeus_hercules/ui/static", import.meta.url)),

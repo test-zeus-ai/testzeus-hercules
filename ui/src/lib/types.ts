@@ -245,6 +245,8 @@ export interface RunView {
   agent?: string | null;
   batch?: string | null;
   folder?: string | null;
+  /** The Explore session that started this run as one of its children. */
+  explore_session?: string | null;
   worker_pid?: number | null;
   last_seq: number;
   mode?: string | null;
