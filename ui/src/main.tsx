@@ -23,6 +23,8 @@ import "@fontsource/jetbrains-mono/latin-400.css";
 import "@fontsource/jetbrains-mono/latin-500.css";
 import "@fontsource/silkscreen/latin-400.css";
 import "@fontsource/silkscreen/latin-ext-400.css";
+// The toast library's CSS before ours, so styles.css can map it onto the theme tokens.
+import "virtual:ding.css";
 import "./styles.css";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode } from "react";

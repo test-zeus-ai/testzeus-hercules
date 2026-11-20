@@ -229,11 +229,13 @@ def test_a_focusable_select_lookalike_is_a_combobox_named_by_its_caption(browser
 
 
 def test_snapshot_waits_while_the_page_is_still_rendering(browser: BrowserHarness) -> None:
+    # The page adds a button every 40 ms for about 370 ms, well past the quiet window (QUIET_DOM_MS, 150 ms). The gaps are
+    # far shorter than that window: on a loaded CI runner a timer firing late must not look like a page that settled.
     async def scenario() -> Snapshot:
         async with browser.page() as page:
             await page.set_content(
                 "<div id=app></div><script>let n = 0; const add = () => { const b = document.createElement('button');"
-                " b.textContent = n < 4 ? 'Loading ' + n : 'Ready'; document.getElementById('app').appendChild(b); if (n++ < 4) setTimeout(add, 120); };"
+                " b.textContent = n < 8 ? 'Loading ' + n : 'Ready'; document.getElementById('app').appendChild(b); if (n++ < 8) setTimeout(add, 40); };"
                 " setTimeout(add, 50);</script>"
             )
             return await take_snapshot(page, seq=1)

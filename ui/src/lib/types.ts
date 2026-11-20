@@ -7,6 +7,18 @@ export type Egress = "local" | "hybrid-text" | "hybrid";
 
 export const FINAL_STATUSES: ReadonlySet<string> = new Set(["passed", "failed", "error", "cancelled"]);
 
+/** GET /api/runs/batches/{batch}: a folder run counted by each case's latest attempt. */
+export interface BatchSummary {
+  batch: string;
+  folder?: string | null;
+  total: number;
+  /** Latest attempts not finished yet. */
+  open: number;
+  counts: Partial<Record<RunStatus, number>>;
+  /** When its last latest attempt ended, once none is open. */
+  finished_at?: string | null;
+}
+
 export interface StepResult {
   index: number;
   action: string;
@@ -245,6 +257,8 @@ export interface RunView {
   agent?: string | null;
   batch?: string | null;
   folder?: string | null;
+  /** The Explore session that started this run as one of its children. */
+  explore_session?: string | null;
   worker_pid?: number | null;
   last_seq: number;
   mode?: string | null;
@@ -478,6 +492,8 @@ export interface Health {
   host?: string | null;
   home_dir?: string;
   egress_policy?: string;
+  /** ui.notifications in config.yaml: what the UI notifies about. */
+  notifications?: Partial<{ runs: string; approvals: boolean; explore: boolean; sound: boolean; desktop: boolean }>;
 }
 
 /** One period of the home page's numbers (`/api/dashboard`). */

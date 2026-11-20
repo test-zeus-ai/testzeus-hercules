@@ -367,6 +367,11 @@ telemetry:
 | `telemetry.enabled` | `HERCULES_TELEMETRY` | `true` | Anonymous usage telemetry (always off under egress `local`; `DO_NOT_TRACK=1` or `--no-telemetry` also turn it off) |
 | `ui.host` | `HERCULES_UI_HOST` | `127.0.0.1` | Address the daemon listens on |
 | `ui.port` | `HERCULES_UI_PORT` | `7373` | Port the daemon listens on |
+| `ui.notifications.runs` | none | `all` | Notify when a run ends: `all`, `failures` or `off` ([Notifications](running-tests.md#notifications)) |
+| `ui.notifications.approvals` | none | `true` | Notify when a run waits for an approval |
+| `ui.notifications.explore` | none | `true` | Notify when an Explore session ends |
+| `ui.notifications.sound` | none | `true` | A chime with each notification |
+| `ui.notifications.desktop` | none | `true` | System notifications while the UI is in the background |
 
 Other environment variables:
 

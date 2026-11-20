@@ -22,9 +22,11 @@ import asyncio
 import contextlib
 import functools
 import getpass
+import hashlib
 import json
 import os
 import platform
+import re
 import secrets
 import shutil
 from dataclasses import dataclass, field
@@ -63,10 +65,12 @@ from testzeus_hercules.daemon.http_trace import read_http_calls
 from testzeus_hercules.daemon.hub import EventHub
 from testzeus_hercules.daemon.manager import RunConflict, RunManager, read_result
 from testzeus_hercules.daemon.models import (
+    ENV_NAME_PATTERN,
     SETTING_NAMES,
     ApprovalRequest,
     ApprovalView,
     BatchSkip,
+    BatchSummary,
     CaseSave,
     CasesMove,
     CaseValidate,
@@ -95,6 +99,7 @@ from testzeus_hercules.daemon.store import ALL_STATUSES, FINAL_STATUSES, RunStor
 from testzeus_hercules.daemon.system import models_report
 from testzeus_hercules.daemon.ui import serve_ui, ui_root
 from testzeus_hercules.kernel.paths import validate_run_id
+from testzeus_hercules.kernel.settings import Settings, SettingsError
 
 MAX_WAIT_S = 50.0
 MAX_LIST = 200
@@ -164,6 +169,7 @@ class Daemon:
             agent=(record.get("source") or {}).get("agent") if _started_by(record) == "agent" else None,
             batch=(record.get("source") or {}).get("batch"),
             folder=(record.get("source") or {}).get("folder"),
+            explore_session=_explore_session(record),
             worker_pid=record.get("worker_pid"),
             last_seq=self.store.last_seq(run_id),
             mode=options.get("mode"),
@@ -298,6 +304,12 @@ def _started_by(record: dict[str, Any]) -> Literal["daemon", "agent"] | None:
     return "daemon" if origin == "daemon" else None
 
 
+def _explore_session(record: dict[str, Any]) -> str | None:
+    """The Explore session a child run belongs to (DaemonChildRunner tags its source), else None."""
+    source = record.get("source") or {}
+    return str(source["session"]) if source.get("kind") == "explore" and source.get("session") else None
+
+
 def run_origin(request: Request) -> dict[str, Any]:
     """Who started a run: a coding agent over MCP (the shim names it in a header), else the tester UI or HTTP API."""
     from testzeus_hercules.kernel.telemetry import agent_client_from_name
@@ -339,41 +351,86 @@ def new_batch_id() -> str:
     return f"b_{datetime.now(timezone.utc):%Y%m%d_%H%M%S}_{secrets.token_hex(3)}"
 
 
+def _plan_batch(daemon: Daemon, body: RunBatchCreate) -> tuple[str, int, list[tuple[dict[str, Any], TestCase]], list[BatchSkip]]:
+    """A folder run's cases: the folder as spelled on disk, how many cases it holds, those to run (each loaded with its
+    environment applied) and those skipped with why. It reads every case file: callers run it off the event loop."""
+    paths, project = daemon.config.paths, daemon.config.settings.project_dir
+    try:
+        folder = case_files.spelled_folder(paths.cases_dir, body.folder)
+        entries = case_files.cases_in_folder(paths.cases_dir, project, folder, subfolders=body.subfolders)
+    except FileNotFoundError:
+        raise ApiError(404, "folder not found") from None
+    except case_files.CaseError as exc:
+        raise ApiError(422, str(exc)) from None
+    ready: list[tuple[dict[str, Any], TestCase]] = []
+    skipped: list[BatchSkip] = []
+    for entry in entries:
+        if not entry["valid"]:
+            skipped.append(BatchSkip(name=entry["name"], reason=f"does not load: {entry.get('error')}"))
+            continue
+        if entry.get("status") == "draft":
+            skipped.append(BatchSkip(name=entry["name"], reason="a draft: review its steps and mark it ready to run it with the folder"))
+            continue
+        try:
+            case = case_files.load_case_file(project / entry["path"])
+            case = case_files.apply_environment(case, paths.envs_dir, environment=body.environment, base_url=body.base_url)
+        except case_files.CaseError as exc:
+            skipped.append(BatchSkip(name=entry["name"], reason=str(exc)))
+            continue
+        ready.append((entry, case))
+    return folder, len(entries), ready, skipped
+
+
 async def create_batch(request: Request, daemon: Daemon) -> Response:
     raw = await _body(request)
-    paths, project = daemon.config.paths, daemon.config.settings.project_dir
     with placeholder_names(_chosen_environment_names(daemon, raw)):
         body = _parse(RunBatchCreate, raw)
-        try:
-            folder = case_files.spelled_folder(paths.cases_dir, body.folder)
-            entries = case_files.cases_in_folder(paths.cases_dir, project, folder, subfolders=body.subfolders)
-        except FileNotFoundError:
-            raise ApiError(404, "folder not found") from None
-        except case_files.CaseError as exc:
-            raise ApiError(422, str(exc)) from None
-        batch, origin = new_batch_id(), run_origin(request)
-        runs: list[RunCreated] = []
-        skipped: list[BatchSkip] = []
-        for entry in entries:
-            if not entry["valid"]:
-                skipped.append(BatchSkip(name=entry["name"], reason=f"does not load: {entry.get('error')}"))
-                continue
-            if entry.get("status") == "draft":
-                skipped.append(BatchSkip(name=entry["name"], reason="a draft: review its steps and mark it ready to run it with the folder"))
-                continue
-            try:
-                case = case_files.load_case_file(project / entry["path"])
-                case = case_files.apply_environment(case, paths.envs_dir, environment=body.environment, base_url=body.base_url)
-            except case_files.CaseError as exc:
-                skipped.append(BatchSkip(name=entry["name"], reason=str(exc)))
-                continue
-            source = {"environment": body.environment, "base_url": body.base_url, "kind": "case_path", "path": entry["path"], "batch": batch, "folder": folder, **origin}
-            record = daemon.runs.submit(case, options=body.run_options(), source=source)
-            runs.append(RunCreated(run_id=record["id"], status=record["status"], case_id=record.get("case_id"), ui_url=daemon.ui_url(record["id"])))
-    if not entries:
+        # The placeholder names travel with the context into the thread.
+        folder, held, ready, skipped = await asyncio.to_thread(_plan_batch, daemon, body)
+    if not held and not body.dry_run:
         raise ApiError(422, f"{folder or 'the top level'} has no saved cases")
+    if body.dry_run:
+        planned = RunBatchCreated(batch="", folder=folder, runs=[], skipped=skipped, would_run=[entry["name"] for entry, _ in ready])
+        return JSONResponse(planned.model_dump(mode="json"))
+    batch, origin = new_batch_id(), run_origin(request)
+    runs: list[RunCreated] = []
+    for entry, case in ready:
+        source = {"environment": body.environment, "base_url": body.base_url, "kind": "case_path", "path": entry["path"], "batch": batch, "folder": folder, **origin}
+        record = daemon.runs.submit(case, options=body.run_options(), source=source)
+        runs.append(RunCreated(run_id=record["id"], status=record["status"], case_id=record.get("case_id"), ui_url=daemon.ui_url(record["id"])))
     created = RunBatchCreated(batch=batch, folder=folder, runs=runs, skipped=skipped)
     return JSONResponse(created.model_dump(mode="json"), status_code=201 if runs else 200)
+
+
+def latest_attempts(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Each case's latest attempt among a folder run's runs (oldest first): runs are grouped by their case file (a rerun
+    keeps it), and the newest of each group is kept, so a run rerun twice, or rerun from a run since deleted, counts once."""
+    latest: dict[str, dict[str, Any]] = {}
+    for record in records:  # oldest first: a later run of the same case replaces an earlier one
+        latest[str(record.get("path") or record["id"])] = record
+    return list(latest.values())
+
+
+async def batch_summary(request: Request, daemon: Daemon) -> Response:
+    batch = request.path_params["batch"]
+    records = daemon.store.batch_runs(batch)
+    if not records:
+        raise ApiError(404, "folder run not found")
+    latest = latest_attempts(records)
+    counts: dict[str, int] = {}
+    for record in latest:
+        counts[record["status"]] = counts.get(record["status"], 0) + 1
+    still_open = sum(1 for record in latest if record["status"] not in FINAL_STATUSES)
+    ends = [str(record["finished_at"]) for record in latest if record.get("finished_at")]
+    summary = BatchSummary(
+        batch=batch,
+        folder=next((str(r["folder"]) for r in records if r.get("folder")), None),
+        total=len(latest),
+        open=still_open,
+        counts=counts,
+        finished_at=max(ends) if ends and not still_open else None,
+    )
+    return JSONResponse(summary.model_dump(mode="json"))
 
 
 async def list_runs(request: Request, daemon: Daemon) -> Response:
@@ -823,15 +880,20 @@ def _case_error(exc: Exception) -> ApiError:
 
 
 async def list_cases(request: Request, daemon: Daemon) -> Response:
-    """The saved cases: all, or ``folder`` (with its subfolders) and those whose title, id or path contains ``query``, both
-    applied before the listing's cap (``truncated``: there were more)."""
+    """The saved cases: all, or ``folder`` (with its subfolders), those whose title, id or path contains ``query``, and those
+    that run in ``environment`` (a case that does not load: its file names it), applied before the listing's cap
+    (``truncated``: there were more)."""
     paths = daemon.config.paths
     folders = case_files.list_folders(paths.cases_dir)
     under, query = request.query_params.get("folder", "").strip().strip("/"), request.query_params.get("query", "")
+    environment = request.query_params.get("environment") or None
     if len(under) > 900 or len(query) > 200:
         raise ApiError(422, "folder or query is too long")
+    if environment is not None and not re.fullmatch(ENV_NAME_PATTERN, environment):
+        raise ApiError(422, "environment is not an environment name")
     try:
-        cases, truncated = case_files.find_cases(paths.cases_dir, daemon.config.settings.project_dir, folders=folders, under=under, query=query)
+        # It reads every case file it lists: off the event loop, so live views and polls keep being answered.
+        cases, truncated = await asyncio.to_thread(case_files.find_cases, paths.cases_dir, daemon.config.settings.project_dir, folders=folders, under=under, query=query, environment=environment)
     except case_files.CaseError as exc:
         raise ApiError(404, str(exc)) from None
     return JSONResponse({"cases": cases, "folders": folders, "truncated": truncated})
@@ -966,16 +1028,27 @@ async def list_devices(request: Request, daemon: Daemon) -> Response:
     return JSONResponse({"devices": list(device_names())})
 
 
+def environment_version(env: Environment) -> str:
+    """The environment's ETag: a save with ``If-Match`` replaces only the version it was read at."""
+    canonical = json.dumps(env.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
+    return '"' + hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:20] + '"'
+
+
 async def get_environment(request: Request, daemon: Daemon) -> Response:
     env = case_files.load_environment(daemon.config.paths.envs_dir, request.path_params["name"])
     if env is None:
         raise ApiError(404, "environment not found")
-    return JSONResponse(env.model_dump(mode="json"))
+    return JSONResponse(env.model_dump(mode="json"), headers={"ETag": environment_version(env)})
 
 
 async def save_environment(request: Request, daemon: Daemon) -> Response:
     body = _parse(EnvironmentSave, await _body(request))
     env = Environment.model_validate(body.model_dump(exclude={"overwrite"}))
+    expected = request.headers.get("if-match")
+    if expected is not None:
+        current = case_files.load_environment(daemon.config.paths.envs_dir, env.name)
+        if current is None or environment_version(current) != expected.strip():
+            raise ApiError(412, f"environment {env.name} changed since it was read; read it again", detail={"code": "environment_changed"})
     try:
         case_files.save_environment(daemon.config.paths.envs_dir, env, overwrite=body.overwrite)
     except case_files.CaseExists as exc:
@@ -1003,8 +1076,21 @@ async def health(request: Request, daemon: Daemon) -> Response:
             "host": platform.node() or None,
             "home_dir": str(daemon.config.paths.home_dir),
             "egress_policy": daemon.config.settings.egress.policy,
+            "notifications": _notifications(daemon),
         }
     )
+
+
+def _notifications(daemon: Daemon) -> dict[str, Any]:
+    """The tester UI's notification switches (``ui.notifications`` in config.yaml). The config files are read again on
+    every call, so an edit applies at the UI's next health check, without a restart; while a file does not load, the
+    switches the daemon started with apply."""
+    settings = daemon.config.settings
+    try:
+        settings = Settings.load(project_dir=settings.project_dir, env=daemon.config.env, overrides={"home_dir": settings.home_dir})
+    except SettingsError:
+        pass  # a config file being edited may not load for a moment
+    return settings.ui.notifications.model_dump(mode="json")
 
 
 def _user_name() -> str | None:
@@ -1082,6 +1168,7 @@ def create_app(config: DaemonConfig) -> Starlette:
         Route("/api/runs", _endpoint(list_runs), methods=["GET"]),
         Route("/api/runs", _endpoint(create_run), methods=["POST"]),
         Route("/api/runs/batch", _endpoint(create_batch), methods=["POST"]),
+        Route("/api/runs/batches/{batch}", _endpoint(batch_summary), methods=["GET"]),
         Route("/api/runs/{run_id}", _endpoint(get_run), methods=["GET"]),
         Route("/api/runs/{run_id}", _endpoint(delete_run), methods=["DELETE"]),
         Route("/api/runs/{run_id}/events", _endpoint(run_events), methods=["GET"]),

@@ -66,7 +66,11 @@ HUMAN_ONLY_KINDS = ("destructive", "recovery_exhausted")
 
 
 class ToolError(Exception):
-    """Reported to the agent as a tool error (``isError``) with this message."""
+    """Reported to the agent as a tool error (``isError``) with this message; ``code`` is the daemon's error code, if any."""
+
+    def __init__(self, message: str, code: str | None = None) -> None:
+        super().__init__(message)
+        self.code = code
 
 
 @dataclass
@@ -117,10 +121,26 @@ class HerculesTools(ExploreToolsMixin):
         timeout_s: float | None = None,
         hints: dict[str, str] | None = None,
         prefix: str = "",
+        headers: dict[str, str] | None = None,
     ) -> Any:
         """The daemon's JSON answer; an error answer becomes a ToolError (``prefix`` + message, and the hint for its
         ``detail.code`` from ``hints``)."""
-        response = await self.client.request(method, path, json=json_body, params=params, timeout_s=timeout_s)
+        return (await self._exchange(method, path, json_body=json_body, params=params, timeout_s=timeout_s, hints=hints, prefix=prefix, headers=headers))[0]
+
+    async def _exchange(
+        self,
+        method: str,
+        path: str,
+        *,
+        json_body: Any = None,
+        params: dict[str, Any] | None = None,
+        timeout_s: float | None = None,
+        hints: dict[str, str] | None = None,
+        prefix: str = "",
+        headers: dict[str, str] | None = None,
+    ) -> tuple[Any, httpx.Headers]:
+        """As _api, with the answer's headers."""
+        response = await self.client.request(method, path, json=json_body, params=params, timeout_s=timeout_s, headers=headers)
         if response.status_code >= 400:
             code = None
             try:
@@ -131,9 +151,9 @@ class HerculesTools(ExploreToolsMixin):
                 message = response.text
             hint = f" ({hints[code]})" if hints and code in hints else ""
             if response.status_code == 404:
-                raise ToolError(f"{prefix}not found: {message}{hint}")
-            raise ToolError(f"{prefix}{str(message)[:1000]}{hint}")
-        return response.json()
+                raise ToolError(f"{prefix}not found: {message}{hint}", code)
+            raise ToolError(f"{prefix}{str(message)[:1000]}{hint}", code)
+        return response.json(), response.headers
 
     async def _view(self, run_id: str, *, wait_s: float = 0.0, after_seq: int | None = None) -> dict[str, Any]:
         params: dict[str, Any] = {"wait_s": round(wait_s, 2)}
@@ -480,8 +500,9 @@ class HerculesTools(ExploreToolsMixin):
 
     async def _list_runs(self, args: dict[str, Any], progress: Progress, started: float) -> ToolOutput:
         params: dict[str, Any] = {"limit": int(args.get("limit") or 10)}
-        if args.get("status"):
-            params["status"] = args["status"]
+        for key in ("status", "batch"):
+            if args.get(key):
+                params[key] = args[key]
         views = (await self._api("GET", "/api/runs", params=params))["runs"]
         text = "\n".join(view["summary"].splitlines()[0] for view in views) or "No runs yet."
         return ToolOutput({"runs": [summary(view) for view in views]}, text)
@@ -590,6 +611,198 @@ class HerculesTools(ExploreToolsMixin):
         name = _case_name(args.get("name"))
         removed = await self._api("DELETE", f"/api/cases/{_quote_case(name)}")
         return ToolOutput({"name": removed["name"], "removed": bool(removed.get("removed"))}, f"Deleted {_CASES_PREFIX}{removed['name']}.")
+
+    # ------------------------------------------------------------------ folders of cases
+
+    async def _folder_plan(self, folder: str) -> tuple[set[str], dict[str, str]]:
+        """What hercules_run_folder would do with ``folder`` (and its subfolders), as the daemon decides it (a dry run):
+        the cases it would run, and the reason for each it would skip."""
+        try:
+            planned = await self._api("POST", "/api/runs/batch", json_body={"folder": folder, "subfolders": True, "dry_run": True})
+        except ToolError as exc:
+            if "dry_run" in str(exc):  # a daemon from before dry_run refuses the field (and starts nothing)
+                raise ToolError("the Hercules daemon is older than these tools: restart it (hercules serve, or hercules ui) so it runs the same version") from None
+            raise
+        return set(planned.get("would_run", [])), {item["name"]: item["reason"] for item in planned.get("skipped", [])}
+
+    async def _list_folders(self, args: dict[str, Any], progress: Progress, started: float) -> ToolOutput:
+        listing = await self._api("GET", "/api/cases")
+        would_run, _ = await self._folder_plan("")
+        cases = listing.get("cases", [])
+        folders = []
+        for folder in listing.get("folders", []):
+            held = [case for case in cases if _inside(case.get("folder") or "", folder)]
+            folders.append({"folder": folder, "cases": len(held), "ready": sum(1 for name in would_run if _inside(name.rpartition("/")[0], folder))})
+        top = sum(1 for case in cases if not case.get("folder"))
+        truncated = bool(listing.get("truncated"))
+        structured = {"folders": folders, "top_level_cases": top, "truncated": truncated}
+        if not folders:
+            return ToolOutput(structured, f"No folders yet ({top} case(s) at the top level); make one with hercules_create_folder.")
+        lines = [f"- {item['folder']}: {item['cases']} case(s), {item['ready']} ready" for item in folders]
+        notes = f"\n{top} case(s) at the top level." if top else ""
+        if truncated:
+            notes += "\nThe project has more cases than were counted; hercules_get_folder lists one folder's."
+        return ToolOutput(structured, f"{len(folders)} folder(s); run one with hercules_run_folder folder=<folder>:\n" + "\n".join(lines) + notes)
+
+    async def _get_folder(self, args: dict[str, Any], progress: Progress, started: float) -> ToolOutput:
+        asked = _folder_name(args.get("folder"))
+        listing = await self._api("GET", "/api/cases", params={"folder": asked})
+        # The daemon matches a folder's name in any case; answer with it as it is spelled on disk.
+        folder = next((name for name in listing.get("folders", []) if name.casefold() == asked.casefold()), asked)
+        subfolders = [name for name in listing.get("folders", []) if name.rpartition("/")[0] == folder]
+        fields = ("path", "folder", "valid", "title", "status", "steps")
+        would_run, skips = await self._folder_plan(folder)
+        found = listing.get("cases", [])
+        cases = [{key: entry.get(key) for key in fields} | {"folder": entry.get("folder") or "", "valid": bool(entry.get("valid"))} for entry in found]
+        ready = len(would_run)
+        truncated = bool(listing.get("truncated"))
+        lines = [f"Folder {folder}: {len(cases)} case(s), {ready} ready to run with hercules_run_folder."]
+        if subfolders:
+            lines.append("Subfolders: " + ", ".join(subfolders))
+        for case, entry in zip(cases, found):
+            name = entry.get("name") or ""
+            state = "ready" if name in would_run else f"skipped: {_clip(skips.get(name, 'not run by a folder run'), 120)}"
+            lines.append(f"- {case['title'] or case['path']}: {case['path']} ({state})")
+        if truncated:
+            lines.append("The folder has more cases than the listing holds.")
+        return ToolOutput({"folder": folder, "subfolders": subfolders, "cases": cases, "ready": ready, "truncated": truncated}, "\n".join(lines))
+
+    async def _create_folder(self, args: dict[str, Any], progress: Progress, started: float) -> ToolOutput:
+        parent = _folder_name(args.get("parent"), top_level=True)
+        made = await self._api("POST", "/api/folders", json_body={"parent": parent, "name": str(args.get("name") or "").strip()}, prefix="no folder was made: ")
+        return ToolOutput({"folder": made["folder"]}, f"Created folder {made['folder']}. Save cases into it with hercules_create_case folder={made['folder']}.")
+
+    async def _update_folder(self, args: dict[str, Any], progress: Progress, started: float) -> ToolOutput:
+        folder = _folder_name(args.get("folder"))
+        given = [key for key in ("name", "parent") if args.get(key) is not None]
+        if len(given) != 1:
+            raise ToolError(f"give exactly one of name (to rename it) or parent (to move it) (got {', '.join(given) or 'none'})")
+        body = {"name": str(args["name"]).strip()} if given == ["name"] else {"parent": _folder_name(args["parent"], top_level=True)}
+        moved = await self._api("PATCH", f"/api/folders/{_quote_case(folder)}", json_body=body, prefix=f"{folder} was left as it was: ")
+        verb = "Renamed" if given == ["name"] else "Moved"
+        return ToolOutput({"folder": moved["folder"], "was": moved["was"]}, f"{verb} {moved['was']} to {moved['folder']}; its cases' paths now start with {_CASES_PREFIX}{moved['folder']}/.")
+
+    async def _delete_folder(self, args: dict[str, Any], progress: Progress, started: float) -> ToolOutput:
+        folder = _folder_name(args.get("folder"))
+        mode = args.get("mode") or "move_up"
+        removed = await self._api("DELETE", f"/api/folders/{_quote_case(folder)}", params={"mode": mode}, prefix=f"{folder} was left as it was: ")
+        structured = {key: removed[key] for key in ("folder", "mode", "moved", "deleted")}
+        if mode == "move_up":
+            text = f"Deleted folder {removed['folder']}; {removed['moved']} item(s) moved to the folder above."
+        else:
+            text = f"Deleted folder {removed['folder']} and its {removed['deleted']} case(s)."
+        return ToolOutput(structured, text)
+
+    async def _run_folder(self, args: dict[str, Any], progress: Progress, started: float) -> ToolOutput:
+        _wait_arg(args, 0)
+        body: dict[str, Any] = {"folder": _folder_name(args.get("folder"), top_level=True), "subfolders": args.get("subfolders", True) is not False}
+        body.update({key: args[key] for key in _RUN_VALUES if args.get(key) not in (None, "", [])})
+        body.update({key: True for key in _RUN_FLAGS if args.get(key) is True})
+        created = await self._api("POST", "/api/runs/batch", json_body=body, prefix="nothing was run: ")
+        skipped = [{"name": item["name"], "reason": item["reason"]} for item in created.get("skipped", [])]
+        where = created["folder"] or "every saved case"
+        skips = "".join(f"\nSkipped {item['name']}: {item['reason']}" for item in skipped)
+        if not created["runs"]:
+            return ToolOutput({"runs": [], "all_finished": True, "batch": created["batch"], "folder": created["folder"], "skipped": skipped}, f"Nothing was run in {where}." + skips)
+        views = await self._wait([item["run_id"] for item in created["runs"]], float(args.get("wait_s") or 0), started, progress)
+        output = self._runs_output(views)
+        head = f"Folder run {created['batch']} of {where}: {len(views)} run(s) queued; hercules_list_runs batch={created['batch']} shows how they are doing."
+        return ToolOutput({**output.structured, "batch": created["batch"], "folder": created["folder"], "skipped": skipped}, head + skips + "\n" + output.text, output.extra)
+
+    # ------------------------------------------------------------------ environments
+
+    async def _cases_using(self, name: str) -> tuple[list[str], bool]:
+        """The saved cases that run in environment ``name`` (one that does not load: its file names it), and whether there
+        were more than the listing holds."""
+        listing = await self._api("GET", "/api/cases", params={"environment": name})
+        paths = [case["path"] + ("" if case.get("valid") else " (does not load)") for case in listing.get("cases", [])]
+        return paths, bool(listing.get("truncated"))
+
+    async def _list_environments(self, args: dict[str, Any], progress: Progress, started: float) -> ToolOutput:
+        envs = (await self._api("GET", "/api/environments"))["environments"]
+        items = [_env_brief(env) for env in envs]
+        if not items:
+            return ToolOutput({"environments": []}, "No saved environments yet; make one with hercules_create_environment.")
+        lines = []
+        for item in items:
+            where = item["base_url"] or f"{item['platform']} app"
+            extra = ", ".join(
+                part
+                for part in (
+                    item["browser"],
+                    item["device"] and f"device {item['device']}",
+                    item["variables"] and f"variables {', '.join(item['variables'])}",
+                    item["secret_names"] and f"secrets {', '.join(item['secret_names'])}",
+                )
+                if part
+            )
+            lines.append(f"- {item['name']}: {where}" + (f" ({extra})" if extra else ""))
+        return ToolOutput({"environments": items}, f"{len(items)} environment(s); run a case in one with hercules_run environment=<name>:\n" + "\n".join(lines))
+
+    async def _get_environment(self, args: dict[str, Any], progress: Progress, started: float) -> ToolOutput:
+        name = _env_name(args.get("name"))
+        env = await self._api("GET", f"/api/environments/{name}")
+        return await self._env_output(env, f"Environment {name}")
+
+    async def _env_output(self, env: dict[str, Any], head: str) -> ToolOutput:
+        used_by, more = await self._cases_using(env["name"])
+        shown = {key: value for key, value in env.items() if value not in (None, [], {})}
+        return ToolOutput({"environment": env, "used_by": used_by, "used_by_truncated": more}, f"{head}:\n{json.dumps(shown, indent=2)}\n{_used_by_text(used_by, more)}")
+
+    async def _create_environment(self, args: dict[str, Any], progress: Progress, started: float) -> ToolOutput:
+        name = _env_name(args.get("name"))
+        body = {key: args[key] for key in _ENV_KEYS if args.get(key) is not None}
+        prefix = "nothing was saved: "
+        try:
+            saved = await self._api("POST", "/api/environments", json_body={**body, "name": name, "overwrite": False}, prefix=prefix)
+        except ToolError as exc:
+            if "already exists" in str(exc):
+                raise ToolError(f"{prefix}environment {name} already exists; change it with hercules_update_environment") from None
+            raise
+        return await self._env_output(saved, f"Created environment {name}")
+
+    async def _update_environment(self, args: dict[str, Any], progress: Progress, started: float) -> ToolOutput:
+        name = _env_name(args.get("name"))
+        changes = {key: args[key] for key in _ENV_KEYS if key in args}
+        if not changes:
+            raise ToolError(f"give at least one field to change ({', '.join(_ENV_KEYS)}); null clears one")
+        prefix = f"{name} was left as it was: "
+        try:
+            saved = await self._merge_environment(name, changes, prefix)
+        except ToolError as exc:
+            if exc.code != "environment_changed":
+                raise
+            try:  # a tester's edit landed between the read and the save: apply the change onto theirs
+                saved = await self._merge_environment(name, changes, prefix)
+            except ToolError as again:
+                if again.code == "environment_changed":
+                    raise ToolError(f"{prefix}it kept changing while it was being updated; try again", again.code) from None
+                raise
+        return await self._env_output(saved, f"Updated environment {name} ({', '.join(changes)})")
+
+    async def _merge_environment(self, name: str, changes: dict[str, Any], prefix: str) -> dict[str, Any]:
+        """Read the environment, apply ``changes`` and save it as the version read (If-Match): an edit made meanwhile is a
+        ToolError with code environment_changed, not overwritten."""
+        current, headers = await self._exchange("GET", f"/api/environments/{name}")
+        merged = {key: value for key, value in {**current, **changes}.items() if value is not None}
+        version = {"If-Match": headers["etag"]} if headers.get("etag") else None
+        saved: dict[str, Any] = await self._api("POST", "/api/environments", json_body={**merged, "name": name, "overwrite": True}, prefix=prefix, headers=version)
+        return saved
+
+    async def _delete_environment(self, args: dict[str, Any], progress: Progress, started: float) -> ToolOutput:
+        name = _env_name(args.get("name"))
+        await self._api("GET", f"/api/environments/{name}")  # not found: said before anything else
+        used_by, more = await self._cases_using(name)
+        if (used_by or more) and args.get("force") is not True:
+            raise ToolError(
+                f"nothing was deleted: {_used_by_text(used_by, more)} Change those cases first, or, only if the user confirms, "
+                "delete it anyway with force true (the cases then do not validate until it exists again)."
+            )
+        removed = await self._api("DELETE", f"/api/environments/{name}")
+        text = f"Deleted environment {name}."
+        if used_by:
+            text += f" {len(used_by)} case(s) still name it and will not validate until it exists again."
+        return ToolOutput({"name": name, "removed": bool(removed.get("removed")), "used_by": used_by}, text)
 
     async def _get_evidence(self, args: dict[str, Any], progress: Progress, started: float) -> ToolOutput:
         uri = str(args["uri"])
@@ -866,6 +1079,59 @@ def _case_name(raw: Any) -> str:
     if not name or name.startswith("/") or any(part in ("", ".", "..") for part in parts) or not name.lower().endswith((".feature", ".json")):
         raise ToolError("give the case's path as hercules_list_cases shows it, e.g. .hercules/cases/Checkout/pay.feature")
     return name
+
+
+_ENV_KEYS = ("base_url", "browser", "viewport", "device", "browser_options", "mobile", "variables", "secret_names")
+_ENV_NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+
+
+def _env_name(raw: Any) -> str:
+    name = str(raw or "").strip()
+    if not _ENV_NAME.match(name):
+        raise ToolError("give the environment's name as hercules_list_environments shows it: lowercase letters, digits, - and _")
+    return name
+
+
+def _env_brief(env: dict[str, Any]) -> dict[str, Any]:
+    mobile = env.get("mobile") or None
+    return {
+        "name": env["name"],
+        "kind": "app" if mobile else "web",
+        "base_url": env.get("base_url"),
+        "browser": env.get("browser"),
+        "device": env.get("device") or (mobile or {}).get("device"),
+        "platform": (mobile or {}).get("platform"),
+        "variables": sorted(env.get("variables") or {}),
+        "secret_names": list(env.get("secret_names") or []),
+    }
+
+
+def _folder_name(raw: Any, *, top_level: bool = False) -> str:
+    """A folder under .hercules/cases from what hercules_list_folders shows; empty (the top level) only when ``top_level``."""
+    name = str(raw or "").strip().replace("\\", "/").removeprefix("./")
+    if name == _CASES_PREFIX.rstrip("/") or name.startswith(_CASES_PREFIX):
+        name = name.removeprefix(_CASES_PREFIX.rstrip("/"))
+    name = name.strip("/")
+    if not name and not top_level:
+        raise ToolError("give the folder as hercules_list_folders shows it, e.g. Checkout/Payments")
+    if name and any(part in ("", ".", "..") for part in name.split("/")):
+        raise ToolError("give the folder as hercules_list_folders shows it, e.g. Checkout/Payments")
+    return name
+
+
+def _inside(case_folder: str, folder: str) -> bool:
+    return case_folder == folder or case_folder.startswith(folder + "/")
+
+
+def _clip(text: str, limit: int) -> str:
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def _used_by_text(used_by: list[str], more: bool) -> str:
+    if not used_by:
+        return "No saved case names it."
+    listed = ", ".join(used_by[:10]) + (" and more" if len(used_by) > 10 or more else "")
+    return f"Used by {len(used_by)}{'+' if more else ''} case(s): {listed}."
 
 
 def _quote_case(name: str) -> str:

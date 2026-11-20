@@ -6,6 +6,7 @@ import { ProPromo } from "./components/ProPromo";
 import { TESTZEUS_SITE, withUtm } from "./lib/links";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Icon, type IconName } from "./components/Icon";
+import { Notifications } from "./components/Notifications";
 import { api, UNAUTHORIZED_EVENT } from "./lib/api";
 import { dissolvePage } from "./lib/pageDissolve";
 import { useFont } from "./lib/font";
@@ -200,6 +201,7 @@ export function App() {
           </Switch>
         </ErrorBoundary>
       </main>
+      <Notifications />
       {signedOut ? <SignedOut /> : null}
     </div>
   );

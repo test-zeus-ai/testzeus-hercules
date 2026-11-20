@@ -14,6 +14,7 @@ Hercules ships the following third-party code unmodified, under its own licence.
 | TanStack Query (`@tanstack/react-query, @tanstack/query-core`) | 5.90.12 | MIT | Bundled into `testzeus_hercules/ui/static/assets/` by the UI build | https://github.com/TanStack/query |
 | wouter (`wouter`) | 3.9.0 | Unlicense | Bundled into `testzeus_hercules/ui/static/assets/` by the UI build | https://github.com/molefrog/wouter |
 | regexparam (`regexparam`) | 3.0.0 | MIT | Bundled into `testzeus_hercules/ui/static/assets/` by the UI build | https://github.com/lukeed/regexparam |
+| ding (`@yusufceng1z/ding, @yusufceng1z/ding-react`) | 0.0.8 | MIT | Bundled into `testzeus_hercules/ui/static/assets/` by the UI build | https://github.com/YusufCeng1z/ding |
 | mitt (`mitt`) | 3.0.1 | MIT | Bundled into `testzeus_hercules/ui/static/assets/` by the UI build | https://github.com/developit/mitt |
 | use-sync-external-store (`use-sync-external-store`) | 1.7.0 | MIT | Bundled into `testzeus_hercules/ui/static/assets/` by the UI build | https://github.com/facebook/react |
 

@@ -298,6 +298,38 @@ def test_environments_crud_and_validation(config) -> None:  # type: ignore[no-un
     assert duplicate.status_code == 409
 
 
+def test_an_environment_save_with_if_match_replaces_only_the_version_it_read(config) -> None:  # type: ignore[no-untyped-def]
+    env = {"name": "staging", "base_url": "https://staging.example.test"}
+    with client_for(config) as client:
+        client.post("/api/environments", json=env)
+        read = client.get("/api/environments/staging")
+        etag = read.headers["etag"]
+        # A tester edits it in the UI meanwhile (no If-Match: the UI's save works as before).
+        assert client.post("/api/environments", json={**env, "device": "iPhone 15", "overwrite": True}).status_code == 201
+        stale = client.post("/api/environments", json={**env, "viewport": "1280x720", "overwrite": True}, headers={"If-Match": etag})
+        fresh_tag = client.get("/api/environments/staging").headers["etag"]
+        fresh = client.post("/api/environments", json={**env, "device": "iPhone 15", "viewport": "1280x720", "overwrite": True}, headers={"If-Match": fresh_tag})
+        gone = client.post("/api/environments", json={"name": "nowhere", "base_url": "http://127.0.0.1", "overwrite": True}, headers={"If-Match": etag})
+        kept = client.get("/api/environments/staging").json()
+    assert stale.status_code == 412 and stale.json()["detail"] == {"code": "environment_changed"}
+    assert fresh.status_code == 201 and kept["device"] == "iPhone 15" and kept["viewport"] == "1280x720"
+    assert fresh_tag != etag and gone.status_code == 412
+
+
+def test_cases_can_be_listed_by_the_environment_they_run_in(config) -> None:  # type: ignore[no-untyped-def]
+    cases = config.paths.cases_dir
+    scenario = '  Scenario: Pay\n    Given I open "/pay"\n'
+    (cases / "pay.feature").write_text("@env:shop\nFeature: Pay\n" + scenario, encoding="utf-8")
+    (cases / "old.feature").write_text("@env:shop-old\nFeature: Old\n" + scenario.replace("Pay", "Old"), encoding="utf-8")
+    (cases / "broken.feature").write_text("@env:shop\nFeature: Broken\n", encoding="utf-8")
+    (cases / "broken.json").write_text('{"environment": {"ref": "shop"}, "steps": ', encoding="utf-8")
+    with client_for(config) as client:
+        found = client.get("/api/cases", params={"environment": "shop"}).json()["cases"]
+        bad = client.get("/api/cases", params={"environment": "../x"})
+    assert sorted((case["name"], case["valid"]) for case in found) == [("broken.feature", False), ("broken.json", False), ("pay.feature", True)]
+    assert bad.status_code == 422
+
+
 # --------------------------------------------------------------------------- models, health, openapi
 
 
@@ -526,3 +558,16 @@ def test_rerun_can_move_a_run_to_another_environment_or_base_url(config) -> None
     assert _written_case(config, again)["environment"]["base_url"] == "http://127.0.0.1:8124"  # type: ignore[index]
     assert _written_case(config, rebased)["environment"]["base_url"] == "http://127.0.0.1:6666"  # type: ignore[index]
     assert _written_case(config, kept)["environment"]["base_url"] == "http://127.0.0.1:5555"  # type: ignore[index]
+
+
+def test_health_serves_the_notification_switches_from_config_yaml(config) -> None:  # type: ignore[no-untyped-def]
+    config_file = config.settings.project_dir / ".hercules" / "config.yaml"
+    with client_for(config) as client:
+        defaults = client.get("/api/health").json()["notifications"]
+        config_file.write_text("ui:\n  notifications:\n    runs: failures\n    sound: false\n", encoding="utf-8")
+        edited = client.get("/api/health").json()["notifications"]  # no restart: read again on each health check
+        config_file.write_text("ui:\n  notifications:\n    runs: sometimes\n", encoding="utf-8")
+        broken = client.get("/api/health")
+    assert defaults == {"runs": "all", "approvals": True, "explore": True, "sound": True, "desktop": True}
+    assert edited == {**defaults, "runs": "failures", "sound": False}
+    assert broken.status_code == 200 and broken.json()["notifications"] == defaults, "a config that does not load leaves the start's switches"

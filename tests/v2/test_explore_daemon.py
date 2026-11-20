@@ -76,6 +76,9 @@ def test_a_session_runs_its_charters_as_child_runs_and_writes_the_report(config)
     assert report_json["id"] == session_id and report_json["findings"] == []
     explore_runs = [run for run in runs.get("runs", runs if isinstance(runs, list) else []) if (run.get("source") or {}).get("kind") == "explore"]
     assert explore_runs or view["children"]
+    by_id = {run["run_id"]: run for run in runs["runs"]}
+    assert all(by_id[child]["explore_session"] == session_id for child in view["children"] if child in by_id)  # the UI's notifier skips these
+    assert any(child in by_id for child in view["children"])
 
 
 def test_a_production_looking_host_is_refused(config) -> None:  # type: ignore[no-untyped-def]
@@ -113,7 +116,11 @@ def test_a_session_from_an_earlier_daemon_is_served_read_only(config) -> None:  
     (folder / "session.json").write_text(json.dumps(view), encoding="utf-8")
     with client_for(config) as client:
         got = client.get(f"/api/explore/{folder.name}").json()
+        listed = client.get("/api/explore").json()["sessions"]
+        live = client.get("/api/explore", params={"live": "true"}).json()["sessions"]
     assert got["read_only"] and got["status"] == "stopped" and "daemon stopped" in got["message"] and got["events"] == []
+    assert [(item["id"], item["status"]) for item in listed] == [(folder.name, "stopped")], "the list says it ended too, so nothing polls it forever"
+    assert live == [], "live=true leaves out what earlier daemons ran"
 
 
 def test_findings_triage_and_issue_text(config) -> None:  # type: ignore[no-untyped-def]
