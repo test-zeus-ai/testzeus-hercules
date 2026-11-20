@@ -279,10 +279,22 @@ it still tells you what ended meanwhile, but a tab opened afresh starts quiet. I
 in the background for a while, the browser slows the page down, so a notification can come
 up to a minute late.
 
-Choose what notifies, turn on a chime, and allow desktop notifications on the **Settings**
-page; **Send a test notification** shows what they look like. The choices are kept in the
-browser. Runs started with `hercules run` run outside the daemon, so the UI does not see
-them.
+Everything is on, with a chime. The first notification asks once whether this browser may
+show desktop notifications (**Desktop alerts**). To turn something off, set it in the
+project's `.hercules/config.yaml` (or `~/.hercules/config.yaml` for every project); the UI
+picks the change up within 15 seconds, without a restart:
+
+```yaml
+ui:
+  notifications:
+    runs: failures   # all (default), failures or off
+    approvals: true  # runs waiting for a step or plan approval
+    explore: true    # Explore sessions that end
+    sound: false     # the chime
+    desktop: true    # system notifications while the UI is in the background
+```
+
+Runs started with `hercules run` run outside the daemon, so the UI does not see them.
 
 ## Debugging a run in the UI
 

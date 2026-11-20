@@ -34,9 +34,10 @@ See [Migrating from v1](docs/guide/migrating-from-v1.md).
   `hercules_delete_folder` and `hercules_run_folder` (every ready case of a folder as one
   batch, like the UI's folder run); `hercules_list_runs` takes `batch` to follow it.
 - **Notifications in the UI**: a toast when a run ends (one per folder run), when a run waits
-  for an approval (it stays until the run moves on) and when an Explore session ends;
-  while the page is in the background, a desktop notification and a count in the tab title.
-  Chosen on the Settings page; runs started with `hercules run` do not go through the UI.
+  for an approval (it stays until the run moves on) and when an Explore session ends; while the
+  page is in the background, a desktop notification and a count in the tab title. All on, with
+  a chime, by default; `ui.notifications` in config.yaml turns any of them off. Runs started
+  with `hercules run` do not go through the UI.
 - **Case folders**: cases in folders under `.hercules/cases/` (up to 8 deep), shown as a
   tree on the Cases screen with make, rename, move and delete, and **Run folder**, which
   queues one run per case as a batch.

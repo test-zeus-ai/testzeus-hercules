@@ -4,7 +4,7 @@
 import { chime, toast, type ToastAction } from "@yusufceng1z/ding";
 import { dissolvePage } from "../pageDissolve";
 import { message, type NotifyEvent } from "./events";
-import { desktopPermission, desktopSupported, writePrefs, type NotifyPrefs } from "./prefs";
+import { desktopOffered, desktopPermission, desktopSupported, markDesktopOffered, type NotifyPrefs } from "./prefs";
 
 /** How long good news stays while the tester is looking; failures, approvals and serious findings, and anything
  * that arrives while they are away, stay until dismissed. */
@@ -40,18 +40,15 @@ export function clearTitleBadge(): void {
   renderTitle();
 }
 
-/** Asks the browser for permission (call it from a click); remembers the answer. */
-export async function enableDesktop(): Promise<NotificationPermission | "unsupported"> {
-  if (!desktopSupported()) return "unsupported";
-  const permission = await window.Notification.requestPermission();
-  writePrefs({ desktop: permission === "granted" });
-  return permission;
+/** Asks the browser for permission (call it from a click: browsers ask only after one); the browser remembers it. */
+async function enableDesktop(): Promise<void> {
+  if (desktopSupported()) await window.Notification.requestPermission();
 }
 
-/** The first toast offers desktop notifications once, while the browser has not been asked yet. */
+/** With desktop notifications on in the config, the first toast asks this browser for permission, once. */
 function offer(prefs: NotifyPrefs): ToastAction | undefined {
-  if (prefs.offered || prefs.desktop || desktopPermission() !== "default") return undefined;
-  writePrefs({ offered: true });
+  if (!prefs.desktop || desktopOffered() || desktopPermission() !== "default") return undefined;
+  markDesktopOffered();
   return { label: "Desktop alerts", onClick: () => void enableDesktop() };
 }
 
@@ -109,13 +106,4 @@ export function deliver(event: NotifyEvent, { prefs, path, navigate }: Delivery)
     waiting ||= event.kind === "approval";
     renderTitle();
   }
-}
-
-/** Settings' "Send a test notification": a toast, the chime and (when allowed) a system notification, now. */
-export function deliverSample(prefs: NotifyPrefs): void {
-  const title = "Sample run passed";
-  const body = "Finished runs, approvals and Explore sessions look like this";
-  toast.success(title, { id: `sample:${Date.now()}`, description: body, duration: TOAST_MS });
-  const desktop = prefs.desktop && desktopPermission() === "granted" && notifyDesktop(title, body, "hercules-sample", false, () => undefined);
-  if (prefs.sound && !desktop) chime("success", VOLUME);
 }

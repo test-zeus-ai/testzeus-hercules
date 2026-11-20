@@ -558,3 +558,16 @@ def test_rerun_can_move_a_run_to_another_environment_or_base_url(config) -> None
     assert _written_case(config, again)["environment"]["base_url"] == "http://127.0.0.1:8124"  # type: ignore[index]
     assert _written_case(config, rebased)["environment"]["base_url"] == "http://127.0.0.1:6666"  # type: ignore[index]
     assert _written_case(config, kept)["environment"]["base_url"] == "http://127.0.0.1:5555"  # type: ignore[index]
+
+
+def test_health_serves_the_notification_switches_from_config_yaml(config) -> None:  # type: ignore[no-untyped-def]
+    config_file = config.settings.project_dir / ".hercules" / "config.yaml"
+    with client_for(config) as client:
+        defaults = client.get("/api/health").json()["notifications"]
+        config_file.write_text("ui:\n  notifications:\n    runs: failures\n    sound: false\n", encoding="utf-8")
+        edited = client.get("/api/health").json()["notifications"]  # no restart: read again on each health check
+        config_file.write_text("ui:\n  notifications:\n    runs: sometimes\n", encoding="utf-8")
+        broken = client.get("/api/health")
+    assert defaults == {"runs": "all", "approvals": True, "explore": True, "sound": True, "desktop": True}
+    assert edited == {**defaults, "runs": "failures", "sound": False}
+    assert broken.status_code == 200 and broken.json()["notifications"] == defaults, "a config that does not load leaves the start's switches"

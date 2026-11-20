@@ -492,6 +492,8 @@ export interface Health {
   host?: string | null;
   home_dir?: string;
   egress_policy?: string;
+  /** ui.notifications in config.yaml: what the UI notifies about. */
+  notifications?: Partial<{ runs: string; approvals: boolean; explore: boolean; sound: boolean; desktop: boolean }>;
 }
 
 /** One period of the home page's numbers (`/api/dashboard`). */

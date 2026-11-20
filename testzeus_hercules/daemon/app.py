@@ -99,6 +99,7 @@ from testzeus_hercules.daemon.store import ALL_STATUSES, FINAL_STATUSES, RunStor
 from testzeus_hercules.daemon.system import models_report
 from testzeus_hercules.daemon.ui import serve_ui, ui_root
 from testzeus_hercules.kernel.paths import validate_run_id
+from testzeus_hercules.kernel.settings import Settings, SettingsError
 
 MAX_WAIT_S = 50.0
 MAX_LIST = 200
@@ -1075,8 +1076,21 @@ async def health(request: Request, daemon: Daemon) -> Response:
             "host": platform.node() or None,
             "home_dir": str(daemon.config.paths.home_dir),
             "egress_policy": daemon.config.settings.egress.policy,
+            "notifications": _notifications(daemon),
         }
     )
+
+
+def _notifications(daemon: Daemon) -> dict[str, Any]:
+    """The tester UI's notification switches (``ui.notifications`` in config.yaml). The config files are read again on
+    every call, so an edit applies at the UI's next health check, without a restart; while a file does not load, the
+    switches the daemon started with apply."""
+    settings = daemon.config.settings
+    try:
+        settings = Settings.load(project_dir=settings.project_dir, env=daemon.config.env, overrides={"home_dir": settings.home_dir})
+    except SettingsError:
+        pass  # a config file being edited may not load for a moment
+    return settings.ui.notifications.model_dump(mode="json")
 
 
 def _user_name() -> str | None:

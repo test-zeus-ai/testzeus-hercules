@@ -161,9 +161,25 @@ class TelemetrySettings(_Section):
     enabled: bool = True
 
 
+class NotificationSettings(_Section):
+    """What the tester UI notifies about (see docs/guide/running-tests.md#notifications); everything is on by default."""
+
+    # Finished runs: every one, only failed and errored ones, or none.
+    runs: Literal["all", "failures", "off"] = "all"
+    # Runs that stop and wait for a person (a step or a plan to approve).
+    approvals: bool = True
+    # Explore sessions that end.
+    explore: bool = True
+    # A short chime with each notification.
+    sound: bool = True
+    # System notifications while the UI is in the background (the browser asks for permission once).
+    desktop: bool = True
+
+
 class UISettings(_Section):
     host: str = "127.0.0.1"
     port: int = Field(default=7373, ge=1, le=65535)
+    notifications: NotificationSettings = Field(default_factory=NotificationSettings)
 
 
 class PlanSettings(_Section):

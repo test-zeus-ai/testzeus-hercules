@@ -1,7 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { NOTIFY_KEY, resetPrefsCache } from "../lib/notify/prefs";
 import { SettingsScreen } from "./Settings";
 
 const HEALTH = {
@@ -31,7 +30,6 @@ beforeEach(() => {
     removeItem: (key: string) => void saved.delete(key),
   });
   delete document.documentElement.dataset.theme;
-  resetPrefsCache();
 });
 
 afterEach(() => vi.unstubAllGlobals());
@@ -67,44 +65,5 @@ describe("SettingsScreen", () => {
     for (const value of ["ada-mac", "/Users/ada/testzeus-hercules", "/Users/ada/.hercules", "2.0.0.dev0", "http://127.0.0.1:7373", "4242", "hybrid"]) {
       expect(screen.getByText(value)).toBeTruthy();
     }
-  });
-
-  it("chooses what notifies, and asks the browser before desktop notifications", async () => {
-    const requestPermission = vi.fn(() => Promise.resolve("granted"));
-    vi.stubGlobal("Notification", Object.assign(function Notification() {}, { permission: "default", requestPermission }));
-    vi.stubGlobal("isSecureContext", true);
-    render(
-      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <SettingsScreen />
-      </QueryClientProvider>,
-    );
-    const stored = () => JSON.parse(window.localStorage.getItem(NOTIFY_KEY) ?? "{}");
-    const runs = within(screen.getByRole("radiogroup", { name: "When a run ends" }));
-    expect(runs.getByRole("radio", { name: "Every run" }).getAttribute("aria-checked")).toBe("true");
-    fireEvent.click(runs.getByRole("radio", { name: "Failures only" }));
-    expect(stored()).toMatchObject({ runs: "failures" });
-    expect(screen.getByText(/Only runs that fail/)).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("checkbox", { name: "Explore sessions" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "Sound" }));
-    expect(stored()).toMatchObject({ explore: false, sound: true, approvals: true });
-
-    expect(screen.queryByRole("checkbox", { name: "Desktop notifications" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Allow desktop notifications" }));
-    const desktop = await screen.findByRole("checkbox", { name: "Desktop notifications" });
-    expect(requestPermission).toHaveBeenCalled();
-    expect((desktop as HTMLInputElement).checked).toBe(true);
-    expect(stored()).toMatchObject({ desktop: true });
-  });
-
-  it("says why desktop notifications are unavailable away from 127.0.0.1 or localhost", () => {
-    vi.stubGlobal("isSecureContext", false);
-    render(
-      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <SettingsScreen />
-      </QueryClientProvider>,
-    );
-    expect(screen.getByText(/need the UI opened at 127.0.0.1 or localhost/)).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Allow desktop notifications" })).toBeNull();
   });
 });

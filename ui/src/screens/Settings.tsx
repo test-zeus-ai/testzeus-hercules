@@ -1,12 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState, type ReactNode } from "react";
 import { Icon, type IconName } from "../components/Icon";
 import { api } from "../lib/api";
 import { formatDateTime } from "../lib/format";
 import { docsUrl } from "../lib/links";
 import { useFont, type FontChoice } from "../lib/font";
-import { deliverSample, enableDesktop } from "../lib/notify/deliver";
-import { desktopPermission, useNotifyPrefs, type NotifyPrefs } from "../lib/notify/prefs";
 import { useTheme, type ThemeChoice } from "../lib/theme";
 import type { Health } from "../lib/types";
 
@@ -34,77 +31,6 @@ const THEMES: { value: ThemeChoice; label: string; icon: IconName; help: string 
   { value: "dark", label: "Dark", icon: "moon", help: "Always dark." },
 ];
 
-const RUN_NOTICES: { value: NotifyPrefs["runs"]; label: string; help: string }[] = [
-  { value: "all", label: "Every run", help: "A notification when any run ends: passed, failed, errored or cancelled. A folder run is one notification." },
-  { value: "failures", label: "Failures only", help: "Only runs that fail or stop with an error." },
-  { value: "off", label: "Off", help: "No notification when a run ends." },
-];
-
-function Toggle({ id, label, help, checked, onChange }: { id: string; label: string; help: ReactNode; checked: boolean; onChange: (checked: boolean) => void }) {
-  return (
-    <div className="check-option">
-      <input id={id} type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} aria-describedby={`${id}-help`} />
-      <label htmlFor={id}>{label}</label>
-      <span className="field-help small" id={`${id}-help`}>
-        {help}
-      </span>
-    </div>
-  );
-}
-
-function NotificationsCard() {
-  const [prefs, setPrefs] = useNotifyPrefs();
-  const [permission, setPermission] = useState(desktopPermission);
-  const chosen = RUN_NOTICES.find((item) => item.value === prefs.runs) ?? RUN_NOTICES[0];
-  const allow = async () => setPermission(await enableDesktop());
-
-  return (
-    <section className="panel card card-wide" aria-labelledby="notifications-title">
-      <h2 id="notifications-title">Notifications</h2>
-      <div className="settings-group">
-        <h3 id="notify-runs-title">When a run ends</h3>
-        <div className="segmented" role="radiogroup" aria-labelledby="notify-runs-title">
-          {RUN_NOTICES.map((item) => (
-            <button key={item.value} type="button" role="radio" aria-checked={prefs.runs === item.value} className={`segment${prefs.runs === item.value ? " segment-on" : ""}`} onClick={() => setPrefs({ runs: item.value })}>
-              {item.label}
-            </button>
-          ))}
-        </div>
-        <p className="small muted settings-note">{chosen.help}</p>
-      </div>
-      <div className="settings-group check-options">
-        <Toggle id="notify-approvals" label="Runs waiting for you" help="A step or a plan to approve. The notification stays until the run moves on." checked={prefs.approvals} onChange={(approvals) => setPrefs({ approvals })} />
-        <Toggle id="notify-explore" label="Explore sessions" help="When a session finishes, fails or is stopped, with its findings count." checked={prefs.explore} onChange={(explore) => setPrefs({ explore })} />
-        <Toggle id="notify-sound" label="Sound" help="A short chime with each notification." checked={prefs.sound} onChange={(sound) => setPrefs({ sound })} />
-        {permission === "granted" ? (
-          <Toggle id="notify-desktop" label="Desktop notifications" help="From your system while this page is in the background or another app is in front." checked={prefs.desktop} onChange={(desktop) => setPrefs({ desktop })} />
-        ) : null}
-      </div>
-      {permission === "default" ? (
-        <div className="settings-group">
-          <h3>Desktop notifications</h3>
-          <p className="small muted">From your system while this page is in the background or another app is in front. The browser asks you first.</p>
-          <button type="button" className="button button-small" onClick={() => void allow()}>
-            Allow desktop notifications
-          </button>
-        </div>
-      ) : null}
-      {permission === "denied" ? (
-        <p className="small muted settings-note">This browser blocks notifications from this page. Allow them in its site settings (the icon left of the address), then reload.</p>
-      ) : null}
-      {permission === "unsupported" ? (
-        <p className="small muted settings-note">Desktop notifications need the UI opened at 127.0.0.1 or localhost, in a browser that has them. Toasts on this page still work.</p>
-      ) : null}
-      <div className="settings-note">
-        <button type="button" className="button button-small button-ghost" onClick={() => deliverSample(prefs)}>
-          Send a test notification
-        </button>
-      </div>
-      <p className="small muted settings-note">Remembered in this browser. Runs from <code>hercules run</code> in a terminal do not go through the UI, so they do not notify here.</p>
-    </section>
-  );
-}
-
 function Detail({ label, value, mono = true }: { label: string; value: string | number | null | undefined; mono?: boolean }) {
   return (
     <>
@@ -127,7 +53,7 @@ export function SettingsScreen() {
       <header className="page-head">
         <div>
           <h1 id="settings-title">Settings</h1>
-          <p className="page-sub">How this tester UI looks and notifies you, and who and where Hercules is running.</p>
+          <p className="page-sub">How this tester UI looks, and who and where Hercules is running.</p>
         </div>
       </header>
       <div className="cards settings-cards">
@@ -192,8 +118,6 @@ export function SettingsScreen() {
           ) : null}
           <p className="small muted settings-note">Read from the running daemon (hercules serve). Change them in its config and restart it.</p>
         </section>
-
-        <NotificationsCard />
 
         <section className="panel card card-wide" aria-labelledby="docs-title">
           <h2 id="docs-title">Docs</h2>

@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Router } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
 import type { SessionView } from "../lib/explore";
-import { NOTIFY_KEY, resetPrefsCache, writePrefs, type NotifyPrefs } from "../lib/notify/prefs";
+import { DEFAULT_PREFS, type NotifyPrefs } from "../lib/notify/prefs";
 import type { RunView } from "../lib/types";
 import { run, session } from "../test/notifyFixtures";
 import { Notifications } from "./Notifications";
@@ -19,6 +19,8 @@ let stored: RunView[] | null = null;
 let sessions: SessionView[] = [];
 const desktop = vi.fn();
 let saved: Map<string, string>;
+/** ui.notifications in config.yaml, as /api/health serves it (everything on unless set here). */
+let config: Partial<NotifyPrefs> = {};
 
 class FakeNotification {
   static permission: NotificationPermission = "granted";
@@ -31,8 +33,7 @@ class FakeNotification {
 }
 
 function prefs(patch: Partial<NotifyPrefs>): void {
-  saved.set(NOTIFY_KEY, JSON.stringify(patch));
-  resetPrefsCache();
+  config = { ...config, ...patch };
 }
 
 beforeEach(() => {
@@ -42,7 +43,7 @@ beforeEach(() => {
   desktop.mockReset();
   chime.mockReset();
   saved = new Map();
-  resetPrefsCache();
+  config = {};
   vi.stubGlobal("localStorage", {
     getItem: (key: string) => saved.get(key) ?? null,
     setItem: (key: string, value: string) => void saved.set(key, value),
@@ -56,7 +57,9 @@ beforeEach(() => {
       const one = /^\/api\/runs\/([^?/]+)$/.exec(url);
       const batch = /^\/api\/runs\/batches\/([^?/]+)$/.exec(url);
       let body: unknown = {};
-      if (batch) {
+      if (url === "/api/health") {
+        body = { status: "ok", version: "2", project_dir: "/p", parallel_runs: 1, queue: {}, notifications: { ...DEFAULT_PREFS, ...config } };
+      } else if (batch) {
         const members = all.filter((item) => item.batch === decodeURIComponent(batch[1]));
         const counts: Record<string, number> = {};
         for (const item of members) counts[item.status] = (counts[item.status] ?? 0) + 1;
@@ -124,7 +127,7 @@ describe("Notifications", () => {
     expect(toast.error).toHaveBeenCalledWith("Case a failed", expect.objectContaining({ id: "run:a", description: "The cart total was $0", duration: 0, action: expect.objectContaining({ label: "View run" }) }));
     expect(toast.success).not.toHaveBeenCalled();
     expect(desktop).not.toHaveBeenCalled(); // the page is in front
-    expect(chime).not.toHaveBeenCalled(); // sound is off by default
+    expect(chime).toHaveBeenCalledWith("error", expect.any(Number)); // sound is on by default
     await poll();
     expect(toast.error).toHaveBeenCalledTimes(1);
   });
@@ -281,7 +284,8 @@ describe("Notifications", () => {
     runs = [run("a", "needs_approval", { approval: { id: "q1", step: 2 } })];
     await poll();
     expect(toast.warning).toHaveBeenCalledWith("Case a needs your approval", expect.objectContaining({ id: "approval:a:needs_approval:q1" }));
-    act(() => writePrefs({ runs: "off", approvals: false }));
+    prefs({ runs: "off", approvals: false });
+    await poll();
     await waitFor(() => expect(toast.dismiss).toHaveBeenCalledWith("approval:a:needs_approval:q1"));
   });
 
@@ -295,9 +299,11 @@ describe("Notifications", () => {
     expect(toast.warning).toHaveBeenCalledTimes(1);
     expect(chime).toHaveBeenCalledTimes(1);
 
-    act(() => writePrefs({ approvals: false }));
+    prefs({ approvals: false });
+    await poll();
     await waitFor(() => expect(toast.dismiss).toHaveBeenCalledWith("approval:a:needs_approval:q1"));
-    act(() => writePrefs({ approvals: true }));
+    prefs({ approvals: true });
+    await poll();
     await poll();
     expect(toast.warning).toHaveBeenCalledTimes(2);
     expect(chime).toHaveBeenCalledTimes(1); // shown again, not announced again
@@ -309,13 +315,25 @@ describe("Notifications", () => {
     await firstPoll(client);
     runs = [run("a", "needs_approval", { approval: { id: "q1", step: 2 } })];
     await poll();
-    act(() => writePrefs({ runs: "off", approvals: false }));
+    prefs({ runs: "off", approvals: false });
+    await poll();
     await waitFor(() => expect(toast.dismiss).toHaveBeenCalledWith("approval:a:needs_approval:q1"));
     runs = [run("a", "passed")]; // answered meanwhile: the cached poll is out of date
-    act(() => writePrefs({ approvals: true }));
+    prefs({ approvals: true });
+    await poll();
     expect(toast.warning).toHaveBeenCalledTimes(1);
     await poll();
     expect(toast.warning).toHaveBeenCalledTimes(1);
+  });
+
+  it("watches nothing the config turns off, and nothing before the daemon has said what it wants", async () => {
+    prefs({ runs: "off", approvals: false, explore: false });
+    runs = [run("a", "running")];
+    const { client } = mount();
+    expect(vi.mocked(fetch).mock.calls.map(([url]) => url)).toEqual(["/api/health"]);
+    await waitFor(() => expect(client.getQueryState(["health"])?.dataUpdateCount).toBe(1));
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    expect(vi.mocked(fetch).mock.calls.map(([url]) => url)).toEqual(["/api/health"]);
   });
 
   it("offers desktop notifications once, on the first toast", async () => {
@@ -334,7 +352,7 @@ describe("Notifications", () => {
 
       await act(async () => void (await offered?.onClick()));
       expect(FakeNotification.requestPermission).toHaveBeenCalled();
-      expect(JSON.parse(saved.get(NOTIFY_KEY) ?? "{}")).toMatchObject({ desktop: true, offered: true });
+      expect(saved.get("hercules.notify.offered")).toBe("1");
     } finally {
       FakeNotification.permission = "granted";
     }

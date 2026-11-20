@@ -7,7 +7,7 @@ import { FINISHED, isSessionList, type SessionView } from "../lib/explore";
 import { isBatchSummary, isRunList, isRunView } from "../lib/guards";
 import { away, clearTitleBadge, deliver, type Delivery } from "../lib/notify/deliver";
 import { exploreEvents, followUps, newRunTracker, newSessionTracker, runEvents, wanted, type NotifyEvent, type RunPoll, type RunTracker, type SessionTracker } from "../lib/notify/events";
-import { useNotifyPrefs } from "../lib/notify/prefs";
+import { useNotifyPrefs, type NotifyPrefs } from "../lib/notify/prefs";
 import { FINAL_STATUSES } from "../lib/types";
 
 /** Runs the notifier looks at: the newest ones, which is where a run that just ended is. */
@@ -76,7 +76,17 @@ toast.configure({ sound: false });
  * tester is in the UI; a system notification and a count in the tab title while the page is in the background.
  */
 export function Notifications() {
-  const [prefs] = useNotifyPrefs();
+  const prefs = useNotifyPrefs();
+  return (
+    <>
+      {/* Watching starts once the daemon has said what config.yaml wants (one health check). */}
+      {prefs ? <Watch prefs={prefs} /> : null}
+      <Toaster position="top-center" labels={{ region: "Notifications" }} />
+    </>
+  );
+}
+
+function Watch({ prefs }: { prefs: NotifyPrefs }) {
   const [path, navigate] = useLocation();
   const live = useRef<Delivery>({ prefs, path, navigate });
   live.current = { prefs, path, navigate };
@@ -159,5 +169,5 @@ export function Notifications() {
     };
   }, []);
 
-  return <Toaster position="top-center" labels={{ region: "Notifications" }} />;
+  return null;
 }
