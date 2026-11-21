@@ -1,10 +1,28 @@
 version: 2
+# Weekly update pull requests, grouped per ecosystem so each week is a few reviewable PRs, not dozens.
 updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
-  - package-ecosystem: "pip"
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      python-minor-and-patch:
+        update-types: ["minor", "patch"]
+  - package-ecosystem: "npm"
+    directory: "/ui"
+    schedule:
+      interval: "weekly"
+    groups:
+      ui-minor-and-patch:
+        update-types: ["minor", "patch"]
+  - package-ecosystem: "docker"
     directory: "/"
     schedule:
       interval: "weekly"

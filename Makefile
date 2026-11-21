@@ -1,62 +1,61 @@
 .ONESHELL:
-ENV_PREFIX=$(shell python -c "if __import__('pathlib').Path('.venv/bin/pip').exists(): print('.venv/bin/')")
-USING_UV=$(shell grep "uv" pyproject.toml && echo "yes")
+# Tests of the repository itself (dependencies, release tooling), beside the v2 suite.
+REPO_TESTS=tests/test_dependency_diet.py tests/test_backmerge_script.py
+BLACK=uv run black --target-version py311 -l 200
 
 .PHONY: help
 help:             ## Show the help.
 	@echo "Usage: make <target>"
 	@echo ""
 	@echo "Targets:"
-	@fgrep "##" Makefile | fgrep -v fgrep
+	@grep -F "##" Makefile | grep -Fv 'grep -F'
 
 
 .PHONY: show
 show:             ## Show the current environment.
-	@echo "Current environment:"
-	uv python info && exit
-
-.PHONY: install-extra
-install-extra:          ## Install the project in dev mode.
-	uv sync --all-extras && exit && uv run playwright install --with-deps
+	@uv --version
+	@uv run python --version
+	@uv run hercules version
 
 .PHONY: install
-install:          ## Install the project in dev mode.
-	uv sync && exit && uv run playwright install --with-deps
+install:          ## Install the project and its dev tools, and Playwright's Chromium.
+	uv sync
+	uv run python -m playwright install chromium
+
+.PHONY: install-extra
+install-extra:    ## Like install, with every optional extra (api).
+	uv sync --all-extras
+	uv run python -m playwright install chromium
 
 .PHONY: fmt
-fmt:              ## Format code using black & isort.
-	uv run isort testzeus_hercules/
-	uv run black --target-version py311 -l 200 testzeus_hercules/
-	uv run black --target-version py311 -l 200 tests/
+fmt:              ## Format code with black.
+	$(BLACK) testzeus_hercules/ tests/ bench/
 
 .PHONY: lint
-lint: fmt             ## Run pep8, black, mypy linters.
-	uv run black --target-version py311 -l 200 --check testzeus_hercules/
-	uv run black --target-version py311 -l 200 --check tests/
-	# uv run mypy --ignore-missing-imports testzeus_hercules/
-	
+lint:             ## Check formatting with black (changes nothing).
+	$(BLACK) --check testzeus_hercules/ tests/ bench/
+
 .PHONY: test
-test: lint        ## Run tests and generate coverage report.
-	uv run playwright install --with-deps
-	uv run pytest -v --junit-xml=tests/test_output.xml --cov=testzeus_hercules -l --tb=short --maxfail=1 tests/
+test: lint        ## Run the offline tests (v2 suite + repository tests) with coverage.
+	uv run playwright install --with-deps chromium
+	uv run pytest -v -m "not live" --junit-xml=tests/test_output.xml --cov=testzeus_hercules -l --tb=short tests/v2 $(REPO_TESTS)
 	uv run coverage xml
 	uv run coverage html
 
-.PHONY: test-case  ## Run selective test case.
-test-case: lint     ## Run a specific test case.
-	@read -p "Enter the test case (e.g., productSearch): " TEST_CASE && \
-	uv run pytest -v tests/test_feature_execution.py::test_feature_execution[$$TEST_CASE]
-
 .PHONY: watch
-watch:            ## Run tests on every change.
-	ls **/**.py | entr uv run pytest -s -vvv -l --tb=long --maxfail=1 tests/
+watch:            ## Run the offline tests on every change (needs entr).
+	find testzeus_hercules tests -name '*.py' | entr uv run pytest -s -vvv -l --tb=long --maxfail=1 -m "not live" tests/v2
+
+.PHONY: ui
+ui:               ## Build the tester UI into testzeus_hercules/ui/static (needs Node.js 20+).
+	bash scripts/build_ui.sh
 
 .PHONY: clean
 clean:            ## Clean unused files.
-	@find ./ -name '*.pyc' -exec rm -f {} \;
-	@find ./ -name '__pycache__' -exec rm -rf {} \;
+	@find ./ -name '*.pyc' -not -path './.venv/*' -exec rm -f {} \;
+	@find ./ -name '__pycache__' -not -path './.venv/*' -prune -exec rm -rf {} \;
 	@find ./ -name 'Thumbs.db' -exec rm -f {} \;
-	@find ./ -name '*~' -exec rm -f {} \;
+	@find ./ -name '*~' -not -path './.venv/*' -exec rm -f {} \;
 	@rm -rf .cache
 	@rm -rf .pytest_cache
 	@rm -rf .mypy_cache
@@ -64,70 +63,28 @@ clean:            ## Clean unused files.
 	@rm -rf dist
 	@rm -rf *.egg-info
 	@rm -rf htmlcov
-	@rm -rf .tox/
-	@rm -rf docs/_build
-
-.PHONY: cleanup
-cleanup:            ## Delete output and log folders.
-	@rm -rf opt/output opt/log_files opt/proofs opt/gherkin_files
-	@echo "Cleaned up output folders"
+	@rm -f coverage.xml tests/test_output.xml
 
 .PHONY: virtualenv
-virtualenv:       ## Create a virtual environment.
-	uv sync --all-extras && exit
+virtualenv:       ## Create the virtual environment (.venv) with every extra.
+	uv sync --all-extras
 
 .PHONY: release
-release: ## Create a new tag for release.
-	@echo "WARNING: This operation will create a version tag and push to GitHub"
-	@( \
-	  read -p "Version bump (patch, minor, major)? : " BUMP; \
-	  uv run python -c "import re, sys; content = open('pyproject.toml').read(); m = re.search(r'version = \"([^\"]+)\"', content); (m or sys.exit(1)); v = m.group(1).split('.'); idx = {'major': 0, 'minor': 1, 'patch': 2}[sys.argv[1]]; v[idx] = str(int(v[idx]) + 1); v[idx+1:] = ['0'] * (2 - idx); nv = '.'.join(v); open('pyproject.toml', 'w').write(re.sub(r'version = \"[^\"]+\"', f'version = \"{nv}\"', content)); print(nv)" $$BUMP > .tmp_version; \
-	  read -p "Do you want to continue? (y/n) : " CONTINUE; \
-	  [ "$$CONTINUE" = "y" ] || exit 1; \
-	  VERSION=$$(cat .tmp_version); \
-	  echo "New Version: $$VERSION"; \
-	  git add pyproject.toml; \
-	  git commit -m "release: version $$VERSION 🚀"; \
-	  echo "creating git tag : $$VERSION"; \
-	  git tag $$VERSION; \
-	  git push -u origin HEAD --tags; \
-	  rm .tmp_version; \
-	  echo "GitHub Actions will detect the new tag and release the new version."; \
-	)
+release:          ## Set the version, commit and tag it: make release VERSION=2.1.0 (pushing the tag publishes).
+	@test -n "$(VERSION)" || { echo "usage: make release VERSION=2.1.0"; exit 2; }
+	uv run python scripts/release.py $(VERSION)
 
 .PHONY: build
-build:       ## build testzeus_hercules.
+build:            ## Build the sdist and wheel with the tester UI, and check them as the release does.
+	bash scripts/build_ui.sh
 	uv build
+	bash scripts/check_dist.sh dist
 
 .PHONY: publish
-publish:          ## Publish the package to PyPI.
-	@echo "Publishing to PyPI ..."
-	# @poetry config pypi-token.pypi $${TWINE_PASSWORD}
-	# @poetry publish -n --verbose --build
-	@pip install twine
-	@twine upload dist/*
-
-.PHONY: run
-run:       ## run testzeus_hercules.
-	uv run python testzeus_hercules
-
-
-.PHONY: run-interactive
-run-interactive:       ## run-interactive testzeus_hercules.
-	uv run python -m testzeus_hercules.interactive
+publish:          ## Not used for releases: the Release workflow publishes with PyPI trusted publishing.
+	@echo "Releases are published by GitHub Actions when a version tag is pushed: make release VERSION=x.y.z"
+	@exit 1
 
 .PHONY: setup-uv
-setup-uv:       ## setup uv.
+setup-uv:         ## Install uv.
 	pip install uv
-
-.PHONY: docker-build
-docker-build:       ## build and tag docker image.
-	docker build -t testzeus/hercules .
-	@VERSION=$$(grep -E '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/') && \
-	docker tag testzeus/hercules testzeus/hercules:$${VERSION}
-
-.PHONY: docker-publish
-docker-publish:          ## Publish the package to Docker registry.
-	@VERSION=$$(grep -E '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/') && \
-	docker push testzeus/hercules:$${VERSION}
-	docker push testzeus/hercules:latest

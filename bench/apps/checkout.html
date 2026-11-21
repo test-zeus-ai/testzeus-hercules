@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Checkout - Demo Shop</title>
+  <link rel="stylesheet" href="app.css">
+  <script src="app.js"></script>
+</head>
+<body>
+  <header id="site-header"></header>
+  <main>
+    <h1>Checkout</h1>
+    <p id="empty-note" class="form-error" hidden>Your cart is empty. Add items before checking out.</p>
+    <form id="checkout" class="card" novalidate>
+      <h2>Contact</h2>
+      <label for="name">Full name</label>
+      <input id="name" type="text" autocomplete="off">
+      <p class="field-error" id="name-error"></p>
+      <label for="email">Email</label>
+      <input id="email" type="email" autocomplete="off">
+      <p class="field-error" id="email-error"></p>
+      <label for="phone">Phone</label>
+      <input id="phone" type="tel" autocomplete="off">
+      <p class="field-error" id="phone-error"></p>
+
+      <h2>Delivery</h2>
+      <label for="address">Street address</label>
+      <input id="address" type="text" autocomplete="off">
+      <p class="field-error" id="address-error"></p>
+      <label for="country">Country</label>
+      <select id="country">
+        <option value="">Choose a country</option>
+        <option>United States</option>
+        <option>Canada</option>
+        <option>Germany</option>
+        <option>India</option>
+        <option>Japan</option>
+      </select>
+      <p class="field-error" id="country-error"></p>
+      <fieldset>
+        <legend>Shipping method</legend>
+        <label class="inline"><input type="radio" name="shipping" value="standard" checked> Standard shipping</label>
+        <label class="inline"><input type="radio" name="shipping" value="express"> Express shipping ($15.00)</label>
+      </fieldset>
+      <label for="delivery-date">Delivery date</label>
+      <input id="delivery-date" type="date">
+
+      <h2>Payment</h2>
+      <p>Card details are optional; without a card you pay on delivery.</p>
+      <iframe id="payment" src="payment-frame.html" title="Card details" style="width:100%;max-width:420px;height:250px;border:1px solid #d9dee4;border-radius:6px"></iframe>
+      <p id="payment-method">Payment method: pay on delivery</p>
+
+      <h2>Summary</h2>
+      <p id="summary-shipping"></p>
+      <p id="summary-date"></p>
+      <p><strong id="summary-total"></strong></p>
+      <label class="inline"><input type="checkbox" id="terms"> I agree to the terms and conditions</label>
+      <p><button type="submit" id="place-order" disabled>Place order</button></p>
+    </form>
+  </main>
+
+  <div class="modal-backdrop" id="confirm" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+      <h2 id="confirm-title">Confirm your order</h2>
+      <p id="confirm-text"></p>
+      <div class="actions">
+        <button type="button" class="secondary" id="confirm-cancel">Cancel</button>
+        <button type="button" id="confirm-ok">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const $ = (id) => document.getElementById(id);
+    let card = null;
+
+    const RULES = {
+      name: (v) => (v.trim() ? "" : "Full name is required"),
+      email: (v) => (!v.trim() ? "Email is required" : EMAIL_RE.test(v.trim()) ? "" : "Enter a valid email address"),
+      phone: (v) => (!v.trim() ? "Phone is required" : /^\+?[0-9 ()-]+$/.test(v.trim()) && v.replace(/\D/g, "").length >= 7 ? "" : "Enter a valid phone number"),
+      address: (v) => (v.trim() ? "" : "Street address is required"),
+      country: (v) => (v ? "" : "Choose a country"),
+    };
+
+    function shippingMethod() {
+      return document.querySelector("input[name=shipping]:checked").value;
+    }
+
+    function isValid() {
+      return DemoShop.cart().length > 0 && Object.keys(RULES).every((id) => !RULES[id]($(id).value)) && $("terms").checked;
+    }
+
+    function refresh() {
+      const t = DemoShop.totals(shippingMethod());
+      $("summary-shipping").textContent = "Shipping: " + (t.shipping ? DemoShop.money(t.shipping) : "Free");
+      $("summary-date").textContent = $("delivery-date").value ? "Delivery date: " + $("delivery-date").value : "";
+      $("summary-total").textContent = "Order total: " + DemoShop.money(t.total);
+      $("place-order").disabled = !isValid();
+      $("empty-note").hidden = DemoShop.cart().length > 0;
+    }
+
+    Object.keys(RULES).forEach((id) => {
+      const field = $(id);
+      // Errors show once a field has been left; after that they update as you type.
+      field.addEventListener("blur", () => { field.dataset.touched = "1"; $(id + "-error").textContent = RULES[id](field.value); });
+      field.addEventListener("input", () => { if (field.dataset.touched) $(id + "-error").textContent = RULES[id](field.value); refresh(); });
+      field.addEventListener("change", refresh);
+    });
+    ["terms", "delivery-date"].forEach((id) => { $(id).addEventListener("change", refresh); $(id).addEventListener("input", refresh); });
+    document.querySelectorAll("input[name=shipping]").forEach((radio) => radio.addEventListener("change", refresh));
+
+    window.addEventListener("message", (event) => {
+      if (event.origin !== location.origin || !event.data || event.data.type !== "card-saved") return;
+      card = event.data.last4;
+      $("payment-method").textContent = "Payment method: card ending " + card;
+    });
+
+    $("checkout").addEventListener("submit", (event) => {
+      event.preventDefault();
+      if (!isValid()) return;
+      $("confirm-text").textContent = "You are about to place an order for " + DemoShop.money(DemoShop.totals(shippingMethod()).total) + ".";
+      $("confirm").hidden = false;
+      $("confirm-ok").focus();
+    });
+    $("confirm-cancel").addEventListener("click", () => { $("confirm").hidden = true; });
+    document.addEventListener("keydown", (event) => { if (event.key === "Escape") $("confirm").hidden = true; });
+    $("confirm-ok").addEventListener("click", () => {
+      const orders = DemoShop.read("orders", []);
+      const number = 2001 + orders.length;
+      const order = {
+        number: number,
+        customer: $("name").value.trim(),
+        email: $("email").value.trim(),
+        total: DemoShop.totals(shippingMethod()).total,
+        shipping: shippingMethod(),
+        country: $("country").value,
+        deliveryDate: $("delivery-date").value || null,
+        payment: card ? "card ending " + card : "pay on delivery",
+        status: "Processing",
+      };
+      DemoShop.write("orders", orders.concat([order]));
+      DemoShop.write("cart", []);
+      localStorage.removeItem("demoShop.coupon");
+      location.href = "success.html?order=" + number;
+    });
+    refresh();
+  </script>
+</body>
+</html>

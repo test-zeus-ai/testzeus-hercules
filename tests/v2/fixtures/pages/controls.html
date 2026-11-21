@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Toolbar</title>
+<style>
+  body { font-family: sans-serif; margin: 0; padding: 24px; }
+  .toolbar button { width: 36px; height: 36px; margin-right: 8px; }
+  .card { margin-top: 24px; padding: 12px; border: 1px solid #ccc; width: 300px; cursor: pointer; }
+  .card * { cursor: pointer; }
+  nav a { margin-right: 16px; }
+</style>
+</head>
+<body>
+<nav aria-label="Main">
+  <a href="/home">Home</a>
+  <a href="/reports/2026?tab=summary#top">Reports</a>
+  <a href="/settings" title="Settings page"><svg width="16" height="16" aria-hidden="true"><circle cx="8" cy="8" r="6"/></svg></a>
+</nav>
+<div class="toolbar">
+  <button aria-label="Bold"><svg width="16" height="16" aria-hidden="true"><rect width="16" height="16"/></svg></button>
+  <button aria-label="Italic"><svg width="16" height="16" aria-hidden="true"><rect width="16" height="16"/></svg></button>
+  <button title="Insert link"><svg width="16" height="16" aria-hidden="true"><rect width="16" height="16"/></svg></button>
+  <span id="share-caption">Share document</span>
+  <button aria-labelledby="share-caption"><svg width="16" height="16" aria-hidden="true"><rect width="16" height="16"/></svg></button>
+</div>
+<div role="button" tabindex="0">Custom action</div>
+<div class="card"><strong>Clickable card</strong><p>Open the details</p></div>
+<details><summary>More options</summary><p>Hidden content</p></details>
+<div role="tablist"><span role="tab" aria-selected="true" tabindex="0">Overview</span><span role="tab" aria-selected="false" tabindex="-1">History</span></div>
+</body>
+</html>

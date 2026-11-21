@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in - Demo Shop</title>
+  <link rel="stylesheet" href="app.css">
+  <script src="app.js"></script>
+</head>
+<body>
+  <header id="site-header"></header>
+  <main>
+    <h1>Sign in</h1>
+    <form id="login" class="card" novalidate>
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" autocomplete="off">
+      <p class="field-error" id="email-error"></p>
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password">
+      <p class="field-error" id="password-error"></p>
+      <label class="inline"><input id="remember" type="checkbox"> Keep me signed in</label>
+      <p><button type="submit">Sign in</button></p>
+      <p class="form-error" id="form-error" role="alert"></p>
+      <p class="session">Demo account: demo@example.com</p>
+    </form>
+  </main>
+  <script>
+    const VALID_EMAIL = "demo@example.com";
+    const VALID_PASSWORD = "demo1234";
+    const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const form = document.getElementById("login");
+    const show = (id, text) => { document.getElementById(id).textContent = text; };
+
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value;
+      show("email-error", !email ? "Email is required" : EMAIL_RE.test(email) ? "" : "Enter a valid email address");
+      show("password-error", password ? "" : "Password is required");
+      show("form-error", "");
+      if (!email || !EMAIL_RE.test(email) || !password) return;
+      const button = form.querySelector("button");
+      button.disabled = true;
+      button.textContent = "Signing in…";
+      setTimeout(() => {
+        button.disabled = false;
+        button.textContent = "Sign in";
+        if (email.toLowerCase() !== VALID_EMAIL || password !== VALID_PASSWORD) {
+          show("form-error", "Incorrect email or password");
+          return;
+        }
+        DemoShop.write("user", { email: VALID_EMAIL, remember: document.getElementById("remember").checked });
+        location.href = "products.html";
+      }, 400);
+    });
+  </script>
+</body>
+</html>

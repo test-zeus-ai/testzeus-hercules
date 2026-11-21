@@ -1,0 +1,68 @@
+# Seeded bugs in Acme Pantry (bench/explore/app.py). Each is off unless switched on with --bugs.
+# lever: the kind of push that finds it; oracle: what notices it; severity: the expected rubric level;
+# route and signature_hint: how the scorer matches a finding to the bug; steps: the minimal reproduction.
+bugs:
+  - id: B1
+    title: A display name longer than 40 characters is a server error
+    lever: inputs
+    oracle: server_error
+    severity: P2
+    route: /profile
+    signature_hint: "500"
+    steps: [Open "/profile", Fill a 41-character name in "Display name", Click "Save profile"]
+  - id: B2
+    title: A display name with an emoji throws a page error
+    lever: inputs
+    oracle: page_error
+    severity: P2
+    route: /profile
+    signature_hint: greeting
+    steps: [Open "/profile", Fill a name with an emoji in "Display name", Click "Save profile"]
+  - id: B3
+    title: A negative quantity is accepted and the cart total goes negative
+    lever: inputs
+    oracle: invariant
+    severity: P1
+    route: /cart
+    signature_hint: total
+    steps: [Open "/shop", Fill "-3" in "Quantity for Green tea", Click "Add Green tea to cart"]
+  - id: B4
+    title: The cart badge keeps the old count after an item is removed
+    lever: order
+    oracle: invariant
+    severity: P2
+    route: /cart
+    signature_hint: badge
+    steps: [Add an item, Open "/cart", Click "Remove Green tea"]
+  - id: B5
+    title: Submitting the order twice places two orders
+    lever: order
+    oracle: invariant
+    severity: P1
+    route: /orders
+    signature_hint: orders
+    steps: [Add an item, Open "/cart", Click "Place order" twice]
+  - id: B6
+    title: A saved note disappears after a reload
+    lever: order
+    oracle: persistence
+    severity: P1
+    route: /notes
+    signature_hint: note
+    steps: [Open "/notes", Fill text in "New note", Click "Save note", Reload]
+  - id: B7
+    title: An empty search is a server error
+    lever: inputs
+    oracle: server_error
+    severity: P2
+    route: /search
+    signature_hint: "500"
+    steps: [Click "Go" with an empty search]
+  - id: B8
+    title: The Apply coupon button does nothing
+    lever: inputs
+    oracle: dead_action
+    severity: P3
+    route: /cart
+    signature_hint: coupon
+    steps: [Open "/cart", Fill "PANTRY10" in "Coupon", Click "Apply coupon"]

@@ -1,0 +1,680 @@
+# Public demo-app scenarios for Hercules (bench/public).
+#
+# The four targets are public sites built for test-automation practice. Only their published demo
+# credentials are used; nothing registers accounts or submits real personal data, and every flow is
+# read-only, validation-only, browser-session-only (XYZ Bank) or ledger-neutral (ParaBank transfers).
+#
+# Per scenario:
+#   file            - path relative to bench/public/scenarios (.feature or TestCase .json)
+#   app             - saucedemo | orangehrm | parabank | xyzbank
+#   base_url        - passed to `hercules run --base-url`; scenario URLs are paths relative to it
+#   expected_status - what a careful human tester would report: passed | failed
+#   fail_step       - (failed scenarios) the 1-based step that should fail; a list when more than one
+#                     step is a correct place to stop (anything else is "failed for the wrong reason")
+#   tags            - app:<name> plus feature areas; filter with `run_public.py --tags`
+#   site_status     - available | unavailable (when the site was down while the suite was validated)
+#   notes           - what the scenario exercises and why it should pass or fail
+#
+# Scenarios tagged needs_llm are written in looser natural phrasing (every step is read by a model either way).
+# Scenarios tagged negative must fail; they measure false passes.
+# `validate.py` replays every scenario with hand-written Playwright locators (no Hercules) and checks
+# that it agrees with expected_status and fail_step.
+
+apps:
+  saucedemo:
+    base_url: "https://www.saucedemo.com"
+    site_status: available
+  orangehrm:
+    base_url: "https://opensource-demo.orangehrmlive.com"
+    site_status: available
+  parabank:
+    base_url: "https://parabank.parasoft.com/parabank/"
+    site_status: available
+  xyzbank:
+    base_url: "https://www.globalsqa.com"
+    site_status: available
+
+scenarios:
+  - file: saucedemo/sd01_login_success.feature
+    app: saucedemo
+    base_url: "https://www.saucedemo.com"
+    expected_status: passed
+    tags: [app:saucedemo, login]
+    site_status: available
+    notes: "Published demo user reaches the Products page."
+
+  - file: saucedemo/sd02_locked_out_message.feature
+    app: saucedemo
+    base_url: "https://www.saucedemo.com"
+    expected_status: passed
+    tags: [app:saucedemo, login, validation]
+    site_status: available
+    notes: "locked_out_user stays on the login page with the lockout error."
+
+  - file: saucedemo/sd03_wrong_password_message.feature
+    app: saucedemo
+    base_url: "https://www.saucedemo.com"
+    expected_status: passed
+    tags: [app:saucedemo, login, validation]
+    site_status: available
+    notes: "A wrong password shows the credentials error."
+
+  - file: saucedemo/sd04_empty_login_required.feature
+    app: saucedemo
+    base_url: "https://www.saucedemo.com"
+    expected_status: passed
+    tags: [app:saucedemo, login, validation, form]
+    site_status: available
+    notes: "Two submits: empty form, then username only."
+
+  - file: saucedemo/sd05_sort_name_z_to_a.feature
+    app: saucedemo
+    base_url: "https://www.saucedemo.com"
+    expected_status: passed
+    tags: [app:saucedemo, sort]
+    site_status: available
+    notes: "Native select. In the page text the last sort option label (\"Price (high to low)\") is immediately followed by the first product name, so the quoted text pins the first product."
+
+  - file: saucedemo/sd06_sort_price_low_to_high.feature
+    app: saucedemo
+    base_url: "https://www.saucedemo.com"
+    expected_status: passed
+    tags: [app:saucedemo, sort]
+    site_status: available
+    notes: "First product after sorting is the $7.99 Onesie (pinned through the page-text order, see sd05)."
+
+  - file: saucedemo/sd07_nl_sort_price_high_to_low.feature
+    app: saucedemo
+    base_url: "https://www.saucedemo.com"
+    expected_status: passed
+    tags: [app:saucedemo, sort, needs_llm]
+    site_status: available
+    notes: "Natural phrasing for the sort; the first product must be the $49.99 Fleece Jacket."
+
+  - file: saucedemo/sd08_cart_badge_two_items.feature
+    app: saucedemo
+    base_url: "https://www.saucedemo.com"
+    expected_status: passed
+    tags: [app:saucedemo, cart]
+    site_status: available
+    notes: "The cart icon has the accessible name \"Cart, 2 items\" (the badge digit alone is ambiguous page text)."
+
+  - file: saucedemo/sd09_nl_remove_from_cart.feature
+    app: saucedemo
+    base_url: "https://www.saucedemo.com"
+    expected_status: passed
+    tags: [app:saucedemo, cart, needs_llm]
+    site_status: available
+    notes: "Two Remove buttons on the cart page; the agent must pick the Backpack row."
+
+  - file: saucedemo/sd10_cart_contents.feature
+    app: saucedemo
+    base_url: "https://www.saucedemo.com"
+    expected_status: passed
+    tags: [app:saucedemo, cart, table]
+    site_status: available
+    notes: "Bolt T-Shirt ($15.99) and Onesie ($7.99) in the cart table."
+
+  - file: saucedemo/sd11_checkout_first_name_required.feature
+    app: saucedemo
+    base_url: "https://www.saucedemo.com"
+    expected_status: passed
+    tags: [app:saucedemo, form, validation]
+    site_status: available
+    notes: "Continue with an empty form."
+
+  - file: saucedemo/sd12_checkout_last_and_zip_required.feature
+    app: saucedemo
+    base_url: "https://www.saucedemo.com"
+    expected_status: passed
+    tags: [app:saucedemo, form, validation]
+    site_status: available
+    notes: "Errors appear one at a time as fields are filled."
+
+  - file: saucedemo/sd13_checkout_overview_totals.feature
+    app: saucedemo
+    base_url: "https://www.saucedemo.com"
+    expected_status: passed
+    tags: [app:saucedemo, form, arithmetic]
+    site_status: available
+    notes: "$29.99 + $15.99 = $45.98; tax $3.68; total $49.66."
+
+  - file: saucedemo/sd14_full_purchase_secret.json
+    app: saucedemo
+    base_url: "https://www.saucedemo.com"
+    expected_status: passed
+    tags: [app:saucedemo, form, secret]
+    site_status: available
+    notes: "TestCase JSON; password read from SAUCE_PASSWORD (published demo password)."
+
+  - file: saucedemo/sd15_menu_reset_and_logout.feature
+    app: saucedemo
+    base_url: "https://www.saucedemo.com"
+    expected_status: passed
+    tags: [app:saucedemo, navigation, cart]
+    site_status: available
+    notes: "Burger menu: Reset App State clears the badge; Logout returns to the login page."
+
+  - file: saucedemo/sd16_nl_menu_all_items.feature
+    app: saucedemo
+    base_url: "https://www.saucedemo.com"
+    expected_status: passed
+    tags: [app:saucedemo, navigation, needs_llm]
+    site_status: available
+    notes: "Natural phrasing for opening the burger menu and choosing All Items."
+
+  - file: saucedemo/sd17_product_detail_and_back.feature
+    app: saucedemo
+    base_url: "https://www.saucedemo.com"
+    expected_status: passed
+    tags: [app:saucedemo, navigation]
+    site_status: available
+    notes: "The product name is a button named \"View details for ...\" whose visible text is the name."
+
+  - file: saucedemo/sd18_nl_performance_glitch_login.feature
+    app: saucedemo
+    base_url: "https://www.saucedemo.com"
+    expected_status: passed
+    tags: [app:saucedemo, login, slow, needs_llm]
+    site_status: available
+    notes: "performance_glitch_user takes about 5 s to sign in; timeouts must be generous."
+
+  - file: saucedemo/sd19_nl_full_purchase.feature
+    app: saucedemo
+    base_url: "https://www.saucedemo.com"
+    expected_status: passed
+    tags: [app:saucedemo, form, needs_llm]
+    site_status: available
+    notes: "Whole purchase described in a few natural sentences."
+
+  - file: saucedemo/sdn01_locked_out_reaches_inventory.feature
+    app: saucedemo
+    base_url: "https://www.saucedemo.com"
+    expected_status: failed
+    fail_step: 5
+    tags: [app:saucedemo, login, negative]
+    site_status: available
+    notes: "locked_out_user is refused, so Products never shows."
+
+  - file: saucedemo/sdn02_problem_user_sort.feature
+    app: saucedemo
+    base_url: "https://www.saucedemo.com"
+    expected_status: failed
+    fail_step: 6
+    tags: [app:saucedemo, sort, negative]
+    site_status: available
+    notes: "problem_user's sort select does nothing; the Backpack stays first."
+
+  - file: saucedemo/sdn03_nl_problem_user_images.feature
+    app: saucedemo
+    base_url: "https://www.saucedemo.com"
+    expected_status: failed
+    fail_step: 5
+    tags: [app:saucedemo, negative, needs_llm]
+    site_status: available
+    notes: "Every product image is the same 404 placeholder. Only a visual or src check catches it; a text check on the quoted name false-passes."
+
+  - file: saucedemo/sdn04_problem_user_last_name.feature
+    app: saucedemo
+    base_url: "https://www.saucedemo.com"
+    expected_status: failed
+    fail_step: [10, 13]
+    tags: [app:saucedemo, form, negative]
+    site_status: available
+    notes: "Typing into Last Name changes First Name instead, so Continue shows 'Last Name is required'. Failing at the Last Name fill (value not kept) is also a correct diagnosis."
+
+  - file: saucedemo/sdn05_wrong_item_total.feature
+    app: saucedemo
+    base_url: "https://www.saucedemo.com"
+    expected_status: failed
+    fail_step: 15
+    tags: [app:saucedemo, arithmetic, negative]
+    site_status: available
+    notes: "Backpack + Bike Light is $39.98, not $49.98."
+
+  - file: saucedemo/sdn06_error_user_cannot_finish.feature
+    app: saucedemo
+    base_url: "https://www.saucedemo.com"
+    expected_status: failed
+    fail_step: 14
+    tags: [app:saucedemo, form, negative]
+    site_status: available
+    notes: "Finish does nothing for error_user."
+
+  - file: saucedemo/sdn07_cart_badge_wrong_count.feature
+    app: saucedemo
+    base_url: "https://www.saucedemo.com"
+    expected_status: failed
+    fail_step: 7
+    tags: [app:saucedemo, cart, negative]
+    site_status: available
+    notes: "Only one item is added, so no \"Cart, 2 items\" button exists; a fuzzy element match would false-pass."
+
+  - file: orangehrm/oh01_login_success.feature
+    app: orangehrm
+    base_url: "https://opensource-demo.orangehrmlive.com"
+    expected_status: passed
+    tags: [app:orangehrm, login, slow]
+    site_status: available
+    notes: "Published demo admin lands on the dashboard."
+
+  - file: orangehrm/oh02_invalid_credentials.feature
+    app: orangehrm
+    base_url: "https://opensource-demo.orangehrmlive.com"
+    expected_status: passed
+    tags: [app:orangehrm, login, validation]
+    site_status: available
+    notes: "Server-side check; the alert appears after a round trip."
+
+  - file: orangehrm/oh03_empty_login_required.feature
+    app: orangehrm
+    base_url: "https://opensource-demo.orangehrmlive.com"
+    expected_status: passed
+    tags: [app:orangehrm, login, validation]
+    site_status: available
+    notes: "Client-side required-field messages."
+
+  - file: orangehrm/oh04_dashboard_widgets.feature
+    app: orangehrm
+    base_url: "https://opensource-demo.orangehrmlive.com"
+    expected_status: passed
+    tags: [app:orangehrm, async, slow]
+    site_status: available
+    notes: "Widgets load asynchronously after the dashboard route."
+
+  - file: orangehrm/oh05_pim_search_by_name.feature
+    app: orangehrm
+    base_url: "https://opensource-demo.orangehrmlive.com"
+    expected_status: passed
+    tags: [app:orangehrm, search, table, async]
+    site_status: available
+    notes: "Employee Name is an autocomplete (placeholder 'Type for hints...'); a typed partial name searches without picking a hint. Seeded demo employee; shared data may drift."
+
+  - file: orangehrm/oh06_pim_search_no_match.feature
+    app: orangehrm
+    base_url: "https://opensource-demo.orangehrmlive.com"
+    expected_status: passed
+    tags: [app:orangehrm, search, table]
+    site_status: available
+    notes: "Stable regardless of shared data."
+
+  - file: orangehrm/oh07_pim_filter_employment_status.feature
+    app: orangehrm
+    base_url: "https://opensource-demo.orangehrmlive.com"
+    expected_status: passed
+    tags: [app:orangehrm, dropdown_custom, table, search]
+    site_status: available
+    notes: "Employment Status is a custom div dropdown (role listbox/option), not a native select. The status text check is weak (the chosen value is also shown in the dropdown); the seeded Russel Hamilton is Full-Time Permanent, and the validator checks every row."
+
+  - file: orangehrm/oh08_pim_filter_job_title.feature
+    app: orangehrm
+    base_url: "https://opensource-demo.orangehrmlive.com"
+    expected_status: passed
+    tags: [app:orangehrm, dropdown_custom, table, search]
+    site_status: available
+    notes: "Custom Job Title dropdown with ~25 options; the seeded Russel Hamilton is a Software Engineer. Shared data may drift."
+
+  - file: orangehrm/oh09_admin_user_search_secret.json
+    app: orangehrm
+    base_url: "https://opensource-demo.orangehrmlive.com"
+    expected_status: passed
+    tags: [app:orangehrm, search, table, secret]
+    site_status: available
+    notes: "TestCase JSON; password read from ORANGEHRM_PASSWORD. Usernames are unique, so exactly one record."
+
+  - file: orangehrm/oh10_nl_admin_filter_role.feature
+    app: orangehrm
+    base_url: "https://opensource-demo.orangehrmlive.com"
+    expected_status: passed
+    tags: [app:orangehrm, dropdown_custom, search, needs_llm]
+    site_status: available
+    notes: "Natural phrasing; the User Role dropdown is custom."
+
+  - file: orangehrm/oh11_leave_list_date_order.feature
+    app: orangehrm
+    base_url: "https://opensource-demo.orangehrmlive.com"
+    expected_status: passed
+    tags: [app:orangehrm, form, validation]
+    site_status: available
+    notes: "Date inputs use the yyyy-dd-mm format and open a calendar popup; the range check runs when a field loses focus (here: clicking Search)."
+
+  - file: orangehrm/oh12_directory_search.feature
+    app: orangehrm
+    base_url: "https://opensource-demo.orangehrmlive.com"
+    expected_status: passed
+    tags: [app:orangehrm, search, async, dropdown_custom]
+    site_status: available
+    notes: "The suggestion is a role=option inside the autocomplete; the same name is also on a directory card, so the role matters."
+
+  - file: orangehrm/oh13_nl_my_info.feature
+    app: orangehrm
+    base_url: "https://opensource-demo.orangehrmlive.com"
+    expected_status: passed
+    tags: [app:orangehrm, navigation, needs_llm]
+    site_status: available
+    notes: "Read-only: nothing is saved."
+
+  - file: orangehrm/oh14_nl_logout.feature
+    app: orangehrm
+    base_url: "https://opensource-demo.orangehrmlive.com"
+    expected_status: passed
+    tags: [app:orangehrm, navigation, needs_llm]
+    site_status: available
+    notes: "The user menu opener shows the admin's display name, which other demo users change; natural phrasing avoids it."
+
+  - file: orangehrm/oh15_forgot_password_page.feature
+    app: orangehrm
+    base_url: "https://opensource-demo.orangehrmlive.com"
+    expected_status: passed
+    tags: [app:orangehrm, navigation, validation]
+    site_status: available
+    notes: "Nothing is submitted: the empty form shows Required, then Cancel returns to the login page."
+
+  - file: orangehrm/oh16_nl_quick_launch_leave_list.feature
+    app: orangehrm
+    base_url: "https://opensource-demo.orangehrmlive.com"
+    expected_status: passed
+    tags: [app:orangehrm, navigation, needs_llm]
+    site_status: available
+    notes: "Quick Launch tiles are icon buttons with a caption below."
+
+  - file: orangehrm/ohn01_invalid_login_reaches_dashboard.feature
+    app: orangehrm
+    base_url: "https://opensource-demo.orangehrmlive.com"
+    expected_status: failed
+    fail_step: 5
+    tags: [app:orangehrm, login, negative]
+    site_status: available
+    notes: "Invalid credentials keep the user on the login page."
+
+  - file: orangehrm/ohn02_admin_search_two_records.feature
+    app: orangehrm
+    base_url: "https://opensource-demo.orangehrmlive.com"
+    expected_status: failed
+    fail_step: 8
+    tags: [app:orangehrm, search, negative]
+    site_status: available
+    notes: "Usernames are unique: exactly one record."
+
+  - file: orangehrm/ohn03_nl_unknown_employee_found.feature
+    app: orangehrm
+    base_url: "https://opensource-demo.orangehrmlive.com"
+    expected_status: failed
+    fail_step: 7
+    tags: [app:orangehrm, search, negative, needs_llm]
+    site_status: available
+    notes: "The search finds no records."
+
+  - file: orangehrm/ohn04_forgot_password_link_sent.feature
+    app: orangehrm
+    base_url: "https://opensource-demo.orangehrmlive.com"
+    expected_status: failed
+    fail_step: 3
+    tags: [app:orangehrm, navigation, negative]
+    site_status: available
+    notes: "The confirmation only appears after a real reset request, which this suite never sends."
+
+  - file: parabank/pb01_login_overview.feature
+    app: parabank
+    base_url: "https://parabank.parasoft.com/parabank/"
+    expected_status: passed
+    tags: [app:parabank, login, table]
+    site_status: available
+    notes: "The login inputs have no accessible names; only the 'Username'/'Password' captions above them. Account numbers and balances drift on the shared demo, so only stable text is asserted."
+
+  - file: parabank/pb02_invalid_login.feature
+    app: parabank
+    base_url: "https://parabank.parasoft.com/parabank/"
+    expected_status: passed
+    tags: [app:parabank, login, validation]
+    site_status: available
+    notes: "Server-rendered error page."
+
+  - file: parabank/pb03_empty_login.feature
+    app: parabank
+    base_url: "https://parabank.parasoft.com/parabank/"
+    expected_status: passed
+    tags: [app:parabank, login, validation]
+    site_status: available
+    notes: "Submitting the empty form."
+
+  - file: parabank/pb04_nl_activity_debits_only.feature
+    app: parabank
+    base_url: "https://parabank.parasoft.com/parabank/"
+    expected_status: passed
+    tags: [app:parabank, table, needs_llm]
+    site_status: available
+    notes: "Account numbers change when the demo database is reset, so the account is chosen by position. Type is a native select; Go applies it."
+
+  - file: parabank/pb05_transfer_funds_secret.json
+    app: parabank
+    base_url: "https://parabank.parasoft.com/parabank/"
+    expected_status: passed
+    tags: [app:parabank, form, arithmetic, secret]
+    site_status: available
+    notes: "TestCase JSON; password from PARABANK_PASSWORD. Both account selects keep their default (the same account), so the ledger nets to zero."
+
+  - file: parabank/pb06_nl_transfer_between_accounts.feature
+    app: parabank
+    base_url: "https://parabank.parasoft.com/parabank/"
+    expected_status: passed
+    tags: [app:parabank, form, needs_llm, dropdown]
+    site_status: available
+    notes: "Moves $5 between two of john's own demo accounts (allowed: a demo ledger). Account numbers are not stable, so they are chosen by position."
+
+  - file: parabank/pb07_billpay_empty_validation.feature
+    app: parabank
+    base_url: "https://parabank.parasoft.com/parabank/"
+    expected_status: passed
+    tags: [app:parabank, form, validation]
+    site_status: available
+    notes: "Nothing is paid: the empty submit is rejected client-side."
+
+  - file: parabank/pb08_billpay_account_mismatch.feature
+    app: parabank
+    base_url: "https://parabank.parasoft.com/parabank/"
+    expected_status: passed
+    tags: [app:parabank, form, validation]
+    site_status: available
+    notes: "\"Account #\" and \"Verify Account #\" labels overlap; the fields are in an unlabeled table. Payee fields stay empty, so nothing is paid."
+
+  - file: parabank/pb09_find_by_amount.feature
+    app: parabank
+    base_url: "https://parabank.parasoft.com/parabank/"
+    expected_status: passed
+    tags: [app:parabank, search, table]
+    site_status: available
+    notes: "Four buttons are all named \"Find Transactions\"; the one under \"Find by Amount\" must be used. Results may be empty for the default account; the results heading still shows."
+
+  - file: parabank/pb10_find_invalid_amount.feature
+    app: parabank
+    base_url: "https://parabank.parasoft.com/parabank/"
+    expected_status: passed
+    tags: [app:parabank, search, validation]
+    site_status: available
+    notes: "Clicking the wrong \"Find Transactions\" button shows \"Invalid transaction ID\" instead."
+
+  - file: parabank/pb11_request_loan_empty.feature
+    app: parabank
+    base_url: "https://parabank.parasoft.com/parabank/"
+    expected_status: passed
+    tags: [app:parabank, form, validation]
+    site_status: available
+    notes: "The demo has no client-side validation here; submitting empty returns its generic error. Nothing is created."
+
+  - file: parabank/pb12_update_contact_validation.feature
+    app: parabank
+    base_url: "https://parabank.parasoft.com/parabank/"
+    expected_status: passed
+    tags: [app:parabank, form, validation, async]
+    site_status: available
+    notes: "The profile loads asynchronously; clearing First Name blocks the save, so nothing changes."
+
+  - file: parabank/pb13_nl_logout.feature
+    app: parabank
+    base_url: "https://parabank.parasoft.com/parabank/"
+    expected_status: passed
+    tags: [app:parabank, navigation, needs_llm]
+    site_status: available
+    notes: "Natural phrasing for the Log Out link."
+
+  - file: parabank/pbn01_invalid_login_overview.feature
+    app: parabank
+    base_url: "https://parabank.parasoft.com/parabank/"
+    expected_status: failed
+    fail_step: 5
+    tags: [app:parabank, login, negative]
+    site_status: available
+    notes: "The login is refused."
+
+  - file: parabank/pbn02_billpay_empty_complete.feature
+    app: parabank
+    base_url: "https://parabank.parasoft.com/parabank/"
+    expected_status: failed
+    fail_step: 7
+    tags: [app:parabank, form, negative]
+    site_status: available
+    notes: "The empty form is rejected, so no completion message."
+
+  - file: parabank/pbn03_nl_loan_friendly_validation.feature
+    app: parabank
+    base_url: "https://parabank.parasoft.com/parabank/"
+    expected_status: failed
+    fail_step: 6
+    tags: [app:parabank, form, negative, needs_llm]
+    site_status: available
+    notes: "The site shows a generic error, not a field message."
+
+  - file: parabank/pbn04_transfer_wrong_amount.feature
+    app: parabank
+    base_url: "https://parabank.parasoft.com/parabank/"
+    expected_status: failed
+    fail_step: 9
+    tags: [app:parabank, form, arithmetic, negative]
+    site_status: available
+    notes: "$10.00 is transferred, not $100.00 (same-account transfer, ledger nets to zero)."
+
+  - file: xyzbank/xb01_customer_login.feature
+    app: xyzbank
+    base_url: "https://www.globalsqa.com"
+    expected_status: passed
+    tags: [app:xyzbank, login, dropdown]
+    site_status: available
+    notes: "No password: a native select of customer names. Labels are plain text, not <label for>."
+
+  - file: xyzbank/xb02_deposit.feature
+    app: xyzbank
+    base_url: "https://www.globalsqa.com"
+    expected_status: passed
+    tags: [app:xyzbank, form, arithmetic]
+    site_status: available
+    notes: "The tab and the submit button are both named \"Deposit\"; Enter in the amount field submits."
+
+  - file: xyzbank/xb03_deposit_then_withdraw.feature
+    app: xyzbank
+    base_url: "https://www.globalsqa.com"
+    expected_status: passed
+    tags: [app:xyzbank, form, arithmetic]
+    site_status: available
+    notes: "The tab is spelled \"Withdrawl\" on the site."
+
+  - file: xyzbank/xb04_withdraw_over_balance.feature
+    app: xyzbank
+    base_url: "https://www.globalsqa.com"
+    expected_status: passed
+    tags: [app:xyzbank, form, validation]
+    site_status: available
+    notes: "Balance stays unchanged."
+
+  - file: xyzbank/xb05_transactions_list.feature
+    app: xyzbank
+    base_url: "https://www.globalsqa.com"
+    expected_status: passed
+    tags: [app:xyzbank, table, async]
+    site_status: available
+    notes: "Site bug: when the deposit and the withdrawal fall in the same second the Transactions table stays empty, or the list is opened in the same second as the last one, so the scenario waits twice."
+
+  - file: xyzbank/xb06_switch_account.feature
+    app: xyzbank
+    base_url: "https://www.globalsqa.com"
+    expected_status: passed
+    tags: [app:xyzbank, dropdown]
+    site_status: available
+    notes: "The account select has no label at all."
+
+  - file: xyzbank/xb07_manager_add_customer.feature
+    app: xyzbank
+    base_url: "https://www.globalsqa.com"
+    expected_status: passed
+    tags: [app:xyzbank, form, table]
+    site_status: available
+    notes: "State lives only in this browser session. The site confirms with a JS alert (auto-dismissed); the new customer is then searched for."
+
+  - file: xyzbank/xb08_manager_open_account.feature
+    app: xyzbank
+    base_url: "https://www.globalsqa.com"
+    expected_status: passed
+    tags: [app:xyzbank, form, dropdown, table]
+    site_status: available
+    notes: "Two native selects then Process (JS alert, auto-dismissed). A fresh session numbers the new account 1016."
+
+  - file: xyzbank/xb09_customers_search.feature
+    app: xyzbank
+    base_url: "https://www.globalsqa.com"
+    expected_status: passed
+    tags: [app:xyzbank, search, table]
+    site_status: available
+    notes: "Client-side table filter."
+
+  - file: xyzbank/xb10_nl_deposit.feature
+    app: xyzbank
+    base_url: "https://www.globalsqa.com"
+    expected_status: passed
+    tags: [app:xyzbank, form, arithmetic, needs_llm]
+    site_status: available
+    notes: "Customer choice and deposit described naturally."
+
+  - file: xyzbank/xb11_nl_manager_lookup.feature
+    app: xyzbank
+    base_url: "https://www.globalsqa.com"
+    expected_status: passed
+    tags: [app:xyzbank, search, table, needs_llm]
+    site_status: available
+    notes: "Natural phrasing for the manager flow."
+
+  - file: xyzbank/xbn01_withdraw_over_balance_success.feature
+    app: xyzbank
+    base_url: "https://www.globalsqa.com"
+    expected_status: failed
+    fail_step: 11
+    tags: [app:xyzbank, form, negative]
+    site_status: available
+    notes: "The site refuses the withdrawal."
+
+  - file: xyzbank/xbn02_wrong_balance.feature
+    app: xyzbank
+    base_url: "https://www.globalsqa.com"
+    expected_status: failed
+    fail_step: 12
+    tags: [app:xyzbank, arithmetic, negative]
+    site_status: available
+    notes: "300 - 120 = 180, not 200."
+
+  - file: xyzbank/xbn03_search_excludes_others.feature
+    app: xyzbank
+    base_url: "https://www.globalsqa.com"
+    expected_status: failed
+    fail_step: 5
+    tags: [app:xyzbank, search, negative]
+    site_status: available
+    notes: "Searching Longbottom hides Hermoine."
+
+  - file: xyzbank/xbn04_nl_wrong_customer_greeting.feature
+    app: xyzbank
+    base_url: "https://www.globalsqa.com"
+    expected_status: failed
+    fail_step: 3
+    tags: [app:xyzbank, login, negative, needs_llm]
+    site_status: available
+    notes: "Albus Dumbledore logs in, so the banner does not greet Harry Potter."
+

@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>New record</title>
+  <style>
+    body { font-family: sans-serif; margin: 24px; }
+    .row { margin: 12px 0; }
+    label { display: block; margin-bottom: 4px; }
+    .error { color: #b00020; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <h1>New record</h1>
+  <!-- A generic form: a date field built as a web component (day/month/year only, checked when it loses focus),
+       a serial number limited to 10 characters, a phone field that reformats itself, and a region that depends on
+       the country (disabled until a country is chosen, its options follow the country, reset when it changes). -->
+  <form id="record" onsubmit="return false">
+    <div class="row"><date-field id="expiry" label="Expiry Date"></date-field></div>
+    <div class="row">
+      <label for="serial">Serial Number</label>
+      <input id="serial" type="text" maxlength="10" autocomplete="off">
+    </div>
+    <div class="row">
+      <label for="phone">Phone</label>
+      <input id="phone" type="tel" autocomplete="off">
+    </div>
+    <div class="row">
+      <label for="country">Country</label>
+      <select id="country">
+        <option value="">Choose a country</option>
+        <option>Canada</option>
+        <option>India</option>
+        <option>Japan</option>
+      </select>
+    </div>
+    <div class="row">
+      <label for="region">Region</label>
+      <select id="region" disabled></select>
+    </div>
+    <div class="row"><button type="button" id="save">Save</button></div>
+  </form>
+  <p id="saved" role="status"></p>
+
+  <script>
+    class DateField extends HTMLElement {
+      constructor() {
+        super();
+        const root = this.attachShadow({ mode: "open" });
+        const label = this.getAttribute("label") || "Date";
+        root.innerHTML = `
+          <style>.error { color: #b00020; font-size: 13px; } .wrap { display: flex; gap: 4px; }</style>
+          <div class="part">
+            <label for="input">${label}</label>
+            <div class="wrap">
+              <input id="input" type="text" placeholder="DD/MM/YYYY" aria-describedby="help" autocomplete="off">
+              <button type="button" aria-label="Pick a date">&#128197;</button>
+            </div>
+            <div id="help" class="help">Day, month and year</div>
+          </div>`;
+        const input = root.getElementById("input");
+        const help = root.getElementById("help");
+        input.addEventListener("blur", () => {
+          const ok = input.value === "" || DateField.valid(input.value);
+          input.setAttribute("aria-invalid", ok ? "false" : "true");
+          help.textContent = ok ? "Day, month and year" : "Enter the date as DD/MM/YYYY.";
+          help.className = ok ? "help" : "error";
+        });
+      }
+      static valid(text) {
+        const found = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(text);
+        if (!found) return false;
+        const day = Number(found[1]), month = Number(found[2]);
+        return day >= 1 && day <= 31 && month >= 1 && month <= 12;
+      }
+      get value() { return this.shadowRoot.getElementById("input").value; }
+    }
+    customElements.define("date-field", DateField);
+
+    const REGIONS = { Canada: ["Ontario", "Quebec", "Yukon"], India: ["Kerala", "Punjab"], Japan: ["Hokkaido", "Kyushu"] };
+    const country = document.getElementById("country");
+    const region = document.getElementById("region");
+    country.addEventListener("change", () => {
+      region.innerHTML = "";
+      const names = REGIONS[country.value] || [];
+      if (names.length) region.add(new Option("Choose a region", ""));
+      for (const name of names) region.add(new Option(name));
+      region.disabled = names.length === 0;
+    });
+
+    const phone = document.getElementById("phone");
+    phone.addEventListener("blur", () => {
+      let digits = phone.value.replace(/\D/g, "");
+      if (digits.length === 11 && digits.startsWith("1")) digits = digits.slice(1);
+      if (digits.length === 10) phone.value = `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+    });
+
+    document.getElementById("save").addEventListener("click", () => {
+      const parts = [];
+      const expiry = document.getElementById("expiry").value;
+      if (expiry) parts.push("Expiry " + expiry);
+      const serial = document.getElementById("serial").value;
+      if (serial) parts.push("Serial " + serial);
+      if (phone.value) parts.push("Phone " + phone.value);
+      if (country.value) parts.push("Country " + country.value);
+      if (region.value) parts.push("Region " + region.value);
+      document.getElementById("saved").textContent = "Saved: " + parts.join(", ");
+    });
+  </script>
+</body>
+</html>

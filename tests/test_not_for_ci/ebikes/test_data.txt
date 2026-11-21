@@ -1,6 +1,0 @@
-URL is https://agility-speed-5009-dev-ed.scratch.my.site.com/ebikes/s/
-
-Product_family_name data for each product
-|Product_family_name| Bike  |Product_name|
-|     Volt          |VOLT X1|VOLT X1     |
-|     Fuse          |FUSE X1|FUSE X1     |

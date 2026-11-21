@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Card details</title>
+  <link rel="stylesheet" href="app.css">
+  <style>body { background: #fff; padding: 8px 12px; } label { margin-top: 6px; } input { max-width: 240px; }</style>
+</head>
+<body>
+  <form id="card" novalidate>
+    <label for="number">Card number</label>
+    <input id="number" inputmode="numeric" autocomplete="off" placeholder="1234 5678 9012 3456">
+    <label for="expiry">Expiry (MM/YY)</label>
+    <input id="expiry" autocomplete="off" placeholder="MM/YY">
+    <label for="cvc">CVC</label>
+    <input id="cvc" inputmode="numeric" autocomplete="off" placeholder="123">
+    <p><button type="submit">Save card</button></p>
+    <p id="card-msg" role="status"></p>
+  </form>
+  <script>
+    // Demo card widget: accepts any 16-digit number, a future MM/YY expiry and a 3-digit CVC.
+    document.getElementById("card").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const digits = document.getElementById("number").value.replace(/\s+/g, "");
+      const expiry = document.getElementById("expiry").value.trim();
+      const cvc = document.getElementById("cvc").value.trim();
+      const msg = document.getElementById("card-msg");
+      const match = /^(\d{2})\/(\d{2})$/.exec(expiry);
+      const valid = /^\d{16}$/.test(digits) && match && Number(match[1]) >= 1 && Number(match[1]) <= 12 && /^\d{3}$/.test(cvc);
+      if (!valid) {
+        msg.className = "form-error";
+        msg.textContent = "Check the card details";
+        return;
+      }
+      msg.className = "ok";
+      msg.textContent = "Card saved";
+      parent.postMessage({ type: "card-saved", last4: digits.slice(-4) }, location.origin);
+    });
+  </script>
+</body>
+</html>

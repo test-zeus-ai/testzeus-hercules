@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Guarded window</title>
+<script>
+  // A sandbox that guards the window: reading the viewport size from page scripts throws.
+  Object.defineProperty(window, "innerWidth", { get() { throw new Error("innerWidth is not available in this sandbox"); } });
+</script>
+</head>
+<body>
+<h1>Guarded</h1>
+<button id="go">Continue</button>
+</body>
+</html>

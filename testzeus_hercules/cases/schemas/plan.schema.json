@@ -1,0 +1,1056 @@
+{
+  "$defs": {
+    "Amendment": {
+      "additionalProperties": false,
+      "description": "A change made to the plan while the run ran, with its reason: never silent.",
+      "properties": {
+        "after": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "After"
+        },
+        "at": {
+          "default": "",
+          "title": "At",
+          "type": "string"
+        },
+        "before": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Before"
+        },
+        "kind": {
+          "enum": [
+            "reread",
+            "continuation",
+            "recovery",
+            "reorder",
+            "run_first",
+            "reformat",
+            "substitute",
+            "edit",
+            "repair"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "plan_step": {
+          "anyOf": [
+            {
+              "pattern": "^[1-9][0-9]{0,2}\\.[1-9][0-9]{0,1}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Plan Step"
+        },
+        "reason": {
+          "default": "",
+          "maxLength": 2000,
+          "title": "Reason",
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "model",
+            "user",
+            "engine"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "step": {
+          "maximum": 200,
+          "minimum": 1,
+          "title": "Step",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "step",
+        "kind",
+        "source"
+      ],
+      "title": "Amendment",
+      "type": "object"
+    },
+    "Coverage": {
+      "additionalProperties": false,
+      "description": "The coverage audit: an independent check that the plan covers every obligation of every source step.",
+      "properties": {
+        "calls": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Calls",
+          "type": "integer"
+        },
+        "checked": {
+          "default": false,
+          "title": "Checked",
+          "type": "boolean"
+        },
+        "cost_usd": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cost Usd"
+        },
+        "engine": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Engine"
+        },
+        "gaps": {
+          "items": {
+            "$ref": "#/$defs/CoverageGap"
+          },
+          "title": "Gaps",
+          "type": "array"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        },
+        "repaired": {
+          "description": "Steps read again because of a gap",
+          "items": {
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "title": "Repaired",
+          "type": "array"
+        },
+        "steps": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Steps",
+          "type": "integer"
+        }
+      },
+      "title": "Coverage",
+      "type": "object"
+    },
+    "CoverageGap": {
+      "additionalProperties": false,
+      "description": "A source step the coverage audit found not fully covered by the plan.",
+      "properties": {
+        "probability": {
+          "description": "The audit's probability that the plan covers every obligation of the step",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Probability",
+          "type": "number"
+        },
+        "repaired": {
+          "default": false,
+          "title": "Repaired",
+          "type": "boolean"
+        },
+        "step": {
+          "maximum": 200,
+          "minimum": 1,
+          "title": "Step",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "step",
+        "probability"
+      ],
+      "title": "CoverageGap",
+      "type": "object"
+    },
+    "Criterion": {
+      "additionalProperties": false,
+      "description": "One success criterion of a plan step: what the page should show once the step is done, and how it is checked.",
+      "properties": {
+        "check": {
+          "enum": [
+            "text_visible",
+            "text_absent",
+            "url_matches",
+            "field_value",
+            "element_state",
+            "count",
+            "judged",
+            "file_name",
+            "file_type",
+            "file_text",
+            "file_not_text",
+            "file_rows",
+            "file_column",
+            "file_json"
+          ],
+          "title": "Check",
+          "type": "string"
+        },
+        "count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Count"
+        },
+        "expected": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "text_visible/text_absent: the text; url_matches: the address part; judged: the expectation",
+          "title": "Expected"
+        },
+        "id": {
+          "pattern": "^[1-9][0-9]{0,2}\\.[1-9][0-9]{0,1}\\.c[1-9][0-9]{0,1}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "match": {
+          "default": "contains",
+          "enum": [
+            "contains",
+            "equals"
+          ],
+          "title": "Match",
+          "type": "string"
+        },
+        "op": {
+          "default": "eq",
+          "enum": [
+            "eq",
+            "gte",
+            "lte"
+          ],
+          "title": "Op",
+          "type": "string"
+        },
+        "origin": {
+          "description": "author: the case's own words state it; inferred: the model inferred it",
+          "enum": [
+            "author",
+            "inferred"
+          ],
+          "title": "Origin",
+          "type": "string"
+        },
+        "outcome": {
+          "default": false,
+          "description": "One of the step's own checks (its expected outcome, or a check its words state), run by the step's verification",
+          "title": "Outcome",
+          "type": "boolean"
+        },
+        "state": {
+          "anyOf": [
+            {
+              "enum": [
+                "open",
+                "closed",
+                "visible",
+                "hidden",
+                "enabled",
+                "disabled",
+                "checked",
+                "unchecked",
+                "expanded",
+                "collapsed"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "State"
+        },
+        "target": {
+          "anyOf": [
+            {
+              "maxLength": 300,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "field_value: the field's label; element_state/count: the element's label or text (a dialog's name for open/closed)",
+          "title": "Target"
+        },
+        "text": {
+          "description": "The criterion in words (shown to reviewers; a judged criterion is judged by it)",
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "field_value: the value the field should hold (placeholders kept)",
+          "title": "Value"
+        },
+        "visual": {
+          "default": false,
+          "description": "judged: about how the page looks, judged on the screenshot",
+          "title": "Visual",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "text",
+        "origin",
+        "check"
+      ],
+      "title": "Criterion",
+      "type": "object"
+    },
+    "CriterionResult": {
+      "additionalProperties": false,
+      "description": "How a criterion came out when the run checked it.",
+      "properties": {
+        "actual": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Actual"
+        },
+        "check": {
+          "enum": [
+            "text_visible",
+            "text_absent",
+            "url_matches",
+            "field_value",
+            "element_state",
+            "count",
+            "judged",
+            "file_name",
+            "file_type",
+            "file_text",
+            "file_not_text",
+            "file_rows",
+            "file_column",
+            "file_json"
+          ],
+          "title": "Check",
+          "type": "string"
+        },
+        "criterion": {
+          "pattern": "^[1-9][0-9]{0,2}\\.[1-9][0-9]{0,1}\\.c[1-9][0-9]{0,1}$",
+          "title": "Criterion",
+          "type": "string"
+        },
+        "origin": {
+          "enum": [
+            "author",
+            "inferred"
+          ],
+          "title": "Origin",
+          "type": "string"
+        },
+        "plan_step": {
+          "pattern": "^[1-9][0-9]{0,2}\\.[1-9][0-9]{0,1}$",
+          "title": "Plan Step",
+          "type": "string"
+        },
+        "recovered": {
+          "default": false,
+          "description": "The criterion was unmet and drove a recovery",
+          "title": "Recovered",
+          "type": "boolean"
+        },
+        "status": {
+          "enum": [
+            "passed",
+            "failed",
+            "unverified",
+            "not_run"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "step": {
+          "maximum": 200,
+          "minimum": 1,
+          "title": "Step",
+          "type": "integer"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "criterion",
+        "plan_step",
+        "step",
+        "origin",
+        "check",
+        "text",
+        "status"
+      ],
+      "title": "CriterionResult",
+      "type": "object"
+    },
+    "LintFinding": {
+      "additionalProperties": false,
+      "description": "A problem with the test itself, found before the browser starts.",
+      "properties": {
+        "code": {
+          "default": "other",
+          "enum": [
+            "unsupported_step",
+            "suspicious_value",
+            "credential_in_url",
+            "unresolved_placeholder",
+            "missing_secret",
+            "ambiguous_reference",
+            "unconfirmed_risk",
+            "coverage_gap",
+            "unclear_outcome",
+            "other"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "error",
+            "warning",
+            "info"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "source": {
+          "default": "fact",
+          "enum": [
+            "model",
+            "fact"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "step": {
+          "anyOf": [
+            {
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Step"
+        },
+        "suggestion": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Suggestion"
+        }
+      },
+      "required": [
+        "severity",
+        "message"
+      ],
+      "title": "LintFinding",
+      "type": "object"
+    },
+    "PlanReview": {
+      "additionalProperties": false,
+      "properties": {
+        "at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "At"
+        },
+        "by": {
+          "anyOf": [
+            {
+              "enum": [
+                "auto",
+                "user",
+                "agent",
+                "file"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "By"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        },
+        "state": {
+          "default": "generated",
+          "enum": [
+            "generated",
+            "approved",
+            "edited",
+            "rejected"
+          ],
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "title": "PlanReview",
+      "type": "object"
+    },
+    "PlanStep": {
+      "additionalProperties": false,
+      "description": "One action or check the run will carry out for a source step.",
+      "properties": {
+        "complete": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Whether the step's words name every control it uses (false: it is finished on the page)",
+          "title": "Complete"
+        },
+        "criteria": {
+          "items": {
+            "$ref": "#/$defs/Criterion"
+          },
+          "maxItems": 8,
+          "title": "Criteria",
+          "type": "array"
+        },
+        "expected": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "wait: a text to wait for",
+          "title": "Expected"
+        },
+        "id": {
+          "description": "<source step>.<position>, e.g. 3.1",
+          "pattern": "^[1-9][0-9]{0,2}\\.[1-9][0-9]{0,1}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "item": {
+          "default": "action",
+          "description": "What it was read from: the step's action, or its expected outcome",
+          "enum": [
+            "action",
+            "expected"
+          ],
+          "title": "Item",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "navigate",
+            "click",
+            "fill",
+            "select",
+            "upload",
+            "download",
+            "check",
+            "uncheck",
+            "hover",
+            "press",
+            "wait",
+            "api",
+            "sql",
+            "quality",
+            "security",
+            "verify",
+            "unknown"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "needs": {
+          "description": "Source steps whose field must be set before this step's field",
+          "items": {
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "maxItems": 8,
+          "title": "Needs",
+          "type": "array"
+        },
+        "read": {
+          "default": "case",
+          "description": "case: read before the run; page: not read yet, read on the page when it runs; service: an API/SQL/quality step run from its payload or read when it runs",
+          "enum": [
+            "case",
+            "page",
+            "service"
+          ],
+          "title": "Read",
+          "type": "string"
+        },
+        "risk": {
+          "$ref": "#/$defs/Risk"
+        },
+        "role": {
+          "anyOf": [
+            {
+              "maxLength": 40,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Role"
+        },
+        "step": {
+          "description": "The source step (1-based) this plan step belongs to",
+          "maximum": 200,
+          "minimum": 1,
+          "title": "Step",
+          "type": "integer"
+        },
+        "target": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target"
+        },
+        "text": {
+          "description": "What the plan step does, in words",
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "url": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Url"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "fill/select: the value; press: the key; wait: seconds (placeholders kept)",
+          "title": "Value"
+        }
+      },
+      "required": [
+        "id",
+        "step",
+        "kind",
+        "text"
+      ],
+      "title": "PlanStep",
+      "type": "object"
+    },
+    "PlanTiming": {
+      "additionalProperties": false,
+      "description": "What making the plan cost: wall time per phase and model calls.",
+      "properties": {
+        "cached": {
+          "default": false,
+          "title": "Cached",
+          "type": "boolean"
+        },
+        "cost_usd": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cost Usd"
+        },
+        "coverage_ms": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Coverage Ms",
+          "type": "integer"
+        },
+        "decider_calls": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Decider Calls",
+          "type": "integer"
+        },
+        "lint_ms": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Lint Ms",
+          "type": "integer"
+        },
+        "model_calls": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Model Calls",
+          "type": "integer"
+        },
+        "reading_ms": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Reading Ms",
+          "type": "integer"
+        },
+        "total_ms": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Total Ms",
+          "type": "integer"
+        }
+      },
+      "title": "PlanTiming",
+      "type": "object"
+    },
+    "Risk": {
+      "additionalProperties": false,
+      "description": "What a plan step may do that is hard to undo, as the model judged it, with its reason.",
+      "properties": {
+        "flags": {
+          "items": {
+            "enum": [
+              "destructive",
+              "irreversible",
+              "external_side_effect"
+            ],
+            "type": "string"
+          },
+          "maxItems": 3,
+          "title": "Flags",
+          "type": "array"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        }
+      },
+      "title": "Risk",
+      "type": "object"
+    },
+    "SourceStep": {
+      "additionalProperties": false,
+      "description": "A step of the case as written.",
+      "properties": {
+        "action": {
+          "maxLength": 2000,
+          "title": "Action",
+          "type": "string"
+        },
+        "expected": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected"
+        },
+        "kind": {
+          "default": "browser",
+          "enum": [
+            "browser",
+            "api",
+            "sql",
+            "quality",
+            "security",
+            "verify"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "number": {
+          "maximum": 200,
+          "minimum": 1,
+          "title": "Number",
+          "type": "integer"
+        },
+        "payload": {
+          "default": false,
+          "description": "The step carries a structured api, sql, quality or security payload (run as written)",
+          "title": "Payload",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "number",
+        "action"
+      ],
+      "title": "SourceStep",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The plan of one case (see the module docstring).",
+  "properties": {
+    "amendments": {
+      "items": {
+        "$ref": "#/$defs/Amendment"
+      },
+      "title": "Amendments",
+      "type": "array"
+    },
+    "case_hash": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Case Hash",
+      "type": "string"
+    },
+    "case_id": {
+      "title": "Case Id",
+      "type": "string"
+    },
+    "coverage": {
+      "$ref": "#/$defs/Coverage"
+    },
+    "created_at": {
+      "default": "",
+      "title": "Created At",
+      "type": "string"
+    },
+    "lint": {
+      "items": {
+        "$ref": "#/$defs/LintFinding"
+      },
+      "title": "Lint",
+      "type": "array"
+    },
+    "model": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Model"
+    },
+    "order": {
+      "description": "The order the source steps run in (empty: as written)",
+      "items": {
+        "maximum": 200,
+        "minimum": 1,
+        "type": "integer"
+      },
+      "title": "Order",
+      "type": "array"
+    },
+    "prompt_version": {
+      "title": "Prompt Version",
+      "type": "string"
+    },
+    "results": {
+      "items": {
+        "$ref": "#/$defs/CriterionResult"
+      },
+      "title": "Results",
+      "type": "array"
+    },
+    "review": {
+      "$ref": "#/$defs/PlanReview"
+    },
+    "source": {
+      "default": "model",
+      "enum": [
+        "model",
+        "cache",
+        "approved",
+        "edited",
+        "file"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "source_steps": {
+      "items": {
+        "$ref": "#/$defs/SourceStep"
+      },
+      "maxItems": 200,
+      "minItems": 1,
+      "title": "Source Steps",
+      "type": "array"
+    },
+    "steps": {
+      "items": {
+        "$ref": "#/$defs/PlanStep"
+      },
+      "maxItems": 1200,
+      "title": "Steps",
+      "type": "array"
+    },
+    "timing": {
+      "$ref": "#/$defs/PlanTiming"
+    },
+    "version": {
+      "const": 1,
+      "default": 1,
+      "title": "Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "case_id",
+    "case_hash",
+    "prompt_version",
+    "source_steps",
+    "steps"
+  ],
+  "title": "Plan",
+  "type": "object"
+}

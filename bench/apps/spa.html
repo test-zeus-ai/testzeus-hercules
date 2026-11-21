@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reviews - Demo Shop</title>
+  <link rel="stylesheet" href="app.css">
+  <script src="app.js"></script>
+</head>
+<body>
+  <header id="site-header"></header>
+  <main>
+    <nav class="spa-nav" aria-label="Sections">
+      <a href="spa.html?view=overview" data-view="overview">Overview</a>
+      <a href="spa.html?view=reviews" data-view="reviews">Reviews</a>
+      <a href="spa.html?view=shipping" data-view="shipping">Shipping</a>
+    </nav>
+    <div id="view" aria-live="polite"></div>
+  </main>
+  <script>
+    // A tiny client-side router: history.pushState plus simulated async loading (300-1500 ms).
+    const REVIEWS = [
+      ["Ava T.", "Comfortable and true to size."],
+      ["Ben O.", "Arrived quickly and well packed."],
+      ["Chloe P.", "Good value for the price."],
+      ["Dev P.", "Great fit and fast delivery."],
+      ["Elena R.", "Second order, still happy."],
+    ];
+    const VIEWS = {
+      overview: { delay: 300, render: () => "<h1>Store overview</h1><p>Demo Shop sells everyday apparel, footwear and accessories.</p>" },
+      reviews: {
+        delay: 1200,
+        render: () =>
+          "<h1>Product reviews</h1><p>Rated 4.6 out of 5 based on 128 reviews</p>" +
+          '<ul id="review-list">' + REVIEWS.slice(0, 3).map(reviewItem).join("") + "</ul>" +
+          '<p id="review-count">Showing 3 of 128 reviews</p>' +
+          '<button type="button" id="more-reviews">Load more reviews</button>',
+      },
+      shipping: {
+        delay: 1500,
+        render: () => "<h1>Shipping information</h1><p>Free standard shipping on orders over $50.</p><p>Express delivery arrives in 1 to 2 business days for $15.00.</p>",
+      },
+    };
+    let token = 0;
+
+    function reviewItem(review) {
+      return "<li><strong>" + review[0] + "</strong> " + review[1] + "</li>";
+    }
+
+    function currentView() {
+      const name = new URLSearchParams(location.search).get("view");
+      return VIEWS[name] ? name : "overview";
+    }
+
+    function show(name) {
+      const mine = ++token;
+      const host = document.getElementById("view");
+      document.querySelectorAll(".spa-nav a").forEach((a) => (a.dataset.view === name ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current")));
+      host.innerHTML = '<p class="loading">Loading…</p>';
+      setTimeout(() => {
+        if (mine !== token) return;
+        host.innerHTML = VIEWS[name].render();
+        document.title = host.querySelector("h1").textContent + " - Demo Shop";
+      }, VIEWS[name].delay);
+    }
+
+    document.querySelector(".spa-nav").addEventListener("click", (event) => {
+      const link = event.target.closest("a[data-view]");
+      if (!link) return;
+      event.preventDefault();
+      history.pushState({ view: link.dataset.view }, "", link.getAttribute("href"));
+      show(link.dataset.view);
+    });
+    document.getElementById("view").addEventListener("click", (event) => {
+      if (event.target.id !== "more-reviews") return;
+      event.target.disabled = true;
+      event.target.textContent = "Loading…";
+      setTimeout(() => {
+        document.getElementById("review-list").insertAdjacentHTML("beforeend", REVIEWS.slice(3).map(reviewItem).join(""));
+        document.getElementById("review-count").textContent = "Showing 5 of 128 reviews";
+        event.target.remove();
+      }, 800);
+    });
+    window.addEventListener("popstate", () => show(currentView()));
+    show(currentView());
+  </script>
+</body>
+</html>

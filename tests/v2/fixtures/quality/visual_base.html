@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Visual fixture</title>
+<style>
+  body { margin: 0; padding: 24px; font: 16px/1.4 Arial, sans-serif; background: #ffffff; color: #111111; }
+  .hero { background: #eef3f8; padding: 24px; }
+  .hero h1 { margin: 0; font-size: 32px; }
+  .cta { margin-top: 16px; font-size: 18px; padding: 8px 16px; background: #1f5fa8; color: #ffffff; border: 0; }
+  .clock { display: inline-block; width: 220px; margin-top: 16px; }
+</style>
+</head>
+<body>
+  <section class="hero" id="hero">
+    <h1 id="title">Plan your week</h1>
+    <button class="cta" id="cta">Get started</button>
+  </section>
+  <div class="clock" id="clock"></div>
+<script>
+  document.getElementById("clock").textContent = "Updated " + Date.now() + " " + Math.random().toString(36).slice(2);
+</script>
+</body>
+</html>

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Sign in</title>
+<style>body{font-family:sans-serif;margin:40px} label{display:block;margin-top:12px} #error{color:#b00}</style>
+</head>
+<body>
+  <h1>Sign in to Acme</h1>
+  <form id="login">
+    <label for="username">Username</label>
+    <input id="username" name="username" type="text" autocomplete="off">
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password">
+    <label><input id="remember" type="checkbox"> Remember me</label>
+    <p><a href="#forgot">Forgot password?</a></p>
+    <button type="submit">Sign in</button>
+    <p id="error" role="alert"></p>
+  </form>
+  <script>
+    document.getElementById('login').addEventListener('submit', (event) => {
+      event.preventDefault();
+      const user = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value;
+      if (!user || !password) {
+        document.getElementById('error').textContent = 'Enter a username and password';
+        return;
+      }
+      setTimeout(() => { location.href = 'welcome.html#' + encodeURIComponent(user); }, 150);
+    });
+  </script>
+</body>
+</html>

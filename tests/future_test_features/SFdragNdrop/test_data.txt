@@ -1,4 +1,0 @@
-Salesforce:
-url: https://login.salesforce.com
-Username: demouser@bryntum.com
-password: BryntumSalesforce3

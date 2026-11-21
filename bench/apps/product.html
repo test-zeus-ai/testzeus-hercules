@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Product - Demo Shop</title>
+  <link rel="stylesheet" href="app.css">
+  <script src="app.js"></script>
+</head>
+<body>
+  <header id="site-header"></header>
+  <main>
+    <p><a href="products.html">Back to products</a></p>
+    <article class="card" id="detail"></article>
+  </main>
+  <script>
+    const item = DemoShop.product(DemoShop.param("id"));
+    const detail = document.getElementById("detail");
+    if (!item) {
+      detail.innerHTML = "<h1>Product not found</h1>";
+    } else {
+      document.title = item.name + " - Demo Shop";
+      detail.innerHTML =
+        "<h1>" + DemoShop.escapeHtml(item.name) + "</h1>" +
+        '<p class="price">' + DemoShop.money(item.price) + "</p>" +
+        "<p>" + DemoShop.escapeHtml(item.description) + "</p>" +
+        "<p>" + (item.inStock ? '<span class="ok">In stock</span>' : '<span class="stock-out">Out of stock</span>') + "</p>" +
+        '<label for="qty">Quantity</label>' +
+        '<input id="qty" type="number" min="1" max="10" value="1">' +
+        '<p><button type="button" id="add">Add to cart</button></p>';
+      const add = document.getElementById("add");
+      add.disabled = !item.inStock;
+      add.addEventListener("click", () => {
+        const qty = Math.max(1, Math.min(10, parseInt(document.getElementById("qty").value, 10) || 1));
+        DemoShop.addToCart(item.id, qty);
+        DemoShop.toast("Added to cart");
+      });
+    }
+  </script>
+</body>
+</html>

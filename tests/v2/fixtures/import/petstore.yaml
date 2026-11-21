@@ -1,0 +1,75 @@
+openapi: 3.0.3
+info:
+  title: Petstore
+  version: "1.0"
+servers:
+  - url: https://petstore.example.test/v1
+components:
+  securitySchemes:
+    api_key:
+      type: apiKey
+      in: header
+      name: X-API-Key
+  schemas:
+    Pet:
+      type: object
+      required: [id, name]
+      properties:
+        id: {type: integer, example: 7}
+        name: {type: string, example: Rex}
+        tag: {type: string}
+    NewPet:
+      type: object
+      required: [name]
+      properties:
+        name: {type: string}
+        tag: {type: string, enum: [dog, cat]}
+paths:
+  /pets:
+    get:
+      operationId: listPets
+      summary: List pets
+      tags: [pets]
+      parameters:
+        - {name: limit, in: query, required: true, schema: {type: integer, default: 10}}
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: "#/components/schemas/Pet"}}
+    post:
+      operationId: createPet
+      summary: Create a pet
+      tags: [pets]
+      security: [{api_key: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/NewPet"}
+      responses:
+        "201":
+          description: created
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Pet"}
+        "400": {description: bad}
+  /pets/{petId}:
+    get:
+      operationId: showPetById
+      summary: Info for a pet
+      tags: [pets]
+      parameters:
+        - {name: petId, in: path, required: true, schema: {type: string}, example: "42"}
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Pet"}
+  /health:
+    get:
+      tags: [ops]
+      responses:
+        "204": {description: up}

@@ -1,0 +1,700 @@
+{
+  "version": 1,
+  "case_id": "golden-case",
+  "title": "Every construct",
+  "base_url": "http://shop.test",
+  "browser": true,
+  "data": {
+    "api_key": {
+      "kind": "secret",
+      "env": "PETS_API_KEY"
+    },
+    "country": {
+      "kind": "value",
+      "value": "Canada"
+    },
+    "db": {
+      "kind": "secret",
+      "env": "APP_DB_URL"
+    },
+    "email": {
+      "kind": "value",
+      "value": "user+{{run_id}}@shop.test"
+    },
+    "name": {
+      "kind": "value",
+      "value": "Sam"
+    },
+    "password": {
+      "kind": "secret",
+      "env": "APP_PASSWORD"
+    },
+    "pet_id": {
+      "kind": "saved",
+      "step": 5
+    },
+    "run_id": {
+      "kind": "builtin"
+    },
+    "token": {
+      "kind": "secret",
+      "env": "APP_TOKEN"
+    }
+  },
+  "steps": [
+    {
+      "index": 1,
+      "action": "I open \"/login\"",
+      "status": "passed",
+      "kind": "browser",
+      "actions": [
+        {
+          "kind": "navigate",
+          "url": "/login",
+          "option_exact": true,
+          "typed": false,
+          "faithful": true
+        }
+      ],
+      "checks": [],
+      "faithful": true,
+      "notes": []
+    },
+    {
+      "index": 2,
+      "action": "I sign in",
+      "status": "passed",
+      "kind": "browser",
+      "actions": [
+        {
+          "kind": "fill",
+          "target": {
+            "role": "textbox",
+            "name": "Email",
+            "frames": [],
+            "locator": {
+              "strategy": "test_id",
+              "value": "email",
+              "attribute": "data-testid",
+              "exact": true,
+              "selectors": [],
+              "count": 1
+            },
+            "fallbacks": [
+              {
+                "strategy": "label",
+                "value": "Email",
+                "exact": true,
+                "selectors": [],
+                "count": 1
+              }
+            ],
+            "checked": 0
+          },
+          "value": "{{email}}",
+          "option_exact": true,
+          "typed": false,
+          "faithful": true
+        },
+        {
+          "kind": "fill",
+          "target": {
+            "role": "textbox",
+            "name": "Password",
+            "frames": [],
+            "locator": {
+              "strategy": "label",
+              "value": "Password",
+              "exact": true,
+              "selectors": [],
+              "count": 1
+            },
+            "fallbacks": [],
+            "checked": 0
+          },
+          "value": "{{password}}",
+          "option_exact": true,
+          "typed": false,
+          "faithful": true
+        },
+        {
+          "kind": "click",
+          "target": {
+            "role": "button",
+            "name": "Sign in",
+            "frames": [],
+            "locator": {
+              "strategy": "role",
+              "role": "button",
+              "name": "Sign in",
+              "exact": true,
+              "selectors": [],
+              "count": 1
+            },
+            "fallbacks": [],
+            "checked": 0
+          },
+          "option_exact": true,
+          "typed": false,
+          "navigated_to": "/dashboard",
+          "faithful": true
+        }
+      ],
+      "checks": [
+        {
+          "kind": "text",
+          "expected": "Welcome, {{name}}",
+          "match": "contains",
+          "form": "text",
+          "verdict": "passed",
+          "source": "deterministic",
+          "faithful": true
+        },
+        {
+          "kind": "url",
+          "expected": "/dashboard",
+          "match": "contains",
+          "verdict": "passed",
+          "source": "deterministic",
+          "faithful": true
+        }
+      ],
+      "faithful": true,
+      "notes": []
+    },
+    {
+      "index": 3,
+      "action": "Choose options",
+      "status": "passed",
+      "kind": "browser",
+      "actions": [
+        {
+          "kind": "select",
+          "target": {
+            "role": "combobox",
+            "name": "Country",
+            "frames": [],
+            "locator": {
+              "strategy": "role",
+              "role": "combobox",
+              "name": "Country",
+              "exact": true,
+              "selectors": [],
+              "count": 1
+            },
+            "fallbacks": [],
+            "checked": 0
+          },
+          "value": "{{country}}",
+          "select_by": "label",
+          "option": "{{country}}",
+          "option_exact": true,
+          "typed": false,
+          "faithful": true
+        },
+        {
+          "kind": "select",
+          "target": {
+            "role": "combobox",
+            "name": "Colour",
+            "frames": [],
+            "locator": {
+              "strategy": "css",
+              "exact": true,
+              "selectors": [
+                "#colour"
+              ],
+              "count": 1
+            },
+            "fallbacks": [],
+            "checked": 0
+          },
+          "value": "Blue",
+          "select_by": "value",
+          "option": "blue",
+          "option_exact": true,
+          "typed": false,
+          "faithful": true
+        },
+        {
+          "kind": "select",
+          "target": {
+            "role": "combobox",
+            "name": "Book",
+            "frames": [],
+            "locator": {
+              "strategy": "role",
+              "role": "combobox",
+              "name": "Book",
+              "exact": true,
+              "selectors": [],
+              "count": 1
+            },
+            "fallbacks": [],
+            "checked": 0
+          },
+          "value": "Peter Pan",
+          "select_by": "option_role",
+          "option": "Peter Pan",
+          "option_role": "option",
+          "option_exact": true,
+          "typed": true,
+          "faithful": true
+        },
+        {
+          "kind": "check",
+          "target": {
+            "role": "checkbox",
+            "name": "I agree",
+            "frames": [],
+            "locator": {
+              "strategy": "role",
+              "role": "checkbox",
+              "name": "I agree",
+              "exact": true,
+              "selectors": [],
+              "count": 1
+            },
+            "fallbacks": [],
+            "checked": 0
+          },
+          "option_exact": true,
+          "typed": false,
+          "faithful": true
+        },
+        {
+          "kind": "hover",
+          "target": {
+            "role": "link",
+            "name": "Help",
+            "frames": [],
+            "locator": {
+              "strategy": "test_id",
+              "value": "help",
+              "attribute": "data-qa",
+              "exact": true,
+              "selectors": [],
+              "count": 1
+            },
+            "fallbacks": [],
+            "checked": 0
+          },
+          "option_exact": true,
+          "typed": false,
+          "faithful": true
+        },
+        {
+          "kind": "press",
+          "target": {
+            "role": "searchbox",
+            "name": "Search",
+            "frames": [],
+            "locator": {
+              "strategy": "placeholder",
+              "value": "Search",
+              "exact": true,
+              "selectors": [],
+              "count": 1
+            },
+            "fallbacks": [],
+            "checked": 0
+          },
+          "key": "Enter",
+          "option_exact": true,
+          "typed": false,
+          "faithful": true
+        },
+        {
+          "kind": "press",
+          "key": "Escape",
+          "option_exact": true,
+          "typed": false,
+          "faithful": true
+        },
+        {
+          "kind": "wait_text",
+          "text": "Saved",
+          "option_exact": true,
+          "typed": false,
+          "faithful": true
+        },
+        {
+          "kind": "wait_time",
+          "seconds": 1.5,
+          "option_exact": true,
+          "typed": false,
+          "faithful": true,
+          "note": "the step waits a fixed time"
+        }
+      ],
+      "checks": [
+        {
+          "kind": "text",
+          "expected": "Items",
+          "match": "contains",
+          "form": "text_first",
+          "verdict": "passed",
+          "source": "deterministic",
+          "faithful": true
+        },
+        {
+          "kind": "not_text",
+          "expected": "Error",
+          "match": "contains",
+          "form": "count_zero",
+          "verdict": "passed",
+          "source": "deterministic",
+          "faithful": true
+        },
+        {
+          "kind": "not_text",
+          "expected": "Choose a country",
+          "match": "contains",
+          "verdict": "passed",
+          "source": "deterministic",
+          "faithful": false,
+          "note": "no Playwright text assertion held on the page; check this text by hand"
+        },
+        {
+          "kind": "visible_text",
+          "expected": "Profile",
+          "match": "contains",
+          "verdict": "passed",
+          "source": "deterministic",
+          "faithful": true
+        },
+        {
+          "kind": "url",
+          "expected": "http://shop.test/account",
+          "match": "equals",
+          "verdict": "passed",
+          "source": "deterministic",
+          "faithful": true
+        }
+      ],
+      "faithful": true,
+      "notes": []
+    },
+    {
+      "index": 4,
+      "action": "Pay by card",
+      "status": "passed",
+      "kind": "browser",
+      "actions": [
+        {
+          "kind": "fill",
+          "target": {
+            "role": "textbox",
+            "name": "Card number",
+            "frames": [
+              {
+                "locator": {
+                  "strategy": "css",
+                  "exact": true,
+                  "selectors": [
+                    "iframe[title=\"Card details\"]"
+                  ],
+                  "count": 1
+                },
+                "fallbacks": [],
+                "label": "Card details"
+              }
+            ],
+            "locator": {
+              "strategy": "role",
+              "role": "textbox",
+              "name": "Card number",
+              "exact": true,
+              "selectors": [],
+              "count": 1
+            },
+            "fallbacks": [],
+            "checked": 0
+          },
+          "value": "4242 4242 4242 4242",
+          "option_exact": true,
+          "typed": false,
+          "faithful": true
+        },
+        {
+          "kind": "click",
+          "target": {
+            "role": "button",
+            "name": "Apply",
+            "frames": [],
+            "locator": {
+              "strategy": "css",
+              "exact": true,
+              "selectors": [
+                "#cart > coupon-box",
+                "#apply"
+              ],
+              "count": 1
+            },
+            "fallbacks": [],
+            "checked": 0
+          },
+          "option_exact": true,
+          "typed": false,
+          "faithful": true
+        },
+        {
+          "kind": "click",
+          "target": {
+            "role": "button",
+            "name": "Remove",
+            "frames": [],
+            "fallbacks": [],
+            "checked": 0
+          },
+          "option_exact": true,
+          "typed": false,
+          "faithful": false,
+          "note": "no locator matched only this element (button \"Remove\")"
+        }
+      ],
+      "checks": [
+        {
+          "kind": "text",
+          "expected": "Card saved",
+          "match": "contains",
+          "form": "text",
+          "target": {
+            "role": "",
+            "name": "",
+            "frames": [
+              {
+                "locator": {
+                  "strategy": "css",
+                  "exact": true,
+                  "selectors": [
+                    "iframe[title=\"Card details\"]"
+                  ],
+                  "count": 1
+                },
+                "fallbacks": [],
+                "label": "Card details"
+              }
+            ],
+            "fallbacks": [],
+            "checked": 0
+          },
+          "verdict": "passed",
+          "source": "deterministic",
+          "faithful": true
+        },
+        {
+          "kind": "element_visible",
+          "expected": "Receipt",
+          "match": "contains",
+          "target": {
+            "role": "link",
+            "name": "Receipt",
+            "frames": [],
+            "locator": {
+              "strategy": "role",
+              "role": "link",
+              "name": "Receipt",
+              "exact": true,
+              "selectors": [],
+              "count": 1
+            },
+            "fallbacks": [],
+            "checked": 0
+          },
+          "verdict": "passed",
+          "source": "deterministic",
+          "faithful": true
+        },
+        {
+          "kind": "semantic",
+          "expected": "the order is confirmed",
+          "match": "contains",
+          "verdict": "passed",
+          "source": "llm",
+          "observed": "page \"Thanks\" at /success",
+          "faithful": false,
+          "note": "judged by meaning by jev: 93% likely to hold; write an assertion for it in code"
+        }
+      ],
+      "faithful": false,
+      "notes": []
+    },
+    {
+      "index": 5,
+      "action": "Create a pet",
+      "status": "passed",
+      "kind": "api",
+      "actions": [],
+      "checks": [],
+      "api": {
+        "method": "POST",
+        "path": "/pets",
+        "headers": {
+          "X-API-Key": "{{api_key}}"
+        },
+        "query": {
+          "dry": "no",
+          "tags": [
+            "a",
+            "b"
+          ]
+        },
+        "body": {
+          "name": "Bella {{run_id}}",
+          "owner": "{{email}}",
+          "age": 2,
+          "vaccinated": true,
+          "notes": null
+        },
+        "auth": {
+          "type": "bearer",
+          "value": "{{token}}"
+        },
+        "expect": {
+          "status": 201,
+          "json_path": [
+            {
+              "path": "$.name",
+              "op": "contains",
+              "value": "Bella"
+            },
+            {
+              "path": "$.id",
+              "op": "gt",
+              "value": 0
+            },
+            {
+              "path": "$.items[*].price",
+              "op": "all_gte",
+              "value": 0
+            },
+            {
+              "path": "$.missing",
+              "op": "not_exists"
+            }
+          ],
+          "headers": [
+            {
+              "name": "Location",
+              "op": "exists"
+            }
+          ],
+          "body_contains": [
+            "Bella"
+          ],
+          "max_time_ms": 2000,
+          "json_schema": "spec.yaml#/components/schemas/Pet"
+        },
+        "save": [
+          {
+            "name": "pet_id",
+            "json_path": "$.id"
+          },
+          {
+            "name": "where",
+            "header": "Location"
+          }
+        ]
+      },
+      "faithful": true,
+      "notes": []
+    },
+    {
+      "index": 6,
+      "action": "Read it back",
+      "status": "passed",
+      "kind": "api",
+      "actions": [],
+      "checks": [],
+      "api": {
+        "path": "/pets/{{pet_id}}",
+        "auth": {
+          "type": "basic",
+          "value": "admin:{{password}}"
+        },
+        "expect": {
+          "status": [
+            "2xx",
+            304
+          ],
+          "json_path": [
+            {
+              "path": "$['id']",
+              "op": "eq",
+              "value": "{{pet_id}}"
+            },
+            {
+              "path": "$.tags",
+              "op": "count_eq",
+              "value": 2
+            }
+          ]
+        }
+      },
+      "faithful": true,
+      "notes": []
+    },
+    {
+      "index": 7,
+      "action": "Send a note",
+      "status": "passed",
+      "kind": "api",
+      "actions": [],
+      "checks": [],
+      "api": {
+        "method": "POST",
+        "path": "https://hooks.test/note",
+        "body": "hello {{name}}",
+        "expect": {
+          "status": 200
+        }
+      },
+      "faithful": true,
+      "notes": []
+    },
+    {
+      "index": 8,
+      "action": "The dogs are stored",
+      "status": "passed",
+      "kind": "sql",
+      "actions": [],
+      "checks": [],
+      "sql": {
+        "db": "db",
+        "query": "SELECT name FROM pets WHERE tag = :tag",
+        "params": {
+          "tag": "dog"
+        },
+        "expect": {
+          "rows": 2,
+          "json_path": [
+            {
+              "path": "$[0].name",
+              "op": "eq",
+              "value": "Rex"
+            }
+          ]
+        }
+      },
+      "sql_dialect": "sqlite",
+      "faithful": true,
+      "notes": []
+    },
+    {
+      "index": 9,
+      "action": "Accessible",
+      "status": "passed",
+      "kind": "quality",
+      "actions": [],
+      "checks": [],
+      "quality": {
+        "kind": "a11y"
+      },
+      "faithful": false,
+      "notes": [
+        "the a11y check runs Hercules' own checks; the export writes it as a comment to replace with your project's tools"
+      ]
+    }
+  ]
+}
