@@ -59,7 +59,7 @@ your session prints.
 
 ### 1. Start a session and watch it live
 
-https://github.com/user-attachments/assets/085fafe6-c2d6-46dc-bd87-9e5728fa3154
+https://github.com/user-attachments/assets/d0c9264c-bbcf-43d5-9cee-5ee4b707131d
 
 <sub>[Download the MP4](../assets/videos/explore/01-start-and-watch-live.mp4)</sub>
 
@@ -74,7 +74,7 @@ https://github.com/user-attachments/assets/085fafe6-c2d6-46dc-bd87-9e5728fa3154
 
 ### 2. Review findings in one click
 
-https://github.com/user-attachments/assets/ffff66a1-6a19-4f37-b608-3d0845938487
+https://github.com/user-attachments/assets/12c26fc3-41b7-44ad-bca3-3e7c063a1dbe
 
 <sub>[Download the MP4](../assets/videos/explore/02-review-findings-one-click.mp4)</sub>
 

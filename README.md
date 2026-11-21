@@ -366,13 +366,13 @@ machine; [Exploratory testing](docs/guide/explore.md#walkthrough-videos) has the
 <table>
 <tr>
 <td width="50%" valign="top">
-<a href="https://github.com/user-attachments/assets/085fafe6-c2d6-46dc-bd87-9e5728fa3154"><img src="docs/assets/videos/explore/01-start-and-watch-live.jpg" width="400" alt="Start a session and watch it live (2:18)"></a>
+<a href="https://github.com/user-attachments/assets/d0c9264c-bbcf-43d5-9cee-5ee4b707131d"><img src="docs/assets/videos/explore/01-start-and-watch-live.jpg" width="400" alt="Start a session and watch it live (2:17)"></a>
 <br><b>Start a session, watch it live.</b> Run <code>hercules ui</code>, open
 <b>Explore → Start exploring</b>, pick a start case, a mission and a time box, and watch
 explorers work while each clue is reproduced.
 </td>
 <td width="50%" valign="top">
-<a href="https://github.com/user-attachments/assets/ffff66a1-6a19-4f37-b608-3d0845938487"><img src="docs/assets/videos/explore/02-review-findings-one-click.jpg" width="400" alt="Review findings in one click (1:13)"></a>
+<a href="https://github.com/user-attachments/assets/12c26fc3-41b7-44ad-bca3-3e7c063a1dbe"><img src="docs/assets/videos/explore/02-review-findings-one-click.jpg" width="400" alt="Review findings in one click (1:12)"></a>
 <br><b>Review findings in one click.</b> Open <b>Explore → Findings</b>, open a finding, and
 click <b>Real bug</b>, <b>Not a bug</b>, <b>Can't reproduce</b> or <b>Duplicate</b>. Copy it
 as a GitHub, Jira, Linear or Markdown issue.
