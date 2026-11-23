@@ -111,7 +111,7 @@ EXPOSE 7373
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD ["hercules-healthcheck"]
 
-ARG VERSION=2.0.0.dev0
+ARG VERSION=2.0.0
 ARG REVISION=unknown
 LABEL org.opencontainers.image.title="Hercules" \
       org.opencontainers.image.description="Hercules, by TestZeus: plain-language end-to-end tests of web apps, APIs and mobile apps, run locally." \

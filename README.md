@@ -76,7 +76,7 @@ Set up Hercules by TestZeus (open-source end-to-end testing) for this project.
 
 More in [Set up Hercules with your coding agent](docs/guide/agent-setup.md).
 
-> This is Hercules v2 (`2.0.0.dev0`), a rewrite of v1. Coming from v1? See
+> This is Hercules v2 (`2.0.0`), a rewrite of v1. Coming from v1? See
 > [Migrating from v1](docs/guide/migrating-from-v1.md).
 
 ## Three ways to use it
