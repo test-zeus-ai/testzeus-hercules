@@ -21,7 +21,7 @@ import yaml
 from testzeus_hercules.act import jsonpath
 from testzeus_hercules.act.api_assert import Verdict
 
-OAS_INSTALL_HINT = "openapi_schema_validator is not installed; install the API extras: pip install 'testzeus-hercules[api]'"
+OAS_INSTALL_HINT = "openapi_schema_validator is not installed; it is a Hercules dependency, so reinstall Hercules: pip install --force-reinstall testzeus-hercules"
 MAX_SPEC_BYTES = 10 * 1024 * 1024
 MAX_VIOLATIONS = 20
 _DEFAULT_CONTENT_TYPE = "application/json"

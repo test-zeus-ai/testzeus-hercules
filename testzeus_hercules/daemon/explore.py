@@ -293,7 +293,9 @@ class ExploreManager:
                 job.errors.append(f"{case_path.name}: {exc}")
                 return None
             source = {"kind": "case_path", "path": path.relative_to(project_dir.resolve()).as_posix(), "environment": None, "base_url": None, "origin": "daemon", "reverify": job.id}
-            record = manager.submit(case, options={}, source=source)
+            # Nobody is there to review a plan: with the default review, a plan with lint errors waits for approval and the case
+            # would be reported inconclusive without running. Run the plan as made.
+            record = manager.submit(case, options={"plan_review": "auto"}, source=source)
             job.run_ids.append(str(record["id"]))
             job.changed.set()
             return str(record["id"])

@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.0.1 (unreleased)
+
+- **API and SQL steps work in the default install**: JSONPath and OpenAPI checking are core
+  dependencies now. In 2.0.0 they were in the `api` extra, so `headers`, `json_path` and
+  `openapi` checks and `save` values failed with `jsonpath_ng is not installed` after a plain
+  `pip install` or `uvx testzeus-hercules`. The `api` extra stays as an empty alias.
+- **`hercules explore reverify` runs plans as made**: a kept case whose plan had lint errors
+  waited for a plan review nobody could answer and was reported inconclusive without running.
+
 ## 2.0.0 (2026-11-23)
 
 Hercules v2 replaces v1: a new engine, command line, configuration and test format.

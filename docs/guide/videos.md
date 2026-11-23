@@ -270,7 +270,7 @@ https://github.com/user-attachments/assets/75e6833f-03ea-438e-ab0f-0adf1e6ca4e2
 
 Build the Hercules image, serve the tester UI from a container with your project mounted and the model key passed by name, then sign in and run a case: the same UI, runs and evidence as without Docker.
 
-1. From a clone of the repository, build the image (a few minutes the first time): `docker build -t hercules .`
+1. Get the image: `docker pull testzeus/hercules` and `docker tag testzeus/hercules hercules` (the video builds it from a clone instead, which takes a few minutes the first time: `docker build -t hercules .`).
 2. In your app's project, put the model settings in `.hercules/config.yaml`. They name the key's variable (`api_key_env`), never the key:
 
    ```yaml

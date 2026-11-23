@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 
+from testzeus_hercules.daemon.store import RunStore
 from testzeus_hercules.explore.ledger import Ledger
 from testzeus_hercules.explore.models import Finding
 from tests.v2.fixtures.daemon_support import case_dict, client_for, make_config
@@ -241,3 +242,7 @@ def test_reverify_job_runs_kept_and_regression_cases(config) -> None:  # type: i
     assert outcomes == {"f00000000aa": "verify_fixed", "f00000000bb": "regression"}
     assert ledger.get("f00000000aa").state == "verify_fixed" and ledger.get("f00000000bb").state == "new"  # type: ignore[union-attr]
     assert missing.status_code == 404
+    # Nobody is there to answer: a re-verification run must run its plan as made. With the default review, a plan with lint
+    # errors waits for approval, and the case is reported inconclusive without ever running.
+    store = RunStore(config.paths.history_db)
+    assert job["run_ids"] and all((store.get_run(run_id) or {}).get("options", {}).get("plan_review") == "auto" for run_id in job["run_ids"])
