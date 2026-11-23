@@ -10,7 +10,10 @@ There are two ways to run a case:
   agents use. Use it to watch runs live, debug them step by step and answer questions a
   run asks.
 
-Both write the same evidence to `.hercules/runs/<run_id>/` in your project.
+Both write the same evidence to `.hercules/runs/<run_id>/` in your project. Only runs the
+daemon started (from the UI, the API or a coding agent) appear on the tester UI's **Runs**
+screen and in its history; the result of a `hercules run` is in the terminal and in its
+evidence folder.
 
 ## `hercules run`
 

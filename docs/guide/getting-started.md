@@ -37,31 +37,20 @@ ask you the questions. The rest of this page does the same steps by hand.
 
 ## Install
 
-v2 is not yet released on PyPI: `pip install testzeus-hercules` still installs v1. Until
-the release, install from a clone of the repository:
-
 ```bash
-git clone https://github.com/test-zeus-ai/testzeus-hercules.git
-cd testzeus-hercules
-uv sync --python 3.13
-uv run python -m playwright install chromium
-source .venv/bin/activate
-```
-
-With the virtual environment active, `hercules` works in any folder, so you can run it
-in your app's project. Without uv:
-
-```bash
-git clone https://github.com/test-zeus-ai/testzeus-hercules.git
-cd testzeus-hercules
 python3.13 -m venv .venv
 source .venv/bin/activate
-pip install -e .
+pip install testzeus-hercules
 python -m playwright install chromium
 ```
 
-`uv pip install testzeus-hercules` (or `pip install`) in a Python 3.13
-virtual environment, followed by `python -m playwright install chromium`, does the same.
+With the virtual environment active, `hercules` works in any folder, so you can run it
+in your app's project. With uv, `uv venv --python 3.13` and `uv pip install testzeus-hercules`
+do the same, and `uv tool install testzeus-hercules` puts `hercules` on your PATH (the
+one-line installer, `uvx testzeus-hercules`, does that and sets up the browsers too).
+
+To work on Hercules itself, install from a clone instead: see
+[Contributing](../../CONTRIBUTING.md).
 
 Check the install:
 
@@ -72,6 +61,26 @@ hercules --help
 
 To use a Chromium you already have instead of Playwright's build, set
 `HERCULES_CHROMIUM` to the path of its executable.
+
+### Optional extras
+
+The default install is small. Two features need packages it leaves out:
+
+| Extra | Adds | You need it for |
+|---|---|---|
+| `api` | JSONPath and OpenAPI schema checking | The `headers`, `json_path` and `openapi` checks of API steps, their `save` values, and the `json_path` checks of SQL steps ([API and SQL steps](writing-tests.md#api-and-sql-steps)). Without it, such a step reports `jsonpath_ng is not installed` (or `openapi_schema_validator is not installed`) |
+| `cloud` | pytest, pytest-playwright and the Appium client | `hercules export --check`, and running exported tests on a cloud ([Exporting runs as code](exporting-code.md), [Running tests on clouds](clouds.md)) |
+
+```bash
+pip install 'testzeus-hercules[api,cloud]'
+```
+
+If you installed with the one-line installer or `uv tool install`, Hercules lives in its own
+environment and a plain `pip install` does not reach it. Add the extras to it instead:
+
+```bash
+uv tool install --force 'testzeus-hercules[api,cloud]'
+```
 
 ## Hardware tiers
 

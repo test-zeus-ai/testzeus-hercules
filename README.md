@@ -94,25 +94,26 @@ More in [Set up Hercules with your coding agent](docs/guide/agent-setup.md).
 `uvx testzeus-hercules` above does steps 1, 3 and 7 for you. To do them by hand: you need macOS or Linux, Python 3.13 or newer (3.13 to 3.15), and a model endpoint. The
 quick start uses Gemma 4 on Ollama, which needs at least 16 GB of memory.
 
-**1. Install.** v2 is not yet released on PyPI (`pip install testzeus-hercules` still
-installs v1), so install it from a clone:
+**1. Install.**
 
 ```bash
-git clone https://github.com/test-zeus-ai/testzeus-hercules.git
-cd testzeus-hercules
-uv sync --python 3.13
-uv run python -m playwright install chromium
+python3.13 -m venv .venv
 source .venv/bin/activate
+pip install testzeus-hercules
+python -m playwright install chromium
 hercules --help
 ```
+
+(`uv tool install testzeus-hercules` also works; the one-line installer above does that and sets
+up the browsers for you.) A few features need an extra package that the default install leaves
+out; see [Optional extras](docs/guide/getting-started.md#optional-extras).
 
 Or run Hercules in Docker, with the tester UI, Chromium and the security scanner in one
 image; see [Running in Docker](docs/guide/docker.md):
 
 ```bash
-docker build -t hercules .     # in the clone
-# then, in your app's project folder:
-docker run -d --name hercules --shm-size=1g -p 127.0.0.1:7373:7373 -v "$PWD:/work" hercules
+# in your app's project folder:
+docker run -d --name hercules --shm-size=1g -p 127.0.0.1:7373:7373 -v "$PWD:/work" testzeus/hercules
 docker logs hercules           # the one-time sign-in link
 ```
 

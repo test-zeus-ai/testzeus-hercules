@@ -553,6 +553,12 @@ structured `api` or `sql` payload; `action` stays the human-readable sentence. T
 request or query runs as written and every check is judged in code, one assertion-ledger
 entry per check. A step takes at most one payload (`api`, `sql`, `quality` or `security`).
 
+The `headers`, `json_path` and `openapi` checks, `save` values and the `json_path` checks of SQL
+steps need the `api` extra, which the default install leaves out: install it with
+`pip install 'testzeus-hercules[api]'` (or `uv tool install --force 'testzeus-hercules[api]'`
+if you used the one-line installer). Without it, the step reports
+`jsonpath_ng is not installed` (or `openapi_schema_validator is not installed`). See [Optional extras](getting-started.md#optional-extras).
+
 ```json
 {
   "id": "pet-lifecycle",
