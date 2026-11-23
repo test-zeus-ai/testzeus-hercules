@@ -58,7 +58,7 @@ pip install -e .
 python -m playwright install chromium
 ```
 
-Once v2 is on PyPI, `uv pip install testzeus-hercules` (or `pip install`) in a Python 3.13
+`uv pip install testzeus-hercules` (or `pip install`) in a Python 3.13
 virtual environment, followed by `python -m playwright install chromium`, does the same.
 
 Check the install:

@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.0.0.dev0 (unreleased)
+## 2.0.0 (2026-11-23)
 
 Hercules v2 replaces v1: a new engine, command line, configuration and test format.
 See [Migrating from v1](docs/guide/migrating-from-v1.md).

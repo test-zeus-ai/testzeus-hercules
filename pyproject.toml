@@ -1,6 +1,6 @@
 [project]
 name = "testzeus-hercules"
-version = "2.0.0.dev0"
+version = "2.0.0"
 description = "An open-source QA engine by TestZeus: plain-language end-to-end testing of web apps, APIs and databases, driven by language models, from the command line, a local UI or coding agents."
 authors = [{ name = "Shriyansh Agnihotri", email = "shriyansh@testzeus.com" }]
 requires-python = ">=3.13,<3.16"
