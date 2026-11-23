@@ -90,9 +90,14 @@ _QUIET_DOM_JS = """
     }
     return false;
   };
+  let prev = start;
   const tick = () => {
     const now = performance.now();
-    const settled = now - last >= quiet && document.readyState !== 'loading' && !animating() && !loading();
+    // A tick that ran far later than its 25 ms means the page's thread was stalled (a busy machine): the quiet it
+    // measured is the stall, and timers the stall held up have not run yet. Decide on the next tick instead.
+    const stalled = now - prev > quiet / 2;
+    prev = now;
+    const settled = !stalled && now - last >= quiet && document.readyState !== 'loading' && !animating() && !loading();
     if (settled || now - start >= cap) {
       observer.disconnect();
       resolve({ ms: Math.round(now - start), settled });

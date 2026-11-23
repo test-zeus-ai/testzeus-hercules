@@ -244,6 +244,25 @@ def test_snapshot_waits_while_the_page_is_still_rendering(browser: BrowserHarnes
     assert any(e.name == "Ready" for e in snap.elements), [e.name for e in snap.elements]
 
 
+def test_a_stalled_page_is_not_mistaken_for_a_settled_one(browser: BrowserHarness) -> None:
+    # A busy machine can stall the page's main thread for longer than the quiet window. The first timer to run after the
+    # stall must not be the one that decides the page settled: the page's own timer that the stall held up runs first.
+    # Here the page blocks its thread for 300 ms halfway through rendering, then carries on adding buttons.
+    async def scenario() -> Snapshot:
+        async with browser.page() as page:
+            await page.set_content(
+                "<div id=app></div><script>let n = 0; const add = () => { const b = document.createElement('button');"
+                " b.textContent = n < 8 ? 'Loading ' + n : 'Ready'; document.getElementById('app').appendChild(b); n++;"
+                " if (n === 5) { setTimeout(() => { const end = performance.now() + 300; while (performance.now() < end) {} setTimeout(add, 0); }, 40); }"
+                " else if (n <= 8) setTimeout(add, 40); };"
+                " setTimeout(add, 50);</script>"
+            )
+            return await take_snapshot(page, seq=1)
+
+    snap = browser.run(scenario())
+    assert any(e.name == "Ready" for e in snap.elements), [e.name for e in snap.elements]
+
+
 def test_same_named_elements_carry_the_text_around_them(browser: BrowserHarness) -> None:
     snap = _snapshot(browser, "labels.html")
     removes = [e for e in snap.elements if e.name == "Remove"]
