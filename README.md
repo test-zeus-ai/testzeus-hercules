@@ -33,8 +33,7 @@ walks you through choosing a model (a server on your machine, OpenRouter, or any
 OpenAI-compatible URL and key) and connecting your coding agents, so the tester UI opens
 ready to run. No uv? Use
 `pipx run testzeus-hercules`, or [install uv](https://docs.astral.sh/uv/getting-started/installation/)
-first. Until v2 is released on PyPI, run
-`uvx --from git+https://github.com/test-zeus-ai/testzeus-hercules.git testzeus-hercules`.
+first. It needs Python 3.13 or newer, which uv downloads for you if needed.
 
 ### Or let your coding agent set it up
 
