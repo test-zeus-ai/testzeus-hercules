@@ -100,5 +100,5 @@ See [Migrating from v1](docs/guide/migrating-from-v1.md).
 - **Exploratory testing**: `hercules explore`, time-boxed bug hunts with reproduced findings.
 - **Packaging and releases**: SPDX licence metadata; releases from version tags only, after the
   packages are checked and installed on every supported Python and the test suite passes;
-  PyPI trusted publishing with attestations; the Docker image for amd64 and arm64 on GHCR
-  (and Docker Hub) with SBOM and provenance. CI runs the tests on every pull request.
+  PyPI trusted publishing with attestations; the Docker image for amd64 and arm64 on Docker
+  Hub (`testzeus/hercules`) with SBOM and provenance. CI runs the tests on every pull request.

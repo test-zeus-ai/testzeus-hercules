@@ -12,17 +12,17 @@ server on your machine or network (see [Models and keys](#models-and-keys)).
 
 ## Get the image
 
-Each release publishes the image for amd64 and arm64, with an SBOM and a signed build
-attestation:
+Each release publishes the image to Docker Hub for amd64 and arm64, with an SBOM and a signed
+build attestation:
 
 ```bash
-docker pull ghcr.io/test-zeus-ai/testzeus-hercules:latest     # or a version, such as :2.1.0
+docker pull testzeus/hercules:latest     # or a version, such as :2.1.0
 ```
 
-It is also on Docker Hub as `testzeus/hercules`. Check where an image was built with
-`gh attestation verify oci://ghcr.io/test-zeus-ai/testzeus-hercules:latest --owner test-zeus-ai`.
+Check where an image was built with
+`gh attestation verify oci://index.docker.io/testzeus/hercules:latest --owner test-zeus-ai`.
 The examples below call the image `hercules`; tag the pulled one that way
-(`docker tag ghcr.io/test-zeus-ai/testzeus-hercules:latest hercules`) or build it yourself.
+(`docker tag testzeus/hercules:latest hercules`) or build it yourself.
 
 ## Build the image
 

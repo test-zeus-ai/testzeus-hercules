@@ -25,7 +25,6 @@ concurrency:
 env:
   UV_VERSION: "0.13.8"
   FORCE_COLOR: "1"
-  GHCR_IMAGE: ghcr.io/${{ github.repository_owner }}/testzeus-hercules
   DOCKERHUB_IMAGE: testzeus/hercules
 
 jobs:
@@ -65,6 +64,24 @@ jobs:
               out.write(f"version={version}\nprerelease={str(version.is_prerelease).lower()}\npublish={str(tagged).lower()}\n")
           print(f"version {version}, prerelease {version.is_prerelease}, publish {tagged}")
           EOF
+      # The image goes to Docker Hub, so a release checks its login here, before PyPI or anything else is published.
+      # A manual run checks it too when the credentials are set, and only warns when they are not.
+      - name: Docker Hub accepts the release's login
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          if [ -z "${DOCKERHUB_USERNAME}" ] || [ -z "${DOCKERHUB_TOKEN}" ]; then
+            if [ "${REF_TYPE}" = "tag" ]; then
+              echo "::error::set the DOCKERHUB_USERNAME variable and the DOCKERHUB_TOKEN secret: the image is published to Docker Hub"
+              exit 1
+            fi
+            echo "::warning::DOCKERHUB_USERNAME or DOCKERHUB_TOKEN is not set: a tagged release would stop here"
+            exit 0
+          fi
+          printf '%s' "${DOCKERHUB_TOKEN}" | docker login --username "${DOCKERHUB_USERNAME}" --password-stdin
+          docker logout
 
   build:
     needs: version
@@ -191,8 +208,8 @@ jobs:
           fail_on_unmatched_files: true
 
   # The image is built natively on an amd64 and an arm64 runner (no emulation), each pushed by digest, then one
-  # job joins the two into the release's tags. GHCR needs no secrets; Docker Hub (testzeus/hercules, where the
-  # image has always been published) is added when the DOCKERHUB_USERNAME variable and DOCKERHUB_TOKEN secret exist.
+  # job joins the two into the release's tags on Docker Hub (testzeus/hercules, where the image has always been
+  # published), with the DOCKERHUB_USERNAME variable and the DOCKERHUB_TOKEN secret.
   docker-build:
     needs: [version, pypi]
     strategy:
@@ -207,9 +224,6 @@ jobs:
     timeout-minutes: 60
     permissions:
       contents: read
-      packages: write
-    env:
-      DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -217,20 +231,8 @@ jobs:
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - if: env.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
-        with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Image names
-        id: names
-        run: |
-          names="${GHCR_IMAGE}"
-          if [ -n "${DOCKERHUB_USERNAME}" ]; then names="${names},${DOCKERHUB_IMAGE}"; fi
-          echo "names=${names}" >> "$GITHUB_OUTPUT"
       - name: Build and push by digest
         id: build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
@@ -240,7 +242,7 @@ jobs:
           build-args: |
             VERSION=${{ needs.version.outputs.version }}
             REVISION=${{ github.sha }}
-          outputs: type=image,"name=${{ steps.names.outputs.names }}",push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,name=${{ env.DOCKERHUB_IMAGE }},push-by-digest=true,name-canonical=true,push=true
           provenance: mode=max
           sbom: true
           cache-from: type=gha,scope=${{ matrix.platform }}
@@ -248,7 +250,7 @@ jobs:
       - name: Check the image starts
         run: |
           set -e
-          docker run --rm --platform ${{ matrix.platform }} "${GHCR_IMAGE}@${{ steps.build.outputs.digest }}" version
+          docker run --rm --platform ${{ matrix.platform }} "${DOCKERHUB_IMAGE}@${{ steps.build.outputs.digest }}" version
       - name: Keep the digest
         run: |
           mkdir -p "${RUNNER_TEMP}/digests"
@@ -267,11 +269,8 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-      packages: write
       id-token: write # build provenance attestation
       attestations: write
-    env:
-      DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -281,21 +280,13 @@ jobs:
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - if: env.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
-        with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Tags
         id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
-          images: |
-            ${{ env.GHCR_IMAGE }}
-            name=${{ env.DOCKERHUB_IMAGE }},enable=${{ env.DOCKERHUB_USERNAME != '' }}
+          images: ${{ env.DOCKERHUB_IMAGE }}
           flavor: latest=false
           tags: |
             type=raw,value=${{ needs.version.outputs.version }}
@@ -315,10 +306,10 @@ jobs:
       - name: Digest of the joined image
         id: digest
         run: |
-          digest=$(docker buildx imagetools inspect "${GHCR_IMAGE}:${{ needs.version.outputs.version }}" --format '{{json .Manifest}}' | jq -r .digest)
+          digest=$(docker buildx imagetools inspect "${DOCKERHUB_IMAGE}:${{ needs.version.outputs.version }}" --format '{{json .Manifest}}' | jq -r .digest)
           echo "digest=${digest}" >> "$GITHUB_OUTPUT"
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          subject-name: ${{ env.GHCR_IMAGE }}
+          subject-name: index.docker.io/${{ env.DOCKERHUB_IMAGE }}
           subject-digest: ${{ steps.digest.outputs.digest }}
           push-to-registry: true

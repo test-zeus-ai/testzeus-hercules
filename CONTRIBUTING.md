@@ -147,10 +147,11 @@ if the ones before it passed:
    attestations of where they were built.
 5. The GitHub release is created with the release notes and the files attached (marked as a
    pre-release for `a`, `b` and `rc` versions).
-6. The Docker image is built natively for amd64 and arm64 and published to
-   `ghcr.io/test-zeus-ai/testzeus-hercules` and, when configured, Docker Hub's `testzeus/hercules`,
-   tagged with the version, `major.minor` and `latest` (pre-releases get only their version),
-   with SBOM, provenance and a build attestation.
+6. The Docker image is built natively for amd64 and arm64 and published to Docker Hub as
+   `testzeus/hercules`, tagged with the version, `major.minor` and `latest` (pre-releases get
+   only their version), with SBOM, provenance and a build attestation. The Docker Hub login is
+   checked in the first step, so a missing or rejected token stops the release before anything
+   is published.
 
 Run the workflow by hand from the Actions tab to do every check without publishing anything.
 `make build` runs step 2's build and check locally.
@@ -162,7 +163,7 @@ One-time setup, done by a repository admin:
   `release.yml` and environment `pypi`. In the repository settings, add required reviewers to the
   `pypi` environment if releases should wait for an approval. No PyPI token is stored; delete the
   old `PYPI_API_TOKEN` secret once a release has gone through.
-- **Docker Hub** (optional): the `DOCKERHUB_USERNAME` variable and the `DOCKERHUB_TOKEN` secret.
-  Without them the image goes to GHCR only. Make the GHCR package public after its first push.
+- **Docker Hub**: the `DOCKERHUB_USERNAME` variable and the `DOCKERHUB_TOKEN` secret (an access
+  token with read and write access to `testzeus/hercules`). A tagged release stops without them.
 - **Private vulnerability reporting**: enable it under *Settings → Code security*, so the
   process in [SECURITY.md](SECURITY.md) works.
