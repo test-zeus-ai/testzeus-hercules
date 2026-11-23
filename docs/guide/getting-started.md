@@ -26,6 +26,8 @@ ask you the questions. The rest of this page does the same steps by hand.
 - macOS or Linux. To run the model on your machine, at least 16 GB of memory (see
   [Hardware tiers](#hardware-tiers)).
 - Python 3.13 or newer. The package accepts Python 3.13 to 3.15; 3.13 is the version we recommend.
+  On Python 3.12 or older, `pip install testzeus-hercules` finds no v2 release and installs
+  v1 (1.0.2) instead; check with `hercules version`.
 - A model endpoint that speaks the OpenAI chat-completions API: a local server such as
   Ollama, mlx-vlm, mlx-lm, LM Studio, llama.cpp or vLLM, or a hosted API or LiteLLM proxy
   (see [Use any OpenAI-compatible endpoint](#use-any-openai-compatible-endpoint)).
@@ -303,7 +305,7 @@ echo "$GROQ_API_KEY" | hercules setup --yes --provider openai-compatible \
 |---|---|
 | `--yes` | Non-interactive: use the detected server, the key from the environment (or `--key-stdin`), egress `hybrid` with a key, telemetry on; no coding agent is connected unless `--agents` names it |
 | `--provider`, `--base-url`, `--model` | The model, instead of detecting a local server: a local provider (`ollama`, `mlx-vlm`, `llamacpp`, `lmstudio`, `vllm`), `openrouter`, or `openai-compatible` with `--base-url` and the endpoint's `--model` id |
-| `--api-key-env NAME` | The variable that holds a hosted endpoint's key (default: the provider's, or `HERCULES_LLM_API_KEY`) |
+| `--api-key-env NAME` | The variable that holds a hosted endpoint's key (default: the provider's, or `HERCULES_LLM_API_KEY`). The configuration keeps only the name, and the key is not saved: the variable must be set wherever Hercules runs (shell profile, CI secret), unless `--llm-key-stdin` saves it |
 | `--llm-key-stdin` | Read the hosted endpoint's key from the first line of standard input, check it and save it to `~/.hercules/llm.env` |
 | `--key-stdin` | Read the key from the first line of standard input and save it |
 | `--save-key` | Save a key found in the environment to `~/.hercules/openrouter.env` |
