@@ -32,8 +32,12 @@ def trace_frames(trace: Path) -> list[tuple[float, bytes]]:
                     event = json.loads(line)
                 except ValueError:
                     continue
-                if event.get("type") == "screencast-frame" and event.get("sha1"):
-                    frames.append((float(event.get("timestamp") or 0), f"resources/{event['sha1']}"))
+                if event.get("type") != "screencast-frame":
+                    continue
+                # Playwright 1.64 names the frame's file (under screencast/); older versions give its sha1 under resources/.
+                resource = event.get("file") or (f"resources/{event['sha1']}" if event.get("sha1") else None)
+                if resource:
+                    frames.append((float(event.get("timestamp") or 0), resource))
         return [(stamp, archive.read(resource)) for stamp, resource in sorted(frames) if resource in names]
 
 

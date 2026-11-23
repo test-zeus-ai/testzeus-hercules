@@ -150,6 +150,20 @@ def test_the_recording_shows_each_frame_for_as_long_as_it_was_on_screen(tmp_path
     assert write_recording(_trace(tmp_path / "empty.zip", []), tmp_path / "none.gif") is None
 
 
+def test_the_recording_reads_frames_where_newer_playwright_keeps_them(tmp_path: Path) -> None:
+    # Playwright 1.64 names each frame's file in the event and keeps it under screencast/, not resources/<sha1>.
+    trace = tmp_path / "trace.zip"
+    with zipfile.ZipFile(trace, "w") as archive:
+        events = [{"type": "screencast-frame", "pageId": "page@1", "file": f"screencast/page@1-{stamp}.jpeg", "width": 320, "height": 200, "timestamp": stamp} for stamp in (1000.0, 1400.0)]
+        archive.writestr("trace.trace", "\n".join(json.dumps(event) for event in events))
+        archive.writestr("screencast/page@1-1000.0.jpeg", _jpeg("red"))
+        archive.writestr("screencast/page@1-1400.0.jpeg", _jpeg("green"))
+
+    assert [stamp for stamp, _ in trace_frames(trace)] == [1000.0, 1400.0]
+    gif = write_recording(trace, tmp_path / "recording.gif")
+    assert gif is not None and Image.open(gif).n_frames == 2
+
+
 def test_the_cli_takes_credentials_from_the_runs_case_file_by_the_name_the_export_reads(tmp_path: Path) -> None:
     from testzeus_hercules.cli.export_cmd import _url_credentials
     from testzeus_hercules.export import ExportError
