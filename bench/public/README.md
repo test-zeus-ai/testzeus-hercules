@@ -95,9 +95,9 @@ base URL, which the runner passes with `hercules run --base-url`.
 ## Validating the scenarios (no Hercules)
 
 ```bash
-uv run --frozen --python 3.12 python bench/public/validate.py --lint                # offline: files compile, step counts and fail steps match
-uv run --frozen --python 3.12 python bench/public/validate.py                       # lint + replay all 78 (about 12 minutes)
-uv run --frozen --python 3.12 python bench/public/validate.py --apps parabank --only pb0
+uv run --frozen --python 3.13 python bench/public/validate.py --lint                # offline: files compile, step counts and fail steps match
+uv run --frozen --python 3.13 python bench/public/validate.py                       # lint + replay all 78 (about 12 minutes)
+uv run --frozen --python 3.13 python bench/public/validate.py --apps parabank --only pb0
 ```
 
 The replay runs each scenario in a fresh headless Chromium context and reports whether it agrees with the
@@ -111,10 +111,10 @@ the manifest if the outage persists. Options: `--tags`, `--headed`, `--pause-s`,
 ## Running the suite with Hercules
 
 ```bash
-uv run --frozen --python 3.12 python bench/public/run_public.py --list                       # show the selection
-uv run --frozen --python 3.12 python bench/public/run_public.py --apps saucedemo,xyzbank
-uv run --frozen --python 3.12 python bench/public/run_public.py --tags negative --repeat 3     # false passes, flakiness
-uv run --frozen --python 3.12 python bench/public/run_public.py --mode <mode> --only sd0,ohn
+uv run --frozen --python 3.13 python bench/public/run_public.py --list                       # show the selection
+uv run --frozen --python 3.13 python bench/public/run_public.py --apps saucedemo,xyzbank
+uv run --frozen --python 3.13 python bench/public/run_public.py --tags negative --repeat 3     # false passes, flakiness
+uv run --frozen --python 3.13 python bench/public/run_public.py --mode <mode> --only sd0,ohn
 ```
 
 `--mode` is passed to `hercules run` only when given; `--cli-arg=ARG` passes any other flag

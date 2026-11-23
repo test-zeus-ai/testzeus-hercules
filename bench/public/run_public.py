@@ -9,10 +9,10 @@ bench's metrics plus per-app accuracy and cost / latency / decision columns.
 
 Usage::
 
-    uv run --frozen --python 3.12 python bench/public/run_public.py --list
-    uv run --frozen --python 3.12 python bench/public/run_public.py --mode pure
-    uv run --frozen --python 3.12 python bench/public/run_public.py --tags negative --repeat 3
-    uv run --frozen --python 3.12 python bench/public/run_public.py --only sd0,xb --cli-arg=--egress=hybrid-text
+    uv run --frozen --python 3.13 python bench/public/run_public.py --list
+    uv run --frozen --python 3.13 python bench/public/run_public.py --mode pure
+    uv run --frozen --python 3.13 python bench/public/run_public.py --tags negative --repeat 3
+    uv run --frozen --python 3.13 python bench/public/run_public.py --only sd0,xb --cli-arg=--egress=hybrid-text
 """
 
 from __future__ import annotations

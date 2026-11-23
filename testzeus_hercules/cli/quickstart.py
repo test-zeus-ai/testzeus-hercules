@@ -30,7 +30,7 @@ from testzeus_hercules.cli.version import DISTRIBUTION, package_version
 
 __all__ = ["QuickstartDeps", "main", "install_spec", "is_temporary_env", "chromium_ready"]
 
-PYTHON = "3.12"
+PYTHON = "3.13"
 FROM_ENV = "HERCULES_INSTALL_FROM"
 SOURCE_URL = "git+https://github.com/test-zeus-ai/testzeus-hercules.git"  # development versions are not on PyPI
 CHROMIUM_ENV = "HERCULES_CHROMIUM"

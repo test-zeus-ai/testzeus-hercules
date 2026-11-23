@@ -9,14 +9,14 @@ Read [Architecture](docs/guide/architecture.md) before you change the engine.
 
 ## Set up
 
-You need Python 3.12 (the package supports 3.11 to 3.15), [uv](https://docs.astral.sh/uv/),
+You need Python 3.13 (the package supports 3.13 to 3.15), [uv](https://docs.astral.sh/uv/),
 and Node.js 20 or newer if you work on the tester UI.
 
 ```bash
 git clone git@github.com:YOUR_GIT_USERNAME/testzeus-hercules.git
 cd testzeus-hercules
 git remote add upstream https://github.com/test-zeus-ai/testzeus-hercules
-uv sync --python 3.12 --all-extras
+uv sync --python 3.13 --all-extras
 uv run python -m playwright install chromium
 uv run hercules --help
 ```
@@ -31,7 +31,7 @@ Tests live in `tests/v2/`, one file per module or feature (`test_engine_step_gra
 The offline suite needs no model and no key:
 
 ```bash
-uv run --python 3.12 python -m pytest -q -p no:warnings -m "not live" tests/v2 \
+uv run --python 3.13 python -m pytest -q -p no:warnings -m "not live" tests/v2 \
   tests/test_dependency_diet.py tests/test_backmerge_script.py
 ```
 
@@ -48,7 +48,7 @@ Tests marked `live` talk to real models and are skipped unless you turn them on:
   service.
 
 ```bash
-HERCULES_LIVE_LLM=1 HERCULES_LIVE_JEV=1 uv run --python 3.12 python -m pytest -m live tests/v2
+HERCULES_LIVE_LLM=1 HERCULES_LIVE_JEV=1 uv run --python 3.13 python -m pytest -m live tests/v2
 ```
 
 Run them when your change touches how runs talk to a model. The benches in `bench/`
@@ -75,7 +75,7 @@ bundle is not committed.
 ## Code style
 
 - Format with black, line length 200: `make fmt`. CI runs `make lint`, which checks it
-  (`black --target-version py311 -l 200 --check`).
+  (`black --target-version py313 -l 200 --check`).
 - Keep modules small and focused, use type annotations, and prefer immutable data
   (frozen dataclasses, pydantic models).
 - Keep `cli/main.py`, `mcp/` and package `__init__` files cheap to import; import heavy
@@ -140,7 +140,7 @@ if the ones before it passed:
 1. The tag must equal the version in `pyproject.toml`.
 2. The tester UI and the sdist and wheel are built; `scripts/check_dist.sh` runs twine's strict
    check, checks the wheel carries the UI and schemas, and installs it in a fresh environment
-   on Python 3.11 to 3.15 and macOS. The PyPI description gets absolute links pinned to the tag
+   on Python 3.13 to 3.15 and macOS. The PyPI description gets absolute links pinned to the tag
    (`scripts/pypi_readme.py`), so pictures and links work on PyPI.
 3. The linter and the offline test suite run.
 4. The files are published to PyPI with trusted publishing, which also attaches signed

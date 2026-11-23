@@ -92,7 +92,7 @@ More in [Set up Hercules with your coding agent](docs/guide/agent-setup.md).
 
 ## Quick start, step by step
 
-`uvx testzeus-hercules` above does steps 1, 3 and 7 for you. To do them by hand: you need macOS or Linux, Python 3.12 (3.11 to 3.15 work), and a model endpoint. The
+`uvx testzeus-hercules` above does steps 1, 3 and 7 for you. To do them by hand: you need macOS or Linux, Python 3.13 or newer (3.13 to 3.15), and a model endpoint. The
 quick start uses Gemma 4 on Ollama, which needs at least 16 GB of memory.
 
 **1. Install.** v2 is not yet released on PyPI (`pip install testzeus-hercules` still
@@ -101,7 +101,7 @@ installs v1), so install it from a clone:
 ```bash
 git clone https://github.com/test-zeus-ai/testzeus-hercules.git
 cd testzeus-hercules
-uv sync --python 3.12
+uv sync --python 3.13
 uv run python -m playwright install chromium
 source .venv/bin/activate
 hercules --help

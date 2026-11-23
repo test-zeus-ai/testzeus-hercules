@@ -1,7 +1,7 @@
 .ONESHELL:
 # Tests of the repository itself (dependencies, release tooling), beside the v2 suite.
 REPO_TESTS=tests/test_dependency_diet.py tests/test_backmerge_script.py
-BLACK=uv run black --target-version py311 -l 200
+BLACK=uv run black --target-version py313 -l 200
 
 .PHONY: help
 help:             ## Show the help.

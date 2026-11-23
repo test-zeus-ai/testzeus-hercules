@@ -15,9 +15,9 @@ and never registers accounts or submits real data.
 
 Usage::
 
-    uv run --frozen --python 3.12 python bench/public/validate.py               # lint + replay all
-    uv run --frozen --python 3.12 python bench/public/validate.py --lint        # lint only (offline)
-    uv run --frozen --python 3.12 python bench/public/validate.py --apps saucedemo --only sd0
+    uv run --frozen --python 3.13 python bench/public/validate.py               # lint + replay all
+    uv run --frozen --python 3.13 python bench/public/validate.py --lint        # lint only (offline)
+    uv run --frozen --python 3.13 python bench/public/validate.py --apps saucedemo --only sd0
 """
 
 from __future__ import annotations
