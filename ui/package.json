@@ -30,7 +30,7 @@
     "@types/react": "19.2.7",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "5.1.4",
-    "jsdom": "26.1.0",
+    "jsdom": "31.0.1",
     "typescript": "5.9.3",
     "vite": "7.3.7",
     "vitest": "4.1.12"
