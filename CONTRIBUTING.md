@@ -153,7 +153,9 @@ if the ones before it passed:
    checked in the first step, so a missing or rejected token stops the release before anything
    is published.
 
-Run the workflow by hand from the Actions tab to do every check without publishing anything.
+Run the workflow by hand from the Actions tab to do every check without publishing anything: it
+also logs in to Docker Hub and asks PyPI to accept the workflow as its trusted publisher, so a
+broken token or publisher setup shows up before a release.
 `make build` runs step 2's build and check locally.
 
 One-time setup, done by a repository admin:

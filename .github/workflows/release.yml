@@ -163,9 +163,10 @@ jobs:
       - name: Offline test suite
         run: uv run pytest -q -m "not live" tests/v2
 
+  # On a tag this publishes. On a manual run it only checks that PyPI takes this workflow as the project's trusted
+  # publisher (the token PyPI mints for that check is masked and never used); nothing is uploaded.
   pypi:
     needs: [version, build, install, test]
-    if: needs.version.outputs.publish == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment:
@@ -178,11 +179,28 @@ jobs:
         with:
           name: dist
           path: dist
+      - name: PyPI takes this workflow as its trusted publisher
+        run: |
+          set -euo pipefail
+          audience=$(curl -fsS https://pypi.org/_/oidc/audience | jq -r .audience)
+          oidc=$(curl -fsS -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${audience}" | jq -r .value)
+          echo "::add-mask::${oidc}"
+          answer=$(mktemp)
+          code=$(jq -n --arg token "${oidc}" '{token: $token}' | curl -sS -o "${answer}" -w '%{http_code}' -X POST --data @- https://pypi.org/_/oidc/mint-token)
+          if [ "${code}" != "200" ]; then
+            echo "::error::PyPI refused this workflow as a trusted publisher (HTTP ${code}): $(jq -c '.errors // .message' "${answer}")"
+            exit 1
+          fi
+          echo "::add-mask::$(jq -r .token "${answer}")"
+          rm -f "${answer}"
+          echo "PyPI accepts release.yml in environment pypi as the publisher of testzeus-hercules"
       - name: Publish to PyPI
+        if: needs.version.outputs.publish == 'true'
         uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
 
   github-release:
     needs: [version, pypi]
+    if: needs.version.outputs.publish == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -212,6 +230,7 @@ jobs:
   # published), with the DOCKERHUB_USERNAME variable and the DOCKERHUB_TOKEN secret.
   docker-build:
     needs: [version, pypi]
+    if: needs.version.outputs.publish == 'true'
     strategy:
       fail-fast: true
       matrix:
