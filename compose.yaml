@@ -1,0 +1,44 @@
+# Hercules, by TestZeus: the daemon and tester UI in a container. See docs/guide/docker.md.
+#
+#   HERCULES_PROJECT=/path/to/your/app docker compose up -d
+#   docker compose exec hercules hercules ui --print     # one-time sign-in link
+#
+# The project folder (default: this folder) is mounted at /work; Hercules keeps its cases,
+# runs and evidence in its .hercules folder.
+services:
+  hercules:
+    build: .
+    image: hercules:dev
+    # Only this machine can open the UI. The sign-in link uses port 7373: keep both numbers the same.
+    ports:
+      - "127.0.0.1:7373:7373"
+    volumes:
+      - ${HERCULES_PROJECT:-.}:/work
+      - hercules-home:/home/hercules/.hercules
+    # Model keys, passed by name: each takes its value from your shell when set there.
+    environment:
+      - OPENROUTER_API_KEY
+      - HERCULES_TELEMETRY=${HERCULES_TELEMETRY:-0}
+    # Or keep keys in files: lines of NAME=VALUE, read at start and not shown by `docker inspect`.
+    # Uncomment here and in `secrets:` below.
+    # secrets:
+    #   - source: model-keys
+    #     target: model-keys.env
+    # Other settings (HERCULES_LLM_*, HERCULES_EGRESS, ...) from a file, if you keep one.
+    env_file:
+      - path: ./hercules.env
+        required: false
+    # Chromium needs more shared memory than Docker's 64 MB default.
+    shm_size: "1gb"
+    # Lets the container reach servers on this machine (an app, a model server, Appium)
+    # as host.docker.internal on Linux too; Docker Desktop provides it already.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+volumes:
+  hercules-home:
+
+# secrets:
+#   model-keys:
+#     file: ./model-keys.env

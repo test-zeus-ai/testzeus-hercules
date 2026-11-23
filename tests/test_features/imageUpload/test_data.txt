@@ -1,2 +1,0 @@
-URL: https://www.csm-testcenter.org/test?do=show&subdo=common&test=file_upload
-image: ./tests/run_data/imageUpload/test_data/image.jpg

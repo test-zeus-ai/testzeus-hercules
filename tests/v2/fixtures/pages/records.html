@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Records</title>
+<!--
+  A list page built from web components (open shadow roots everywhere): a header with a "New" button, a data grid with
+  many rows (row checkboxes, record links, row action buttons) and, after "New", a modal dialog (aria-modal) over the list
+  with a long form that scrolls inside the dialog, in sections, and Cancel / Save below it.
+
+  The form re-renders (its field nodes are replaced, with new generated ids; typed values are kept):
+    - whenever its scroll area is scrolled (after a short pause), and
+    - once, <ms> milliseconds after the dialog opened, with ?rerender=<ms> in the URL.
+  window.__rerender() re-renders it at once (for tests).
+
+  With ?slow-new=1 the first click on "New" is ignored (the page is still loading its form), as a slow app may do.
+-->
+<style>
+  body { font-family: sans-serif; margin: 0; }
+  #toast { position: fixed; top: 8px; right: 8px; padding: 8px 12px; background: #e6f4ea; }
+  #toast:empty { display: none; }
+</style>
+</head>
+<body>
+<x-header></x-header>
+<x-list></x-list>
+<div id="toast" role="status" aria-live="polite"></div>
+<script>
+  const SECTIONS = [
+    ["Details", ["Record Name", "Phone", "Email", "Reference", "Website", "Team", "Code", "Category", "Size", "Owner"]],
+    ["Address", ["Street", "City", "Postal Code", "Country", "Building", "Floor", "Room", "Region"]],
+    ["Notes", ["Priority", "Status", "Serial Number", "Count", "Description"]],
+  ];
+  const values = {};
+  let nextId = 1;
+  const records = [];
+  for (let i = 1; i <= 40; i += 1) records.push("Sample Record " + (1000 + i));
+
+  customElements.define("x-header", class extends HTMLElement {
+    constructor() {
+      super();
+      const root = this.attachShadow({ mode: "open" });
+      root.innerHTML = '<div style="display:flex;align-items:center;gap:16px;padding:12px 24px;border-bottom:1px solid #ddd">' +
+        '<h1 style="margin:0;font-size:20px"><span>Records</span><span style="font-size:14px;margin-left:8px">All records</span></h1>' +
+        '<button id="new" style="margin-left:auto">New</button></div>';
+      root.getElementById("new").addEventListener("click", openModal);
+    }
+  });
+
+  customElements.define("x-list", class extends HTMLElement {
+    constructor() {
+      super();
+      this.attachShadow({ mode: "open" });
+      this.render();
+    }
+    render() {
+      let rows = "";
+      records.forEach((name, i) => {
+        rows += '<tr><td><input type="checkbox" id="row-' + i + '" aria-label="Select Item ' + (i + 1) + '"></td>' +
+          '<th scope="row"><a href="#r' + i + '">' + name + '</a></th><td>Owner ' + (i % 5) + '</td>' +
+          '<td><button aria-label="Row actions">&#9662;</button></td></tr>';
+      });
+      this.shadowRoot.innerHTML = '<div style="padding:0 24px"><table style="width:100%;border-collapse:collapse">' +
+        '<thead><tr><th></th><th>Record Name</th><th>Owner</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+    }
+  });
+
+  customElements.define("x-field", class extends HTMLElement {
+    connectedCallback() {
+      if (this.shadowRoot) return;
+      const label = this.getAttribute("label");
+      const id = "input-" + nextId++;
+      const root = this.attachShadow({ mode: "open" });
+      root.innerHTML = '<div style="padding:6px 0"><label for="' + id + '" style="display:block">' + label + '</label>' +
+        '<input id="' + id + '" style="width:90%"></div>';
+      const input = root.getElementById(id);
+      input.value = values[label] || "";
+      input.addEventListener("input", () => { values[label] = input.value; });
+    }
+  });
+
+  customElements.define("x-section", class extends HTMLElement {
+    connectedCallback() {
+      if (this.shadowRoot) return;
+      const root = this.attachShadow({ mode: "open" });
+      root.innerHTML = '<div><h3 style="background:#f3f3f3;padding:4px">' + this.getAttribute("heading") + '</h3>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr"><slot></slot></div></div>';
+    }
+  });
+
+  customElements.define("x-record-form", class extends HTMLElement {
+    connectedCallback() {
+      if (!this.shadowRoot) this.attachShadow({ mode: "open" });
+      this.render();
+    }
+    render() {
+      const root = this.shadowRoot;
+      root.innerHTML = "";
+      for (const [heading, fields] of SECTIONS) {
+        const section = document.createElement("x-section");
+        section.setAttribute("heading", heading);
+        for (const label of fields) {
+          const field = document.createElement("x-field");
+          field.setAttribute("label", label);
+          section.appendChild(field);
+        }
+        root.appendChild(section);
+      }
+    }
+  });
+
+  customElements.define("x-modal", class extends HTMLElement {
+    constructor() {
+      super();
+      const root = this.attachShadow({ mode: "open" });
+      root.innerHTML =
+        '<div style="position:fixed;inset:0;background:rgba(0,0,0,.45)"></div>' +
+        '<section role="dialog" aria-modal="true" aria-labelledby="title" style="position:fixed;top:40px;left:50%;transform:translateX(-50%);width:760px;background:#fff;border-radius:6px">' +
+        '<header style="padding:12px 16px;border-bottom:1px solid #ddd"><h2 id="title" style="margin:0">New Record</h2>' +
+        '<button id="close" aria-label="Cancel and close" style="position:absolute;top:10px;right:10px">x</button></header>' +
+        '<div id="body" style="max-height:420px;overflow-y:auto;padding:0 16px"><p id="error" role="alert" style="color:#b00"></p><slot></slot></div>' +
+        '<footer style="padding:12px 16px;border-top:1px solid #ddd;text-align:right"><button id="cancel">Cancel</button> <button id="save">Save</button></footer>' +
+        '</section>';
+      root.getElementById("close").addEventListener("click", closeModal);
+      root.getElementById("cancel").addEventListener("click", closeModal);
+      root.getElementById("save").addEventListener("click", save);
+      let timer = null;
+      root.getElementById("body").addEventListener("scroll", () => {
+        clearTimeout(timer);
+        timer = setTimeout(rerender, 100);
+      });
+    }
+  });
+
+  function form() { return document.querySelector("x-modal x-record-form"); }
+  function rerender() { const f = form(); if (f) f.render(); }
+  window.__rerender = rerender;
+
+  let ignoredFirstNew = false;
+  function openModal() {
+    if (new URLSearchParams(location.search).get("slow-new") && !ignoredFirstNew) {
+      ignoredFirstNew = true;
+      return;
+    }
+    if (document.querySelector("x-modal")) return;
+    for (const key of Object.keys(values)) delete values[key];
+    const modal = document.createElement("x-modal");
+    modal.appendChild(document.createElement("x-record-form"));
+    document.body.appendChild(modal);
+    const delay = Number(new URLSearchParams(location.search).get("rerender") || 0);
+    if (delay > 0) setTimeout(rerender, delay);
+  }
+
+  function closeModal() {
+    const modal = document.querySelector("x-modal");
+    if (modal) modal.remove();
+  }
+
+  function save() {
+    const name = (values["Record Name"] || "").trim();
+    if (!name) {
+      document.querySelector("x-modal").shadowRoot.getElementById("error").textContent = "Complete this field: Record Name";
+      return;
+    }
+    records.unshift(name);
+    closeModal();
+    document.querySelector("x-list").render();
+    document.getElementById("toast").textContent = 'Record "' + name + '" was created.';
+  }
+</script>
+</body>
+</html>

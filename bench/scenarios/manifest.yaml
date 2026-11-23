@@ -1,0 +1,172 @@
+# Bench scenarios for the Demo Shop app (bench/apps).
+#
+# Per scenario:
+#   file            - path relative to this directory (.feature or TestCase .json)
+#   expected_status - the correct outcome a careful human tester would report: passed | failed
+#   tags            - feature areas; filter with `run_bench.py --tags`
+#   fail_step       - (failed scenarios) the 1-based step that should fail; a failure at another
+#                     step is reported as "failed for the wrong reason"
+#   notes           - what the scenario exercises
+#
+# URLs in scenarios are relative ("/login.html"); run_bench.py points them at the served app.
+# Scenarios tagged needs_llm use natural phrasing the rule-based step interpreter does not parse.
+
+scenarios:
+  - file: 01_login_success.feature
+    expected_status: passed
+    tags: [form]
+    notes: Valid sign-in redirects to the catalogue and shows the session in the header.
+
+  - file: 02_login_errors.feature
+    expected_status: passed
+    tags: [form, async]
+    notes: Empty submit shows both field errors; a wrong password shows a form error after a 400 ms delay.
+
+  - file: 03_product_search.feature
+    expected_status: passed
+    tags: [form, icon]
+    notes: Live search filters the grid; the icon-only "Clear search" button (aria-label) resets it.
+
+  - file: 04_product_filters.feature
+    expected_status: passed
+    tags: [form]
+    notes: Checkbox, native select and radio filters combine.
+
+  - file: 05_product_detail_add_to_cart.feature
+    expected_status: passed
+    tags: [navigation, toast, async]
+    notes: Link to the detail page, add to cart, toast and header count are visible right away.
+
+  - file: 06_cart_quantity.feature
+    expected_status: passed
+    tags: [form, hover]
+    notes: Typing a new quantity recalculates line and order totals in place; hovering the info icon shows a tooltip.
+
+  - file: 07_cart_remove_item.feature
+    expected_status: passed
+    tags: [table]
+    notes: Per-row "Remove" buttons are told apart by aria-label; shipping is charged under $50.
+
+  - file: 08_coupon_shadow.feature
+    expected_status: passed
+    tags: [shadow]
+    notes: The coupon input, Apply button and message live in an open shadow root.
+
+  - file: 09_checkout_full.json
+    expected_status: passed
+    tags: [form, modal, secret]
+    notes: TestCase JSON with test_data placeholders and a secret password (DEMO_SHOP_PASSWORD); full purchase through the confirmation dialog.
+
+  - file: 10_checkout_inline_errors.feature
+    expected_status: passed
+    tags: [form]
+    notes: Inline errors appear when a field is left and clear while typing a valid value.
+
+  - file: 11_payment_iframe.feature
+    expected_status: passed
+    tags: [iframe]
+    notes: Card fields are inside a same-origin iframe; the parent page shows the saved card.
+
+  - file: 12_modal_cancel.feature
+    expected_status: passed
+    tags: [modal, form]
+    notes: Submit stays disabled until the form is valid; Cancel closes the confirmation dialog.
+
+  - file: 13_faq_below_fold.feature
+    expected_status: passed
+    tags: [scroll]
+    notes: The last question is far below the fold; its answer is hidden until the question is clicked.
+
+  - file: 14_orders_pagination.feature
+    expected_status: passed
+    tags: [table]
+    notes: Next / Previous pagination over 23 orders, 10 per page.
+
+  - file: 15_orders_row_actions.json
+    expected_status: passed
+    tags: [table]
+    notes: TestCase JSON with placeholders in targets; per-row View and Cancel buttons named by aria-label.
+
+  - file: 16_spa_routing.feature
+    expected_status: passed
+    tags: [spa, async]
+    notes: history.pushState routes; content loads after 300-1500 ms; "Load more" appends after 800 ms.
+
+  - file: 17_icon_cart_button.feature
+    expected_status: passed
+    tags: [icon, navigation]
+    notes: The header cart button has only an SVG icon and an aria-label.
+
+  - file: 18_account_save.feature
+    expected_status: passed
+    tags: [form]
+    notes: A saved display name persists in localStorage and greets the shopper on the home page.
+
+  - file: 19_delivery_date.feature
+    expected_status: passed
+    tags: [form, date]
+    notes: Native date input; the summary echoes the picked date (YYYY-MM-DD).
+
+  - file: 20_nl_sign_in.feature
+    expected_status: passed
+    tags: [needs_llm, form]
+    notes: Natural phrasing for navigation and a compound sign-in step.
+
+  - file: 21_nl_filter.feature
+    expected_status: passed
+    tags: [needs_llm, form]
+    notes: Natural phrasing for combined filtering and sorting.
+
+  - file: n01_login_wrong_welcome.feature
+    expected_status: failed
+    fail_step: 5
+    tags: [negative, form]
+    notes: Wrong expected text after a successful sign-in.
+
+  - file: n02_missing_button.feature
+    expected_status: failed
+    fail_step: 2
+    tags: [negative]
+    notes: The "Buy now with one click" button does not exist; clicking another button is a wrong action.
+
+  - file: n03_place_order_disabled.feature
+    expected_status: failed
+    fail_step: 5
+    tags: [negative, form]
+    notes: Place order stays disabled with only the name filled in.
+
+  - file: n04_wrong_url.feature
+    expected_status: failed
+    fail_step: 5
+    tags: [negative, form]
+    notes: Sign-in lands on /products.html, not /dashboard.
+
+  - file: n05_profile_not_saved.feature
+    expected_status: failed
+    fail_step: 4
+    tags: [negative, form]
+    notes: The display name is typed but never saved, so the home page keeps the default greeting.
+
+  - file: n06_toast_gone.feature
+    expected_status: failed
+    fail_step: 4
+    tags: [negative, toast, async]
+    notes: The toast disappears after 3 s; checking after a 4 s wait must fail.
+
+  - file: n07_item_not_in_cart.feature
+    expected_status: failed
+    fail_step: 4
+    tags: [negative, table]
+    notes: Only the tee was added; the wallet is not in the cart.
+
+  - file: n08_wrong_total.json
+    expected_status: failed
+    fail_step: 5
+    tags: [negative, table]
+    notes: The real total is $54.00 (free shipping over $50); the case expects $60.00.
+
+  - file: n09_invalid_coupon.feature
+    expected_status: failed
+    fail_step: 6
+    tags: [negative, shadow]
+    notes: An invalid coupon shows "Invalid coupon code" inside the shadow root, never "Coupon applied".

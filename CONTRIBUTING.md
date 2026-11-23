@@ -1,119 +1,171 @@
-# How to contribute to this project
+# Contributing to Hercules
 
-Hercules is a project from the community and for the community. So we welcome all kinds of contributions:
-- Technical contributions: Review the instructions below and feel free to open a PR.
-- Want to start small? No problem. Contribute to documentation, build a tool, recreate a bug. We all started in one of these places.
-- Organize a local meetup, talk to people, or answer a question: The power lies in your hands. 💪
-  
+Contributions of every size are welcome: bug reports, docs fixes, test cases that break
+Hercules, and code. Open an issue first for larger changes so we can agree on the
+approach. By contributing you agree that your work is licensed under the
+[AGPL-3.0](LICENSE).
 
-**You need Python `>=3.11,<3.14`.** The migration branch CI currently targets
-Python 3.13.
+Read [Architecture](docs/guide/architecture.md) before you change the engine.
 
-These instructions are for linux base systems. (Linux, MacOS, BSD, etc.)
-## Setting up your own fork of this repo.
+## Set up
 
-- On github interface click on `Fork` button.
-- Clone your fork of this repo. `git clone git@github.com:YOUR_GIT_USERNAME/testzeus-hercules.git`
-- Enter the directory `cd testzeus-hercules`
-- Add upstream repo `git remote add upstream https://github.com/test-zeus-ai/testzeus-hercules`
+You need Python 3.12 (the package supports 3.11 to 3.15), [uv](https://docs.astral.sh/uv/),
+and Node.js 20 or newer if you work on the tester UI.
 
-## Setting up your own virtual environment
+```bash
+git clone git@github.com:YOUR_GIT_USERNAME/testzeus-hercules.git
+cd testzeus-hercules
+git remote add upstream https://github.com/test-zeus-ai/testzeus-hercules
+uv sync --python 3.12 --all-extras
+uv run python -m playwright install chromium
+uv run hercules --help
+```
 
-Run `make virtualenv` to create a virtual environment, then activate it with
-`source .venv/bin/activate`.
+`make help` lists the other shortcuts (`make install`, `make lint`, `make test`, `make ui`).
 
-## Install the project in develop mode
+## Run the tests
 
-Run `make install` to install the project in develop mode.
+Tests live in `tests/v2/`, one file per module or feature (`test_engine_step_graph.py`,
+`test_daemon_api.py`, ...). The few tests at the top of `tests/` cover repository tooling.
 
-## Run the tests to ensure everything is working
+The offline suite needs no model and no key:
 
-Run `make test` to run the tests.
+```bash
+uv run --python 3.12 python -m pytest -q -p no:warnings -m "not live" tests/v2 \
+  tests/test_dependency_diet.py tests/test_backmerge_script.py
+```
 
-## Create a new branch to work on your contribution
+Browser tests use Playwright's Chromium. To use another Chromium or Chrome build, set
+`HERCULES_TEST_CHROMIUM` to its executable. `make test` runs the same suite with
+coverage, after `make lint`.
 
-Run `git checkout -b my_contribution`
+Tests marked `live` talk to real models and are skipped unless you turn them on:
 
-## Make your changes
+- `HERCULES_LIVE_LLM=1` runs them against a real model server, chosen by the usual
+  settings (`HERCULES_LLM_PROVIDER`, `HERCULES_LLM_BASE_URL`, `HERCULES_LLM_MODEL`).
+- `HERCULES_LIVE_JEV=1` runs the tests that call JEV on OpenRouter. They need the key in
+  `OPENROUTER_API_KEY` (or in the variable `HERCULES_JEV_KEY_ENV` names). JEV is a paid
+  service.
 
-Edit the files using your preferred editor. (we recommend VIM or VSCode)
+```bash
+HERCULES_LIVE_LLM=1 HERCULES_LIVE_JEV=1 uv run --python 3.12 python -m pytest -m live tests/v2
+```
 
-## Format the code
+Run them when your change touches how runs talk to a model. The benches in `bench/`
+measure end-to-end accuracy; see [bench/README.md](bench/README.md).
 
-Run `make fmt` to format the code.
+## Work on the tester UI
 
-## Run the linter
+The UI's source is in `ui/` (React, TypeScript, Vite). With a daemon running
+(`hercules serve` in some project):
 
-Run `make lint` to run the linter.
+```bash
+cd ui
+npm ci
+npm run dev          # http://localhost:5173, proxies /api to the daemon
+npm test -- --run    # vitest
+npm run typecheck
+```
 
-## Test your changes
+The dev server reads the daemon's token from `~/.hercules/daemon.json` on the Node side,
+so the browser never sees it. `make ui` (or `scripts/build_ui.sh`) builds the bundle into
+`testzeus_hercules/ui/static/`, which the daemon serves and the wheel ships. The built
+bundle is not committed.
 
-Run `make test` to run the tests.
+## Code style
 
-Add focused tests for your change. For LangGraph runtime changes, start with
-`tests/test_simple_hercules_langgraph.py`, `tests/test_mcp_langgraph.py`, and
-the relevant CLI/config tests.
+- Format with black, line length 200: `make fmt`. CI runs `make lint`, which checks it
+  (`black --target-version py311 -l 200 --check`).
+- Keep modules small and focused, use type annotations, and prefer immutable data
+  (frozen dataclasses, pydantic models).
+- Keep `cli/main.py`, `mcp/` and package `__init__` files cheap to import; import heavy
+  modules where they are used.
+- Use [conventional commit](https://www.conventionalcommits.org/en/v1.0.0/) messages,
+  for example `fix(engine): ...` or `docs: ...`.
 
-## Commit your changes
+## Design rule: no coded deciders
 
-This project uses [conventional git commit messages](https://www.conventionalcommits.org/en/v1.0.0/).
+Every step reading and every decision comes from a model. Do not add rules that read
+step text (keyword matching, regular expressions over actions or outcomes) or that pick,
+rank or drop page elements by matching words. When a model reads or decides badly, fix
+the prompt, the information it gets (the snapshot, the element rows, the context), the
+question it is asked, or the recovery around it.
 
-Example: `fix(package): update setup.py arguments 🎉` (emojis are fine too)
+Deterministic code is right for executing a structured payload (a browser action on a
+chosen element, an HTTP request, a SQL query, a quality check) and for checking observed
+facts (page text, URL, a response, measurements). When a model is unsure, the result is
+`unverified` or the step recovers; code never guesses in its place.
 
-## Push your changes to your fork
+## Keep the repository public-safe
 
-Run `git push origin my_contribution`
+This is a public repository:
+
+- Never commit secrets: API keys, tokens, passwords, connection strings or `.env` files.
+  Tests use obviously fake values; cases reference secrets as `{"secret": "NAME"}`.
+- No private hostnames, internal tools, customer names or real personal data in code,
+  tests, fixtures, docs or commit messages.
+- Live tests read keys from the environment only; never print them.
+
+## Changes to docs
+
+User-facing behaviour is documented in `docs/guide/` and summarised in `README.md`.
+Update both with your change, and keep command examples runnable (`hercules <command>
+--help` is the reference for flags).
 
 ## Submit a pull request
 
-On github interface, click on `Pull Request` button.
+1. Branch from the default branch: `git checkout -b my-change`.
+2. Make your change with tests.
+3. Run `make lint` and the offline tests.
+4. Push to your fork and open a pull request. Fill in the template.
 
-Wait CI to run and one of the developers will review your PR.
-## Makefile utilities
+A maintainer reviews it once CI passes.
 
-This project comes with a `Makefile` that contains a number of useful utility.
+## Releases
 
-```bash 
-❯ make
-Usage: make <target>
+A release is a version tag. Maintainers run, on an up-to-date `main`:
 
-Targets:
-help:             ## Show the help.
-show:             ## Show the current environment.
-install:          ## Install the project in dev mode.
-fmt:              ## Format code using black & isort.
-lint: fmt             ## Run pep8, black, mypy linters.
-test: lint        ## Run tests and generate coverage report.
-watch:            ## Run tests on every change.
-clean:            ## Clean unused files.
-virtualenv:       ## Create a virtual environment.
-release:          ## Create a new tag for release.
-build:       ## build testzeus_hercules.
-publish:          ## Publish the package to PyPI.
-run:       ## run testzeus_hercules.
-run-interactive:       ## run-interactive testzeus_hercules.
-setup-uv:       ## Install uv.
-docker-build:       ## build and tag docker image.
-docker-publish:          ## Publish the package to Docker registry.
+```bash
+make release VERSION=2.1.0      # or 2.1.0rc1 for a pre-release
+git push origin main 2.1.0       # the command make release prints
 ```
 
-## Making a new release
+`make release` checks the version (PEP 440, newer than the current one, not a `.dev`
+version), writes it into `pyproject.toml`, the Dockerfile and `uv.lock`, commits
+`release: 2.1.0` and creates the annotated tag. It pushes nothing.
 
-This project uses [semantic versioning](https://semver.org/) and tags releases with `X.Y.Z`
-Every time a new tag is created and pushed to the remote repo, github actions will
-automatically create a new release on github and trigger a release on PyPI.
+Pushing the tag starts the [Release workflow](.github/workflows/release.yml). Each step runs only
+if the ones before it passed:
 
-For this to work you need to setup a secret called `PIPY_API_TOKEN` on the project settings>secrets, 
-this token can be generated on [pypi.org](https://pypi.org/account/).
+1. The tag must equal the version in `pyproject.toml`.
+2. The tester UI and the sdist and wheel are built; `scripts/check_dist.sh` runs twine's strict
+   check, checks the wheel carries the UI and schemas, and installs it in a fresh environment
+   on Python 3.11 to 3.15 and macOS. The PyPI description gets absolute links pinned to the tag
+   (`scripts/pypi_readme.py`), so pictures and links work on PyPI.
+3. The linter and the offline test suite run.
+4. The files are published to PyPI with trusted publishing, which also attaches signed
+   attestations of where they were built.
+5. The GitHub release is created with the release notes and the files attached (marked as a
+   pre-release for `a`, `b` and `rc` versions).
+6. The Docker image is built natively for amd64 and arm64 and published to Docker Hub as
+   `testzeus/hercules`, tagged with the version, `major.minor` and `latest` (pre-releases get
+   only their version), with SBOM, provenance and a build attestation. The Docker Hub login is
+   checked in the first step, so a missing or rejected token stops the release before anything
+   is published.
 
-To trigger a new release all you need to do is.
+Run the workflow by hand from the Actions tab to do every check without publishing anything: it
+also logs in to Docker Hub and asks PyPI to accept the workflow as its trusted publisher, so a
+broken token or publisher setup shows up before a release.
+`make build` runs step 2's build and check locally.
 
-1. If you have changes to add to the repo
-    * Make your changes following the steps described above.
-    * Commit your changes following the [conventional git commit messages](https://www.conventionalcommits.org/en/v1.0.0/).
-2. Run the tests to ensure everything is working.
-4. Run `make release` to create a new tag and push it to the remote repo.
+One-time setup, done by a repository admin:
 
-the `make release` will ask you the version number to create the tag, ex: type `0.1.1` when you are asked.
-
-> **CAUTION**:  The make release will change local changelog files and commit all the unstaged changes you have.
+- **PyPI trusted publisher**: on PyPI, *testzeus-hercules → Manage → Publishing → Add a new
+  publisher → GitHub*, with owner `test-zeus-ai`, repository `testzeus-hercules`, workflow
+  `release.yml` and environment `pypi`. In the repository settings, add required reviewers to the
+  `pypi` environment if releases should wait for an approval. No PyPI token is stored; delete the
+  old `PYPI_API_TOKEN` secret once a release has gone through.
+- **Docker Hub**: the `DOCKERHUB_USERNAME` variable and the `DOCKERHUB_TOKEN` secret (an access
+  token with read and write access to `testzeus/hercules`). A tagged release stops without them.
+- **Private vulnerability reporting**: enable it under *Settings → Code security*, so the
+  process in [SECURITY.md](SECURITY.md) works.

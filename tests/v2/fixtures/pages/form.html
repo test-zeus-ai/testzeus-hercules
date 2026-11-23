@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Profile form</title>
+<style>
+  body { font-family: sans-serif; margin: 0; padding: 24px; }
+  .row { margin: 10px 0; }
+  label { margin-right: 8px; }
+  input[type=text], input[type=email], input[type=password], select, textarea { width: 260px; padding: 6px; }
+</style>
+</head>
+<body>
+<h1>Edit profile</h1>
+<form onsubmit="return false">
+  <div class="row"><label for="full-name">Full name</label><input id="full-name" type="text" value="Ada Lovelace"></div>
+  <div class="row"><label for="email">Email</label><input id="email" type="email" required></div>
+  <div class="row"><label for="pw">Password</label><input id="pw" type="password" value="secret-value"></div>
+  <div class="row"><label for="country">Country</label>
+    <select id="country" name="country">
+      <option value="">Choose…</option>
+      <option value="in" selected>India</option>
+      <option value="fr">France</option>
+    </select>
+  </div>
+  <div class="row"><label><input type="checkbox" id="newsletter" checked> Subscribe to newsletter</label></div>
+  <div class="row" role="radiogroup" aria-label="Plan">
+    <label><input type="radio" name="plan" value="free" checked> Free plan</label>
+    <label><input type="radio" name="plan" value="pro"> Pro plan</label>
+  </div>
+  <div class="row"><label for="bio">Bio</label><textarea id="bio" rows="3" placeholder="Tell us about yourself"></textarea></div>
+  <div class="row"><label for="birthday">Birthday</label><input id="birthday" type="date"></div>
+  <div class="row"><button type="submit">Save profile</button> <button type="button" disabled>Delete profile</button></div>
+</form>
+</body>
+</html>

@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Account</title>
+<style>
+  body { font-family: sans-serif; margin: 0; padding: 24px; }
+  #backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.4); }
+  #dialog { position: fixed; top: 120px; left: 50%; transform: translateX(-50%); width: 320px; padding: 20px; background: #fff; border-radius: 8px; }
+  #danger { margin-top: 40px; }
+</style>
+</head>
+<body>
+<h1>Account settings</h1>
+<button id="danger">Delete account</button>
+<div id="backdrop"></div>
+<div id="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
+  <h2 id="dialog-title">Are you sure?</h2>
+  <button id="confirm">Confirm</button>
+  <button id="cancel">Cancel</button>
+</div>
+</body>
+</html>

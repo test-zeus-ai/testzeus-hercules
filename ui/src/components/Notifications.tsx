@@ -1,0 +1,173 @@
+import { useQuery } from "@tanstack/react-query";
+import { Toaster, toast } from "@yusufceng1z/ding-react";
+import { useEffect, useRef } from "react";
+import { useLocation } from "wouter";
+import { api, ApiError } from "../lib/api";
+import { FINISHED, isSessionList, type SessionView } from "../lib/explore";
+import { isBatchSummary, isRunList, isRunView } from "../lib/guards";
+import { away, clearTitleBadge, deliver, type Delivery } from "../lib/notify/deliver";
+import { exploreEvents, followUps, newRunTracker, newSessionTracker, runEvents, wanted, type NotifyEvent, type RunPoll, type RunTracker, type SessionTracker } from "../lib/notify/events";
+import { useNotifyPrefs, type NotifyPrefs } from "../lib/notify/prefs";
+import { FINAL_STATUSES } from "../lib/types";
+
+/** Runs the notifier looks at: the newest ones, which is where a run that just ended is. */
+export const NOTIFY_RUN_LIMIT = 100;
+export const ACTIVE_POLL_MS = 1500;
+export const IDLE_POLL_MS = 10_000;
+export const EXPLORE_ACTIVE_POLL_MS = 5000;
+export const EXPLORE_IDLE_POLL_MS = 15_000;
+
+// What the notifier had accounted for, kept per tab: after a reload (or the browser waking a tab it put to sleep),
+// what ended meanwhile is still announced.
+const RUNS_MARK = "hercules.notify.runs-until";
+const EXPLORE_MARK = "hercules.notify.explore-until";
+
+function readMark(key: string): number | null {
+  try {
+    const value = Number(window.sessionStorage.getItem(key));
+    return value > 0 ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeMark(key: string, value: number): void {
+  try {
+    if (value > 0) window.sessionStorage.setItem(key, String(value));
+  } catch {
+    // no storage (a private window): a reload only skips what ended meanwhile
+  }
+}
+
+const runsPath = (query: string) => `/api/runs?${query}`;
+
+/** The newest runs, plus what they do not settle (followUps): runs that dropped out of the list, and folder run summaries. */
+async function pollRuns(tracker: RunTracker): Promise<RunPoll> {
+  const { runs } = await api(runsPath(`limit=${NOTIFY_RUN_LIMIT}`), { guard: isRunList });
+  const asked = followUps(tracker, runs, Date.now());
+  const merged = new Map(runs.map((run) => [run.run_id, run]));
+  const gone: string[] = [];
+  const goneBatches: string[] = [];
+  const summaries: RunPoll["summaries"] = {};
+  const lookUp = async (runId: string) => {
+    try {
+      merged.set(runId, await api(`/api/runs/${encodeURIComponent(runId)}`, { guard: isRunView }));
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) gone.push(runId);
+    }
+  };
+  const summarise = async (batch: string) => {
+    tracker.checked.set(batch, Date.now());
+    try {
+      summaries[batch] = await api(`/api/runs/batches/${encodeURIComponent(batch)}`, { guard: isBatchSummary });
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) goneBatches.push(batch); // else: checked again on a later poll
+    }
+  };
+  await Promise.all([...asked.runIds.map(lookUp), ...asked.batches.map(summarise)]);
+  return { runs: [...merged.values()], gone, goneBatches, summaries };
+}
+
+// The notifier plays its own chime (once per event, and not when a system notification already made a sound).
+toast.configure({ sound: false });
+
+/**
+ * Toasts for runs that finish, runs that wait for an approval, and Explore sessions that end, wherever the
+ * tester is in the UI; a system notification and a count in the tab title while the page is in the background.
+ */
+export function Notifications() {
+  const prefs = useNotifyPrefs();
+  return (
+    <>
+      {/* Watching starts once the daemon has said what config.yaml wants (one health check). */}
+      {prefs ? <Watch prefs={prefs} /> : null}
+      <Toaster position="top-center" labels={{ region: "Notifications" }} />
+    </>
+  );
+}
+
+function Watch({ prefs }: { prefs: NotifyPrefs }) {
+  const [path, navigate] = useLocation();
+  const live = useRef<Delivery>({ prefs, path, navigate });
+  live.current = { prefs, path, navigate };
+
+  const runTracker = useRef<RunTracker | null>(null);
+  runTracker.current ??= newRunTracker(readMark(RUNS_MARK));
+  const sessionTracker = useRef<SessionTracker | null>(null);
+  sessionTracker.current ??= newSessionTracker(readMark(EXPLORE_MARK));
+
+  const watchRuns = prefs.runs !== "off" || prefs.approvals;
+  const runs = useQuery({
+    queryKey: ["runs", { notify: true }],
+    queryFn: () => pollRuns(runTracker.current ?? newRunTracker()),
+    enabled: watchRuns,
+    refetchInterval: (query) => (query.state.data?.runs.some((run) => !FINAL_STATUSES.has(run.status)) ? ACTIVE_POLL_MS : IDLE_POLL_MS),
+    refetchIntervalInBackground: true,
+  });
+  // After the first poll, only this daemon's sessions: one an earlier daemon ran has ended and never changes. The first
+  // poll takes them all, so a session that ended on an earlier daemon after the page last looked (since) is still news.
+  const sessions = useQuery({
+    queryKey: ["explore", { notify: true }],
+    queryFn: () => api<{ sessions: SessionView[] }>(sessionTracker.current?.seeded ? "/api/explore?live=true" : "/api/explore", { guard: isSessionList }),
+    enabled: prefs.explore,
+    refetchInterval: (query) => (query.state.data?.sessions.some((item) => !FINISHED.has(item.status)) ? EXPLORE_ACTIVE_POLL_MS : EXPLORE_IDLE_POLL_MS),
+    refetchIntervalInBackground: true,
+  });
+
+  // Switched off and on again: start over, so what ended meanwhile is not announced late. Approval toasts close: with
+  // nothing watching the runs, none of them would close when its run moves on.
+  useEffect(() => {
+    if (watchRuns) return;
+    for (const key of runTracker.current?.approvals.values() ?? []) toast.dismiss(key);
+    runTracker.current = newRunTracker();
+  }, [watchRuns]);
+  const announce = (events: NotifyEvent[]) => {
+    for (const event of events) if (wanted(event, live.current.prefs)) deliver(event, live.current);
+  };
+  // Approvals switched off close their toasts; switched back on, the runs still waiting show again, without a sound.
+  const approvalsWere = useRef(prefs.approvals);
+  useEffect(() => {
+    const tracker = runTracker.current;
+    if (!prefs.approvals) {
+      for (const key of tracker?.approvals.values() ?? []) toast.dismiss(key);
+    } else if (!approvalsWere.current && tracker) {
+      tracker.approvals = new Map();
+      tracker.requiet = true;
+      // The next poll may bring the same data (no new render), so go over the latest one now; unless nothing watched runs
+      // meanwhile (the tracker started over), when that data is old and the next poll brings them anyway.
+      if (runs.data && watchRuns && tracker.seeded) announce(runEvents(tracker, runs.data));
+    }
+    approvalsWere.current = prefs.approvals;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only a change of the switch matters
+  }, [prefs.approvals]);
+  useEffect(() => {
+    if (!prefs.explore) sessionTracker.current = newSessionTracker();
+  }, [prefs.explore]);
+
+  useEffect(() => {
+    if (!runs.data || !watchRuns || !runTracker.current) return;
+    announce(runEvents(runTracker.current, runs.data));
+    writeMark(RUNS_MARK, runTracker.current.latest);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only new data is news
+  }, [runs.data]);
+  useEffect(() => {
+    if (!sessions.data || !prefs.explore || !sessionTracker.current) return;
+    announce(exploreEvents(sessionTracker.current, sessions.data.sessions));
+    writeMark(EXPLORE_MARK, sessionTracker.current.latest);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only new data is news
+  }, [sessions.data]);
+
+  useEffect(() => {
+    const back = () => {
+      if (!away()) clearTitleBadge();
+    };
+    window.addEventListener("focus", back);
+    document.addEventListener("visibilitychange", back);
+    return () => {
+      window.removeEventListener("focus", back);
+      document.removeEventListener("visibilitychange", back);
+    };
+  }, []);
+
+  return null;
+}

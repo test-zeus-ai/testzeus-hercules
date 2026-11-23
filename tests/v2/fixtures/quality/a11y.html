@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Accessibility fixture</title>
+<style>
+  body { margin: 0; padding: 24px; font: 16px/1.4 Arial, sans-serif; background: #ffffff; color: #111111; }
+  .btn-primary { color: #ffffff; background-color: #4a90e2; border: 0; padding: 10px 16px; font-size: 16px; font-weight: 400; }
+  .note { color: #999999; font-size: 16px; }
+  .ok { color: #222222; }
+  .icon-close { width: 32px; height: 32px; padding: 0; border: 1px solid #333333; background: #ffffff; }
+  .help { width: 16px; height: 16px; padding: 0; border: 0; font-size: 10px; background: #eeeeee; color: #000000; }
+  .card { margin-top: 16px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Newsletter</h1>
+  <p class="ok">Readable copy on a white page.</p>
+  <p class="note" id="fine-print">Unsubscribe at any time.</p>
+  <button class="btn-primary" id="subscribe">Subscribe</button>
+  <button class="icon-close" id="dismiss"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M1 1 13 13 M13 1 1 13" stroke="#333" stroke-width="2"/></svg></button>
+  <label for="email">Email</label>
+  <input id="email" type="email"><button class="help" id="help" aria-label="Help">?</button>
+  <div class="card"><img id="team" src="team-photo.svg" width="120" height="80"></div>
+  <img src="team-photo.svg" alt="" width="12" height="8">
+  <div id="host"></div>
+  <iframe id="inner" title="Inner form" srcdoc="<!doctype html><html lang=en><title>Inner form</title><body style='font:16px Arial'><button id=save style='color:#aaaaaa;background:#ffffff;border:1px solid #888'>Save</button></body></html>" width="300" height="80"></iframe>
+  <iframe id="outside" title="Outside widget" src="data:text/html,%3Cbutton%3E%3C/button%3E" width="300" height="60"></iframe>
+</main>
+<script>
+  const root = document.getElementById("host").attachShadow({ mode: "open" });
+  root.innerHTML = '<button class="shadow-menu" style="width:32px;height:32px"><span class="menu-icon"></span></button>';
+</script>
+</body>
+</html>

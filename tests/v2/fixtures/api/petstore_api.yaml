@@ -1,0 +1,88 @@
+openapi: 3.0.3
+info:
+  title: Local pet store
+  version: "1.0"
+servers:
+  - url: http://localhost/v1
+components:
+  securitySchemes:
+    api_key:
+      type: apiKey
+      in: header
+      name: X-API-Key
+  schemas:
+    Pet:
+      type: object
+      required: [id, name]
+      properties:
+        id: {type: integer, example: 1}
+        name: {type: string, example: Rex}
+        tag: {type: string, nullable: true}
+    NewPet:
+      type: object
+      required: [name]
+      properties:
+        name: {type: string, example: Bella}
+        tag: {type: string, enum: [dog, cat]}
+paths:
+  /pets:
+    get:
+      operationId: listPets
+      summary: List pets
+      tags: [pets]
+      parameters:
+        - {name: limit, in: query, required: true, schema: {type: integer, default: 10}}
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: "#/components/schemas/Pet"}}
+    post:
+      operationId: createPet
+      summary: Create a pet
+      tags: [pets]
+      security: [{api_key: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/NewPet"}
+      responses:
+        "201":
+          description: created
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Pet"}
+        "401": {description: missing or wrong API key}
+  /pets/{petId}:
+    get:
+      operationId: showPetById
+      summary: Info for a pet
+      tags: [pets]
+      parameters:
+        - {name: petId, in: path, required: true, schema: {type: integer}, example: 1}
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Pet"}
+        "404": {description: no such pet}
+  /broken-pet:
+    get:
+      operationId: brokenPet
+      summary: A pet that violates its own schema
+      tags: [defects]
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Pet"}
+  /health:
+    get:
+      operationId: health
+      tags: [ops]
+      responses:
+        "204": {description: up}

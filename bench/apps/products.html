@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Products - Demo Shop</title>
+  <link rel="stylesheet" href="app.css">
+  <script src="app.js"></script>
+</head>
+<body>
+  <header id="site-header"></header>
+  <main>
+    <h1>Products</h1>
+    <section class="filters" aria-label="Filters">
+      <div>
+        <label for="search">Search products</label>
+        <div class="search-row">
+          <input id="search" type="search" placeholder="Search by name">
+          <button type="button" class="icon-button" id="clear-search" aria-label="Clear search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+        </div>
+      </div>
+      <div>
+        <label for="category">Category</label>
+        <select id="category">
+          <option value="">All categories</option>
+          <option>Apparel</option>
+          <option>Footwear</option>
+          <option>Accessories</option>
+        </select>
+      </div>
+      <label class="inline"><input type="checkbox" id="in-stock"> In stock only</label>
+      <fieldset>
+        <legend>Sort by</legend>
+        <label class="inline"><input type="radio" name="sort" value="featured" checked> Featured</label>
+        <label class="inline"><input type="radio" name="sort" value="asc"> Price: low to high</label>
+        <label class="inline"><input type="radio" name="sort" value="desc"> Price: high to low</label>
+      </fieldset>
+    </section>
+    <p id="result-count" aria-live="polite"></p>
+    <div class="grid" id="results"></div>
+  </main>
+  <script>
+    const { PRODUCTS, money, escapeHtml } = DemoShop;
+    const search = document.getElementById("search");
+    const category = document.getElementById("category");
+    const inStock = document.getElementById("in-stock");
+
+    function sortOrder() {
+      return document.querySelector("input[name=sort]:checked").value;
+    }
+
+    function render() {
+      const term = search.value.trim().toLowerCase();
+      const order = sortOrder();
+      const items = PRODUCTS.filter((p) => !term || p.name.toLowerCase().includes(term))
+        .filter((p) => !category.value || p.category === category.value)
+        .filter((p) => !inStock.checked || p.inStock)
+        .slice()
+        .sort((a, b) => (order === "asc" ? a.price - b.price : order === "desc" ? b.price - a.price : a.rank - b.rank));
+      document.getElementById("result-count").textContent = "Showing " + items.length + (items.length === 1 ? " product" : " products");
+      document.getElementById("results").innerHTML = items.length
+        ? items.map((p) =>
+            '<article class="card product-card">' +
+            '<h3><a href="product.html?id=' + p.id + '">' + escapeHtml(p.name) + "</a></h3>" +
+            '<p class="price">' + money(p.price) + "</p>" +
+            "<p>" + escapeHtml(p.category) + "</p>" +
+            (p.inStock ? "" : '<p class="stock-out">Out of stock</p>') +
+            '<button type="button" class="icon-button wishlist" data-id="' + p.id + '" aria-label="Add ' + escapeHtml(p.name) + ' to wishlist">' +
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 21s-7-4.5-9.5-9A5 5 0 0 1 12 6a5 5 0 0 1 9.5 6c-2.5 4.5-9.5 9-9.5 9z"/></svg>' +
+            "</button></article>"
+          ).join("")
+        : "<p>No products match your filters.</p>";
+    }
+
+    document.getElementById("results").addEventListener("click", (event) => {
+      const button = event.target.closest(".wishlist");
+      if (!button) return;
+      const item = DemoShop.product(button.dataset.id);
+      const wishlist = DemoShop.read("wishlist", []);
+      if (!wishlist.includes(item.id)) DemoShop.write("wishlist", wishlist.concat([item.id]));
+      button.setAttribute("aria-pressed", "true");
+      DemoShop.toast(item.name + " added to your wishlist");
+    });
+    search.addEventListener("input", render);
+    search.addEventListener("keydown", (event) => { if (event.key === "Enter") render(); });
+    category.addEventListener("change", render);
+    inStock.addEventListener("change", render);
+    document.querySelectorAll("input[name=sort]").forEach((radio) => radio.addEventListener("change", render));
+    document.getElementById("clear-search").addEventListener("click", () => { search.value = ""; render(); });
+    render();
+  </script>
+</body>
+</html>

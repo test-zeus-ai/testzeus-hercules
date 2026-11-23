@@ -1,0 +1,33 @@
+{
+  "id": "checkout-full",
+  "title": "Signed-in shopper buys a product with express shipping",
+  "tags": ["form", "modal", "secret"],
+  "test_data": {
+    "email": "demo@example.com",
+    "password": {"secret": "DEMO_SHOP_PASSWORD"},
+    "full_name": "Sam Lee",
+    "phone": "555 0100 200",
+    "street": "1 Main Street"
+  },
+  "steps": [
+    {"action": "I open \"/login.html\""},
+    {"action": "I fill \"{{email}}\" in \"Email\""},
+    {"action": "I fill \"{{password}}\" in \"Password\""},
+    {"action": "I click the \"Sign in\" button", "expected": "I should see \"Signed in as {{email}}\""},
+    {"action": "I open \"/product.html?id=3\""},
+    {"action": "I click the \"Add to cart\" button", "expected": "I should see \"Cart (1)\""},
+    {"action": "I open \"/cart.html\""},
+    {"action": "I click the \"Proceed to checkout\" link", "expected": "the url should contain \"/checkout.html\""},
+    {"action": "I fill \"{{full_name}}\" in \"Full name\""},
+    {"action": "I fill \"{{email}}\" in \"Email\""},
+    {"action": "I fill \"{{phone}}\" in \"Phone\""},
+    {"action": "I fill \"{{street}}\" in \"Street address\""},
+    {"action": "I select \"Canada\" from the \"Country\" dropdown"},
+    {"action": "I click the \"Express shipping\" radio button"},
+    {"action": "I check \"I agree to the terms and conditions\"", "expected": "I should see \"Order total: $110.00\""},
+    {"action": "I click the \"Place order\" button", "expected": "I should see \"Confirm your order\""},
+    {"action": "I click the \"Confirm\" button", "expected": "I should see \"Thank you! Your order has been placed.\""},
+    {"action": "verify", "expected": "I should see \"Ship to: {{full_name}}, Canada\""},
+    {"action": "verify", "expected": "the url should contain \"/success.html\""}
+  ]
+}

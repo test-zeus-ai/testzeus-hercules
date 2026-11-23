@@ -1,0 +1,322 @@
+"""Check out on the phone
+
+Exported by Hercules from run r_20261026_120000_abcdef (case shop-checkout). It repeats what the run did on the
+device, finding each element with the locators that matched it during the run (the most robust first). Adapt it
+to this project's tests (fixtures, page objects, conftest.py) before keeping it, then run it with pytest and the
+Appium Python client (pip install pytest Appium-Python-Client), with the Appium server and the device running.
+Environment: APPIUM_URL (optional), APPIUM_DEVICE_NAME (optional), APPIUM_UDID (optional), APPIUM_PLATFORM_VERSION (optional), BASE_URL (optional), SHOP_PIN (required).
+"""
+
+from __future__ import annotations
+
+import contextlib
+import datetime
+import html
+import json
+import os
+import re
+import sqlite3
+import time
+from collections.abc import Callable, Iterator
+from pathlib import Path
+from typing import Any
+from urllib.parse import urlsplit, urlunsplit
+
+import pytest
+from appium import webdriver
+from appium.options.common.base import AppiumOptions
+from appium.webdriver.common.appiumby import AppiumBy
+from appium.webdriver.webdriver import WebDriver
+from playwright.sync_api import APIRequestContext, sync_playwright
+from selenium.common.exceptions import StaleElementReferenceException, WebDriverException
+from selenium.webdriver.common.actions import interaction
+from selenium.webdriver.common.actions.action_builder import ActionBuilder
+from selenium.webdriver.common.actions.pointer_input import PointerInput
+from selenium.webdriver.remote.webelement import WebElement
+from selenium.webdriver.support.ui import WebDriverWait
+
+APPIUM_URL = os.environ.get("APPIUM_URL", "http://127.0.0.1:4723")
+WAIT_S = 10  # how long to wait for an element or a text, in seconds
+CHANGE_S = 2  # how long an action may take to change the screen
+STILL_S = 3  # the longest to wait for the screen to stop changing
+POLL_S = 0.3
+BASE_URL = os.environ.get("BASE_URL", "http://shop.test")
+TIMESTAMP = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d%H%M%S")
+RUN_ID = "run-" + TIMESTAMP
+DATA = {
+    "product": "Blue mug",
+    "orders_db": "sqlite:///orders.db",
+}
+
+
+def capabilities() -> dict[str, Any]:
+    """The session the run started (Android app com.example.shop on emulator-5554, a local Appium server); the APPIUM_* variables override the device and app."""
+    caps: dict[str, Any] = {
+        "platformName": "Android",
+        "appium:automationName": "UiAutomator2",
+        "appium:appPackage": "com.example.shop",
+        "appium:appActivity": ".Main",
+        "appium:noReset": False,
+        "appium:newCommandTimeout": 300,
+        "appium:uiautomator2ServerLaunchTimeout": 90_000,
+    }
+    device = {
+        "appium:deviceName": os.environ.get("APPIUM_DEVICE_NAME", "emulator-5554"),
+        "appium:udid": os.environ.get("APPIUM_UDID", ""),
+        "appium:platformVersion": os.environ.get("APPIUM_PLATFORM_VERSION", ""),
+    }
+    caps.update({name: value for name, value in device.items() if value})
+    return caps
+
+
+@pytest.fixture
+def driver() -> Iterator[WebDriver]:
+    """An Appium session on the device, ended after the test."""
+    options = AppiumOptions()
+    options.load_capabilities(capabilities())
+    session = webdriver.Remote(APPIUM_URL, options=options)
+    try:
+        settle(session, "")  # wait for the app's first screen to be drawn and still
+        yield session
+    finally:
+        session.quit()
+
+
+@pytest.fixture
+def api() -> Iterator[APIRequestContext]:
+    """A request context of its own, as the run sent its API requests apart from the device (no browser needed)."""
+    with sync_playwright() as playwright:
+        context = playwright.request.new_context()
+        yield context
+        context.dispose()
+
+
+def find(driver: WebDriver, *locators: tuple[str, str]) -> WebElement:
+    """The element the first locator finds (tried in order, the most robust first), waiting up to WAIT_S seconds."""
+
+    def first(driver: WebDriver) -> WebElement | bool:
+        for using, value in locators:
+            found = driver.find_elements(using, value)
+            if found:
+                return found[0]
+        return False
+
+    return WebDriverWait(driver, WAIT_S).until(first, f"no element found by {locators}")
+
+
+def on_element(driver: WebDriver, locators: tuple[tuple[str, str], ...], act: Callable[[WebElement], object]) -> None:
+    """Find the element and act on it; found again when the screen redrew it in between (a stale element)."""
+    for attempt in range(3):
+        try:
+            act(find(driver, *locators))
+            return
+        except StaleElementReferenceException:
+            if attempt == 2:
+                raise
+
+
+def settle(driver: WebDriver, before: str) -> bool:
+    """Wait for the screen to change after an action (some change nothing), then to stop changing (up to STILL_S:
+    an animation never stops); True when it changed."""
+    source = driver.page_source
+    deadline = time.monotonic() + CHANGE_S
+    while source == before and time.monotonic() < deadline:
+        time.sleep(POLL_S)
+        source = driver.page_source
+    deadline = time.monotonic() + STILL_S
+    while time.monotonic() < deadline:
+        time.sleep(POLL_S)
+        again = driver.page_source
+        if again == source:
+            break
+        source = again
+    return source != before
+
+
+def gesture(driver: WebDriver, start: tuple[int, int], end: tuple[int, int] | None = None, hold_ms: int = 50) -> None:
+    """One finger: down at start, held for hold_ms, moved to end (when given), up (W3C actions)."""
+    finger = PointerInput(interaction.POINTER_TOUCH, "finger")
+    actions = ActionBuilder(driver, mouse=finger)
+    actions.pointer_action.move_to_location(*start).pointer_down().pause(hold_ms / 1000)
+    if end is not None:
+        actions.pointer_action.move_to_location(*end)
+    actions.pointer_action.release()
+    actions.perform()
+
+
+def tap(driver: WebDriver, *locators: tuple[str, str], at: tuple[int, int] | None = None) -> None:
+    """Tap the element; when that changed nothing and at is given, tap there too (where the run saw it drawn)."""
+    before = driver.page_source
+    on_element(driver, locators, lambda element: element.click())
+    if not settle(driver, before) and at is not None:
+        tap_at(driver, *at)
+
+
+def tap_at(driver: WebDriver, x: int, y: int) -> None:
+    before = driver.page_source
+    gesture(driver, (x, y))
+    settle(driver, before)
+
+
+def type_text(driver: WebDriver, text: str, *locators: tuple[str, str]) -> None:
+    """Replace the field's text (and hide the keyboard, which may cover what comes next)."""
+
+    def replace(field: WebElement) -> None:
+        field.clear()
+        field.send_keys(text)
+
+    on_element(driver, locators, replace)
+    with contextlib.suppress(WebDriverException):  # no keyboard to hide is fine
+        driver.hide_keyboard()
+
+
+def clear(driver: WebDriver, *locators: tuple[str, str]) -> None:
+    on_element(driver, locators, lambda field: field.clear())
+
+
+def swipe(driver: WebDriver, direction: str) -> None:
+    """Move a finger across the middle of the screen the named way (up, down, left or right)."""
+    size = driver.get_window_size()
+    cx, cy, dx, dy = size["width"] // 2, size["height"] // 2, int(size["width"] * 0.3), int(size["height"] * 0.25)
+    moves = {
+        "up": ((cx, cy + dy), (cx, cy - dy)),
+        "down": ((cx, cy - dy), (cx, cy + dy)),
+        "left": ((cx + dx, cy), (cx - dx, cy)),
+        "right": ((cx - dx, cy), (cx + dx, cy)),
+    }
+    if direction not in moves:
+        raise ValueError(f"direction must be up, down, left or right, not {direction!r}")
+    start, end = moves[direction]
+    before = driver.page_source
+    gesture(driver, start, end, hold_ms=100)
+    settle(driver, before)
+
+
+def scroll(driver: WebDriver, direction: str) -> None:
+    """Bring what is further in direction into view (down shows what is below: the finger moves up)."""
+    swipe(driver, {"down": "up", "up": "down", "left": "right", "right": "left"}.get(direction, direction))
+
+
+def back(driver: WebDriver) -> None:
+    before = driver.page_source
+    driver.back()
+    settle(driver, before)
+
+
+def home(driver: WebDriver) -> None:
+    driver.press_keycode(3)  # HOME
+
+
+def shows(driver: WebDriver, text: str) -> bool:
+    """True when an element on the screen shows text (in its text, description, label or name; case and spacing
+    ignored), as the run checked it."""
+    wanted = " ".join(text.split()).casefold()
+    names = re.findall(r'\b(?:text|content-desc|hint|label|name|value)="([^"]*)"', driver.page_source)
+    return any(wanted in " ".join(html.unescape(name).split()).casefold() for name in names)
+
+
+def api_url(path: str) -> str:
+    """An API address: relative paths go under BASE_URL's folder (a page at its end, such as /index.html, is left out), as the run did."""
+    base = urlsplit(BASE_URL)
+    page = base.path.rsplit("/", 1)[-1].lower().endswith((".html", ".htm", ".php", ".asp", ".aspx", ".jsp"))
+    folder = base.path[: base.path.rfind("/") + 1] if page else base.path
+    return urlunsplit((base.scheme, base.netloc, folder.rstrip("/"), "", "")) + "/" + path.lstrip("/")
+
+
+def text(value: Any) -> str:
+    return value if isinstance(value, str) else json.dumps(value, separators=(",", ":"))
+
+
+MISSING: Any = object()
+
+
+def at(document: Any, path: list[str | int]) -> Any:
+    """The value at a JSON path given as keys (MISSING when there is none)."""
+    node = document
+    for key in path:
+        if isinstance(node, dict) and isinstance(key, str) and key in node:
+            node = node[key]
+        elif isinstance(node, list) and isinstance(key, int) and -len(node) <= key < len(node):
+            node = node[key]
+        else:
+            return MISSING
+    return node
+
+
+def same(actual: Any, expected: Any) -> bool:
+    """Equal values; a number and its text are equal too (as in the run's checks), a boolean and a number never."""
+    if actual is MISSING:
+        return False
+    if isinstance(actual, bool) != isinstance(expected, bool):
+        return text(actual) == text(expected)
+    return bool(actual == expected) or text(actual) == text(expected)
+
+
+def sqlite_rows(address: str, query: str, params: dict[str, Any]) -> list[dict[str, Any]]:
+    """Rows of one read-only query on the SQLite database an SQLAlchemy URL names (sqlite:///app.db).
+
+    A relative path is taken from the current directory (the run took it from the project folder).
+    """
+    path = address.split(":///", 1)[1] if ":///" in address else address
+    connection = sqlite3.connect(Path(path.split("?", 1)[0]).resolve().as_uri() + "?mode=ro", uri=True)
+    try:
+        connection.row_factory = sqlite3.Row
+        return [dict(row) for row in connection.execute(query, params)]
+    finally:
+        connection.close()
+
+
+def test_shop_checkout(driver: WebDriver, api: APIRequestContext) -> None:
+    """Check out on the phone"""
+
+    # Step 1: Open the network settings
+    # button "Network & internet · Wi-Fi" is found by the text drawn inside it (a tap on the text reaches it)
+    tap(driver, (AppiumBy.ANDROID_UIAUTOMATOR, 'new UiSelector().text("Network & internet")'), (AppiumBy.XPATH, "//*[@text='Network & internet']"))
+    WebDriverWait(driver, WAIT_S).until(lambda driver: shows(driver, "Internet"), "expected on the screen: Internet")
+
+    # Step 2: Search for {{product}}
+    # the run saw no change after this tap and also tapped where the element was drawn on a 1080x2400 screen; the test does too, only when the tap changes nothing
+    tap(driver, (AppiumBy.ACCESSIBILITY_ID, "Search"), (AppiumBy.ID, "com.example.shop:id/search"), at=(540, 200))
+    type_text(driver, DATA["product"], (AppiumBy.ID, "com.example.shop:id/query"), (AppiumBy.XPATH, "//*[@hint='Search products']"))
+    clear(driver, (AppiumBy.ID, "com.example.shop:id/query"), (AppiumBy.XPATH, "//*[@hint='Search products']"))
+    type_text(driver, DATA["product"] + " " + RUN_ID, (AppiumBy.ID, "com.example.shop:id/query"), (AppiumBy.XPATH, "//*[@hint='Search products']"))
+    WebDriverWait(driver, WAIT_S).until(lambda driver: shows(driver, DATA["product"]), "expected on the screen: {{product}}")
+    WebDriverWait(driver, WAIT_S).until(lambda driver: not shows(driver, "No results"), "expected not on the screen: No results")
+
+    # Step 3: Scroll to the second item and add it
+    scroll(driver, "down")
+    # no locator matched only button "Add to cart" during the run: it is found by its position among the matches
+    tap(driver, (AppiumBy.XPATH, "(//*[@resource-id='com.example.shop:id/add'])[2]"), (AppiumBy.XPATH, "(//*[@text='Add to cart'])[2]"))
+
+    # Step 4: Turn on gift wrap and enter the PIN
+    # TODO: no locator found switch "Gift wrap" again; it is pressed where it was drawn on a 1080x2400 screen: replace the position with a locator (an accessibility id)
+    gesture(driver, (960, 1240), hold_ms=1000)
+    type_text(driver, os.environ["SHOP_PIN"], (AppiumBy.ID, "com.example.shop:id/pin"))
+    swipe(driver, "left")
+    time.sleep(2)  # the run waited for the screen to finish loading
+    # Judged by its meaning by a model during the run: "the cart shows one gift-wrapped item"
+    # The run's verdict: judged on the screen (p=0.93)
+    # TODO: assert in code: the cart shows one gift-wrapped item
+
+    # Step 5: Leave the app
+    # not repeated: tap [9] button "Close" (failed: no such element)
+    back(driver)
+    home(driver)
+
+    # Step 6: The order is in the API
+    response = api.fetch(api_url("/api/orders/latest"), method="GET", max_redirects=0)
+    assert response.status == 200, "HTTP status 200"
+    body = response.json()
+    assert same(at(body, ["status"]), "paid"), '$.status eq "paid"'
+
+    # Step 7: The order row exists
+    rows = sqlite_rows(DATA["orders_db"], "SELECT id FROM orders", {})
+    assert len(rows) >= 1, "row count >= 1"
+
+    # Step 8: Scan the API
+    # The run scanned the app for security issues: {"tags": ["cve"], "fail_on": "high"}
+    # To keep it in a pipeline: hercules scan --base-url <url> --tags cve --fail-on high (or run nuclei with -tags cve)
+    # TODO: a security scan is not test code; run it with `hercules scan` or the nuclei scanner in your pipeline
+
+    # Step 9: verify
+    WebDriverWait(driver, WAIT_S).until(lambda driver: shows(driver, "Thanks, " + os.environ["SHOP_PIN"]), "expected on the screen: Thanks, {{pin}}")

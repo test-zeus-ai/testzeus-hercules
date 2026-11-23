@@ -1,1 +1,0 @@
-base_image = /Users/robingupta/git/testhercules/opt/test_data/web.png

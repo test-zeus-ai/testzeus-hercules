@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Shadow id lookups blocked</title>
+<script>
+  // Some apps lock down built-in browser functions; here, id lookups on shadow roots throw.
+  ShadowRoot.prototype.getElementById = function () { throw new Error("getElementById is not allowed on shadow roots"); };
+</script>
+</head>
+<body>
+<h1>New record</h1>
+<x-form></x-form>
+<script>
+  customElements.define("x-form", class extends HTMLElement {
+    constructor() {
+      super();
+      this.attachShadow({ mode: "open" }).innerHTML =
+        '<span id="name-label">Record Name</span><input id="name" aria-labelledby="name-label">' +
+        '<span id="team-label">Team</span><input id="team" aria-labelledby="team-label" aria-invalid="true" aria-describedby="team-error">' +
+        '<span id="team-error">Team is required</span>' +
+        '<button>Save</button>';
+    }
+  });
+</script>
+</body>
+</html>

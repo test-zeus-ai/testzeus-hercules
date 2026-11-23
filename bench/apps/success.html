@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Order placed - Demo Shop</title>
+  <link rel="stylesheet" href="app.css">
+  <script src="app.js"></script>
+</head>
+<body>
+  <header id="site-header"></header>
+  <main>
+    <div class="card" id="result"></div>
+  </main>
+  <script>
+    const number = Number(DemoShop.param("order"));
+    const order = DemoShop.read("orders", []).find((item) => item.number === number);
+    const result = document.getElementById("result");
+    if (!order) {
+      result.innerHTML = "<h1>Order not found</h1><p>We could not find that order.</p>";
+    } else {
+      result.innerHTML =
+        "<h1>Thank you! Your order has been placed.</h1>" +
+        "<p>Order number: " + order.number + "</p>" +
+        "<p>Order total: " + DemoShop.money(order.total) + "</p>" +
+        "<p>Ship to: " + DemoShop.escapeHtml(order.customer) + ", " + DemoShop.escapeHtml(order.country) + "</p>" +
+        "<p>Shipping: " + (order.shipping === "express" ? "Express" : "Standard") + "</p>" +
+        (order.deliveryDate ? "<p>Delivery date: " + order.deliveryDate + "</p>" : "") +
+        "<p>Payment: " + order.payment + "</p>" +
+        '<p>A confirmation email is on its way to ' + DemoShop.escapeHtml(order.email) + '.</p>' +
+        '<p><a href="orders.html">View your orders</a></p>';
+    }
+  </script>
+</body>
+</html>

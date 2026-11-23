@@ -1,3 +1,0 @@
-User details to use
-username: "snyder"
-password: "f238&@*$"

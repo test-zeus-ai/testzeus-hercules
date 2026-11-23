@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sign in</title>
+<style>
+  body { font-family: sans-serif; margin: 0; background: #f4f5f7; }
+  main { width: 360px; margin: 80px auto; padding: 24px; background: #fff; border-radius: 8px; }
+  label { display: block; margin-top: 12px; }
+  input[type=text], input[type=password] { display: block; width: 100%; padding: 8px; box-sizing: border-box; }
+  button { margin-top: 16px; padding: 8px 16px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Sign in</h1>
+  <form id="login" onsubmit="return false">
+    <label for="username">Username</label>
+    <input id="username" name="username" type="text" placeholder="you@example.com" required>
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password">
+    <label><input type="checkbox" name="remember"> Remember me</label>
+    <button type="submit">Sign in</button>
+  </form>
+  <p><a href="/forgot-password?from=login">Forgot password?</a></p>
+</main>
+</body>
+</html>

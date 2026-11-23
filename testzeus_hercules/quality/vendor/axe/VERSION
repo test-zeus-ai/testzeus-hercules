@@ -1,0 +1,6 @@
+version: 4.10.3
+package: axe-core@4.10.3 (npm registry tarball, files copied unmodified)
+files: axe.min.js, LICENSE, LICENSE-3RD-PARTY.txt
+sha256(axe.min.js): 880970c081707360e64f34cea25ff91892f5bc95675b0776925b9709dd8a68bb
+license: MPL-2.0 (see LICENSE); notices for code bundled inside axe.min.js are in LICENSE-3RD-PARTY.txt
+source code: https://github.com/dequelabs/axe-core/tree/v4.10.3

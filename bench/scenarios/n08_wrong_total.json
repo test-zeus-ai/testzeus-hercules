@@ -1,0 +1,13 @@
+{
+  "id": "wrong-total",
+  "title": "Cart total does not match a wrong expectation",
+  "tags": ["negative", "table"],
+  "test_data": {"expected_total": "Total: $60.00"},
+  "steps": [
+    {"action": "I open \"/product.html?id=1\""},
+    {"action": "I click the \"Add to cart\" button"},
+    {"action": "I open \"/product.html?id=5\""},
+    {"action": "I click the \"Add to cart\" button"},
+    {"action": "I open \"/cart.html\"", "expected": "I should see \"{{expected_total}}\""}
+  ]
+}

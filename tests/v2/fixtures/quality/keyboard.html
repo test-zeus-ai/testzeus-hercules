@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Keyboard fixture</title>
+<style>
+  body { margin: 0; padding: 24px; font: 16px/1.4 Arial, sans-serif; background: #ffffff; color: #111111; }
+  button, input { margin: 4px; font-size: 16px; }
+  .plain { outline: none; border: 1px solid #555555; background: #ffffff; color: #111111; padding: 6px 12px; }
+  .plain:focus { outline: none; }
+  .div-button { display: inline-block; cursor: pointer; padding: 6px 12px; background: #1f5fa8; color: #ffffff; }
+</style>
+</head>
+<body>
+  <button id="first">First</button>
+  <button id="quiet" class="plain">Quiet focus</button>
+  <div id="save" class="div-button" onclick="this.textContent = 'Saved'">Save draft</div>
+  <input id="search" type="text" aria-label="Search">
+  <input id="trap" type="text" aria-label="Code">
+  <button id="last">Last</button>
+<script>
+  // A keyboard trap: Tab never leaves the code field.
+  document.getElementById("trap").addEventListener("keydown", (event) => {
+    if (event.key === "Tab") event.preventDefault();
+  });
+</script>
+</body>
+</html>

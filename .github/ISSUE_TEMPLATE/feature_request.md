@@ -1,20 +1,20 @@
 ---
 name: Feature request
-about: Suggest an idea for this project
+about: Suggest something Hercules should do
 title: ''
-labels: enhancement, question
+labels: enhancement
 assignees: ''
 
 ---
 
-**Is your feature request related to a problem? Please describe.**
-A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]
+**The problem**
+What you are trying to test or do, and what gets in the way today.
 
-**Describe the solution you'd like**
-A clear and concise description of what you want to happen.
+**What you would like**
+How you would like Hercules to handle it: a command, a case field, a UI change, an MCP tool.
 
-**Describe alternatives you've considered**
-A clear and concise description of any alternative solutions or features you've considered.
+**Alternatives you considered**
+Other ways you tried or thought about.
 
-**Additional context**
-Add any other context or screenshots about the feature request here.
+**Anything else**
+Examples, screenshots or links.
