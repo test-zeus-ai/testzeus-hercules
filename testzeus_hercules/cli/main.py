@@ -224,7 +224,10 @@ def _add_setup_command(commands: argparse._SubParsersAction[argparse.ArgumentPar
     setup.add_argument("--base-url", default=None, metavar="URL", help="model endpoint base URL (default: the provider's; required for openai-compatible)")
     setup.add_argument("--model", default=None, help="model id or alias (default: auto, from the hardware tier; a hosted endpoint's own model id)")
     setup.add_argument(
-        "--api-key-env", default=None, metavar="NAME", help="the variable holding a hosted endpoint's key (default: the provider's, or HERCULES_LLM_API_KEY); the key goes to ~/.hercules/llm.env"
+        "--api-key-env",
+        default=None,
+        metavar="NAME",
+        help="the variable holding a hosted endpoint's key (default: the provider's, or HERCULES_LLM_API_KEY); only the name is saved, so set it wherever Hercules runs, or save the key with --llm-key-stdin",
     )
     setup.add_argument("--llm-key-stdin", action="store_true", help="read the hosted model endpoint's key from the first line of standard input and save it (never echoed)")
     setup.add_argument("--egress", choices=("hybrid", "hybrid-text", "local"), default=None, help="egress policy (default: hybrid when a key is configured)")
