@@ -40,18 +40,18 @@ classifiers = [
 ]
 dependencies = [
     "pillow>=13.0.0,<14",
-    "playwright>=1.64.1,<1.66",
-    "pydantic>=2.6.2,<3",
+    "playwright>=1.65.2,<1.66",
+    "pydantic>=2.14.4,<3",
     "pyyaml>=6.0.1,<7",
-    "sqlalchemy>=2.0.36,<3",
+    "sqlalchemy>=2.1.9,<3",
     "jsonschema>=4.18,<5",
-    "langgraph>=1.2.14,<2",
-    "langchain-core>=1.2.22,<2",
+    "langgraph>=1.2.24,<2",
+    "langchain-core>=1.8.4,<2",
     "mcp>=1.30.0,<2",
     "httpx>=0.28.1,<0.29",
-    "starlette>=1.3.1,<2",
-    "uvicorn>=0.30.0,<1",
-    "pypdf>=6.21.4,<7",
+    "starlette>=1.10.0,<2",
+    "uvicorn>=0.54.0,<1",
+    "pypdf>=7.1.1,<8",
     "openpyxl>=3.1.5,<4",
 ]
 
@@ -69,24 +69,24 @@ testzeus-hercules = "testzeus_hercules.cli.quickstart:main"
 
 [dependency-groups]
 dev = [
-    "pytest>=8.3.3,<10",
-    "coverage>=7.6.4,<8",
+    "pytest>=9.2.0,<10",
+    "coverage>=7.17.3,<8",
     "black>=26.3.1,<27",
     "isort>=5.13.2,<6",
     "pytest-cov>=6.0.0,<8",
-    "mypy>=1.13.0,<2",
+    "mypy>=2.4.1,<3",
     "gitchangelog>=3.0.4,<4",
     "mkdocs>=1.6.1,<2",
     "ipdb>=0.13.13,<0.14",
     "twine>=5.1.1,<6",
-    "deptry>=0.21.0,<0.22",
-    "pytest-rerunfailures>=15.0,<16",
+    "deptry>=0.25.1,<0.26",
+    "pytest-rerunfailures>=16.7,<17",
 ]
 
 [project.optional-dependencies]
-api = ["jsonpath-ng>=1.6,<1.8", "openapi-schema-validator>=0.6,<1"]
+api = ["jsonpath-ng>=1.16.0,<1.17", "openapi-schema-validator>=0.6,<1"]
 # Run exported tests on BrowserStack, Sauce Labs or TestMu AI from Hercules (hercules cloud run, the UI's Run on cloud).
-cloud = ["pytest>=8.3.3,<10", "pytest-playwright>=0.5,<0.8", "Appium-Python-Client>=4,<6"]
+cloud = ["pytest>=9.2.0,<10", "pytest-playwright>=0.10.0,<0.11", "Appium-Python-Client>=4,<7"]
 
 [tool.setuptools.packages.find]
 include = ["testzeus_hercules*"]
@@ -103,7 +103,7 @@ testzeus_hercules = ["py.typed"]
 "testzeus_hercules.seeds" = ["cases/*/*.feature", "envs/*.json"]
 
 [build-system]
-requires = ["setuptools>=84.1.0"]
+requires = ["setuptools>=84.2.1"]
 build-backend = "setuptools.build_meta"
 
 [tool.pytest.ini_options]

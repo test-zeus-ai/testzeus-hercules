@@ -64,9 +64,10 @@ ENV PATH=/opt/hercules/bin:$PATH \
     HERCULES_TELEMETRY=0 \
     HERCULES_DAEMON_ALLOWED_HOSTS=localhost
 
-# tini reaps the browser's child processes and forwards stop signals.
+# tini reaps the browser's child processes and forwards stop signals. libatomic1: the Node that Playwright
+# (1.65 and later) bundles to drive the browser needs it, and the slim image does not have it.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends tini ca-certificates \
+    && apt-get install -y --no-install-recommends tini ca-certificates libatomic1 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /opt/hercules /opt/hercules

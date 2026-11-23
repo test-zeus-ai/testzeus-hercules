@@ -32,7 +32,7 @@ function OptionRow({ option, chosen, questionId }: { option: OptionView; chosen:
       <span className="option-label">
         <code className="option-id">{option.id}</code>
         {option.label ? <span className="option-text">{option.label}</span> : null}
-        {chosen ? <span className="visually-hidden"> (chosen)</span> : null}
+        {chosen ? <>{" "}<span className="visually-hidden">(chosen)</span></> : null}
       </span>
       <span
         className="meter"

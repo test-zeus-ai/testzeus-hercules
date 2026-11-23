@@ -456,7 +456,8 @@ export function CaseTree({ cases, folders, selected, collapsed, onCollapse, onOp
               {count ? (
                 <>
                   {count}
-                  <span className="visually-hidden"> {count === 1 ? "case" : "cases"}</span>
+                  {" "}
+                  <span className="visually-hidden">{count === 1 ? "case" : "cases"}</span>
                 </>
               ) : null}
             </span>

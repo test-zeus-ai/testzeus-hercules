@@ -126,7 +126,8 @@ export function SettingsScreen() {
               <li key={doc.page}>
                 <a href={docsUrl(doc.page)} target="_blank" rel="noopener noreferrer">
                   {doc.title}
-                  <span className="visually-hidden"> (new tab)</span>
+                  {" "}
+                  <span className="visually-hidden">(new tab)</span>
                 </a>
                 <span className="small muted">{doc.about}</span>
               </li>
