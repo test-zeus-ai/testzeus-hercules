@@ -272,7 +272,9 @@ def test_human_wait_time_is_measured() -> None:
         await task
 
     asyncio.run(main())
-    assert control.human_wait_s >= 0.2
+    # About the 0.2 s the run stayed paused. Not exactly: asyncio may wake a sleep up to a clock tick early, and the
+    # pause starts counting only once the task first runs (CI once measured 0.1996 s).
+    assert control.human_wait_s >= 0.18
 
 
 # --------------------------------------------------------------------------- approvals
