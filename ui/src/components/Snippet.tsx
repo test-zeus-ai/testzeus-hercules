@@ -50,7 +50,9 @@ export function Snippet({ text, label }: { text: string; label: string }) {
       <button type="button" className={`button button-small snippet-copy${state === "copied" ? " snippet-copied" : ""}`} onClick={() => void copy()}>
         <Icon name={state === "copied" ? "check" : "copy"} size={13} />
         {state === "copied" ? "Copied" : state === "failed" ? "Selected: press Ctrl+C" : "Copy"}
-        <span className="visually-hidden"> {label}</span>
+        {/* The space stays outside the hidden span: accessible-name code may trim an element's own leading space. */}
+        {" "}
+        <span className="visually-hidden">{label}</span>
       </button>
       <span className="visually-hidden" role="status">
         {state === "copied" ? `${label} copied to the clipboard` : state === "failed" ? "The clipboard is unavailable; the snippet is selected, copy it with Ctrl+C or Cmd+C" : ""}

@@ -92,7 +92,7 @@ See [Migrating from v1](docs/guide/migrating-from-v1.md).
   `DO_NOT_TRACK=1` or `hercules setup --telemetry off`.
 - **Install in one line**: `uvx testzeus-hercules` installs the `hercules` command, the
   browsers you choose and runs setup; a prompt in the docs lets a coding agent do the same.
-  Python 3.11 to 3.15.
+  Python 3.13 to 3.15.
 - **Browsers**: Chromium, Chrome, Edge, Firefox and WebKit, with Playwright's launch and
   context options (locale, time zone, signed-in state, headers, proxy, ...) in environments,
   exported code and cloud runs. Mobile web on Playwright device profiles; native Android and

@@ -25,7 +25,7 @@ ask you the questions. The rest of this page does the same steps by hand.
 
 - macOS or Linux. To run the model on your machine, at least 16 GB of memory (see
   [Hardware tiers](#hardware-tiers)).
-- Python 3.12. The package accepts Python 3.11 to 3.15; 3.12 is the version we test and recommend.
+- Python 3.13 or newer. The package accepts Python 3.13 to 3.15; 3.13 is the version we recommend.
 - A model endpoint that speaks the OpenAI chat-completions API: a local server such as
   Ollama, mlx-vlm, mlx-lm, LM Studio, llama.cpp or vLLM, or a hosted API or LiteLLM proxy
   (see [Use any OpenAI-compatible endpoint](#use-any-openai-compatible-endpoint)).
@@ -41,7 +41,7 @@ the release, install from a clone of the repository:
 ```bash
 git clone https://github.com/test-zeus-ai/testzeus-hercules.git
 cd testzeus-hercules
-uv sync --python 3.12
+uv sync --python 3.13
 uv run python -m playwright install chromium
 source .venv/bin/activate
 ```
@@ -52,13 +52,13 @@ in your app's project. Without uv:
 ```bash
 git clone https://github.com/test-zeus-ai/testzeus-hercules.git
 cd testzeus-hercules
-python3.12 -m venv .venv
+python3.13 -m venv .venv
 source .venv/bin/activate
 pip install -e .
 python -m playwright install chromium
 ```
 
-Once v2 is on PyPI, `uv pip install testzeus-hercules` (or `pip install`) in a Python 3.12
+Once v2 is on PyPI, `uv pip install testzeus-hercules` (or `pip install`) in a Python 3.13
 virtual environment, followed by `python -m playwright install chromium`, does the same.
 
 Check the install:

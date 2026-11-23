@@ -153,7 +153,7 @@ def test_exports_compile_and_are_black_formatted(tmp_path: Path, make: Any) -> N
     path = tmp_path / "test_shop_checkout.py"
     path.write_text(code_of(make()), encoding="utf-8")
     py_compile.compile(str(path), doraise=True)
-    black = subprocess.run([sys.executable, "-m", "black", "--target-version", "py311", "-l", "200", "--check", "--diff", "--quiet", str(path)], capture_output=True, text=True)
+    black = subprocess.run([sys.executable, "-m", "black", "--target-version", "py313", "-l", "200", "--check", "--diff", "--quiet", str(path)], capture_output=True, text=True)
     if black.returncode == 1 and "No module named black" in black.stderr:
         pytest.skip("black is not installed")
     assert black.returncode == 0, black.stdout + black.stderr

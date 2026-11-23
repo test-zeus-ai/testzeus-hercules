@@ -34,7 +34,7 @@ jobs:
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: ${{ env.UV_VERSION }}
-          python-version: "3.12"
+          python-version: "3.13"
       - name: Every locked package, with hashes
         run: uv export --locked --all-extras --all-groups --no-emit-project -o requirements.txt
       - name: pip-audit

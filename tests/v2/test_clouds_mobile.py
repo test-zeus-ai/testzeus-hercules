@@ -232,7 +232,7 @@ def _run_on(app: dict[str, Any], server: dict[str, Any]) -> Any:
 def _black(code: str, tmp_path: Path) -> None:
     path = tmp_path / "test_export.py"
     path.write_text(code, encoding="utf-8")
-    black = subprocess.run([sys.executable, "-m", "black", "--target-version", "py311", "-l", "200", "--check", "--diff", "--quiet", str(path)], capture_output=True, text=True)
+    black = subprocess.run([sys.executable, "-m", "black", "--target-version", "py313", "-l", "200", "--check", "--diff", "--quiet", str(path)], capture_output=True, text=True)
     if black.returncode == 1 and "No module named black" in black.stderr:
         return
     assert black.returncode == 0, black.stdout + black.stderr

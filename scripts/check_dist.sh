@@ -3,11 +3,11 @@
 #   1. twine's strict metadata check (the README renders on PyPI, every required field is there);
 #   2. the wheel carries what a run needs: the tester UI, the case schemas, the bundled axe-core;
 #   3. the wheel installs into a fresh virtual environment and both commands start.
-# Usage: scripts/check_dist.sh [DIST_DIR] (default dist). PYTHON picks the interpreter for step 3 (default 3.12).
+# Usage: scripts/check_dist.sh [DIST_DIR] (default dist). PYTHON picks the interpreter for step 3 (default 3.13).
 set -euo pipefail
 
 dist="${1:-dist}"
-python="${PYTHON:-3.12}"
+python="${PYTHON:-3.13}"
 shopt -s nullglob
 wheels=("$dist"/*.whl)
 sdists=("$dist"/*.tar.gz)

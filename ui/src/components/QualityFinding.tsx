@@ -56,7 +56,8 @@ function FixCard({ fix, findingSelector, rule }: { fix: FixSuggestion; findingSe
           <>
             <code className="fix-current">{fix.current}</code>
             <span aria-hidden="true"> → </span>
-            <span className="visually-hidden"> to </span>
+            {" "}
+            <span className="visually-hidden">to</span>{" "}
           </>
         ) : null}
         <code className="fix-suggested">{fix.suggested}</code>

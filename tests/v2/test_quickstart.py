@@ -65,7 +65,7 @@ def test_a_fresh_machine_gets_the_command_chromium_and_setup(tmp_path: Path) -> 
     machine = Machine(tmp_path)
     code, out, setup_calls = _start(machine)
     assert code == 0, out
-    assert ["/usr/bin/uv", "tool", "install", "--python", "3.12", "testzeus-hercules==2.0.0"] in machine.ran
+    assert ["/usr/bin/uv", "tool", "install", "--python", "3.13", "testzeus-hercules==2.0.0"] in machine.ran
     assert ["/usr/bin/uv", "tool", "update-shell"] in machine.ran, "the tool folder was not on PATH"
     assert ["/py", "-m", "playwright", "install", "chromium"] in machine.ran
     assert setup_calls == [[]]
