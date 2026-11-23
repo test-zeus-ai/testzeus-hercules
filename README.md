@@ -10,6 +10,7 @@
 [![Python versions](https://img.shields.io/pypi/pyversions/testzeus-hercules.svg)](https://pypi.org/project/testzeus-hercules/)
 [![PyPI Total Downloads](https://static.pepy.tech/badge/testzeus-hercules)](https://pepy.tech/projects/testzeus-hercules)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
+[![YouTube playlist](https://img.shields.io/badge/YouTube-learning%20playlist-red?logo=youtube)](https://www.youtube.com/playlist?list=PLLWMTprCe0jo)
 
 Hercules is an open-source QA engine by [TestZeus](https://testzeus.com). You write test steps in plain
 language; Hercules runs them in a real Chromium browser on your machine and tells you
@@ -273,6 +274,7 @@ converts v1 projects and drafts cases from requirement documents.
 
 Sixteen short videos, one per feature, with a spoken walkthrough and subtitles, recorded against the demo shop in `bench/explore`. Click a
 picture to play the video; [Feature videos](docs/guide/videos.md) plays them in the page, with the steps to do the same on your machine.
+To watch them all in a row, open the [Hercules learning playlist on YouTube](https://www.youtube.com/playlist?list=PLLWMTprCe0jo).
 
 <table>
 <tr>
@@ -361,7 +363,8 @@ picture to play the video; [Feature videos](docs/guide/videos.md) plays them in 
 
 Five short videos, with a spoken walkthrough and subtitles, recorded against the demo shop in `bench/explore` with its seeded bugs
 switched on. Click a picture to play the video. The steps under each one do the same on your
-machine; [Exploratory testing](docs/guide/explore.md#walkthrough-videos) has them in full.
+machine; [Exploratory testing](docs/guide/explore.md#walkthrough-videos) has them in full. They are in the
+[Hercules learning playlist on YouTube](https://www.youtube.com/playlist?list=PLLWMTprCe0jo) too.
 
 <table>
 <tr>
@@ -498,6 +501,7 @@ Access keys are never shown, logged or written into exported files. See
 - [User guide](docs/guide/index.md)
   - [Quick start: the tester UI](docs/guide/tester-ui-quick-start.md)
   - [Feature videos](docs/guide/videos.md)
+  - [Hercules learning playlist on YouTube](https://www.youtube.com/playlist?list=PLLWMTprCe0jo): every feature and exploratory testing video
   - [Getting started](docs/guide/getting-started.md)
   - [Writing tests](docs/guide/writing-tests.md)
   - [Exploratory testing](docs/guide/explore.md)
