@@ -154,6 +154,8 @@ pip install pytest-playwright
 BASE_URL=http://127.0.0.1:3000 APP_PASSWORD=... pytest tests/test_checkout.py
 ```
 
+(This runs the exported file in your own project's Python, so install pytest-playwright there.)
+
 API steps use their own request context (the `request` fixture in TypeScript; an `api`
 fixture defined in the Python file), as Hercules sends API requests apart from the browser.
 Requests do not follow redirects, as in the run.
@@ -171,6 +173,11 @@ run took out of a URL in the case (a session id in a sign-in link) is read from
 pip install pytest-playwright
 hercules export RUN --check
 ```
+
+The check runs in the Python that runs Hercules, so pytest-playwright has to be installed
+there. If you installed Hercules with the one-line installer or `uv tool install`, a plain
+`pip install` does not reach it; use `uv tool install --force 'testzeus-hercules[cloud]'`
+(see [Optional extras](getting-started.md#optional-extras)).
 
 It writes the test to `<run>/export-check/`, runs it with pytest in a child process with a
 Playwright trace, and prints whether it passed and how long it took (exit code 0 when it

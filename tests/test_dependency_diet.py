@@ -29,6 +29,13 @@ def test_core_dependencies_exclude_heavy_and_hosted_only_packages() -> None:
     assert core.isdisjoint(FORBIDDEN_CORE), sorted(core & FORBIDDEN_CORE)
 
 
+def test_api_and_sql_checks_work_in_the_default_install() -> None:
+    # Header, json_path and save checks all go through JSONPath: without it a documented feature fails out of the box.
+    core = {_name(requirement) for requirement in PYPROJECT["project"]["dependencies"]}
+
+    assert "jsonpath-ng" in core
+
+
 def test_the_security_scanner_is_an_external_tool_not_a_dependency() -> None:
     every = {_name(requirement) for requirement in PYPROJECT["project"]["dependencies"]}
     every |= {_name(requirement) for extra in PYPROJECT["project"].get("optional-dependencies", {}).values() for requirement in extra}

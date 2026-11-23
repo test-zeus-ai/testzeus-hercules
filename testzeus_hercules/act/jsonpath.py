@@ -1,15 +1,15 @@
 """JSONPath for API and SQL assertions: one parser for matching, no-match hints and path shape.
 
-``jsonpath_ng`` ships in the ``api`` extra and is imported on first use; a missing
-package raises :class:`ImportError` with the install hint, which callers turn into
-an ``error`` verdict.
+``jsonpath_ng`` is a core dependency, imported on first use; a missing package (a broken
+install) raises :class:`ImportError` with the install hint, which callers turn into an
+``error`` verdict.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-INSTALL_HINT = "jsonpath_ng is not installed; install the API extras: pip install 'testzeus-hercules[api]'"
+INSTALL_HINT = "jsonpath_ng is not installed; it is a Hercules dependency, so reinstall Hercules: pip install --force-reinstall testzeus-hercules"
 
 
 def _parse(path: str) -> Any:
