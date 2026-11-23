@@ -2421,10 +2421,12 @@ version = "2.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
+    { name = "jsonpath-ng" },
     { name = "jsonschema" },
     { name = "langchain-core" },
     { name = "langgraph" },
     { name = "mcp" },
+    { name = "openapi-schema-validator" },
     { name = "openpyxl" },
     { name = "pillow" },
     { name = "playwright" },
@@ -2437,10 +2439,6 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
-api = [
-    { name = "jsonpath-ng" },
-    { name = "openapi-schema-validator" },
-]
 cloud = [
     { name = "appium-python-client" },
     { name = "pytest" },
@@ -2467,12 +2465,12 @@ dev = [
 requires-dist = [
     { name = "appium-python-client", marker = "extra == 'cloud'", specifier = ">=4,<7" },
     { name = "httpx", specifier = ">=0.28.1,<0.29" },
-    { name = "jsonpath-ng", marker = "extra == 'api'", specifier = ">=1.16.0,<1.17" },
+    { name = "jsonpath-ng", specifier = ">=1.16.0,<1.17" },
     { name = "jsonschema", specifier = ">=4.18,<5" },
     { name = "langchain-core", specifier = ">=1.8.4,<2" },
     { name = "langgraph", specifier = ">=1.2.24,<2" },
     { name = "mcp", specifier = ">=1.30.0,<2" },
-    { name = "openapi-schema-validator", marker = "extra == 'api'", specifier = ">=0.6,<1" },
+    { name = "openapi-schema-validator", specifier = ">=0.6,<1" },
     { name = "openpyxl", specifier = ">=3.1.5,<4" },
     { name = "pillow", specifier = ">=13.0.0,<14" },
     { name = "playwright", specifier = ">=1.65.2,<1.66" },

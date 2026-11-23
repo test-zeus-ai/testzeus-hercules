@@ -105,8 +105,8 @@ hercules --help
 ```
 
 (`uv tool install testzeus-hercules` also works; the one-line installer above does that and sets
-up the browsers for you.) A few features need an extra package that the default install leaves
-out; see [Optional extras](docs/guide/getting-started.md#optional-extras).
+up the browsers for you.) `hercules export --check` and cloud runs need the `cloud` extra; see
+[Optional extras](docs/guide/getting-started.md#optional-extras).
 
 Or run Hercules in Docker, with the tester UI, Chromium and the security scanner in one
 image; see [Running in Docker](docs/guide/docker.md):

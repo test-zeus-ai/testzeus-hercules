@@ -64,22 +64,20 @@ To use a Chromium you already have instead of Playwright's build, set
 
 ### Optional extras
 
-The default install is small. Two features need packages it leaves out:
-
-| Extra | Adds | You need it for |
-|---|---|---|
-| `api` | JSONPath and OpenAPI schema checking | The `headers`, `json_path` and `openapi` checks of API steps, their `save` values, and the `json_path` checks of SQL steps ([API and SQL steps](writing-tests.md#api-and-sql-steps)). Without it, such a step reports `jsonpath_ng is not installed` (or `openapi_schema_validator is not installed`) |
-| `cloud` | pytest, pytest-playwright and the Appium client | `hercules export --check`, and running exported tests on a cloud ([Exporting runs as code](exporting-code.md), [Running tests on clouds](clouds.md)) |
+The default install is small. One feature needs packages it leaves out, the `cloud` extra:
+pytest, pytest-playwright and the Appium client, which run exported tests. You need it for
+`hercules export --check` and for running exported tests on a cloud
+([Exporting runs as code](exporting-code.md), [Running tests on clouds](clouds.md)):
 
 ```bash
-pip install 'testzeus-hercules[api,cloud]'
+pip install 'testzeus-hercules[cloud]'
 ```
 
 If you installed with the one-line installer or `uv tool install`, Hercules lives in its own
-environment and a plain `pip install` does not reach it. Add the extras to it instead:
+environment and a plain `pip install` does not reach it. Add the extra to it instead:
 
 ```bash
-uv tool install --force 'testzeus-hercules[api,cloud]'
+uv tool install --force 'testzeus-hercules[cloud]'
 ```
 
 ## Hardware tiers

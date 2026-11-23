@@ -53,6 +53,8 @@ dependencies = [
     "uvicorn>=0.54.0,<1",
     "pypdf>=7.1.1,<8",
     "openpyxl>=3.1.5,<4",
+    "jsonpath-ng>=1.16.0,<1.17",
+    "openapi-schema-validator>=0.6,<1",
 ]
 
 [project.urls]
@@ -84,7 +86,8 @@ dev = [
 ]
 
 [project.optional-dependencies]
-api = ["jsonpath-ng>=1.16.0,<1.17", "openapi-schema-validator>=0.6,<1"]
+# JSONPath and OpenAPI checking became core dependencies in 2.0.1; the extra stays so `pip install 'testzeus-hercules[api]'` still works.
+api = []
 # Run exported tests on BrowserStack, Sauce Labs or TestMu AI from Hercules (hercules cloud run, the UI's Run on cloud).
 cloud = ["pytest>=9.2.0,<10", "pytest-playwright>=0.10.0,<0.11", "Appium-Python-Client>=4,<7"]
 
