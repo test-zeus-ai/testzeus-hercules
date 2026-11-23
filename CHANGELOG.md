@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.0.1 (unreleased)
+## 2.0.1 (2026-11-23)
 
 - **API and SQL steps work in the default install**: JSONPath and OpenAPI checking are core
   dependencies now. In 2.0.0 they were in the `api` extra, so `headers`, `json_path` and
