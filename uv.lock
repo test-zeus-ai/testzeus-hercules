@@ -1,10 +1,10 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.13, <3.16"
 resolution-markers = [
     "python_full_version >= '3.15' and sys_platform == 'win32'",
-    "python_full_version == '3.14.*' and sys_platform == 'win32'",
     "python_full_version >= '3.15' and sys_platform != 'win32'",
+    "python_full_version == '3.14.*' and sys_platform == 'win32'",
     "python_full_version == '3.14.*' and sys_platform != 'win32'",
     "python_full_version < '3.14' and sys_platform == 'win32'",
     "python_full_version < '3.14' and sys_platform != 'win32'",
@@ -51,15 +51,15 @@ wheels = [
 
 [[package]]
 name = "appium-python-client"
-version = "5.3.1"
+version = "6.1.8"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "selenium" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/8d/54/e8046c9677521a61dc311a137b93b37d4411f79202a363d844d04b8d98d9/appium_python_client-5.3.1.tar.gz", hash = "sha256:30800f9a53a585814138e7c8f569fd295273f933c9b34ad1a9580f3bf923fc63", size = 253876, upload-time = "2026-04-19T21:17:05.683Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ba/cf/51d5de0a05bd8a711b34617d325cb7627718e6521d624241b19f8656fbd3/appium_python_client-6.1.8.tar.gz", hash = "sha256:dd641432acf2187831e9df25fbfa4a80aab7f55dd2e154a01ef51b7a247767f6", size = 253108, upload-time = "2026-11-19T03:10:59.124Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/14/fe/ced736d8cd0e8563003ba729214c73f3b6e28be9322c6c0fda1e331de325/appium_python_client-5.3.1-py3-none-any.whl", hash = "sha256:da0d3227ee059c31908a16f30a131424713ea96998fcd48e255d2cf9d107b557", size = 351262, upload-time = "2026-04-19T21:17:03.818Z" },
+    { url = "https://files.pythonhosted.org/packages/38/c9/ef0ebdd50f2b0bd46a6dcbda53baec7c79764dc60ad9622b121f2b5cd8f2/appium_python_client-6.1.8-py3-none-any.whl", hash = "sha256:10834b14c84f7ab4320e1f98f8f3f8080fa886b08e483c94f1af35b42cbbf9dc", size = 344413, upload-time = "2026-11-19T03:10:57.526Z" },
 ]
 
 [[package]]
@@ -1557,7 +1557,7 @@ name = "pexpect"
 version = "4.9.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "ptyprocess", marker = "sys_platform != 'win32'" },
+    { name = "ptyprocess" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/42/92/cc564bf6381ff43ce1f4d06852fc19a2f11d180f23dc32d9588bee2f149d/pexpect-4.9.0.tar.gz", hash = "sha256:ee7d41123f3c9911050ea2c2dac107568dc43b2d3b0c7557a33212c398ead30f", size = 166450, upload-time = "2023-11-25T09:07:26.339Z" }
 wheels = [
@@ -2253,8 +2253,8 @@ name = "secretstorage"
 version = "3.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "cryptography", marker = "sys_platform != 'win32'" },
-    { name = "jeepney", marker = "sys_platform != 'win32'" },
+    { name = "cryptography" },
+    { name = "jeepney" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/1c/03/e834bcd866f2f8a49a85eaff47340affa3bfa391ee9912a952a1faa68c7b/secretstorage-3.5.0.tar.gz", hash = "sha256:f04b8e4689cbce351744d5537bf6b1329c6fc68f91fa666f60a380edddcd11be", size = 19884, upload-time = "2025-11-23T19:02:53.191Z" }
 wheels = [
