@@ -80,7 +80,7 @@ dev = [
     "gitchangelog>=3.0.4,<4",
     "mkdocs>=1.6.1,<2",
     "ipdb>=0.13.13,<0.14",
-    "twine>=5.1.1,<6",
+    "twine>=5.1.1,<8",
     "deptry>=0.25.1,<0.26",
     "pytest-rerunfailures>=16.7,<17",
 ]
